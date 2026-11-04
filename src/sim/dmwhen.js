@@ -130,7 +130,8 @@ function baseline(e){const on=e.on,st={};
     case 'hero_levels':st.lv=Object.fromEntries(subjects(on).map(a=>[a.id,a.lvl]));break;
     case 'oath_kept':st.g=Object.fromEntries(subjects(on).map(a=>[a.id,goalKey(a)]));break}
   return st}
-const goalKey=a=>a.goal?clean(a.goal.text,80)+'|'+(a.goal.done?1:0):'';
+// Only an oath kept counts (#800); a.oathKept outlives the goal, which moves on the moment it is kept.
+const goalKey=a=>{const g=a.goal;return g&&g.done?clean(g.text,80)+'|1':a.oathKept?'kept '+a.oathKept.at+'|1':g&&!g.offered?clean(g.text,80)+'|0':''};
 function holds(e,a){const on=e.on;switch(e.trigger){
   case 'enter_region':return a.state!=='dungeon'&&zoneAt(a.x,a.y)===on.z;
   case 'enter_town':return a.state==='town'&&a.town===on.town;
@@ -156,7 +157,7 @@ function check(e){const on=e.on,st=e.st;
     case 'hero_levels':{let hit=null;for(const a of subjects(on)){const was=st.lv[a.id];st.lv[a.id]=a.lvl;
         if(was==null||a.lvl<=was)continue;if(on.level&&!(a.lvl>=on.level&&was<on.level))continue;if(!hit)hit={who:a,what:a.name+' reaches level '+a.lvl}}return hit}
     case 'oath_kept':{let hit=null;for(const a of subjects(on)){const was=st.g[a.id],k=goalKey(a);st.g[a.id]=k;
-        if(was==null||was===k||!k.endsWith('|1'))continue;if(!hit)hit={who:a,what:a.name+' keeps an oath: '+clean(a.goal.text,80)}}return hit}}
+        if(was==null||was===k||!k.endsWith('|1'))continue;if(!hit)hit={who:a,what:a.name+' keeps an oath: '+clean((a.goal&&a.goal.done?a.goal:a.oathKept).text,80)}}return hit}}
   return null}
 
 // ---- setting, listing, cancelling ----

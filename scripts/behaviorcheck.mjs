@@ -135,7 +135,7 @@ for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
 const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
 ok(memA.ok, 'A wrote a memory (#179)');
-const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Hold the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
+const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Patrol the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
 ok(aimA.ok, 'A stated an aim (#535)');
 // C's agent keeps it in town on purpose (#466: a silent member's autopilot now walks out of town to hunt, so a stuck member
 // is one whose agent keeps acting without going anywhere): every game hour its runner orders a rest in town.
@@ -238,7 +238,7 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   const rm = writeReport(join(ROOT, 'minds'), 'mock'), mmd = readFileSync(rm.file, 'utf8'), sec = (mmd.split('## Mind comparison')[1] || '').split('## World')[0];
   const rowOf = n => (sec.split('\n').find(l => l.startsWith('| ' + n + ' |')) || '').split('|').slice(1, -1).map(s => s.trim());
   const ann = rowOf('Ann'), bo = rowOf('Bo'), cy = rowOf('Cy');
-  ok(/## Mind comparison/.test(mmd) && ann.length === 20 && bo.length === 20 && cy.length === 20, 'report has a Mind comparison table with a row per member (#280)');
+  ok(/## Mind comparison/.test(mmd) && ann.length === 23 && bo.length === 23 && cy.length === 23, 'report has a Mind comparison table with a row per member (#280)');
   ok(ann[2] === 'ollama/qwen2.5:14b' && ann[3] === '10' && ann[4] === '2' && ann[5] === '1' && ann[6] === '1', `Ann on qwen: 10 turns (unnamed lines named from the digests), 2 empty, 1 failed, 1 Table answer: ${ann.slice(2, 7).join(' ')}`);
   ok(ann[7] === '-' && ann[8] === '-' && ann[9] === '-' && ann[12] === '-', 'a member with no decisions shows "-", not zero');
   ok(/2 by anthropic\/claude-haiku-5-5 \(1 failed\)/.test(ann[10]) && !sec.split('\n').some(l => l.startsWith('| Ann | tank | anthropic')), 'the relay writing Ann\'s sheet is folded into her row, not shown as her mind');

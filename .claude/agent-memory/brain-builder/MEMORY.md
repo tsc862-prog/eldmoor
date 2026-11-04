@@ -1,4 +1,5 @@
 - [Brain design](brain-design.md) — decision points, relay protocol, model choice, cost and test approach from issue #40
+- [Budget stop](budget-stop.md) — #807 cause was gate clicks; budgetOut, active.json spent, events.jsonl by/why, price on buttons
 - [Agent player](agent-player.md) — #75/#93 MCP tools, per-hero routing+claims, WS protocol, runner settings, per-hero sessions, cost per turn, playcheck
 - [Fellowship](fellowship.md) — #68 phase A shapes and hooks; phase B council, Table mode, Minds=agents, runner cost per member
 - [Mixed minds](mixed-minds.md) — #97 parts 1+2: adapters, think:false, a.brainCfg, local agent loop, claim runner tags, local latency/tokens
@@ -75,3 +76,6 @@
 - [Scene grab](scene-grab.md) — #737 sceneGrab aborts mid-turn Claude query after 15 s due, resume, queued countdown
 - [localcheck pacing flake #762](localcheck-pacing-downed.md) — downed-companion urgent event woke the test hero; DOWN.REACH/SEE zeroed in section A; no parallel runs
 - [Companion voice](companion-voice.md) — #764 compvoice.js: companion_call/say, per-listener memory, no-repeat fill, PER_DAY 6, hooks, pitfalls
+- [Session size](session-size.md) — #787 roll + compaction net: CLI threshold math, Haiku 100k line, real cost per turn, mock pitfalls
+- [Check flakes](check-flakes.md) — #324/#378 hunt: SAVECHECK_SEED, crawlcheck PARTS, upcheck lock, not reproduced
+- [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons

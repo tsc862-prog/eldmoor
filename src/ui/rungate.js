@@ -29,8 +29,10 @@
 // older world on Continue gets it here). Until slice B (#560) the panel's Close seat still works for this session.
 // While the gate or the prep holds the world, agent heroes get no turns and their acting tools are refused
 // (sim/prep.js setGateHold, #559), so nobody speaks or moves before the opening scene.
+// A budget stop (#807): the gate holds as for any stopped runner, and it is the only place a spent runner comes back from. The
+// bar says what was spent, each button what it will spend ("Restart · another $2.00"), and when no session budget caps the total.
 import {S,dmSeatOn,setDmSeat,beginPrep,endPrep,prepTick,prepView,prepActive,openingDue,openingWait,setPrepHost,setGateHold} from '../sim/index.js';
-import {runnerFor,runnerByKey,allRunners,relayUp,runnersEnabled,ollamaBusy,reasonOf,watchRunners,DONE_STATE,leftOf} from './runners.js';
+import {runnerFor,runnerByKey,allRunners,relayUp,runnersEnabled,ollamaBusy,reasonOf,watchRunners,DONE_STATE,leftOf,budgetText,startCost,anotherText,costNote,restartRunner,sessionInfo,NO_SESSION} from './runners.js';
 import {agentLink,dmLink,bridgeStatus,agentReady,dmReady} from './player-bridge.js';
 import {ctl} from './controls.js';
 import {inSlots} from '../sim/company.js'; // the slotted company (#588)
@@ -78,7 +80,7 @@ export function whyMissing(s){
     return 'claimed, waiting for its first model answer (an older runner never reports one: Start anyway)'}
   if(!probe){const bs=bridgeStatus();if(bs==='connecting')return 'connecting to the relay…';if(bs!=='connected'||relayUp()===false)return 'the relay is offline (npm run relay -- --runners)'}
   const r=seatRunner(s);
-  const lf=s.a&&leftOf(r,s.a);if(lf&&!DONE_STATE[r.state])return 'the Fellowship runner is done with '+s.name+' ('+lf.why+'): Restart it to play on'; // #563
+  const lf=s.a&&leftOf(r,s.a);if(lf&&!DONE_STATE[r.state])return 'the Fellowship runner is done with '+s.name+' ('+(r.budgetSpent?budgetText(r):lf.why)+'): '+(r.budgetSpent?'Restart spends '+anotherText(startCost(r.kind)):'Restart it to play on'); // #563, #807
   if(r&&r.state==='crashed')return reasonOf(r,s.a||null);
   if(r&&r.state==='starting')return 'starting…';
   if(r&&r.state==='stopping')return 'stopping…';
@@ -117,10 +119,13 @@ export function checkRunGate(now=Date.now()){
   paint()}
 
 const setupOpen=()=>{const s=$('setup');return !!(s&&!s.hidden)};
+// the runners behind the missing seats that spent their budget (#807), each once
+const spentRunners=()=>[...new Set(missing.map(seatRunner).filter(r=>r&&r.budgetSpent))];
+const startAllCost=()=>(missing.some(m=>m.kind==='hero')?startCost('fellowship'):0)+(missing.some(m=>m.kind==='dm')?startCost('dm'):0);
 function paint(){const box=$('rgate');if(!box)return;
   const gw=ctl.held?null:openingWait(),show=(ctl.held||gw)&&!setupOpen(); // session zero waits for the company (#771): the world runs, the line only tells why no table opens
   const pv=prepping?prepView():null;
-  const s=show?missing.map(m=>m.key+'='+m.link+'='+whyMissing(m)).join('|')+'|'+ctl.speed+'|'+readyN+'/'+total+(pv?'|prep:'+pv.seconds+':'+pv.calls+':'+(pv.started?'':pv.hard_left):'')+(gw?'|gather:'+gw.names.join()+':'+Math.ceil(gw.minutes_left/60):''):'';
+  const s=show?missing.map(m=>m.key+'='+m.link+'='+whyMissing(m)).join('|')+'|'+ctl.speed+'|'+readyN+'/'+total+(pv?'|prep:'+pv.seconds+':'+pv.calls+':'+(pv.started?'':pv.hard_left):'')+(gw?'|gather:'+gw.names.join()+':'+Math.ceil(gw.minutes_left/60):'')+'|'+spentRunners().map(r=>r.key+r.cost).join()+(spentRunners().length?':'+startAllCost()+':'+sessionInfo().spent+':'+sessionInfo().budget:''):'';
   if(s===sig)return;sig=s;
   if(!show){box.hidden=true;box.replaceChildren();return}
   box.hidden=false;box.replaceChildren();
@@ -131,12 +136,17 @@ function paint(){const box=$('rgate');if(!box)return;
   const paused=ctl.speed===0;
   box.append(el('div','rt','WAITING FOR MINDS · '+readyN+'/'+total+' READY'));
   box.append(el('div','rl dm',paused?'Paused. It will stay paused once every mind is ready.':ran?'Paused: every mind (each company member and the DM) must be active for the world to run. It runs again by itself once they are back.':'The world runs by itself once every mind has connected and answered once.'));
+  const spent=spentRunners();
+  if(spent.length){for(const r of spent)box.append(el('div','rl dm','Spent by '+r.name+': '+budgetText(r).replace(/^.*?: /,'')+'. Nothing starts again by itself: each button says what it will spend.'));
+    const se=sessionInfo();box.append(el('div','rl dm',se.budget==null?NO_SESSION+' So far '+'$'+(se.spent||0).toFixed(2)+'. Set one under Agents.':'Session budget: $'+(se.spent||0).toFixed(2)+' of $'+se.budget.toFixed(2)+'.'))}
   for(const m of missing){const row=el('div','rl rgrow');row.append(el('span','rgn',m.name),el('span','rgw',': '+whyMissing(m)));
     const r=seatRunner(m),running=r&&!DONE_STATE[r.state]&&r.state!=='stopping';
     const kind=running&&r.kind!=='hero'?r.kind:m.kind; // a member the Fellowship runner plays (or let go): restart that runner (#563)
-    const b=el('button','mini runbtn',running?'Restart':'Start');b.dataset.runact=running?'restart':'start';b.dataset.runkind=kind;if(m.hero!=null&&kind==='hero')b.dataset.runhero=m.hero;
-    b.title=running?'Stop this runner and start it again':'Start the runner from the relay';row.append(b);box.append(row)}
-  const all=el('button','mini runbtn','Start all');all.dataset.gateall='1';all.title='Start the Fellowship runner (all five) and the DM runner for every seat that is missing';
+    const note=r&&r.budgetSpent?costNote(kind,kind==='hero'?m.hero:undefined):''; // the owner's click, with its price (#807)
+    const b=el('button','mini runbtn',(running?'Restart':'Start')+note);b.dataset.runact=running?'restart':'start';b.dataset.runkind=kind;if(m.hero!=null&&kind==='hero')b.dataset.runhero=m.hero;
+    b.title=(running?'Stop this runner and start it again':'Start the runner from the relay')+(note?' with a fresh budget:'+note.replace(' ·',''):'');row.append(b);box.append(row)}
+  const allNote=spent.length&&startAllCost()>0?' · '+anotherText(startAllCost()):'';
+  const all=el('button','mini runbtn','Start all'+allNote);all.dataset.gateall='1';all.title='Start the Fellowship runner (all five) and the DM runner for every seat that is missing';
   const go=el('button','mini runbtn',ran?'Resume anyway':'Start anyway');go.dataset.gateanyway='1';go.title=(ran?'Resume':'Run')+' the world now with the minds as they are (members without a runner act by reflex until theirs is back); holds until the next change: a missing seat that comes back and goes again pauses it again';
   const bt=el('div','rb');bt.append(all,go);box.append(bt)}
 
@@ -146,8 +156,9 @@ export const gatePrep=()=>prepping?prepView():null; // the smoke check and the p
 
 // Start all: one Fellowship runner for the members, the DM runner for the DM, only where a seat is missing.
 export async function startAllMissing(start){
-  const fel=missing.some(m=>m.kind==='hero'),dm=missing.some(m=>m.kind==='dm');
-  if(fel)await start('fellowship');if(dm)await start('dm')}
+  const fel=missing.some(m=>m.kind==='hero'),dm=missing.some(m=>m.kind==='dm'),r=runnerByKey('fellowship');
+  if(fel){if(r&&!DONE_STATE[r.state])await restartRunner('fellowship');else await start('fellowship')} // one still finishing a member is restarted, not refused as running
+  if(dm)await start('dm')}
 
 export function initRunGate(start){setPrepHost(true); // this page holds the world for the DM's prep (#437)
   const box=$('rgate');
