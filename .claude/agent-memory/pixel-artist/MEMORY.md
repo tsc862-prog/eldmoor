@@ -11,3 +11,4 @@
 - [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes
 - [Page stall](pagestall.md) — #736 watchdog, relay late-answer keep; the refusals were held waits, not the dungeon view
 - [Art batch review](artreview.md) — reviewing a generated batch: scratch pipeline, reprocess --dir, why pixel-xl fails autotiles/sheets/ground
+- [Crawl as played](crawlview.md) — #742 spots per chamber, act->spot, beats from sc.beats + HP drops, close-up framing, staging beats
