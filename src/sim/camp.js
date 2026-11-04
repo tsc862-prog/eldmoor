@@ -65,6 +65,7 @@ import {openScene,sceneFor} from './table.js';
 import {campCraft,fireRecipes} from './craft.js'; // cooking and brewing at the fire (#258)
 import {sceneOf} from './scenes.js';
 import {reflexMay} from './runlink.js';
+import {campTend} from './tend.js';
 import {compLine} from './compvoice.js'; // scripted companions of an agent company: the DM's voice (#764)
 import {advCampable} from './dm.js'; // a night camp may fall between an adventure's scenes (#325)
 
@@ -275,6 +276,7 @@ function campOne(F,dt){const g=F.camp&&F.camp.phase?F.camp:null;
     L.forEach((a,i)=>{const p=spotOf(g,i,L.length);if(!moveTo(a,p.x,p.y,dt,2.4))all=false;a.face=g.x>a.x?1:-1});
     if(all||now-g.start>CAMP.GATHER_MAX){g.phase='rest';g.restAt=Math.round(now);g.nextRoll=now+CAMP.ROLL_MIN;g.nextTalk=now+20;g.nextBond=now+180;g.watchIdx=-1;
       for(const a of L){a.moving=false;if(reflexMay(a))campCraft(a);campMeal(a,{meals:reflexMay(a)})} // supper: a reflex member cooks and brews first (#258); an agent's crafted meals are its own to eat
+      campTend(L); // wounds dressed at the fire (#656)
       for(const a of L)if(!g.lit&&a.inv&&a.inv.list.length)campLight(a)
       emit('rest',g,{why:g.why})}
     refreshDoing(L);
