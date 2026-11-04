@@ -33,7 +33,7 @@ export const SETS={
 // The only parts of the generator repo that are fetched (sparse, non-cone). Add a layer folder here to review more of it.
 export const LPC_PATHS=['/CREDITS.csv','/LICENSE','/README.md','/cc-by-sa-3_0.txt','/gpl-3_0.txt','/sheet_definitions/',
   '/spritesheets/body/bodies/male/','/spritesheets/body/bodies/male.png','/spritesheets/body/bodies/female/','/spritesheets/body/bodies/female.png',
-  '/spritesheets/head/heads/human/male/','/spritesheets/head/heads/human/female/','/spritesheets/hair/plain/','/spritesheets/hair/long/','/spritesheets/hair/ponytail/','/spritesheets/hair/long_messy/','/spritesheets/quiver/','/spritesheets/hair/braid/',
+  '/spritesheets/head/heads/human/male/','/spritesheets/head/heads/human/female/','/spritesheets/head/heads/orc/','/spritesheets/hair/plain/','/spritesheets/hair/long/','/spritesheets/hair/ponytail/','/spritesheets/hair/long_messy/','/spritesheets/quiver/','/spritesheets/hair/braid/',
   '/spritesheets/torso/','/spritesheets/legs/pants/','/spritesheets/legs/armour/','/spritesheets/feet/boots/','/spritesheets/weapon/sword/','/spritesheets/weapon/blunt/','/spritesheets/weapon/ranged/','/spritesheets/weapon/magic/','/spritesheets/hat/'];
 
 const empty=d=>!fs.existsSync(d)||fs.readdirSync(d).length===0;

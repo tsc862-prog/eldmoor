@@ -339,7 +339,18 @@ try{
     ok(checkIndex(man,dir).errs.some(x=>/names no license/.test(x)),'an entry from a set with no license is refused');
     writeFileSync(join(dir,'index.json'),JSON.stringify({version:1,assets:{'tile:grass@32':entry}}));
     ok(!jobsFor(man,loadIndex(dir),loadQueue(dir)).some(j=>j.e.id==='tile:grass'),'an id a pack covers is skipped by the generator');
-    ok(Object.values(SETS).every(x=>x.licence&&x.link&&x.author)&&PACKS.endsWith('packs'),'every set names its licence, author and link');}
+    ok(Object.values(SETS).every(x=>x.licence&&x.link&&x.author)&&PACKS.endsWith('packs'),'every set names its licence, author and link');
+    // a sheet of a people (#789): an index-only entry with no manifest row passes its own checks; the renderer picks people, then class, then nothing
+    {const sd=join(tmp,'people-assets');mkdirSync(join(sd,'sprite','32'),{recursive:true});const sp=encodePng(synth(96,192));writeFileSync(join(sd,'sprite','32','hero-warrior-ashfolk.png'),sp);
+      const ent={id:'sprite:hero-warrior-ashfolk',kind:'sprite',file:'sprite/32/hero-warrior-ashfolk.png',w:96,h:192,sha256:sha256(sp),tier:32,source:'lpc-generator',license:'CC-BY-SA 3.0'};
+      writeFileSync(join(sd,'index.json'),JSON.stringify({version:1,assets:{'sprite:hero-warrior-ashfolk@32':ent}}));
+      ok(!checkIndex(man,sd).errs.length,'an index-only people sheet (no manifest row) passes when it names its source and license');
+      writeFileSync(join(sd,'index.json'),JSON.stringify({version:1,assets:{'sprite:hero-warrior-ashfolk@32':{...ent,license:undefined}}}));
+      ok(checkIndex(man,sd).errs.some(x=>/names no license/.test(x)),'and is refused without a license');
+      const SPR=await import('../src/render/sprites.js'),AS=await import('../src/render/assets.js'),px=AS.pixelsOf(96,192,new Uint8Array(96*192*4));
+      AS.setAssetPixels('sprite:hero-warrior',px);AS.setAssetPixels('sprite:hero-warrior-ashfolk',px);
+      ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior-ashfolk'&&SPR.heroSheetId('Warrior','tarrow')==='sprite:hero-warrior'&&SPR.heroSheetId('Warrior')==='sprite:hero-warrior'&&SPR.heroSheetId('Mage','ashfolk')==='sprite:hero-mage'&&SPR.heroSheetId('Nobody','ashfolk')===null,'the renderer takes the people sheet of a hero, else the class sheet, else the procedural sprite');
+      AS.setAssetPixels('sprite:hero-warrior',null);AS.setAssetPixels('sprite:hero-warrior-ashfolk',null);ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior','and falls back when the sheets leave (ids are re-read when assets change)')}}
 
   // --- daily.mjs: quota-driven, resumable, into incoming/<date>/ for review
   {const dir=join(tmp,'assets'),logP=join(tmp,'art.log'),days=['2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07','2026-11-08','2026-11-09','2026-11-10'];let d=0;

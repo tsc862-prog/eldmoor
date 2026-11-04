@@ -19,6 +19,7 @@ import {decodePng,encodePng} from './png.mjs';
 import {FAC} from '../../src/data/factions.js';
 import {TIER_SHADES,shadeHex} from '../../src/render/palette.js';
 import {sha256,fileOf} from './lib.mjs';
+import {RACES} from '../../src/data/races.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','..');
 const REPO=path.join(ROOT,'assets','packs','lpc-generator','repo');
@@ -75,10 +76,16 @@ export const licenceOk=text=>/(^|[ ,])(CC-BY-SA 3.0|OGA-BY 3.0|CC0)([ ,+]|$)/.te
 const imgCache=new Map();
 const load=p=>{if(!imgCache.has(p))imgCache.set(p,decodePng(fs.readFileSync(p)));return imgCache.get(p)};
 
+// A people's look from the config: head family, LPC skin and hair variant (chosen by eye against data/races.js).
+export function peopleLook(cfg,raceId){
+  if(!RACES.some(x=>x.id===raceId))throw new Error('no people '+raceId);const pc=cfg.peoples[raceId];
+  if(!pc||!pc.head||!pc.skin||!pc.hair)throw new Error('lpc-heroes.json: people '+raceId+' needs head, skin and hair');return {head:pc.head,skin:pc.skin,hair:pc.hair}}
+
 // Compose a class: returns {layers:[{rel,z,im}], credits:[...]} (images are whole generator sheets, composited per frame later).
-export function buildClass(cls,cfg){
-  const body=cfg.body,skin=cfg.skin||'light',layers=[],credits=[];
-  for(const L of cfg.layers){
+export function buildClass(cls,cfg,pp={}){
+  const body=cfg.body,skin=pp.skin||cfg.skin||'light',layers=[],credits=[];
+  for(const L0 of cfg.layers){
+    const L={...L0,def:L0.def==='@head'?`heads_${pp.head||'human'}_${body}`:L0.def,variant:L0.variant==='@hair'?(pp.hair||'chestnut'):L0.variant};
     const d=def(L.def),variant=d.match_body_color?skin:L.variant;
     const ls=layersOf(L.def,body,variant);if(!ls.length)throw new Error(`${cls}: ${L.def} has no layer for body ${body}`);
     let used=0;
@@ -109,25 +116,33 @@ export function boxOf(built,cfgAll){let x0=64,y0=64,x1=0,y1=0;
     for(let y=0;y<FS;y++)for(let x=0;x<FS;x++)if(fr[(y*FS+x)*4+3]){x0=Math.min(x0,x);x1=Math.max(x1,x);y0=Math.min(y0,y);y1=Math.max(y1,y)}}
   return {x0,y0,x1,y1}}
 
+// The licence a layer is used under: CC-BY-SA 3.0 when offered (the sheets' own), else OGA-BY 3.0, else CC0.
+export const usedUnder=t=>/CC-BY-SA 3.0/.test(t)?'CC-BY-SA 3.0':/OGA-BY 3.0/.test(t)?'OGA-BY 3.0':'CC0';
 export function creditLines(all){ // markdown, one bullet per layer folder, merged across classes
   const seen=new Map();for(const cs of all)for(const c of cs)if(!seen.has(c.file))seen.set(c.file,c);
-  return [...seen.values()].sort((a,b)=>a.file.localeCompare(b.file)).map(c=>`- \`${c.file}\`: ${c.authors}. ${c.licenses}. ${c.urls.join(' ')}${c.notes?` (${c.notes})`:''}`)}
+  return [...seen.values()].sort((a,b)=>a.file.localeCompare(b.file)).map(c=>`- \`${c.file}\`: ${c.authors}. Offered under ${c.licenses}; used under ${usedUnder(c.licenses)}. ${c.urls.join(' ')}${c.notes?` (${c.notes})`:''}`)}
 
 export function main(argv=process.argv.slice(2)){
-  const o={};for(let i=0;i<argv.length;i++){if(argv[i]==='--out')o.out=argv[++i];else if(argv[i]==='--preview')o.preview=argv[++i];else if(argv[i]==='--only')o.only=argv[++i].split(',');else if(argv[i]==='--credits')o.credits=true;else if(argv[i]==='--index')o.index=true;else if(argv[i]==='--box')o.box=true;else if(argv[i]==='--credits-md')o.md=argv[++i]}
+  const o={};for(let i=0;i<argv.length;i++){if(argv[i]==='--out')o.out=argv[++i];else if(argv[i]==='--preview')o.preview=argv[++i];else if(argv[i]==='--only')o.only=argv[++i].split(',');else if(argv[i]==='--credits')o.credits=true;else if(argv[i]==='--index')o.index=true;else if(argv[i]==='--box')o.box=true;else if(argv[i]==='--looks')o.looks=true;else if(argv[i]==='--credits-md')o.md=argv[++i]}
   const cfg=JSON.parse(fs.readFileSync(CONFIG,'utf8')),out=o.out||path.join(ROOT,'assets','sprite','32'),all=[],made=[];
+  const looks=Object.fromEntries(RACES.map(r=>[r.id,peopleLook(cfg,r.id)]));
+  if(o.looks){for(const [id,l] of Object.entries(looks))console.log(id.padEnd(10),JSON.stringify(l));return []}
+  const jobs=[]; // every class for every people, and each class once more as the fallback sheet (the first people's look)
   for(const [cls,c] of Object.entries(cfg.classes)){if(o.only&&!o.only.includes(cls))continue;
-    const built=buildClass(cls,c);all.push(built.credits);
-    if(o.box){console.log(cls,JSON.stringify(boxOf(built,cfg)));continue}
-    const sh=sheetOf(built,cfg),buf=encodePng(sh),file=`hero-${slug(cls)}.png`;
-    fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,file),buf);made.push({cls,file,sh,buf,credits:built.credits});console.log('[lpc]',cls,'->',path.join(out,file),`${sh.w}x${sh.h}`,`${built.layers.length} layers`)}
+    for(const r of RACES)jobs.push({cls,c,race:r.id,id:'sprite:hero-'+slug(cls)+'-'+r.id,file:'hero-'+slug(cls)+'-'+r.id+'.png'});
+    jobs.push({cls,c,race:cfg.fallbackPeople,id:'sprite:hero-'+slug(cls),file:'hero-'+slug(cls)+'.png'})}
+  for(const j of jobs){
+    const built=buildClass(j.cls,j.c,looks[j.race]);all.push(built.credits);
+    if(o.box){console.log(j.id,JSON.stringify(boxOf(built,cfg)));continue}
+    const sh=sheetOf(built,cfg),buf=encodePng(sh);
+    fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,j.file),buf);made.push({...j,sh,buf,credits:built.credits,look:looks[j.race]});console.log('[lpc]',j.id,'->',j.file,JSON.stringify(looks[j.race]))}
   if(o.preview){fs.mkdirSync(o.preview,{recursive:true})} // (previews are the sheets themselves, in --out)
   if(o.credits)console.log(creditLines(all).join('\n'));
   if(o.md&&made.length){const B='<!-- lpc-heroes:begin -->',E='<!-- lpc-heroes:end -->',t=fs.readFileSync(o.md,'utf8'),a=t.indexOf(B),z=t.indexOf(E);
     if(a<0||z<0)throw new Error('markers missing in '+o.md);fs.writeFileSync(o.md,t.slice(0,a+B.length)+'\n'+creditLines(all).join('\n')+'\n'+t.slice(z))}
   if(o.index&&made.length){const ip=path.join(ROOT,'assets','index.json'),idx=JSON.parse(fs.readFileSync(ip,'utf8'));
-    for(const m of made){const id='sprite:hero-'+slug(m.cls),key=id+'@32';
-      idx.assets[key]={id,kind:'sprite',file:fileOf(id,32),w:m.sh.w,h:m.sh.h,sha256:sha256(m.buf),tier:32,source:'lpc-generator',license:LICENCE,credits:'docs/CREDITS.md#lpc-hero-sheets',layers:m.credits.map(c=>c.file).sort(),accepted:new Date().toISOString().slice(0,10)}}
+    for(const m of made){const id=m.id,key=id+'@32';
+      idx.assets[key]={id,kind:'sprite',people:m.race,class:m.cls,look:m.look,file:fileOf(id,32),w:m.sh.w,h:m.sh.h,sha256:sha256(m.buf),tier:32,source:'lpc-generator',license:LICENCE,credits:'docs/CREDITS.md#lpc-hero-sheets',layers:m.credits.map(c=>c.file).sort(),accepted:new Date().toISOString().slice(0,10)}}
     idx.assets=Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]));fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}
   return made}
 

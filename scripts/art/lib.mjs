@@ -96,7 +96,14 @@ export async function checkHooks(man){
 export function checkIndex(man,dir=ASSETS){
   const errs=[],idx=loadIndex(dir),byId=new Map(man.assets.map(e=>[e.id,e])),listed=new Set();
   for(const [key,a] of Object.entries(idx.assets)){
-    const id=a.id||key.replace(/@.*$/,''),tier=a.tier,e=byId.get(id);if(!e){errs.push(`index: ${key} is not in the manifest`);continue}
+    const id=a.id||key.replace(/@.*$/,''),tier=a.tier,e=byId.get(id);
+    if(!e&&a.source){ // an entry from a free set that nothing generates (#789): no manifest row, so its own checks
+      if(!a.license){errs.push(`index: ${key} comes from ${a.source} but names no license`);continue}
+      if(key!==tierKey(id,tier)||a.file!==fileOf(id,tier)){errs.push(`index: ${key} file ${a.file}, expected ${fileOf(id,tier)}`);continue}
+      listed.add(a.file);const p=join(dir,a.file);if(!existsSync(p)){errs.push(`index: ${key} file ${a.file} is missing`);continue}
+      const b=readFileSync(p),sz=pngSize(b);if(!sz||a.w!==sz.w||a.h!==sz.h)errs.push(`index: ${key} size ${a.w}x${a.h} differs from the file`);
+      if(a.sha256!==sha256(b))errs.push(`index: ${key} sha256 differs from ${a.file} (regenerate the index)`);continue}
+    if(!e){errs.push(`index: ${key} is not in the manifest`);continue}
     if(key!==tierKey(id,tier))errs.push(`index: key ${key}, expected ${tierKey(id,tier)}`);
     if(!TIERS.includes(tier)){errs.push(`index: ${key} tier ${tier} is not one of ${TIERS.join(', ')}`);continue}
     if(a.file!==fileOf(id,tier))errs.push(`index: ${key} file ${a.file}, expected ${fileOf(id,tier)}`);
