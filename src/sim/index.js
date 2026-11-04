@@ -122,6 +122,7 @@ export function init(o={}){resetWorld();
 
 // Advance the world by dt real seconds at 1x (6 game minutes per second).
 import {outpostsTick} from './outposts.js';
+import {pathTick} from './path.js';
 import {trafficTick} from './traffic.js'; // carts, travellers and guard patrols on the roads (#796)
 export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
   if(holdTick(dt)){updFx(dt);return} // a gambit hold stops the clock until the agent acts (#630)
@@ -129,6 +130,7 @@ export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lap
   S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
+  pathTick(); // this step's plans (sim/path.js, #794)
   rebuild(); // spatial grid for this step's proximity scans (sim/spatial.js); after recruits so newcomers are indexed
   for(const a of S.agents)if(a.state!=='camp'&&!held(a)&&!(a.player&&playerUpd(a,dt)))updAgent(a,dt); // 'camp': the Fellowship rests (sim/camp.js)
   // agent-played heroes (sim/player.js) run a reduced machine first

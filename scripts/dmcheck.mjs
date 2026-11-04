@@ -67,6 +67,7 @@ const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {ZONES, ZPTS, zoneAt, LANDMARKS} = await import('../src/world/map.js');
+const {spotErr: SPOTERR} = await import('../src/sim/levers.js');
 (await import('../src/sim/outposts.js')).OP.ON = false; // the DM scenarios below set their own fixtures; contested outposts (#11) move hunters and would shift them (outposts have their own check)
 // a spot well inside its region (not within 11 tiles of a border): a staged cast lands 6-10 tiles away, and over a border it would stand in ground far above a level-2 party, which changes which refusal comes first
 const awayFromSites = p => LANDMARKS.every(l => Math.hypot(p.x - l.x, p.y - l.y) > 9); // a fixture spot never sits on the Crypt or the lair (a pull there is refused for its own reasons)
@@ -554,7 +555,8 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
     'mark_place near the Fellowship puts a shrine on open ground by them' + (r.ok ? ' at ' + r.at.x + ',' + r.at.y : ': ' + r.error));
   const zl = zoneAt(pl.x, pl.y);
   r = dmAct('mark_place', {kind: 'ruin', near: 'the lantern stone', reason: 'a second marker in that region'});
-  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: {x: pl.x + 4, y: pl.y}}, reason: 'a second marker in that region'});
+  const at2 = [[4, 0], [-4, 0], [0, 4], [0, -4], [3, 3], [-3, -3], [3, -3], [-3, 3]].map(([dx, dy]) => ({x: pl.x + dx, y: pl.y + dy})).find(p => !SPOTERR(p, {region: zl})) || {x: pl.x + 4, y: pl.y}; // ground the lever would take, so the cooldown is what refuses it
+  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: at2}, reason: 'a second marker in that region'});
   ok(r.ok === false && /^Refused: cooldown/.test(r.error) && pv.ok === false && /^Refused: cooldown/.test(pv.error) && !r.usage, 'a second mark_place in ' + ZONES[zl] + ' meets the lever\'s cooldown, as pull_lever does: ' + r.error);
   r = dmAct('mark_place', {kind: 'ruin', near: '0,0', reason: 'off the map'});
   ok(r.ok === false && /no open ground at 0,0/.test(r.error) && /mark_place needs at: a point/.test(r.error), 'mark_place on bad ground says what the lever needed: ' + r.error.slice(0, 100));
@@ -934,6 +936,25 @@ console.log('NPC conversations');
   ok(sm2.fmem && sm2.fmem.notes.length && typeof sm2.warmth === 'number' && S.talks && S.talks.past.length, 'the people\'s records and the conversations survive snapshot -> JSON -> restore');
   if (cap2.hostile) ok(cap2.mood === 'hostile', 'a hostile person stays hostile after a reload');
   away(); clear()}
+
+// ---------------------------------------------------------------- 1b. the prep clock (issue #733)
+console.log('the prep clock starts at the DM\'s first call');
+{const PR = await import('../src/sim/prep.js'); let clk = 0; PR.setPrepClock(() => clk); PR.resetPrep();
+  PR.beginPrep('opening'); let v = PR.prepView();
+  ok(v.state === 'running' && v.started === false && v.seconds === 0 && v.seconds_left === PR.PREP.MS / 1000, 'at the gate the prep waits for its DM: no clock yet (' + JSON.stringify(v) + ')');
+  clk = 60000; PR.prepTick(); dmAct('dm_status', {_poll: true}); dmAct('table_call');
+  v = PR.prepView(); ok(PR.prepActive() && v.started === false && v.calls === 0 && v.waited === 60, 'the runner reaches the game 60 s after the gate: its wait (dm_status _poll) and idle polls neither count nor start the clock');
+  dmAct('dm_status'); v = PR.prepView();
+  ok(v.started === true && v.calls === 1 && v.seconds === 0 && v.seconds_left === PR.PREP.MS / 1000, 'its first call starts the clock: the full ' + PR.PREP.MS / 1000 + ' s are still ahead');
+  clk = 60000 + PR.PREP.MS - 1000; PR.prepTick(); ok(PR.prepActive() && PR.prepView().seconds === PR.PREP.MS / 1000 - 1, 'at 149 s from the gate (89 s of its own) the prep still runs');
+  clk = 60000 + PR.PREP.MS; PR.prepTick(); v = PR.prepView();
+  ok(!PR.prepActive() && v.why === 'time' && v.seconds === PR.PREP.MS / 1000 && v.waited === 60, 'the prep whose runner came 60 s late still got its ' + PR.PREP.MS / 1000 + ' s, then the time cap ended it (' + JSON.stringify(v) + ')');
+  clk = 0; PR.beginPrep('opening'); clk = PR.PREP.HARD_MS - 1; PR.prepTick(); ok(PR.prepActive(), 'a DM that never begins: the world is still held just before the hard cap');
+  clk = PR.PREP.HARD_MS; PR.prepTick(); v = PR.prepView(); ok(!PR.prepActive() && v.why === 'hard' && v.calls === 0, 'the hard cap (' + PR.PREP.HARD_MS / 1000 + ' s from the gate) ends a prep whose DM never called');
+  clk = 0; PR.beginPrep('opening'); clk = 150000; dmAct('dm_status'); clk = PR.PREP.HARD_MS; PR.prepTick(); v = PR.prepView();
+  ok(!PR.prepActive() && v.why === 'hard', 'a DM that starts 150 s late is ended by the hard cap at 180 s, not given 90 s more');
+  clk = 0; PR.beginPrep('opening'); clk = 150000; dmAct('dm_status'); v = PR.prepView(); ok(v.seconds_left === (PR.PREP.HARD_MS - 150000) / 1000, 'seconds_left counts the hard cap when it comes first (' + v.seconds_left + ' s)');
+  PR.endPrep('done'); PR.resetPrep(); PR.setPrepClock(null)}
 
 // ---------------------------------------------------------------- 2. save and restore
 console.log('save and restore');

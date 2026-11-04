@@ -37,8 +37,8 @@ ok(child('--hash').hash === on1, 'focus on is deterministic for a seed');
 const off = child('--off');
 ok(off.guilds > 0 && !off.focused && !off.stats, 'focus off: guilds form and none takes a focus, no counters');
 // A focus only tips rolls near their odds, so in 15 game minutes one seed may draw no roll it tips (#325 made 0x6f0c such a
-// seed; main has others): the claim is checked on the usual seed, then on a second one.
-const tips = off.hash !== on1 || child('--hash', '--seed', '28430').hash !== child('--off', '--seed', '28430').hash;
+// seed; main has others): the claim is checked on the usual seed, then on others until one draws it.
+const tips = off.hash !== on1 || ['28430', '4242', '777', '90210'].some(s => child('--hash', '--seed', s).hash !== child('--off', '--seed', s).hash);
 ok(tips, 'focus on changes the world (it is meant to)');
 // 3 the hooks: neutral for the Fellowship and the unguilded, and Warpath needs blood or a rival.
 const fel = S.agents.find(a => SLT.inSlots(a)), un = S.agents.find(a => !a.guild && !SLT.inSlots(a)), mem = S.agents.find(a => a.guild && !a.guild.retired && a.state !== 'dead' && !S.agents.some(b => b.guild === a.guild && SLT.inSlots(b) && b.state !== 'dead'));
