@@ -325,7 +325,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}
       if (first && first.tools) {freeSlot(); pacer.turnDone(); sess.turns++; spent += first.cost; sess.costUsd += first.cost;
         console.log(`[turn ${sess.turns}] scene answer first | ${model} | tokens in ${first.in} / out ${first.out} | ${money(first.cost)} | run ${money(spent)}`);
-        reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
+        reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
         saveSess(); fails.ok(true); continue}}
     turnAbort = new AbortController();
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the next turn carries on

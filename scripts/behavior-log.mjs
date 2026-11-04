@@ -125,7 +125,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     const line = {seat, hero: rec.hero || null, runner: rec.runner || null, provider: rec.provider || null, model: rec.model || null, turn: rec.turn ?? S.turns,
       gameMin: rec.gameMin ?? null, clock: rec.clock || null, wake: rec.wake || null, brief: rec.brief || null, after: rec.after || null,
       tools: tools.map(t => ({name: cut(t.name, 40), ok: !!t.ok, ...(t.ok ? {} : {error: cut(t.error, 140)}), ...(t.refused ? {refused: true} : {})})),
-      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, cost: rec.cost ?? null, ...(Array.isArray(rec.sceneS) && rec.sceneS.length ? {sceneS: rec.sceneS.slice(0, 8).map(Number).filter(Number.isFinite)} : {}), flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
+      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, ...(Number.isFinite(rec.tokensCached) ? {tokensCached: rec.tokensCached} : {}), cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, cost: rec.cost ?? null, ...(Array.isArray(rec.sceneS) && rec.sceneS.length ? {sceneS: rec.sceneS.slice(0, 8).map(Number).filter(Number.isFinite)} : {}), flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
     write('turn', line);
     sawModel(line.provider, line.model, seat);
     // detectors

@@ -46,7 +46,7 @@ const server = http.createServer((req, res) => {
     const rf = body.response_format;
     if (body.model === NOSCHEMA && rf && rf.type === 'json_schema') return send(400, {error: {message: 'response_format json_schema is not supported by this provider'}});
     if (body.model === NOTOOLS && body.tools) return send(400, {error: {message: 'Tool use is not supported for this model'}});
-    const usage = {prompt_tokens: 800, completion_tokens: 15, total_tokens: 815, ...(body.model === NOCOST ? {} : {estimated_cost: COST})};
+    const usage = {prompt_tokens: 800, completion_tokens: 15, total_tokens: 815, prompt_tokens_details: {cached_tokens: 600}, ...(body.model === NOCOST ? {} : {estimated_cost: COST})};
     const reply = (message, finish = 'stop') => send(200, {id: 'x', object: 'chat.completion', model: body.model, usage, choices: [{index: 0, finish_reason: finish, message}]});
     if (rf && rf.type === 'json_schema') return reply({role: 'assistant', content: JSON.stringify(answer(rf.json_schema.schema))});
     if (rf && rf.type === 'json_object') {
@@ -76,6 +76,7 @@ console.log('huggingface adapter (mock router)');
   await ad.status(); ok(seen.length === n0 + 5, "the verified list is cached for the adapter's life");
   const r = await ad.call({system: 'You are a hero.', user: '{"x":1}', schema, maxTokens: 60, model: L8}), q = seen[seen.length - 1];
   ok(r.text === '{"line":"Mud and patience."}' && r.usage.in === 800 && r.usage.out === 15 && r.usage.cost === COST && r.usage.costKnown === true, "a decision: cost is the reply's usage.estimated_cost");
+  ok(r.usage.cached === 600 && r.usage.cost === COST, "cached tokens are counted for the turn line, the cost stays the reply's estimated_cost (#728)");
   ok(q.model === L8 && q.max_tokens === 60 && !('max_completion_tokens' in q) && !('reasoning_effort' in q) && q.response_format.type === 'json_schema' && q.response_format.json_schema.strict === true, 'request: strict json_schema first, max_tokens, no reasoning_effort');
   ok(Object.keys(q).every(k => ['model', 'max_tokens', 'response_format', 'messages'].includes(k)), 'request carries no other option (' + Object.keys(q).join(',') + ')');
   const u = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: NOCOST});

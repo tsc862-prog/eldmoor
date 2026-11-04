@@ -19,7 +19,7 @@ const answer = f => {const p = f && f.properties || {};
 const PLAN = [['status'], ['rest', {minutes: '20'}], ['fly'], ['wait', {minutes: 20}]];
 
 export async function startMockOpenAI() {
-  const st = {mode: 'ok', rateLeft: 0}, seen = [], problems = [], auths = [];
+  const st = {mode: 'ok', rateLeft: 0, cached: 0}, seen = [], problems = [], auths = [];
   const server = http.createServer((req, res) => {
     const send = (code, o, h = {}) => {res.writeHead(code, {'content-type': 'application/json', ...h}); res.end(JSON.stringify(o))};
     auths.push(req.headers.authorization || '');
@@ -42,7 +42,7 @@ export async function startMockOpenAI() {
           if (!m.tool_call_id || !open.includes(m.tool_call_id)) problems.push('tool message answers no open call: ' + m.tool_call_id); else open.splice(open.indexOf(m.tool_call_id), 1);
         } else if (open.length) problems.push('assistant tool calls unanswered before a ' + m.role + ' message: ' + open.join(','));
       }
-      const usage = {prompt_tokens: 1000, completion_tokens: 20, total_tokens: 1020};
+      const usage = {prompt_tokens: 1000, completion_tokens: 20, total_tokens: 1020, ...(st.cached ? {prompt_tokens_details: {cached_tokens: st.cached}} : {})}; // st.cached (#728)
       const reply = (message, finish = 'stop') => send(200, {id: 'chatcmpl-mock', object: 'chat.completion', model: body.model + '-2026-01-01', usage, choices: [{index: 0, finish_reason: finish, message}]});
       if (st.mode === 'refusal') return reply({role: 'assistant', content: null, refusal: "I can't help with that."});
       if (st.mode === 'length') return reply({role: 'assistant', content: '{"choice":"Thorn'}, 'length');
@@ -61,5 +61,5 @@ export async function startMockOpenAI() {
     });
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  return {url: `http://127.0.0.1:${server.address().port}/v1`, seen, problems, auths, set: (mode, n = 0) => {st.mode = mode; st.rateLeft = n}, close: () => server.close()};
+  return {url: `http://127.0.0.1:${server.address().port}/v1`, seen, problems, auths, set: (mode, n = 0) => {st.mode = mode; st.rateLeft = n}, setCached: n => {st.cached = n}, close: () => server.close()};
 }
