@@ -135,7 +135,7 @@ for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
 const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
 ok(memA.ok, 'A wrote a memory (#179)');
-const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Hold the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
+const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Patrol the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
 ok(aimA.ok, 'A stated an aim (#535)');
 // C's agent keeps it in town on purpose (#466: a silent member's autopilot now walks out of town to hunt, so a stuck member
 // is one whose agent keeps acting without going anywhere): every game hour its runner orders a rest in town.
@@ -238,7 +238,7 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   const rm = writeReport(join(ROOT, 'minds'), 'mock'), mmd = readFileSync(rm.file, 'utf8'), sec = (mmd.split('## Mind comparison')[1] || '').split('## World')[0];
   const rowOf = n => (sec.split('\n').find(l => l.startsWith('| ' + n + ' |')) || '').split('|').slice(1, -1).map(s => s.trim());
   const ann = rowOf('Ann'), bo = rowOf('Bo'), cy = rowOf('Cy');
-  ok(/## Mind comparison/.test(mmd) && ann.length === 20 && bo.length === 20 && cy.length === 20, 'report has a Mind comparison table with a row per member (#280)');
+  ok(/## Mind comparison/.test(mmd) && ann.length === 23 && bo.length === 23 && cy.length === 23, 'report has a Mind comparison table with a row per member (#280)');
   ok(ann[2] === 'ollama/qwen2.5:14b' && ann[3] === '10' && ann[4] === '2' && ann[5] === '1' && ann[6] === '1', `Ann on qwen: 10 turns (unnamed lines named from the digests), 2 empty, 1 failed, 1 Table answer: ${ann.slice(2, 7).join(' ')}`);
   ok(ann[7] === '-' && ann[8] === '-' && ann[9] === '-' && ann[12] === '-', 'a member with no decisions shows "-", not zero');
   ok(/2 by anthropic\/claude-haiku-5-5 \(1 failed\)/.test(ann[10]) && !sec.split('\n').some(l => l.startsWith('| Ann | tank | anthropic')), 'the relay writing Ann\'s sheet is folded into her row, not shown as her mind');
@@ -338,6 +338,36 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   const dirO = join(ROOT, 'dmshare-old'); mk3(dirO, {recursive: true}); writeFileSync(join(dirO, FILES.world), JSON.stringify({ts: new Date().toISOString(), gameMin: 600, members: [], levers: {}}) + String.fromCharCode(10));
   const mdo = readFileSync(writeReport(ROOT, 'dmshare-old').file, 'utf8');
   ok(/predate #541/.test(mdo), 'report on old digests says the counters are missing instead of showing zeros');
+}
+
+// ---- 6b. a busy page (#736): the page's own page-stall anomaly and hour digest, and the relay's when a call times out on a silent page ----
+console.log('a busy page (#736)');
+{const {EventEmitter} = await import('node:events'), {mkdirSync: mk4} = await import('node:fs');
+  const fakePage = () => {const ws = new EventEmitter(); ws.readyState = 1; ws.sent = []; ws.send = t => ws.sent.push(JSON.parse(t)); ws.close = () => {}; ws.say = o => ws.emit('message', Buffer.from(JSON.stringify(o))); return ws};
+  // the page side: the bridge sends the watchdog's anomaly and the digest with its page field
+  const dirP = join(ROOT, 'pagestall'); mk4(dirP, {recursive: true});
+  const blP = behaviorLog({root: dirP, world: 'ps', log: () => {}}), srvP = http.createServer(), playP = attachPlay(srvP, {behavior: blP, log: () => {}});
+  const wsP = fakePage(); playP.backend.attach(wsP); wsP.say({type: 'hello', heroes: [{id: 1, name: 'Ann', alive: true}], world: 'ps'});
+  wsP.say({type: 'behavior', kind: 'anomaly', rec: {kind: 'page-stall', seat: 'page', severity: 'bad', text: 'the page froze for 3.2 s · dungeon The Sunken Crypt room 2/5 · 3440x1300', evidence: {ms: 3200, render: 3198, where: 'dungeon The Sunken Crypt room 2/5'}}});
+  wsP.say({type: 'behavior', kind: 'world', rec: {gameMin: 60, members: [], page: {longFrames: 4, worstMs: 3200, where: 'dungeon The Sunken Crypt room 2/5'}}});
+  const anP = readJsonl(join(dirP, 'ps'), FILES.anomaly), wdP = readJsonl(join(dirP, 'ps'), FILES.world);
+  ok(anP.some(a => a.kind === 'page-stall' && a.seat === 'page' && a.evidence.ms === 3200), 'the page\'s page-stall anomaly lands in anomalies.jsonl');
+  ok(wdP.some(d => d.page && d.page.longFrames === 4 && d.page.worstMs === 3200 && /Sunken Crypt/.test(d.page.where)), 'the world digest carries page {longFrames, worstMs, where}');
+  const mdP = readFileSync(writeReport(dirP, 'ps').file, 'utf8'); ok(/page-stall/.test(mdP), 'the report lists page-stall next to the other anomalies');
+  srvP.close();
+  // the relay side: a call that times out while the page sent nothing (no beat) is page busy, an anomaly, and the page is told
+  const dirR2 = join(ROOT, 'pagestall-relay'); mk4(dirR2, {recursive: true});
+  const blR = behaviorLog({root: dirR2, world: 'pr', log: () => {}}), srvR = http.createServer(), lines = [];
+  const playR = attachPlay(srvR, {behavior: blR, log: l => lines.push(l), pageOpts: {callMs: 120, silentMs: 80}, offlineWaitMs: 50});
+  const wsR = fakePage(); playR.backend.attach(wsR); wsR.say({type: 'hello', heroes: [{id: 1, name: 'Ann', alive: true}], world: 'pr'});
+  await new Promise(r => setTimeout(r, 100)); // the page goes silent
+  const r = await playR.call(1, 'status', {});
+  ok(r.offline && r.why === 'page busy', 'a call the silent page never answers comes back offline: page busy (' + r.why + ')');
+  ok(wsR.sent.some(m => m.type === 'pagelate' && m.tool === 'status' && m.silentMs >= 80), 'the page is told the relay gave up on it (pagelate), so its labels read page busy');
+  const anR = readJsonl(join(dirR2, 'pr'), FILES.anomaly);
+  ok(anR.some(a => a.kind === 'page-stall' && a.src === 'relay' && a.evidence.tool === 'status'), 'the relay writes a page-stall anomaly of its own (src relay)');
+  ok(lines.some(l => /page busy/.test(l)), 'and logs a line that names the page');
+  srvR.close();
 }
 
 // ---- 7. rotation by size ----

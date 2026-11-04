@@ -14,7 +14,7 @@ import {readFileSync, writeFileSync, existsSync, readdirSync, statSync} from 'no
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {behaviorRoot, FILES, ROTATE, scrub, legacyTokens} from './behavior-log.mjs';
-import {mindSection, pctile} from './mind-compare.mjs';
+import {mindSection, ctxSection, pctile} from './mind-compare.mjs';
 
 const SEV = {bad: 3, warn: 2, info: 1};
 const ABOUT = {
@@ -35,6 +35,7 @@ const ABOUT = {
   'no-memories': 'an agent-played Fellowship member wrote no memory for two game days',
   'no-flee-rule': 'an agent hero ran with gambits that hold no flee rule (flee_home or retreat_to), its own call (#617)',
   'no-aim': 'an agent hero had no stated aim (intent) for two game hours outside camp and town rest (#535)',
+  'town-idle': 'an agent hero earned nothing in town for twelve game hours (no XP, kill, buy, sell, job or talk); it was woken with the board and autopilot hunts (#790)',
   'dm-scripted': 'the DM agent answered under half of the answerable calls (talk, table voice, slots) over two game hours while its seat was held; the scripted DM filled the rest (#541)',
   'hold-expired': 'a gambit hold stopped the world and the agent did not act within its limit (#630)',
   'scene-missed': 'a live member did not answer its Table scene in time: the table waited, then its reflex acted (#515)',
@@ -145,7 +146,7 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   const sa = sceneAnswers(T, A); L.push(...sa.lines);
 
   // ---- minds per member (issue #280) ----
-  const mc = mindSection(T, D, W, table); L.push(...mc.lines);
+  const mc = mindSection(T, D, W, table); L.push(...mc.lines); L.push(...ctxSection(T, table));
 
 
   // ---- DM agent share (issue #541) ----

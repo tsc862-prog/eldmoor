@@ -5,7 +5,7 @@ import {createHash} from 'node:crypto';
 import {join,dirname,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 import {pngSize} from './png.mjs';
-import {TILE,TIERS} from '../../src/render/tile.js';
+import {TILE,TIERS,U} from '../../src/render/tile.js';
 
 export const ROOT=resolve(dirname(fileURLToPath(import.meta.url)),'..','..');
 export const MANIFEST=join(ROOT,'scripts','art','manifest.json');
@@ -13,10 +13,21 @@ export const ASSETS=join(ROOT,'assets');
 export const KINDS=['tile','autotile','building','landmark','sprite','portrait','prop','icon'];
 const ID=/^([a-z]+):([a-z0-9][a-z0-9-]*)$/;
 
-export const loadManifest=(p=MANIFEST)=>JSON.parse(readFileSync(p,'utf8'));
+export const loadManifest=(p=MANIFEST)=>withKindInit(withKindModel(JSON.parse(readFileSync(p,'utf8'))));
+// Image to image from the game's own art (#763, manifest kindInit {kind: {init, strength}}): every entry of those kinds starts
+// from its procedural art at that strength; an entry's own init (false: text only) and strength win.
+export const INIT_KINDS=['building','landmark','sprite'];
+export function withKindInit(man){const ki=(man&&man.kindInit)||{};
+  for(const e of man.assets||[]){const c=ki[e.kind];if(!c)continue;if(e.init===undefined)e.init=c.init;if(e.strength===undefined)e.strength=c.strength}return man}
+// The trial switch (#763, manifest kindModel {on, model, kinds}): with on, every entry of those kinds that names no model of
+// its own is made with that model. Off (or absent) leaves the manifest as written.
+export function withKindModel(man){const km=man&&man.kindModel;if(!km||!km.on||!km.model)return man;
+  for(const e of man.assets||[])if((km.kinds||[]).includes(e.kind)&&e.model===undefined)e.model=km.model;return man}
+// Kinds that art:accept takes only after an in-game look (#763): an art:preview shot at 1x beside procedural neighbours.
+export const PREVIEW_KINDS=['building','landmark'];
 // Tiers (#177, src/render/tile.js): the renderer draws the assets of its TILE size; every asset is made per tier from the
 // same manifest entry (sizes per tier, same prompt and seed) with the tier's generation settings (manifest tiers).
-export {TILE,TIERS};
+export {TILE,TIERS,U};
 export const LEGACY_TIER=32; // index entries and queue keys made before tiers were 32 px art
 // ('tile:grass', 32) -> 'tile/32/grass.png' (relative to the assets folder; the same path the browser asks for).
 export function fileOf(id,tier=TILE){const m=ID.exec(id);if(!m)throw new Error('bad asset id '+id);return `${m[1]}/${tier}/${m[2]}.png`}
@@ -47,8 +58,13 @@ export function validateManifest(man,PAL,resolvePalette){
   if(!(man.candidates||[]).length)errs.push('candidates: list the models to try, best first');
   for(const t of TIERS){const c=man.tiers&&man.tiers[t];if(!c)errs.push(`tiers.${t}: generation settings missing`);else if(!(c.grid>0))errs.push(`tiers.${t}: grid must be a number`)}
   if(man.pinnedModel&&!(man.models||{})[man.pinnedModel])errs.push(`pinnedModel: unknown model ${man.pinnedModel}`);
+  if(man.kindModel){const km=man.kindModel;if(!(man.models||{})[km.model])errs.push(`kindModel: unknown model ${km.model}`);
+    for(const k of km.kinds||[])if(!KINDS.includes(k))errs.push(`kindModel: unknown kind ${k}`);if(typeof km.on!=='boolean')errs.push('kindModel.on must be true or false')}
+  for(const k of Object.keys(man.kindInit||{})){if(k==='about')continue;if(!INIT_KINDS.includes(k))errs.push(`kindInit: ${k} stays text only (image to image is for ${INIT_KINDS.join(', ')})`)}
   for(const e of man.assets){const m=ID.exec(e.id||'');
     if(!m){errs.push(`bad id ${e.id}`);continue}
+    if(e.init&&(e.init!=='procedural'||!INIT_KINDS.includes(e.kind)))errs.push(`${e.id}: init must be 'procedural' on ${INIT_KINDS.join(', ')}`);
+    if(e.init&&!(e.strength>=.1&&e.strength<=.9))errs.push(`${e.id}: strength must be .1 to .9`);
     if(seen.has(e.id))errs.push(`duplicate id ${e.id}`);seen.add(e.id);
     if(!KINDS.includes(e.kind))errs.push(`${e.id}: unknown kind ${e.kind}`);else if(m[1]!==e.kind)errs.push(`${e.id}: kind ${e.kind} differs from the id prefix`);
     if(e.size!==undefined)errs.push(`${e.id}: 'size' is replaced by 'sizes' per tier`);
@@ -111,13 +127,14 @@ export function saveQueue(dir,q){mkdirSync(dir,{recursive:true});const p=join(di
 export function splitKey(k){const m=/^(.*?)(?:@(\d+))?(?:#alt(\d+))?$/.exec(k);return {id:m[1],tier:m[2]?Number(m[2]):LEGACY_TIER,alt:m[3]?Number(m[3]):0}}
 export function keyFile(k){const {id,tier,alt}=splitKey(k);const f=fileOf(id,tier);return alt?f.replace(/\.png$/,`.alt${alt}.png`):f}
 
-// When to look again after a run stopped (#661). kind: share (the day's share is spent: a new one opens at local
+// When to look again after a run stopped (#661). gpu (#703): the ZeroGPU quota is used: exactly when it resets. kind: share (the day's share is spent: a new one opens at local
 // midnight), provider (the provider refused: ART_RETRY_HOURS or its retry-after, whichever is later), month (the
 // month's credits are spent: the 1st), complete (nothing left to make: tomorrow, or when the manifest changes), cap (a call cap, try
 // again in a minute), anything else (error): ART_RETRY_HOURS.
-export const WAIT_WHY={share:"day's share spent",provider:'the provider refused',month:"month's credits spent",complete:'nothing left to make',cap:'call cap reached',error:'a problem, see the stop reason'};
-export function nextCheck(kind,now,{retryHours=4,retryAfter=0}={}){
+export const WAIT_WHY={gpu:'ZeroGPU quota resets',share:"day's share spent",provider:'the provider refused',month:"month's credits spent",complete:'nothing left to make',cap:'call cap reached',error:'a problem, see the stop reason'};
+export function nextCheck(kind,now,{retryHours=4,retryAfter=0,resetAt=null}={}){
   const t=now.getTime(),retry=t+retryHours*3600e3,mid=new Date(now.getFullYear(),now.getMonth(),now.getDate()+1).getTime();
+  if(kind==='gpu')return new Date(Math.max(t+60e3,resetAt?new Date(resetAt).getTime():t+24*3600e3)); // #703: the ZeroGPU quota's own reset time, a minute at least
   if(kind==='share')return new Date(Math.min(retry,mid));
   if(kind==='provider')return new Date(Math.max(retry,t+retryAfter*1000));
   if(kind==='month')return new Date(now.getFullYear(),now.getMonth()+1,1);

@@ -120,7 +120,7 @@ export function hire(a,{npc,days}={}){
   chatAct(a,'hires '+full(p)+' for '+n+' day'+(n>1?'s':'')+' ('+cost+' gold)','hire');
   campaign(A,'hire',h,' is hired for '+n+' day'+(n>1?'s':'')+' ('+wage+' gold a day), a '+(R.kind==='guide'?'guide':'blade')+' for the road.');
   log(h,' hires out to ',gd(where(A)),' for '+n+' day'+(n>1?'s':'')+'.');
-  for(const b of members(A))if(b!==h&&b.player){remember(b,'hire',h.name+', a '+p.role+', rides with us for '+n+' day'+(n>1?'s':'')+' ('+wage+' gold a day).');if(b!==a)ev(b,a.name+' hired '+h.name+' for '+n+' day'+(n>1?'s':'')+': a scripted companion who follows, fights and flees by instinct, never leads and never votes.',true)}
+  for(const b of members(A))if(b!==h&&b.player){remember(b,'hire',h.name+', a '+p.role+', rides with us for '+n+' day'+(n>1?'s':'')+' ('+wage+' gold a day).');if(b!==a)ev(b,a.name+' hired '+h.name+' for '+n+' day'+(n>1?'s':'')+': a companion who follows, fights and flees by instinct, never leads and never votes.',true)}
   if(R.kind==='guide')teach(A,h);
   return {ok:true,hired:h.name,role:p.role,as:cls,level:h.lvl,days:n,wage,paid:cost,left:Math.floor(a.gold),until_day:Math.floor(h.hire.until/DAY)+1,
     note:h.name+' rides with '+where(A)+' now for '+n+' day'+(n>1?'s':'')+'. A hire follows the leader, fights and flees by instinct, never leads and never votes; when the days are up, or on dismiss {npc}, they walk home.'+(R.kind==='guide'?' They know the roads of '+region+': places lists them as heard of, and a walk into danger carries their warning.':'')}}

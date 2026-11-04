@@ -229,7 +229,7 @@ async function status() {
   } catch {up('art: no daily run yet (npm run art:daily -- --now)')}
   try { // the art loop's own state (scripts/art/daily.mjs --loop writes it)
     const j = JSON.parse(readFileSync(process.env.ART_STATE || join(ROOT, 'logs', 'art-loop.json'), 'utf8')), l = j.last || {};
-    up(`art loop: ${NO_ART ? 'off' : j.state === 'waiting' ? `waiting until ${j.nextAt || j.next} (${j.why})` : j.state}${l.at ? `; last pass made ${l.made || 0} (${String(l.stop || '').slice(0, 50)})` : ''}${l.monthly ? `; today $${(l.spentToday || 0).toFixed(3)} of a daily share of $${(l.budget || 0).toFixed(3)} (${l.budgetFrom || 'the month share'}; ART_DAILY_BUDGET changes it), month $${(l.spentMonth || 0).toFixed(3)} of $${l.monthly.toFixed(2)}` : ''}`);
+    up(`art loop: ${NO_ART ? 'off' : j.state === 'waiting' ? `waiting until ${j.nextAt || j.next} (${j.why})` : j.state}${l.at ? `; last pass made ${l.made || 0} (${String(l.stop || '').slice(0, 50)})` : ''}${l.monthly ? `; today $${(l.spentToday || 0).toFixed(3)} of a daily share of $${(l.budget || 0).toFixed(3)} (${l.budgetFrom || 'the month share'}; ART_DAILY_BUDGET changes it), month $${(l.spentMonth || 0).toFixed(3)} of $${l.monthly.toFixed(2)}` : ''}${l.provider === 'space' ? `; ${l.images || 0} images today, ${(l.gpuMin || 0).toFixed(1)} GPU min of ${l.quotaMin || 40} (stops at ${l.capMin || 36})` : ''}`);
   } catch {up(`art loop: ${NO_ART ? 'off (--no-art or ART_LOOP=0)' : 'no state yet'}`)}
   if (codeChanged) up('relay code changed since it started: press u (or r) to apply');
 }
@@ -267,6 +267,7 @@ async function shutdown(why, code = 0) {
 // ---- code-change notice ----
 function watchCode() {
   const note = (_, f) => {
+    if (process.env.UP_DEBUG_WATCH) up('watch event ' + _ + ' ' + f + ' quiet=' + Math.max(0, quietUntil - Date.now()) + 'ms changed=' + codeChanged);
     if (!f || !/\.mjs$/.test(String(f)) || /(check|smoke|^up)\.mjs$|(^|[\\/])up\.mjs$/.test(String(f)) || Date.now() < quietUntil || codeChanged) return;
     codeChanged = true; up(`relay code changed (${basename(String(f))}): press u (or r) to apply`);
   };

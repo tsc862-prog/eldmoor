@@ -12,13 +12,14 @@
 //            {src:'class'|'level'|'score:<id>'|'gear'|'epic'|'property', label, value} summing to the total
 // Readers: heroes.js (maxHp, atkOf, strike, the swing timer), mobs.js, boss.js and narrator.js (dmgTaken),
 // brain.js (snapshot), ui/panels.js (Stats tab). The result is cached per hero and rebuilt only when the
-// level, class, scores, epics or worn items change, so hot paths may call it every step. Never mutate it.
+// level, class, scores, epics, wounds or worn items change, so hot paths may call it every step. Never mutate it.
 import {CLS} from '../data/classes.js';
 import {CLASS_ABIL,ABILITIES} from '../data/abilities.js';
 import {SLOTS,PROPS,USES} from '../data/items.js';
 import {mod} from './abilities.js';
 import {S} from './state.js';
 import {passiveSum,effMul,passiveTaken} from './eff.js'; // class passives and timed effects (sim/eff.js, #81)
+import {woundHp,woundSpeed} from './wounds.js'; // a lasting wound (#656): last in Health and Speed, so every reader of max HP and swing sees it
 
 // ---- tuning (calibrated against the pre-#88 formulas; see the PR for the band averages) ----
 export const SWING=1.1;              // seconds between blows at speed 1
@@ -59,6 +60,7 @@ function build(a){
   const pHp=passiveSum(a,'health');if(pHp)H('passive','Passives (+'+Math.round(pHp*100)+'%)',hp*pHp);
   const ml=mealOf(a),mw=ml?ml.id+' (+'+Math.round(ml.v*100)+'%)':''; // a crafted camp meal's short buff (#258)
   if(ml&&ml.stat==='health')H('meal',mw,hp*ml.v);
+  const wh=woundHp(a);if(wh)H('wound','Wounded (-'+Math.round(wh*100)+'%)',-hp*wh);
   // Attack
   const pm=mod(a,prim);let atk=0;
   const A=(src,label,v)=>{bd.attack.push({src,label,value:r1(v)});atk+=v};
@@ -83,10 +85,11 @@ function build(a){
   const mc=ml&&ml.stat==='crit'?ml.v:0;if(mc)bd.crit.push({src:'meal',label:mw,value:mc});
   const crit=Math.max(0,cc+lc+rc+kc+pc+mc);
   // Speed
-  const sw=(P.swift||0)*PROPS.swift.v,ms=ml&&ml.stat==='speed'?ml.v:0,speed=(c.spd||1)+sw+ms;
+  const sw=(P.swift||0)*PROPS.swift.v,ms=ml&&ml.stat==='speed'?ml.v:0,ws=woundSpeed(a),base=(c.spd||1)+sw+ms,speed=base*(1-ws);
   bd.speed.push({src:'class',label:a.cls+' swing',value:c.spd||1});
   if(sw)bd.speed.push({src:'property',label:'swift'+(P.swift>1?' x'+P.swift:''),value:sw});
   if(ms)bd.speed.push({src:'meal',label:mw,value:ms});
+  if(ws)bd.speed.push({src:'wound',label:'Wounded',value:-base*ws});
   return {health:Math.round(hp),attack:atk,defense:def,crit,speed,aps:speed/SWING,armor:g.armor,damage:g.damage,bd}}
 
 // A camp meal still holding (a.meal, set by sim/inv.js useItem; null once its game minutes are past).
@@ -98,7 +101,7 @@ const mealOf=a=>{const m=a.meal;return m&&m.until>S.gameMin?m:null};
 const cache=new WeakMap(),own=Object.prototype.hasOwnProperty;
 const entryOf=a=>{const e=a._cs;return e!==undefined?e:cache.get(a)};
 function keep(a,e){if(own.call(a,'_cs'))a._cs=e;else if(Object.isExtensible(a))Object.defineProperty(a,'_cs',{value:e,writable:true,enumerable:false,configurable:true});else cache.set(a,e)}
-function sig(a){const s=a.slots,ab=a.abil,ml=mealOf(a),parts=[a.cls,a.lvl,(a.epics||[]).length,a.spec||'',ml?ml.id+'@'+ml.until:''];
+function sig(a){const s=a.slots,ab=a.abil,ml=mealOf(a),parts=[a.cls,a.lvl,(a.epics||[]).length,a.spec||'',ml?ml.id+'@'+ml.until:'',a.wounds?a.wounds.length:0];
   if(ab)for(const k in ab)parts.push(ab[k]);
   return parts.join(',')}
 // #433: the key's fields as read at the last build, compared one by one (no string per call). Identical
@@ -106,10 +109,10 @@ function sig(a){const s=a.slots,ab=a.abil,ml=mealOf(a),parts=[a.cls,a.lvl,(a.epi
 // compared by identity and then by its values under the keys it had: rollScores (sim/abilities.js) builds
 // it once with all six keys and later changes only their values, so the key list cannot drift.
 function keyOf(a){const ab=a.abil,ak=[],av=[];if(ab)for(const k in ab){ak.push(k);av.push(ab[k])}
-  return {cls:a.cls,lvl:a.lvl,ne:(a.epics||[]).length,sp:a.spec||'',ml:mealOf(a),ab,ak,av}}
+  return {cls:a.cls,lvl:a.lvl,ne:(a.epics||[]).length,sp:a.spec||'',ml:mealOf(a),wn:a.wounds?a.wounds.length:0,ab,ak,av}}
 const bySig=(e,a)=>{if(sig(a)!==e.k)return false;e.f=keyOf(a);return true}; // same key in other fields: remember them
 function sameKey(e,a){const f=e.f,ab=a.abil,ep=a.epics;
-  if(f.lvl!==a.lvl||f.ab!==ab||f.cls!==a.cls||f.ne!==(ep?ep.length:0)||f.sp!==(a.spec||'')||(a.meal!==undefined&&f.ml!==mealOf(a)))return bySig(e,a);
+  if(f.lvl!==a.lvl||f.ab!==ab||f.cls!==a.cls||f.ne!==(ep?ep.length:0)||f.sp!==(a.spec||'')||f.wn!==(a.wounds?a.wounds.length:0)||(a.meal!==undefined&&f.ml!==mealOf(a)))return bySig(e,a);
   if(ab){const ak=f.ak,av=f.av;for(let i=0;i<ak.length;i++)if(ab[ak[i]]!==av[i])return bySig(e,a)}
   return true}
 function same(e,a){const s=a.slots;if(!s)return !e.items;if(!e.items)return false;

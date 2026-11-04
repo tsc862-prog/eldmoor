@@ -41,6 +41,7 @@
 import {rnd,ri,hash} from '../core/rng.js';
 import {CITY,LAIR,CRYPT,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
 import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
+import {solidAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {USES} from '../data/items.js';
 import {campMeal,campLight} from './inv.js'; // rations and torches (sim/inv.js)
@@ -64,6 +65,8 @@ import {openScene,sceneFor} from './table.js';
 import {campCraft,fireRecipes} from './craft.js'; // cooking and brewing at the fire (#258)
 import {sceneOf} from './scenes.js';
 import {reflexMay} from './runlink.js';
+import {campTend} from './tend.js';
+import {compLine} from './compvoice.js'; // scripted companions of an agent company: the DM's voice (#764)
 import {advCampable} from './dm.js'; // a night camp may fall between an adventure's scenes (#325)
 
 export const CAMP={
@@ -106,7 +109,7 @@ const soloSleeps=g=>!!g.solo&&g.watchIdx>=0&&g.watchIdx%2===1;
 export const isCamped=a=>!!(a&&a.state==='camp');
 
 // ---- the safe spot: asked of the world module ----
-const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!==PEAK};
+const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!==PEAK&&!solidAt(x,y)};
 function safe(x,y){if(!open(x,y))return false;
   for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(!open(x+dx,y+dy))return false;
   for(const c of CITY)if(x>=c.x0-CAMP.TOWN_MIN&&x<=c.x1+CAMP.TOWN_MIN&&y>=c.y0-CAMP.TOWN_MIN&&y<=c.y1+CAMP.TOWN_MIN)return false;
@@ -241,9 +244,11 @@ function talk(F,g,L){if(L.length<2)return;
   const finish=()=>{
     if(topic==='quarrel'){g.stats.quarrels++;for(const [x,y] of [[sp,other],[other,sp]]){x.bonds=x.bonds||{};x.bonds[y.id]=Math.max(-10,bond(x,y)-1)}
       stanceEvent(sp,other,'Snapped at '+other.name+' round the fire.');stanceEvent(other,sp,'Was sharp with me round the fire.');
-      const rp=QUARREL_REPLY[Math.floor(hash(h,other.id,12)*QUARREL_REPLY.length)%QUARREL_REPLY.length];if(reflexMay(other))partySay(other,rp)
+      const rp=QUARREL_REPLY[Math.floor(hash(h,other.id,12)*QUARREL_REPLY.length)%QUARREL_REPLY.length];if(!compLine(other,{to:[sp],trigger:'quarrel',from:sp,zone:zn})&&reflexMay(other))partySay(other,rp) // a companion of an agent company answers back through the DM's voice (#764)
       campaign(F,'camp',sp,' and ',other,' snap at each other over the fire, then let it lie.')}
     else if(topic==='song'||topic==='story')campaign(F,'camp',sp,topic==='song'?' leads a song round the fire.':' tells a story round the fire.')};
+  // a scripted companion riding with an agent company speaks through the DM's voice, remembers and never repeats (#764)
+  {const v=compLine(sp,{to:others,trigger:'camp',topic,from:other,zone:zn});if(v){if(v.said!=='silent')finish();return}}
   if(asked){const gen=g.start;askRelay('say',snapshotFor(sp,'say',{trigger:'camp',ctx:{topic,place:zn,kind:g.why}}),4000).then(j=>{
       const t=j&&cleanLine(j.line),c=F.camp;if(!c||c.start!==gen||sp.state!=='camp')return;say(t||text)}).catch(()=>{});finish()}
   else{say(text);finish()}}
@@ -271,6 +276,7 @@ function campOne(F,dt){const g=F.camp&&F.camp.phase?F.camp:null;
     L.forEach((a,i)=>{const p=spotOf(g,i,L.length);if(!moveTo(a,p.x,p.y,dt,2.4))all=false;a.face=g.x>a.x?1:-1});
     if(all||now-g.start>CAMP.GATHER_MAX){g.phase='rest';g.restAt=Math.round(now);g.nextRoll=now+CAMP.ROLL_MIN;g.nextTalk=now+20;g.nextBond=now+180;g.watchIdx=-1;
       for(const a of L){a.moving=false;if(reflexMay(a))campCraft(a);campMeal(a,{meals:reflexMay(a)})} // supper: a reflex member cooks and brews first (#258); an agent's crafted meals are its own to eat
+      campTend(L); // wounds dressed at the fire (#656)
       for(const a of L)if(!g.lit&&a.inv&&a.inv.list.length)campLight(a)
       emit('rest',g,{why:g.why})}
     refreshDoing(L);

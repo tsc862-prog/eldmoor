@@ -701,13 +701,17 @@ const WEAPON={
 export function heroSprite(a,ghost,frame=0){
   frame=frame?1:0;const skin=a.skin||FAC[a.fac].skin[0],hair=a.hair||'#2a2020';
   const key='h'+a.fac+a.cls+(a.race||'')+skin+hair+(ghost?'g':'')+frame;if(sprCache[key])return sprCache[key];
+  const {rows,map}=heroArt(a,ghost,frame);return sprite(key,rows,map)}
+// The hero's pixel strings and colour map, with no canvas (the art pipeline's init sheets read them in Node, #763).
+export function heroArt(a,ghost,frame=0){
+  frame=frame?1:0;const skin=a.skin||FAC[a.fac].skin[0],hair=a.hair||'#2a2020';
   const rows=HERO_BODY.map(r=>r.split(''));
   if(frame){rows[10]=HERO_LEGS1[0].split('');rows[11]=HERO_LEGS1[1].split('')}
   for(const [x,y,ch] of WEAPON[a.cls]||[]){const yy=y-frame;if(yy>=0&&yy<12)rows[yy][x]=ch}
   const c=CLS[a.cls],f=FAC[a.fac];
   const map=ghost?{H:'#d8ecff',R:'#c8e0f8',S:'#d8ecff',E:'#b8d4f4',A:'#b8d4f4',B:'#a8c8f0',D:'#98b8e0',L:'#88a8d0',K:'#7898c0',W:'#c8e0ff',O:'#ffffff'}
     :{H:c.head,R:hair,S:skin,E:'#1a1218',A:c.acc,B:f.color,D:f.dark,L:'#3a2f2a',K:'#241c18',W:c.wep,O:c.orb||c.wep};
-  return sprite(key,rows.map(r=>r.join('')),map)}
+  return {rows:rows.map(r=>r.join('')),map}}
 
 // Townsfolk (data/npcs.js roles, sim/npcs.js entities): the role's shape in the people's
 // skin and hair with the role's faction palette; a hood or cap colour (pal.H) replaces the hair.
@@ -785,19 +789,20 @@ const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-');
 export const ASSET_SPRITES={};
 for(const cls of Object.keys(CLS))ASSET_SPRITES['sprite:hero-'+slug(cls)]={kind:'hero',cls};
 for(const key of Object.keys(MOBS))ASSET_SPRITES['sprite:mob-'+slug(key)]={kind:'mob',type:key};
-const heroId=cls=>'sprite:hero-'+slug(cls),mobId=type=>'sprite:mob-'+slug(type);
+const HERO_ID={},MOB_ID={};for(const [id,v] of Object.entries(ASSET_SPRITES))(v.kind==='hero'?HERO_ID:MOB_ID)[v.kind==='hero'?v.cls:v.type]=id;
+// Per id, the sheet canvas per faction (a hero sheet recoloured; a creature's under 0); undefined = not built yet.
 const sheetC=new Map();
-// The sheet canvas for id in faction fac's colours, or null while it is missing or loading.
-function sheetOf(id,fac){const key=id+'|'+fac;let c=sheetC.get(key);if(c!==undefined)return c;
+// The sheet canvas for id in faction fac's colours, or null while it is missing or loading. No allocation once built.
+function sheetOf(id,fac){let per=sheetC.get(id);if(per&&per[fac])return per[fac];
   const A=assetPixels(id);if(!A)return null; // not cached: it may still arrive
-  const swap=recolour(fac);c=document.createElement('canvas');c.width=A.w;c.height=A.h;const x=c.getContext('2d'),img=x.createImageData(A.w,A.h);
+  const swap=recolour(fac),c=document.createElement('canvas');c.width=A.w;c.height=A.h;const x=c.getContext('2d'),img=x.createImageData(A.w,A.h);
   for(let i=0;i<A.w*A.h;i++){const h=A.hex[i];if(!h)continue;const s=swap[h]||h,o=i*4;img.data[o]=parseInt(s.slice(1,3),16);img.data[o+1]=parseInt(s.slice(3,5),16);img.data[o+2]=parseInt(s.slice(5,7),16);img.data[o+3]=255}
-  x.putImageData(img,0,0);sheetC.set(key,c);return c}
+  x.putImageData(img,0,0);if(!per)sheetC.set(id,per=[]);per[fac]=c;return c}
 onAssets(()=>sheetC.clear());
 // One frame of the entity's generated sheet: {img, sx, sy, fw, fh} in art pixels, or null (draw the procedural sprite).
 // dir: 0 down, 1 left, 2 right, 3 up; col: 0 stand, 1 step, 2 other step.
 const FR={img:null,sx:0,sy:0,fw:0,fh:0};
 export function sheetFrame(e,dir,col){
-  const id=e.kind==='hero'?heroId(e.cls):e.kind==='mob'?mobId(e.type):null;if(!id)return null;
+  const id=e.kind==='hero'?HERO_ID[e.cls]:e.kind==='mob'?MOB_ID[e.type]:null;if(!id)return null;
   const c=sheetOf(id,e.kind==='hero'?e.fac:0);if(!c)return null;
   FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}
