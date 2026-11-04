@@ -21,7 +21,7 @@ import {S,playerSeats} from '../sim/index.js';
 import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
-let info=null,up=null,fetchedAt=0,inFlight=false,note={},picks={},onUpdate=()=>{},lastSig='';
+let info=null,up=null,fetchedAt=0,inFlight=false,note={},picks={},fresh={},onUpdate=()=>{},lastSig='';
 // Limits set in the game (#145), kept per viewer: {key: {turns:'', budget:''}} ('' = the runner's default) and the session budget.
 const LIM_KEY='eldmoor.agentLimits';let lims={},sessWant=null,limNote={};
 try{const j=JSON.parse(localStorage.getItem(LIM_KEY)||'null');if(j&&typeof j==='object'){lims=j.runners&&typeof j.runners==='object'?j.runners:{};sessWant=typeof j.session==='number'?j.session:null}}catch(_){}
@@ -93,9 +93,11 @@ async function send(path,body){
 const pickBody=(k,lk=k)=>{const p=picks[k]||'',L=limitOf(lk),t={...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:p.startsWith('huggingface:')?{provider:'huggingface',model:p.slice(12)}:p.startsWith('google:')?{provider:'google',model:p.slice(7)}:{}),...t}};
 // kind 'company' (#460): `hero` is the company's id and the runner's key is 'company:<id>'
 const keyOf=(kind,hero)=>kind==='hero'?'hero:'+hero:kind==='company'?'company:'+hero:kind;
+// Fresh sessions for all (#787): every live runner sets its conversations aside at its next safe moment, never in a scene.
+export async function freshAll(){const r=await send('/fresh',{});poll(true,true);return r}
 export async function startRunner(kind,hero,pickKey){const k=keyOf(kind,hero);note[k]='';delete userStop[k];
   const lk=pickKey&&limitOf(pickKey).budget&&!limitOf(k).budget?pickKey:k;
-  const r=await send('/start',{kind,...(hero!=null?(kind==='company'?{company:hero}:{hero}):{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k,lk)});if(!r.ok)note[k]=r.error;poll(true,true);return r}
+  const r=await send('/start',{kind,...(hero!=null?(kind==='company'?{company:hero}:{hero}):{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k,lk),...(fresh[pickKey||k]||fresh[k]?{fresh:true}:{})});if(!r.ok)note[k]=r.error;else{delete fresh[k];if(pickKey)delete fresh[pickKey]}poll(true,true);return r}
 export async function stopRunner(kind,hero){const k=keyOf(kind,hero);note[k]='';userStop[k]=Date.now();
   const r=await send('/stop',{key:k});if(!r.ok)note[k]=r.error;poll(true,true);return r}
 // A company that is not the five-place Fellowship (#457, #460): Start <company> starts one company runner for a company
@@ -126,7 +128,8 @@ export function stateLine(r,k){if(note[k])return note[k];
   // spend against the budget (owner, #563: the dollar budget is the limit, not turns); a local mind is free
   const bud=r.capBudget!=null?r.capBudget:r.budget;if(bud!=null)bits.push('$'+(r.cost||0).toFixed(3)+' of $'+bud.toFixed(2));else if(r.cost)bits.push('$'+r.cost.toFixed(3));
   // pacing (issue #126): turns per minute, the last turn's age; a turn cap only when one was asked
-  if(r.turns&&r.turnsPerMin!=null)bits.push(r.turnsPerMin+'/min');if(r.lastTurnAgo!=null&&!DONE[r.state])bits.push('last '+ago(r.lastTurnAgo));if(r.maxTurns!=null&&r.turnCap&&!DONE[r.state])bits.push(r.turnCap);
+  if(r.turns&&r.turnsPerMin!=null)bits.push(r.turnsPerMin+'/min');if(r.ctx!=null&&!DONE[r.state])bits.push('ctx '+r.ctx+'k'); // #787: the last call's prompt; Haiku costs 5x past 100k
+  if(r.lastTurnAgo!=null&&!DONE[r.state])bits.push('last '+ago(r.lastTurnAgo));if(r.maxTurns!=null&&r.turnCap&&!DONE[r.state])bits.push(r.turnCap);
   const other=r.provider==='ollama'&&r.model&&!DONE[r.state]?mindsLocal().find(m=>m!==r.model):null; // #126: two local models evict each other on one GPU
   if(other)bits.push('minds use '+other+': on one GPU the two models evict each other, use one');
   if(r.numCtx&&!DONE[r.state])bits.push('ctx '+r.numCtx);if(r.ctxWarn&&!DONE[r.state])bits.push(r.ctxWarn); // #221: one num_ctx for every local call
@@ -187,7 +190,9 @@ export function runnerPick(k,models,openai,hf,gm){const s=el('select','msel');s.
   if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai|huggingface|google|anthropic):/,'')+(picks[k].startsWith('openai:')?' · openai':picks[k].startsWith('huggingface:')?' · huggingface':picks[k].startsWith('google:')?' · google':picks[k].startsWith('anthropic')?'':' · local')]);
   for(const [v,t] of opts){const o=new Option(t,v);if(v===(picks[k]||''))o.selected=true;s.append(o)}
   // the budget the runner starts with (owner, #563: dollars are the limit, a runner plays until stopped); also in the Agents panel
-  const w=el('span','runpick');w.append(s,budgetPick(k));return w}
+  const w=el('span','runpick');w.append(s,budgetPick(k),freshPick(k));return w}
+// Fresh session (#787): the next start from here sets the old conversation aside (--new). The hero keeps its journal, notes and persona.
+function freshPick(k){const l=el('label','runfresh'),c=document.createElement('input');c.type='checkbox';c.dataset.runfresh=k;c.checked=!!fresh[k];l.title='Start with a new conversation: cheaper turns. The hero keeps its journal, notes and persona, and the old session is kept in logs/agents/old/.';l.append(c,' Fresh session');return l}
 const KIND_OF=k=>k==='dm'||k==='fellowship'?k:/^co(mpany)?:/.test(k)?'company':'hero';
 export const BUDGETS=[.5,1,2,5,10];
 export function budgetPick(k){const K=kindInfo(KIND_OF(k)),cap=K&&K.caps?K.caps.budget:5,def=K&&K.defaults?K.defaults.budget:(k==='fellowship'?2:1),L=limitOf(k);
@@ -203,5 +208,5 @@ export function initRunners(after){const done=after||(()=>{});
   let downAt=0;
   document.addEventListener('pointerdown',e=>{if(e.button!==0)return;const t=e.target&&e.target.closest?e.target.closest('[data-runact]'):null;if(!t)return;e.preventDefault();e.stopPropagation();downAt=Date.now();act(t)},true);
   document.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('[data-runact]'):null;if(!t)return;e.stopPropagation();if(Date.now()-downAt<800)return;act(t)},true);
-  document.addEventListener('change',e=>{const s=e.target;if(!s||!s.dataset)return;if(s.dataset.runpick!=null)picks[s.dataset.runpick]=s.value;else if(s.dataset.runbudget!=null){setLimit(s.dataset.runbudget,'budget',s.value).then(done);return}else return;done()},true);
+  document.addEventListener('change',e=>{const s=e.target;if(!s||!s.dataset)return;if(s.dataset.runpick!=null)picks[s.dataset.runpick]=s.value;else if(s.dataset.runfresh!=null){if(s.checked)fresh[s.dataset.runfresh]=true;else delete fresh[s.dataset.runfresh]}else if(s.dataset.runbudget!=null){setLimit(s.dataset.runbudget,'budget',s.value).then(done);return}else return;done()},true);
   onUpdate=done;setInterval(()=>poll(),1000)}

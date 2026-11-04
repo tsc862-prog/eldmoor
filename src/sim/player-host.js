@@ -41,6 +41,7 @@ export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now(
   const t0=now(),rm=Number(p.realMs),realMs=Math.min(PACE.REAL_MAX,Number.isFinite(rm)&&rm>=0&&p.realMs!==null?rm:PACE.REAL_MS);
   const q={since:Number.isFinite(Number(p.since))&&p.since!==null?Number(p.since):paceIdle(heroId,null).since,minutes:p.minutes,wake:p.wake==='now'||p.wake==='must'?p.wake:'all',reflect:!!p.reflect};
   turnEnd(me()); // a runner asking when to go next has ended its turn: autopilot may start things again (#240)
+  {const a=me(),n=Number(p.hearWake);if(a){if(n>0)a.playHearGap=Math.min(1440,n);else if(a.playHearGap!=null)delete a.playHearGap}} // the runner's AGENT_HEAR_WAKE_MIN (#787); unset: the game's PK.HEAR_WAKE
   for(;;){const r=paceCheck(heroId,q);if(r){const a=me();if(r.ok&&r.wake&&a){turnStart(a);a.playFresh=true}return r} // a wake opens the next turn
     if(now()-t0>=realMs)return paceIdle(heroId,q.since);await nap(poll)}}
 

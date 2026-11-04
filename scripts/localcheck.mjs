@@ -348,7 +348,7 @@ console.log('npm run fellowship -- --provider ollama (headless Fellowship, no AP
   ok(/only members with a local runner/.test(out) || existsSync(join(ROOT, '.env')), 'without an API key it says only local members will play');
   ok((out.match(/\[turn 1(, scene)?\] mock-tools:1b \(local\)/g) || []).length === 5, 'each of the five plays a local turn');
   ok((out.match(/\$0 \(local\), tokens \d+ in \/ \d+ out \| session \$0\.0000 \| mock-tools:1b \(local\)/g) || []).length === 5, 'the summary shows $0 and tokens per member');
-  const runs = readFileSync(join(ROOT, 'logs', 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop(), j = JSON.parse(runs);
+  const runs = readFileSync(join(tmp, 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop(), j = JSON.parse(runs);
   ok(j.url === FB && j.spent === 0 && j.members.every(m => m.provider === 'ollama' && m.tokensIn > 0), 'the run record lists the local members with tokens and cost 0');
   // the company runner (#460): the same five, named as a company by one of its members
   const h2 = await health(FB), first = h2.heroes.find(x => x.fellow && x.alive), cid = first && first.company;
@@ -357,7 +357,7 @@ console.log('npm run fellowship -- --provider ollama (headless Fellowship, no AP
   const ccode = await crun.done, cout = crun.out();
   ok(ccode === 0 && new RegExp('Company runner \\(.*company #' + cid + '\\)').test(cout), 'npm run fellowship -- --company <member> plays that company' + (ccode ? '\n' + cout.slice(-3000) : ''));
   ok((cout.match(/\[turn \d+(, scene)?\] mock-tools:1b \(local\)/g) || []).length === 5, 'each of its five plays a local turn');
-  const cj = JSON.parse(readFileSync(join(ROOT, 'logs', 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop());
+  const cj = JSON.parse(readFileSync(join(tmp, 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop());
   ok(cj.company === cid && cj.members.length === 5, 'the run record names the company');
   const bad = start(['scripts/fellowship.mjs', '--url', FB, '--company', 'nobody-at-all', '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', OLLAMA]);
   ok(await bad.done === 1 && /No company "nobody-at-all"/.test(bad.out()), 'an unknown company is refused with the companies there are');

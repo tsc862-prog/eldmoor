@@ -37,8 +37,11 @@ export function loadSession(heroId, heroName, fresh, {logs = LOGS, startNew = fa
   if (s && s.heroId === heroId && s.heroName === heroName && !startNew) return {sess: s, note: null};
   let note = null;
   if (s && (s.heroName !== heroName || startNew)) note = 'earlier session kept at ' + archive(f, s, logs);
-  return {sess: fresh(), note};
+  const sess = fresh(); if (s && s.heroName === heroName && s.runner) sess.runner = s.runner; // --new starts the conversation over, not the hero's mind (#787)
+  return {sess, note};
 }
+// A roll (issue #787, scripts/session-roll.mjs): the file goes where --new puts it, and the runner saves on under the same path.
+export function setAside(sess, logs = LOGS) {const f = sessionPath(sess.heroId, logs); return existsSync(f) ? archive(f, sess, logs) : null}
 // Per-hero runner settings, kept in the session file as sess.runner = {provider, model, effort}.
 // Each hero can have its own mind: 'anthropic' (Claude Agent SDK) and 'ollama' (a local model through
 // scripts/local-agent.mjs) both run in scripts/agent-player.mjs and scripts/fellowship.mjs; the relay routes by hero id alone and never assumes a model or an SDK, so
@@ -92,9 +95,11 @@ export function loadDmSession(world, fresh, {logs = LOGS, startNew = false} = {}
   const f = dmSessionPath(logs), s = readJson(f);
   if (s && s.world === world && !startNew) return {sess: s, note: null};
   let note = null;
-  if (s) {const to = join(sessionDir(logs), 'old', `dm-${safe(s.world)}-${Date.now()}.json`); mkdirSync(dirname(to), {recursive: true}); renameSync(f, to); note = 'earlier DM session kept at ' + to}
-  return {sess: fresh(), note};
+  if (s) note = 'earlier DM session kept at ' + setAsideDm(s, logs);
+  const sess = fresh(); if (s && s.world === world && s.runner) sess.runner = s.runner; // --new keeps the seat's mind (#787)
+  return {sess, note};
 }
+export function setAsideDm(sess, logs = LOGS) {const f = dmSessionPath(logs); if (!existsSync(f)) return null; const to = join(sessionDir(logs), 'old', `dm-${safe(sess.world)}-${Date.now()}.json`); mkdirSync(dirname(to), {recursive: true}); renameSync(f, to); return to}
 export function saveDmSession(sess, extra = {}, logs = LOGS) {writeAtomic(dmSessionPath(logs), {...sess, ...extra, updated: new Date().toISOString()})}
 // The DM runner as a row for the relay's runner supervisor (scripts/runners.mjs RUNNER_KINDS, in-app
 // Start/Stop). Same shape as its 'hero' and 'fellowship' rows; needsDmSeat: start only while the game

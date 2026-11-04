@@ -42,13 +42,17 @@ const num = (v, d) => {const n = Number(v); return v === null || v === undefined
 
 // The pacing settings from flags (--heartbeat MIN, --min-gap S, --max-fails N), then env (AGENT_HEARTBEAT,
 // AGENT_MIN_GAP, AGENT_MAX_FAILS), then the defaults. cadence: an older flag name for the gap (Fellowship).
+// hearWake (--hear-wake MIN, AGENT_HEAR_WAKE_MIN, #787): game minutes between the turns a companion's line may start for this
+// listener, sent with every pace call; null keeps the game's own PK.HEAR_WAKE (15). The owner's knob for a chatty company.
 export function paceSettings(opt, env = {}, {cadence = null} = {}) {
   return {
     heartbeat: Math.min(1440, Math.max(5, num(opt('heartbeat', null), num(env.AGENT_HEARTBEAT, PACE_DEFAULTS.heartbeat)))),
     minGap: Math.max(0, num(opt('min-gap', null), num(cadence, num(env.AGENT_MIN_GAP, PACE_DEFAULTS.minGap)))),
     maxFails: Math.max(1, Math.round(num(opt('max-fails', null), num(env.AGENT_MAX_FAILS, PACE_DEFAULTS.maxFails)))),
+    hearWake: hearWakeOf(num(opt('hear-wake', null), num(env.AGENT_HEAR_WAKE_MIN, null))),
   };
 }
+const hearWakeOf = v => v == null || !(v > 0) ? null : Math.min(1440, Math.max(1, Math.round(v)));
 export const paceText = p => `a turn on an event, else every ${p.heartbeat} game min, at least ${p.minGap} s apart`;
 // --max-turns when asked, else until stopped (owner, #563: paid minds are limited by their budget in dollars, not by turns;
 // a local mind costs nothing). provider and paidDefault are kept for callers; neither caps a run any more.
@@ -68,12 +72,12 @@ export const localWorked = r => r && r.looped && !r.tools ? null : r && r.gameDo
 // makePacer({base, hero, runner, heartbeat, minGap, log, stopped}) -> {next(), turnDone(), state}
 //   next(): waits for the next turn. -> {wake:'now'|'soft'|'heartbeat', why, table, clock} or {dead} / {gone, why} / {stopped}
 //   turnDone(): call when a turn ends (the gap and the heartbeat count from here).
-export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbeat, minGap = PACE_DEFAULTS.minGap, log = () => {}, stopped = () => false, fetchImpl = fetch}) {
+export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbeat, minGap = PACE_DEFAULTS.minGap, hearWake = null, log = () => {}, stopped = () => false, fetchImpl = fetch}) {
   let lastEnd = null, since = null, nows = [], legacy = false, said = false;
   const st = {waiting: false, wake: null};
   async function pace(wake, realMs) {
     try {
-      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, since, minutes: heartbeat, wake, realMs, reflect: REFLECT_ON}), signal: AbortSignal.timeout(realMs + 20000)});
+      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, since, minutes: heartbeat, wake, realMs, reflect: REFLECT_ON, ...(hearWake ? {hearWake} : {})}), signal: AbortSignal.timeout(realMs + 20000)});
       if (r.status === 404) return {unsupported: true};
       const j = await r.json().catch(() => ({ok: false, error: 'bad answer'}));
       if (j && j.ok === false && /unknown tool pace|not found/i.test(String(j.error || ''))) return {unsupported: true};
