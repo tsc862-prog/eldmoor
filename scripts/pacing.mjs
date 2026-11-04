@@ -266,8 +266,9 @@ export function wakeNote(w) {
 
 // A Claude turn under the app's runner supervisor (scripts/runners.mjs): lease one of the Claude slots
 // for the turn and release it after, so any number of Claude runners can be started (five members and
-// the DM) while at most RUNNER_CLAUDE_MAX talk to the API at once. Outside the supervisor (a terminal
-// runner) or when the supervisor does not answer, the turn just runs.
+// the DM) while at most RUNNER_CLAUDE_MAX talk to the API at once (the DM has its own, RUNNER_DM_SLOTS, #733; while the DM's
+// prep holds the world a hero's request waits for it). Outside the supervisor (a terminal runner) or when the supervisor does
+// not answer, the turn just runs.
 // #687: due() says whether the member's own Table scene waits for its answer (the /play/health watch). While the runner waits for
 // a slot it asks every DUE_POLL_MS; once due, onDue() runs once (the runner tells the game its answer is queued: POST /play/pace
 // {queued:true, why:'slot'}) and the request is asked again with scene:true, which the supervisor serves first. The release
@@ -288,8 +289,9 @@ export async function takeClaudeSlot(base, log = () => {}, {key = process.env.EL
     if (watch) clearInterval(watch);
     if (cut) {log('[pace] its own Table scene opened while it waited for a Claude slot: asking again, scene first'); continue}
     if (!j) break; // no supervisor here: run without a lease
-    if (j.ok) {lease = j.lease; if (said) log('[pace] got a Claude slot' + (waitedFor ? ' (scene first)' : '')); break}
-    if (!said) {said = true; log(`[pace] waiting for a Claude slot (all ${j.slots} in use; RUNNER_CLAUDE_MAX)`)}
+    if (j.ok) {lease = j.lease; if (said) log('[pace] got a ' + (j.dm ? 'DM slot' : 'Claude slot') + (waitedFor ? ' (scene first)' : '')); break}
+    if (!said || (j.prep ? said !== 'prep' : said === 'prep')) {said = j.prep ? 'prep' : true; // #733: the DM's prep holds hero turns; the DM's line names its own slot
+      log(j.prep ? '[pace] the DM prepares the table: no Claude turn until it is done' : j.dm ? `[pace] waiting for the DM slot (its ${j.dmSlots ?? 1} and all ${j.slots} hero slots in use; RUNNER_DM_SLOTS)` : `[pace] waiting for a Claude slot (all ${j.slots} in use; RUNNER_CLAUDE_MAX)`)}
   }
   return Object.assign(() => {if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}}, {scene: waitedFor});
 }
