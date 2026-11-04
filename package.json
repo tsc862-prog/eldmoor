@@ -12,6 +12,7 @@
     "worldcheck": "node scripts/worldcheck.mjs",
     "initcheck": "node scripts/initcheck.mjs",
     "downcheck": "node scripts/downcheck.mjs",
+    "bequeathcheck": "node scripts/bequeathcheck.mjs",
     "savecheck": "node scripts/savecheck.mjs",
     "archetypecheck": "node scripts/archetypecheck.mjs",
     "personacheck": "node scripts/personacheck.mjs",
@@ -58,6 +59,7 @@
     "paymarkcheck": "node scripts/paymarkcheck.mjs",
     "wishcheck": "node scripts/wishcheck.mjs",
     "hirecheck": "node scripts/hirecheck.mjs",
+    "challengecheck": "node scripts/challengecheck.mjs",
     "attemptcheck": "node scripts/attemptcheck.mjs",
     "voicecheck": "node scripts/voicecheck.mjs",
     "wakecheck": "node scripts/wakecheck.mjs",
@@ -81,6 +83,7 @@
     "artcheck": "node scripts/artcheck.mjs",
     "art:gen": "node scripts/art/gen.mjs",
     "art:daily": "node scripts/art/daily.mjs",
+    "art:loop": "node scripts/art/daily.mjs --loop",
     "art:accept": "node scripts/art/accept.mjs",
     "art:sheet": "node scripts/art/sheet.mjs",
     "art:reprocess": "node scripts/art/reprocess.mjs"
