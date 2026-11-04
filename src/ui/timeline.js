@@ -6,13 +6,15 @@ import {S} from '../sim/index.js';
 import {patch,keyOf} from './stable.js'; // update in place, keep scroll (#145)
 import {LAIR,CRYPT} from '../world/map.js';
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
+import {downTimeline,DOWN_BADGE} from './downview.js'; // downings, stabilizes and revivals from the heroes' Logs (#659)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 
 // Filters by kind. Hero-facing events, boss and raid events, deaths.
-export const FILTERS=[['all','All',null],['heroes','Heroes',['level','oath','crypt','elite','title']],['bosses','Bosses',['boss','raid']],['deaths','Deaths',['death']]];
-const BADGE={boss:'BOSS',raid:'RAID',crypt:'CRYPT',level:'LVL',death:'DEATH',elite:'ELITE',oath:'OATH',rival:'RIVAL',guild:'GUILD',title:'TITLE'};
+// Downed (#659): downings, stabilizes, revivals (and, with #657, mercies and finishes) read from the heroes' Logs, and deaths.
+export const FILTERS=[['all','All',null],['heroes','Heroes',['level','oath','crypt','elite','title']],['bosses','Bosses',['boss','raid']],['downs','Downed',['down','stable','up','mercy','finish','death']],['deaths','Deaths',['death']]];
+const BADGE={boss:'BOSS',raid:'RAID',crypt:'CRYPT',level:'LVL',death:'DEATH',elite:'ELITE',oath:'OATH',rival:'RIVAL',guild:'GUILD',title:'TITLE',...DOWN_BADGE};
 let filter='all',seen=-1,seenTop=null,box=null,list=null;
 
 export const dayOf=e=>Math.floor((e.gameMin||0)/1440)+1;
@@ -25,14 +27,18 @@ function partsTo(node,ps){for(const p of ps){if(typeof p==='string')node.append(
   else if(p)node.append(el('span',p.c||'',p.t))}}
 
 export function renderTimeline(){if(!list)return;
-  const tl=S.timeline||[];
-  if(tl.length===seen&&tl[0]===seenTop)return;
+  const tl=merged(),top=tl[0]&&(tl[0].src||tl[0]);
+  if(tl.length===seen&&top===seenTop)return;
   if(!patch(list,l=>fill(l,tl)))return; // held while the viewer scrolls or selects: next second
-  seen=tl.length;seenTop=tl[0]}
+  seen=tl.length;seenTop=top}
+// The world's timeline with the downed lines folded in by game time, newest first (both lists are newest first).
+function merged(){const tl=S.timeline||[],dn=downTimeline();if(!dn.length)return tl;const out=[];let i=0,j=0;
+  while(i<tl.length||j<dn.length){if(j>=dn.length||(i<tl.length&&(tl[i].gameMin||0)>=dn[j].gameMin))out.push(tl[i++]);else out.push(dn[j++])}
+  return out}
 function fill(list,tl){
   let n=0;
   for(const e of tl){if(!matches(e))continue;
-    const li=el('li','tl tl-'+e.kind);li.setAttribute('data-k',keyOf(e));
+    const li=el('li','tl tl-'+e.kind);li.setAttribute('data-k',keyOf(e.src||e));
     li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-'+e.kind,BADGE[e.kind]||e.kind.toUpperCase()));
     const t=el('span','tx');partsTo(t,e.parts);li.append(t);
     const inside=(e.kind==='raid'||e.kind==='boss')&&LAIR?LAIR.name:e.kind==='crypt'&&CRYPT?CRYPT.name:null; // Inside: the raid arena or the dungeon view (#85)
