@@ -9,9 +9,12 @@
 import {purposeOf} from '../sim/purpose.js';
 import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
+import {downPurpose} from './downview.js'; // the downed and the one tending them (#659)
 
 export {purposeOf};
-export const purposeLine=a=>a?purposeOf(a).line:'';
+// The watcher's purpose: a downed hero bleeds out or lies stable, a helper tends them (#659); everyone else as the sim says.
+export const purposeFor=a=>downPurpose(a)||purposeOf(a);
+export const purposeLine=a=>a?purposeFor(a).line:'';
 const opened=new Set();
 const truncated=n=>!!n&&n.scrollWidth>n.clientWidth+1;
 // A tap on a purpose line: open it when cut (or close it when open). Returns true when it took the tap, so the frame's own
@@ -21,7 +24,7 @@ export function tapPurpose(n){if(!n||!n.dataset||!n.dataset.pk)return false;cons
   if(open)opened.delete(k);else opened.add(k);n.classList.toggle('open',!open);n.setAttribute('aria-expanded',String(!open));return true}
 export const isOpen=k=>opened.has(k);
 // Fill a purpose node: text, title, the kind (for its colour) and the open state. Writes only what changed.
-export function setPurpose(n,a,key){const p=purposeOf(a),t=p.line;if(n._t!==t){n._t=t;n.textContent=t;n.title=t}
+export function setPurpose(n,a,key){const p=purposeFor(a),t=p.line;if(n._t!==t){n._t=t;n.textContent=t;n.title=t}
   const k=key+a.id;if(n.dataset.pk!==k)n.dataset.pk=k;const cls='purp p-'+p.kind+(opened.has(k)?' open':'')+(n._base?' '+n._base:'');if(n.className!==cls)n.className=cls;
   return p}
 
@@ -29,7 +32,7 @@ export function setPurpose(n,a,key){const p=purposeOf(a),t=p.line;if(n._t!==t){n
 let tip=null,xy=[0,0];
 function place(){if(!tip)return;const pad=14,w=tip.offsetWidth,h=tip.offsetHeight,vw=window.innerWidth,vh=window.innerHeight;
   let x=xy[0]+pad,y=xy[1]+pad;if(x+w>vw-4)x=Math.max(4,xy[0]-w-pad);if(y+h>vh-4)y=Math.max(4,vh-h-4);tip.style.left=x+'px';tip.style.top=y+'px'}
-function body(a){const p=purposeOf(a),d=document.createElement('div');
+function body(a){const p=purposeFor(a),d=document.createElement('div');
   const n=document.createElement('div');n.className='in f'+a.fac;n.textContent=a.name+' · Lv '+a.lvl+' '+a.cls;d.append(n);
   const g=document.createElement('div');g.className='ptgoal';g.textContent=p.goal+(p.target?' → '+p.target:'');d.append(g);
   if(p.why){const w=document.createElement('div');w.className='dm';w.textContent=p.why;d.append(w)}
