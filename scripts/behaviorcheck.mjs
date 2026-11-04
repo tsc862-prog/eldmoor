@@ -235,6 +235,7 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   for (let h = 1; h <= 6; h++) W2.push({ts: ts(h * 60), gameMin: 600 + h * 60, fellowship: {name: 'The Mock Band', minds: 'agent'},
     members: [mem(1, 'Ann', 'tank', h === 3 ? 20 : 100, h % 2 ? 'agent' : 'autopilot', 'ollama', 'qwen2.5:14b'), mem(2, 'Bo', 'healer', 100, 'agent', 'anthropic', 'claude-haiku-5-5'),
       ...(h <= 4 ? [mem(3, 'Cy', 'dps1', 90, 'scripted', 'ollama', 'qwen2.5:14b')] : [])],
+    gambits: {Ann: {acts: 1, edits: h, noFlee: false, own: true, wrote: Math.min(h, 3), wroteAb: h >= 3 ? 1 : 0}, Bo: {acts: 0, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}},
     table: {opened: 1, agentTurns: 2, reflexTurns: h === 2 ? 1 : 0}, votes: {agent: 2, reflex: 0}, deaths: h === 5 ? [{name: 'Cy', lvl: 3, cls: 'Rogue', cause: 'slain by a Bristleback Boar ' + KEY2, agent: true}] : []});
   const turnL = (id, name, prov, model, i, o) => ({ts: ts(i * 10), seat: 'hero:' + id, hero: i % 3 ? {id, name} : null, provider: prov, model, turn: i, tools: o.tools || [{name: 'look', ok: true}], calls: (o.tools || [1]).length,
     narration: 'SECRET-NARRATION-' + name + ' ' + KEY2, seconds: o.s, tokensIn: o.tin ?? 1000, tokensOut: 50, cacheRead: prov === 'anthropic' ? 3000 : null, cacheWrite: prov === 'anthropic' ? 200 : null, cost: o.cost ?? 0, flags: o.flags || []});
@@ -248,13 +249,14 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   const rm = writeReport(join(ROOT, 'minds'), 'mock'), mmd = readFileSync(rm.file, 'utf8'), sec = (mmd.split('## Mind comparison')[1] || '').split('## World')[0];
   const rowOf = n => (sec.split('\n').find(l => l.startsWith('| ' + n + ' |')) || '').split('|').slice(1, -1).map(s => s.trim());
   const ann = rowOf('Ann'), bo = rowOf('Bo'), cy = rowOf('Cy');
-  ok(/## Mind comparison/.test(mmd) && ann.length === 20 && bo.length === 20 && cy.length === 20, 'report has a Mind comparison table with a row per member (#280)');
+  ok(/## Mind comparison/.test(mmd) && ann.length === 21 && bo.length === 21 && cy.length === 21, 'report has a Mind comparison table with a row per member (#280)');
   ok(ann[2] === 'ollama/qwen2.5:14b' && ann[3] === '10' && ann[4] === '2' && ann[5] === '1' && ann[6] === '1', `Ann on qwen: 10 turns (unnamed lines named from the digests), 2 empty, 1 failed, 1 Table answer: ${ann.slice(2, 7).join(' ')}`);
   ok(ann[7] === '-' && ann[8] === '-' && ann[9] === '-' && ann[12] === '-', 'a member with no decisions shows "-", not zero');
   ok(/2 by anthropic\/claude-haiku-5-5 \(1 failed\)/.test(ann[10]) && !sec.split('\n').some(l => l.startsWith('| Ann | tank | anthropic')), 'the relay writing Ann\'s sheet is folded into her row, not shown as her mind');
   ok(ann[11] === '5 / 9 s' && ann[16] === '6 (3, 0)' && ann[17] === '1', `Ann: turn seconds p50/p90, digest hours with autopilot, one close call: ${ann[11]} | ${ann[16]} | ${ann[17]}`);
   ok(bo[2] === 'anthropic/claude-haiku-5-5' && bo[7] === '4' && bo[8] === '1' && bo[9] === '2' && bo[12] === '500 / 9000 ms' && bo[15] === '$0.0400' && bo[13] === '16000 / 200' && bo[14] === '12000' && ann[14] === '-', `Bo on Claude: 4 decisions, 1 rejected, 2 fallbacks, decision ms p50/p90, cost: ${bo.slice(7, 16).join(' | ')}`);
-  ok(cy[3] === '-' && cy[16] === '4 (0, 4)' && /died: slain by a Bristleback Boar/.test(cy[19]) && ann[18] === '1' && bo[18] === '1' && cy[18] === '0', `deaths survived and lifetimes from the digests: Ann ${ann[18]}, Bo ${bo[18]}, Cy ${cy[19]}`);
+  ok(cy[3] === '-' && cy[16] === '4 (0, 4)' && /died: slain by a Bristleback Boar/.test(cy[20]) && ann[18] === '1' && bo[18] === '1' && cy[18] === '0', `deaths survived and lifetimes from the digests: Ann ${ann[18]}, Bo ${bo[18]}, Cy ${cy[20]}`);
+  ok(ann[19] === '3 / 1' && bo[19] === '0 / 0' && cy[19] === '-', `rules written / with abilities: the latest total from the digests, not a sum, and "-" for a member with no data (#779): ${ann[19]} | ${bo[19]} | ${cy[19]}`);
   ok(/\| ollama\/qwen2\.5:14b \| 2 \| 10 \| 2 \(20%\) \| 1 \(10%\) \|/.test(sec) && /\| anthropic\/claude-haiku-5-5 \| 2 \| 4 \|/.test(sec), 'overall per mind: qwen 10 turns 20% empty, Claude Haiku 4 turns');
   ok(/12 by the agent, 1 by reflex/.test(sec), 'overall Table turns by agent vs reflex from the digests');
   ok(!mmd.includes(KEY2) && sec.includes('[redacted]') && !sec.includes('SECRET-'), 'the comparison redacts keys and shows no narration or DM text');
