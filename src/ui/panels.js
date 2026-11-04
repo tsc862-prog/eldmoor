@@ -7,7 +7,7 @@
 import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
-import {heroStream,sysLine} from './chatpanel.js';
+import {heroStream,arrange,rowEl} from './chatpanel.js';
 import {CITY,CRYPT,LAIR,ZONES,OUTPOSTS,zoneFor} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -286,13 +286,14 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){
   // a Fellowship member: its slice of the chat panel's stream (lines it said or heard, and its proposals and votes), newest first
-  if(slotted()&&inSlots(a)){const rows=heroStream(a).reverse().slice(0,40);
+  // a Table scene it sat in shows as one exchange around its line: header, question, lines, result (#734)
+  if(slotted()&&inSlots(a)){const rows=arrange(heroStream(a)).slice(0,40);
     if(!rows.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
     const ul=el('ul','log chat');let last=null;
-    const gs=[];for(const it of rows){const p=gs[gs.length-1];
-      if(p&&it.kind==='chat'&&p.it.kind==='chat'&&p.it.e.from===it.e.from&&p.it.e.text===it.e.text&&!!p.it.e.party===!!it.e.party)p.n++;else gs.push({it,n:1})}
-    for(const {it,n} of gs){const d=it.kind==='chat'?dayOf(it.e):Math.floor(it.gm/1440)+1;if(d!=null&&d!==last){ul.append(daySep(d));last=d}
-      ul.append(it.kind==='chat'?chatLine(it.e,n):sysLine(it))}
+    const gs=[];for(const x of rows){const it=x.it,p=gs[gs.length-1];
+      if(p&&!x.cls&&!p.x.cls&&it.kind==='chat'&&p.x.it.kind==='chat'&&p.x.it.e.from===it.e.from&&p.x.it.e.text===it.e.text&&!!p.x.it.e.party===!!it.e.party)p.n++;else gs.push({x,n:1})}
+    for(const {x,n} of gs){const it=x.it,d=x.day!=null?x.day:it.kind==='chat'?dayOf(it.e):Math.floor(it.gm/1440)+1;if(d!=null&&d!==last){ul.append(daySep(d));last=d}
+      const li=it.kind==='chat'&&!x.cls?chatLine(it.e,n):rowEl(x);ul.append(li)}
     b.append(el('div','meta','This hero’s part of the Fellowship chat; the Chat panel has it all.'),ul);return}
   const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
   if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far (Settings, World chatter, shows it).':'Nothing said or heard yet.'));return}
@@ -308,6 +309,7 @@ export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k'
   if(e.whisper)li.append(el('span','dm chwh',' whispers'+(e.toName?' to '+e.toName:'')));
   li.append(e.courier?' sends word: ':e.whisper?': ':none?' calls out, but no one is near: ':e.party?' shouts: ':': ',e.text);
   if(e.by==='scripted'&&e.trigger==='npc')li.append(el('span','dm chscr',' scripted')); // the scripted DM's townsfolk, not the DM agent's words (#540)
+  if(e.opt!=null)li.append(el('span','dm chopt',' ('+(e.rfx?'reflex: ':'')+String(e.opt).replace(/^use:/,'use ')+')')); // the act this table line went with (#734)
   if(n>1)li.append(el('span','dm chx',' ×'+n));
   if(e.party&&!e.courier&&e.heard&&e.heard.length)li.append(el('span','dm chheard',' ('+e.heard.join(', ')+')'));return li}
 // The same speaker saying the same thing on the same channel back to back shows once with a count.

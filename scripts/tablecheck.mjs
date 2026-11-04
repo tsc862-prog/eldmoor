@@ -1394,6 +1394,9 @@ console.log('everyone answers at once');
  const PB = C.propById(sc.ctx.prop);
  ok(PB.status === 'passed' && sc.beats.map(b => b.id).join() === sc.ids.join() && sc.beats.every(b => b.by === 'agent'), `the last answer resolves it at once, in slot order (${PB.result})`);
  ok(!CP.campOf(), 'the camp breaks');
+ {const key = sc.company + ':' + sc.id, rec = (S.tableLog || []).find(r => r.key === key), ln = (o3.chat || []).find(e => e.text === 'Dawn is up.'); // the watcher's scene record (#734)
+  ok(rec && rec.kind === 'decision' && rec.prop === sc.ctx.prop && rec.acts.length === 5 && rec.acts.find(x => x.id === o3.id).said && rec.result === PB.result + '.' && rec.frame && rec.ids.join() === sc.ids.join(), 'the closed scene leaves a write-only record for the Chat (frame, acts, result): ' + (rec && rec.result));
+  ok(ln && ln.sk === key && ln.opt === 'yes' && !ln.rfx, 'a table line carries its scene and the act it went with')}
  stepUntil(() => !S.table, 10);
 
  // a silent but connected member's reflex comes after the live wait, side by side (not summed)

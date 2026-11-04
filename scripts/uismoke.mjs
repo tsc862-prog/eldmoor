@@ -358,6 +358,56 @@ console.log('declutter');
    const row=$('dmChatList').querySelector('[data-dmid]');ok(row.tabIndex===0&&row.getAttribute('role')==='button','DM rows are keyboard focusable');
    $('chatTabs').children.find(b=>b.dataset.ctab==='chat').click()}}
 
+// ---- a Table scene as one exchange in the Chat (#734): header, frame or question, lines with their act, result ----
+console.log('chat scene groups');
+{const S=sim.S,F=SLT.slotted(),cl=$('chatList'),fb=$('chatFilter'),d=Math.floor(S.gameMin/1440)+3,gm=(d-1)*1440+18*60+21,t='18:21',t2='18:30';
+  const show=k=>{fb.children.find(b=>b.dataset.cf===k).click();uiFast();return cl.children.filter(c=>c.tagName==='LI'&&!c.classList.contains('daysep'))};
+  const kv=F.id+':97340',kc=F.id+':97341',ids=mem.map(a=>a.id),said=[];
+  const P={id:97340,by:mem[0].id,byName:mem[0].name,kind:'crypt',details:'A group is forming for The Sunken Crypt; do we all go?',at:gm,status:'failed',result:'Failed 2-3 ('+mem[0].name+' settles: not yet)',done:gm,votes:{}};
+  mem.forEach((a,i)=>P.votes[a.id]={v:i<2?'yes':'no',reason:i===1?'We all go down together.':'',by:i===4?'reflex':'agent',at:gm});
+  F.props.push(P);
+  const line=(a,text,sk,opt,rfx,tt)=>{const e={t:tt,d,from:a,text,trigger:'table',scene:true,sk,opt,fh:true,...(rfx?{rfx:1}:{})};for(const b of mem)b.chat.push(e);said.push(e);return e};
+  line(mem[1],'We all go down together.',kv,'yes',0,t);line(mem[2],'Not yet. I am level two.',kv,'no',0,t);
+  line(mem[0],'Now, while it turns!',kc,'strike',1,t2);line(mem[1],'On me. Get behind.',kc,'guard',0,t2);
+  const keep=S.tableLog;S.tableLog=(keep||[]).slice();
+  S.tableLog.push({key:kv,company:F.id,kind:'decision',title:'Put to the party: '+P.details,frame:mem[0].name+' puts it to the party: '+P.details+'. Everyone votes.',at:gm,end:gm,where:'Highgate',ids,prop:P.id,
+    acts:mem.map((a,i)=>({id:a.id,name:a.name,k:i<2?'yes':'no',by:i===4?'reflex':'agent',said:i===1||i===2})),result:P.result+'.'});
+  S.tableLog.push({key:kc,company:F.id,kind:'elite',title:'The Ashen Stalker',frame:'A grey shape drops from the ridge, eyes like coals.',at:gm+9,end:gm+12,where:'Mirefen',ids,
+    acts:mem.map((a,i)=>({id:a.id,name:a.name,k:i===1?'guard':i===3?'heal':'strike',by:i===0||i===4?'reflex':'agent',said:i<2})),result:'The Ashen Stalker is badly hurt. '+mem[4].name+' fell back. (3 rounds.)'});
+  const tbl=show('table'),tx=tbl.map(r=>r.textContent),H=tbl.filter(r=>r.classList.contains('scg-h'));
+  ok(H.length>=2&&/TABLE/.test(H[0].textContent)&&/The Ashen Stalker · elite foe · Mirefen/.test(H[0].textContent)&&/Put to the party: A group is forming for The Sunken Crypt; do we all go\? · vote · Highgate/.test(H[1].textContent),'Table: a header per scene, newest scene on top: '+H.slice(0,2).map(h=>h.textContent).join(' | '));
+  const iv=tbl.indexOf(H[1]),grp=tbl.slice(iv,iv+8).map(r=>r.textContent);
+  ok(/proposes: A group is forming/.test(grp[1])&&!/\[crypt/.test(grp[1]),'Table: the vote\'s question (the proposal) comes right under its header: '+grp[1]);
+  ok(/We all go down together\. \(yes\)/.test(grp.join('\n'))&&/Not yet\. I am level two\. \(no\)/.test(grp.join('\n')),'Table: each line has its act dimmed after the words');
+  ok(grp.some(x=>x.includes(mem[3].name)&&/\(no\)$/.test(x))&&grp.some(x=>x.includes(mem[4].name)&&/\(reflex: no\)$/.test(x)),'Table: a silent member\'s act shows, a reflex one as "(reflex: no)"');
+  ok(grp[2].includes(mem[0].name)&&/\(yes\)$/.test(grp[2])&&grp[3].includes(mem[1].name)&&grp[5].includes(mem[3].name)&&grp[6].includes(mem[4].name),'Table: lines and silent acts in seat order: '+grp.slice(2,7).join(' / '));
+  ok(/Failed 2-3/.test(grp[7])&&tbl[iv+7].classList.contains('scg-r')&&tbl[iv+7].classList.contains('scg-end'),'Table: the result closes the group: '+grp[7]);
+  ok(!tx.some(x=>/ votes (yes|no)/.test(x)),'Table: no separate vote rows (the lines carry the votes)');
+  const ic=tbl.indexOf(H[0]),cg=tbl.slice(ic,ic+8);
+  ok(cg.every(r=>r.classList.contains('scg'))&&/^DM: A grey shape/.test(cg[1].textContent.replace(/^D\d+ \d\d:\d\d/,'')),'Table: the combat group keeps together, the DM\'s frame under its header: '+cg[1].textContent);
+  ok(/Now, while it turns! \(reflex: strike\)/.test(cg.map(r=>r.textContent).join('\n'))&&/On me\. Get behind\. \(guard\)/.test(cg.map(r=>r.textContent).join('\n')),'Table: combat lines with their acts, a reflex line marked');
+  ok(/badly hurt/.test(cg[cg.length-1].textContent)&&cg[cg.length-1].classList.contains('scg-r'),'Table: the combat result closes its group: '+cg[cg.length-1].textContent);
+  ok(!!cl.querySelector('.scg-h .scgt')&&!!cl.querySelector('.chopt'),'Table: the header label and the dimmed act have their own classes');
+  const pty=show('party').map(r=>r.textContent).join('\n');
+  ok(/Put to the party: A group is forming.*· vote/.test(pty)&&/proposes: A group is forming/.test(pty)&&/votes no/.test(pty)&&/Failed 2-3/.test(pty)&&!/Ashen Stalker/.test(pty)&&!/I am level two/.test(pty),'Party: the vote\'s header, question, votes and result; not the combat scene, not the table lines');
+  const all=show('all'),at=all.map(r=>r.textContent),ks=all.map(r=>r.getAttribute('data-k'));
+  ok(at.filter(x=>/Put to the party: A group is forming/.test(x)).length===1&&at.filter(x=>/proposes: A group is forming/.test(x)).length===1&&!ks.some(k=>/^v97340-/.test(k||'')),'All: the vote group once (header, question, the lines carry the votes): '+at.filter(x=>/A group is forming|votes/.test(x)).join(' / '));
+  ok(new Set(ks).size===ks.length,'All: every row has its own key');
+  const node=all.find(r=>r.classList.contains('scg-h'));uiFast();ok(cl.children.includes(node),'All: the header is the same node after a refresh');
+  // live: an open scene's header says who it waits for
+  {const T=await import('../src/sim/table.js'),sc={id:97342,company:F.id,kind:'check',title:'A rotten bridge',frame:['The planks sag.'],ids:ids.slice(),i:0,phase:'turn',t:0,acts:{[mem[0].id]:{k:'steady',line:'',by:'agent'}},beats:[],ctx:{},pause:true,at:gm+20,all:true,w:{}};
+   const was=S.table;S.table=sc;let ok1=false,txt='';try{show('table');const h=cl.querySelector('[data-k="sh'+F.id+':97342"]');txt=h?h.textContent:'';ok1=/A rotten bridge · check/.test(txt)&&/1\/5 answered/.test(txt)}catch(e){txt=String(e)}finally{S.table=was}
+   ok(ok1,'Table: an open scene\'s header shows the answers so far live: '+txt);void T}
+  // the dossier: the hero's own line with its scene around it
+  select(mem[2]);setTab('chat');uiFast();{const rows=[...tb().querySelector('.log').children].filter(c=>!c.classList.contains('daysep')),rt=rows.map(r=>r.textContent);
+    const ih=rt.findIndex(x=>/Put to the party: A group is forming/.test(x)),ir=rt.findIndex(x=>/Failed 2-3/.test(x)),il=rt.findIndex(x=>/I am level two\. \(no\)/.test(x));
+    ok(ih>=0&&ih<il&&il<ir&&rows[ih].classList.contains('scg-h'),'dossier Chat: the hero\'s table line sits between its scene\'s header and result');
+    ok(rt.some(x=>/proposes: A group is forming/.test(x))&&!rows.some(r=>/^v97340-/.test(r.getAttribute('data-k')||'')),'dossier Chat: the question shows, the hero\'s vote once (its line): '+rt.join(' / ').slice(0,600))}
+  select(mem[4]);setTab('chat');uiFast();{const rt=[...tb().querySelector('.log').children].map(r=>r.textContent);
+    ok(rt.some(x=>x.includes(mem[4].name)&&/\(reflex: no\)$/.test(x))&&rt.some(x=>/The Ashen Stalker · elite foe/.test(x)),'dossier Chat: a silent member sees its reflex act inside the scene')}
+  // clean up
+  F.props.splice(F.props.indexOf(P),1);S.tableLog=keep;if(!keep)delete S.tableLog;for(const b of mem)b.chat=b.chat.filter(e=>!said.includes(e));show('all')}
+
 // The run gate (#171): the world only runs while every required agent seat is connected
 console.log('run gate');
 {const gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js');

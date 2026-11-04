@@ -553,6 +553,16 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .log.chat li.chl.sys{color:var(--dim);font-size:15px;line-height:1.1}
 .log.chat li.chl.sys .hn{font-weight:normal}
 .log.chat li.chl.sys-result{color:var(--gold)}
+/* A Table scene as one exchange (#734): a gold rail down its rows, a pixel-font header, the act dimmed after each line */
+.log.chat li.chl.scg{border-left:2px solid rgba(242,193,78,.45);background:rgba(242,193,78,.04);padding-left:calc(9ch + 6px)}
+.log.chat li.chl.scg>time{left:6px}
+.log.chat li.chl.scg-h{margin-top:6px;color:var(--ink);font-size:16px;border-left-color:var(--gold)}
+.log.chat li.chl.scg-end{margin-bottom:6px}
+.log.chat li.chl.scg-r{color:var(--gold)}
+.log.chat li.chl.scg.sys-prop{color:var(--ink)} /* a vote's question reads like the frame, not a side note */
+.scgt{font-family:var(--px);font-size:8px;color:var(--gold);letter-spacing:.04em;margin-right:2px}
+.log.chat li.chl.scf .scft{font-style:italic}
+.chopt{font-size:16px}
 .chatdm{height:clamp(150px,26vh,300px);overflow-y:auto}
 .chatdm li.dimmed{opacity:.55}
 .chatdm li[role=button]{cursor:pointer}
