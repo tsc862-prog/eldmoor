@@ -1148,7 +1148,7 @@ console.log('DM visibility: hear, carries/quests/knows, survey, world_standing')
   {const L = SLT.slotHeroes(SLT.slotted()), [p, q] = L, kp = p.goal, kq = q.goal; // what is offered and what is sworn (#800)
    p.goal = {type: 'ascend', tier: 0, text: 'Reach level 20', need: 20, progress: 1, done: false, offered: true, offeredAt: Math.round(S.gameMin)};
    q.goal = {type: 'own', kind: 'vow', tier: 0, text: 'I will see the sea.', need: 1, progress: 0, done: false, sworn: {at: 0, by: 'tool', heard: [], words: true}};
-   const n = dmAct('dm_status').fellowship_needs, v = dmAct('fellowship_view');
+   const n = dmAct('dm_status').fellowship_needs, v = dmAct('fellowship_view').fellowship;
    ok(n.oaths.offered.some(r => r.hero === p.name && /something to prove/.test(r.thread)) && n.oaths.sworn.some(r => r.hero === q.name && r.oath === 'I will see the sea.'), 'fellowship_needs tells what is offered and what is sworn');
    ok(n.items.some(x => x.startsWith(p.name + ' has sworn nothing') && /never say they swore/.test(x)) && !JSON.stringify(n).includes('Reach level 20'), 'an offered thread is told as the past, with how to use it');
    const vp = v.members.find(m => m.name === p.name), vq = v.members.find(m => m.name === q.name);
