@@ -83,3 +83,4 @@
 - [DM every mind](dm-every-mind.md) — #824 PROVIDERS one list, compat DM, mindSwitched, budget in waits, fitTools 1024, dm-mind-cases, pitfalls
 - [Slot stall](slot-stall.md) — #868 turn_over + PostToolUse continue:false, scene slot, lease beats/tickets, real leak, measured calls
 - [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
+- [sessioncheck scene flake](sessioncheck-scene-flake.md) — #898 fresh-line/roll flake = real Table scene holds the roll; play-headless --watch fix
