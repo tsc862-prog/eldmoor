@@ -207,6 +207,13 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
 // tool table); the forced reflection answer carries an optional intent the runner sends with the intent tool.
 {
   const LA = await import('./local-agent.mjs'), PC = await import('./pacing.mjs');
+  {const sw = LA.reflectSchema({swear: true}), ss = LA.reflectSchema({swear: true, strict: true}); // a first dusk asks about the thread (#800)
+   ok(sw.properties.swear && !sw.required.includes('swear') && ss.required.includes('swear') && !LA.reflectSchema().properties.swear, 'the reflection carries swear only when a thread is asked about');
+   ok(LA.reflectSwear('{"notes":[],"swear":""}') === null && LA.reflectSwear('{"notes":[],"swear":"No."}').thread === 'no' && LA.reflectSwear('{"notes":[],"swear":"yes"}').thread === 'yes' && LA.reflectSwear('{"notes":[],"swear":"I will find her."}').text === 'I will find her.', 'its answer becomes swear_oath arguments');
+   const sent = []; const t = await LA.reflectTurn({ask: async () => ({text: '{"notes":[],"swear":"I will find her."}', usage: {}, ms: 0}), call: async (tool, args) => {sent.push([tool, args]); return {ok: true}}, sess: {system: 's'}, moment: {id: 'd1', kind: 'dusk', why: 'dusk', thread: 'Ann left home with something to prove.'}, prompt: 'p', keep: false});
+   ok(sent.length === 1 && sent[0][0] === 'swear_oath' && sent[0][1].text === 'I will find her.' && t.swore, 'a forced reflection swears through the tool');
+   const none = []; await LA.reflectTurn({ask: async () => ({text: '{"notes":[],"swear":"I will find her."}', usage: {}, ms: 0}), call: async (tool, args) => {none.push(tool); return {ok: true}}, sess: {system: 's'}, moment: {id: 'd2', kind: 'dusk', why: 'dusk'}, prompt: 'p', keep: false});
+   ok(!none.length, 'with no thread asked about, nothing is sworn')}
   const lo = LA.reflectSchema(), st = LA.reflectSchema({strict: true});
   ok(lo.properties.intent && !lo.required.includes('intent') && st.required.includes('intent') && st.properties.intent.required.join() === 'goal,why,until', 'the reflection schema carries an intent object (optional; required by strict OpenAI)');
   ok(/"intent": \{"goal"/.test(PC.reflectPrompt({why: 'camp'}, {tools: false})) && /What are you trying to do next\?/.test(PC.reflectPrompt({why: 'camp'})), 'the reflection prompt asks what next (forced answer: an intent object; tool use: the intent tool)');
@@ -418,7 +425,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     Object.assign(DOWN, keep); sim.markPlayer(a, false)}
 
   // B. a notification that cannot wait starts a turn at once, inside the gap; the hero's other news waits for the gap
-  {const a = pick();
+  {const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
     const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '4']);
     ok(await until(() => R.turns.length >= 1, 30000), 'a local runner without --max-turns plays (until stopped)');
     ok(/until stopped/.test(R.out), 'and says it runs until stopped');
@@ -440,9 +447,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     }
     ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`);
     await until(() => R.turns.length >= R.wakes.length + 1, 30000);
-    sim.markPlayer(a, false);
+    clearInterval(pinB); sim.markPlayer(a, false);
     const code = await Promise.race([R.done, sleep(20000).then(() => 'timeout')]);
-    ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 ? '' : '\n' + R.out.slice(-1200)))}
+    ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 && /the hero left agent play/.test(R.out) ? '' : ' (hero ' + a.state + ') ' + '\n' + R.out.slice(-1200)))}
 
   // C. a lazy model (the owner's live bug): re-prompted once per turn, empty turns stop the runner, the scripted rules take over
   {const a = pick(), n0 = seen.length;
@@ -557,6 +564,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const fo = SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); SLT.setSlotMinds(SLT.slotted(), 'agent'); S.brainOn = false;
     ok(fo.ok && SLT.slotted() && SLT.slotted().ids.length === 5, 'a Fellowship of five, Minds: agents' + (fo.ok ? '' : ': ' + fo.error));
     const mem = SLT.slotted().ids.map(id => S.agents.find(x => x.id === id));
+    // This world is unseeded and has been running: a member can be downed here, and a downed hero has no options and sits out an everyone-at-once scene (#654).
+    const standUp = () => {for (const a of mem) if (a.state === 'downed') {delete a.down; a.state = 'town'; a.hp = sim.maxHp(a)}};
+    standUp();
     // the game side first: no waiting out your own turn
     {{const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
       const sc0 = openScene('check', 'A test of patience', ['The DM calls for a roll.'], {anchor: mem.find(a => a.state !== 'dead').id}); sc0.phase = 'turn'; sc0.i = 0; delete sc0.wk; // the scene set and its members woken (#682)
@@ -595,6 +605,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     const claimed = await (async () => {for (let i = 0; i < 200; i++) {const h = await health(PB).catch(() => null); if (h && h.heroes.filter(x => x.fellow && x.claimed).length === 5) return true; await sleep(100)} return false})();
     ok(claimed, 'the Fellowship runner claims all five (mock-fumble:1b)' + (claimed ? '' : '\n' + fout.slice(-1500)));
     await until(() => !S.table, 30000);
+    standUp();
     {const L = mem.find(a => a.state !== 'dead'); for (const a of mem) if (a.state !== 'dead' && a !== L) {a.x = L.x + .5; a.y = L.y}} // together: an everyone-at-once scene takes those within shouting range (#182)
     const f0 = seen.fumble || 0, t0 = Date.now(), sc = openScene('check', 'A test of nerve', ['The DM calls for a roll at the ford.'], {anchor: mem.find(a => a.state !== 'dead').id});
     ok(sc && sc.pause, 'a scene opens and the world pauses for it');
