@@ -330,12 +330,15 @@ export const BECOME_FIELDS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 
 export const REFLECT_ON = process.argv.includes('--reflect') || !(process.env.AGENT_REFLECT === '0' || process.argv.includes('--no-reflect'));
 // Downed (#658): the hero lies at zero health and cannot act; its turn is this reflection, with no acting tools.
 export const DOWNED_ASK = 'You lie in the dark, bleeding at zero health: you cannot move, fight or speak, and your acting tools are refused until someone brings you back or you rise. What do you hear? What do you think of, lying there?';
+// The dusk reflection asks once (#829): a thing wanted today that no tool allowed. One sentence, no extra turn.
+export const WISH_ASK = 'Was there a thing you wanted to do today that no tool allowed?';
+const wishAsk = (r, tools) => r && r.kind === 'dusk' ? ' ' + WISH_ASK + (tools ? ' If so, say it with wish {tool, what, why, moment} (read later by the builders; nothing changes now); if not, leave it.' : ' If so, fill "wish" {"tool": the name you would give it, "what", "why", "moment"}, else leave its fields empty.') : '';
 export function reflectPrompt(r, {tools = true} = {}) {
   const why = r && r.why ? ` (now: ${String(r.why).slice(0, 200)})` : '';
   const lead = r && r.kind === 'downed' ? `${DOWNED_ASK}${why} What is worth remembering? ` : `Before you rest${why}: what is worth remembering from today? `;
   const past = r && r.thread ? ` Asked once, and not again: your past holds this: ${String(r.thread).slice(0, 200)} Is it an oath to you? ` : '';
-  if (past) return lead + reflectBody(tools) + past + (tools ? 'swear_oath swears it in your own words (thread yes takes it as it stands, thread no sets it aside); or leave it and you are bound to nothing.' : 'In the JSON, "swear": your own words, or "yes" to take it as it stands, "no" to set it aside, or empty to leave it.');
-  return lead + reflectBody(tools);
+  if (past) return lead + reflectBody(tools) + wishAsk(r, tools) + past + (tools ? 'swear_oath swears it in your own words (thread yes takes it as it stands, thread no sets it aside); or leave it and you are bound to nothing.' : 'In the JSON, "swear": your own words, or "yes" to take it as it stands, "no" to set it aside, or empty to leave it.');
+  return lead + reflectBody(tools) + wishAsk(r, tools);
 }
 function reflectBody(tools) {
   return (tools
