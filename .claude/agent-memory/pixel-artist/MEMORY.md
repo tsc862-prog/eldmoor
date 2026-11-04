@@ -10,3 +10,4 @@
 - [Site dungeon view](sitesview.md) — #642 themed site interiors, per-dungeon keys, staging a site crawl shot
 - [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes
 - [Art post-processing](artpost.md) — stripes were grid multiples, autotile raws were wrong subject; fundamental() and the piece check
+- [Art batch review](artreview.md) — reviewing a generated batch: scratch pipeline, reprocess --dir, why pixel-xl fails autotiles/sheets/ground
