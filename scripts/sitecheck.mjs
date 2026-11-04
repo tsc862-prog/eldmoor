@@ -176,7 +176,7 @@ const se = P.playerAct(solo.id, 'enter_site', {site: rsite.name});
 ok(!se.ok && /raid/.test(se.error), 'a solo is refused at a raid site: ' + (se.error || '').slice(0, 90));
 // background raiders: the raid muster's rule (5, or 4 in gear 9+)
 ST.SITE.BG_P = 1;
-let raiders = free(8, solo.fac === 0 ? 1 : 0); park(raiders, rsite, 20);
+let raiders = free(8, solo.fac === 0 ? 1 : 0, {party: true}); for (const a of raiders) PA.leaveParty(a); park(raiders, rsite, 20);
 P.markPlayer(solo, false); solo.x = 2; solo.y = 2;
 let tries = 0;
 while (S.sites.list[0].state !== 'locked' && tries < 6) {tries++; const rs = S.sites.list[0];
