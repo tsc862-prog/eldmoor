@@ -22,7 +22,7 @@
 // Plain data, saved with the world on each company: C.props [{id,kind,details,by,at,until,votes,status,result}],
 // C.accept {crypt|raid: gameMin until a passed call stands}, a.splitUntil, a.cryptOk / a.raidOk.
 import {CRYPT,LAIR,REGIONS,zoneAt,dist} from '../world/map.js';
-import {S,clockStr,dayNo} from './state.js';
+import {S,clockStr,dayNo,noOthers} from './state.js';
 import {log} from './chronicle.js';
 import {maxHp} from './heroes.js';
 import {leaveParty,partyMates} from './party.js';
@@ -262,7 +262,7 @@ export function unitDraft(list,pool,n,kind){const top=list.slice(0,n),hit=top.fi
     const out=L.slice();for(const a of top.concat(pool))if(out.length<n&&!inUnit(a)&&!out.includes(a))out.push(a);
     clog(F,'council','The call to '+(kind==='crypt'?CRYPT.name:'raid Kragmaw')+' came; ',gd(F.name),' answers it together.');return out}
   if(ready&&!(F.cool&&F.cool[kind]>S.gameMin)&&!openProps(F).some(P=>P.kind===kind)){const lead=leaderOfC(F);
-    if(lead)propose(lead,kind,kind==='crypt'?'A group is forming for '+CRYPT.name+'; do we all go?':'The faction musters to raid Kragmaw; do we all go?',{src:'call',vote:lead.player?false:reflexVote(lead,{kind})})}
+    if(lead)propose(lead,kind,noOthers()?(kind==='crypt'?CRYPT.name+' waits, and nobody else will go; do we go down?':'Kragmaw waits, and nobody else will rise against it; do we go?'):kind==='crypt'?'A group is forming for '+CRYPT.name+'; do we all go?':'The faction musters to raid Kragmaw; do we all go?',{src:'call',vote:lead.player?false:reflexVote(lead,{kind})})}
   else if(!ready&&!(F.cool&&F.cool['n'+kind]>S.gameMin)){(F.cool||(F.cool={}))['n'+kind]=S.gameMin+COUNCIL.CALL_COOL;
     clog(F,'council','The call to '+(kind==='crypt'?CRYPT.name:'raid Kragmaw')+' came, but not all of ',gd(F.name),' could answer; they stay together.')}
   const out=top.filter(a=>!inUnit(a));for(const a of pool)if(out.length<n&&!inUnit(a)&&!out.includes(a))out.push(a);return out}

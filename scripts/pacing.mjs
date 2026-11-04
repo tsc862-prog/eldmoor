@@ -123,7 +123,25 @@ export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbe
       const j = await r.json(); return j && j.ok && j.brief ? j.brief : null;
     } catch {return null}
   }
-  return {next, brief, turnDone() {lastEnd = Date.now(); since = null}, state: st};
+  // The first turn of a run (#770): wait while the start gate or the DM's prep holds the world, as a paced turn does.
+  // -> {} when it may start, or {dead}/{gone}/{stopped}. An older host, or one that does not answer, never blocks it.
+  async function ready() {
+    let said = false;
+    for (;;) {
+      if (stopped()) return {stopped: true};
+      let r = null;
+      try {
+        const x = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, held: true}), signal: AbortSignal.timeout(8000)});
+        r = x.status === 404 ? null : await x.json().catch(() => null);
+      } catch {r = null}
+      if (!r) return {};
+      if (r.ok === false) {if (r.dead) return {dead: true, why: r.error}; if (r.gone) return {gone: true, why: r.error}; return {}}
+      if (!r.held) return {};
+      if (!said) {said = true; log(`[pace] the world is held (${r.held}): the first turn waits`)}
+      await sleep(1000);
+    }
+  }
+  return {next, ready, brief, turnDone() {lastEnd = Date.now(); since = null}, state: st};
 }
 
 // The state header as prompt text: fresh from the game every turn, so even a lazy model cannot narrate
@@ -145,6 +163,8 @@ export function briefText(b) {
 // The in-sight line (brief.insight, src/sim/sighthero.js, #570): companions and the one you seek, in sight beyond earshot.
 export const sightNote = b => b && typeof b.insight === 'string' && b.insight ? `\nIn sight: ${b.insight.slice(0, 300)}.` : '';
 // The gambit hold (brief.hold, #630): the world waits for this hero's next acting call.
+// Session zero held for members out of range (brief.gather, #771).
+export const gatherNote = b => b && typeof b.gather === 'string' && b.gather ? `\nSESSION ZERO: ${b.gather.slice(0, 200)}` : '';
 export const holdNote = b => b && typeof b.hold === 'string' && b.hold ? `\nTHE WORLD IS HELD FOR YOU by your rule (${b.hold.slice(0, 160)}): nothing moves until you act (any acting tool), at most 2 minutes. Look, then act.` : '';
 export const earshotNote = b => b && typeof b.earshot === 'string' && b.earshot ? `\nIn earshot: ${b.earshot.slice(0, 300)} (the earshot tool tells more).` : '';
 export function talkText(b) {
@@ -162,7 +182,7 @@ export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
 What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return personaNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return gatherNote(b) + personaNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
 // header; when it is done, stale or was never stated, the turn asks first "What are you trying to do now?" (any mind: the
