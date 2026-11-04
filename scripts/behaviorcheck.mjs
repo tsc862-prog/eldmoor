@@ -167,7 +167,7 @@ ok(turns.filter(t => t.seat === 'hero:' + A.id).every(t => t.after && t.after.st
 ok(turns.some(t => t.seat === 'dm' && t.cost === .012), 'the DM turn line carries its cost');
 const want = ['no-aim', 'no-memories', 'no-tool-calls', 'repeated-narration', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
 for (const k of want) ok(kinds.has(k), `anomaly logged: ${k}`);
-ok(world.length >= 6 && world.every(w => Array.isArray(w.members) && w.members.length === 5), `${world.length} hourly digests with the five members`);
+ok(world.length >= 6 && world.every(w => Array.isArray(w.members) && (w.members.length === 5 || (w.deaths || []).length > 0 && w.members.length >= 4)), `${world.length} hourly digests with the five members (one short in the hour a member fell)`);
 const lastW = world[world.length - 1] || {};
 ok(lastW.members && lastW.members.every(m => m.mind && m.state && m.hp != null && m.lvl && m.idleMin != null), 'digest members carry mind, state, HP, level and idle time');
 ok(lastW.members && lastW.members.some(m => m.id === A.id && m.link), 'digest members carry the relay link state');

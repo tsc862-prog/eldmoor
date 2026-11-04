@@ -12,7 +12,7 @@ const {slay, maxHp} = await import('../src/sim/heroes.js');
 const SLT = await import('../src/sim/company.js');
 const {FAC} = await import('../src/data/factions.js');
 const {racesOf} = await import('../src/data/races.js');
-const {CITY, ZONES, zoneAt, zoneFor, zonePoint, dist} = await import('../src/world/map.js');
+const {CITY, ZONES, ZPTS, zoneAt, zoneFor, zonePoint, dist} = await import('../src/world/map.js');
 const {DM_TOOLS} = await import('../src/data/dm-tools.js');
 const {WHEN} = await import('../src/sim/dmwhen.js');
 
@@ -84,7 +84,7 @@ ok(foe && !dmAct('summon_hero', {fac: FN[1], cls: 'Hunter', near: foe.name, why:
 
 // the world's share: away from every company only part of the day's limit is free
 newDay(); field();
-{const {focus} = await import('../src/sim/dmfocus.js'), fo = focus(), z = ZONES.map((n, i) => i).find(i => !fo.zones.has(i) && dist(zonePoint(i, null, home.gate), mem[0]) > 30);
+{const {focus} = await import('../src/sim/dmfocus.js'), fo = focus(), z = ZONES.map((n, i) => i).find(i => !fo.zones.has(i) && ZPTS[i].some(p => dist(p, mem[0]) > 30)); // any region with ground far off: one random point is a coin flip
   const nm = ZONES[z];
   r = dmAct('summon_hero', {fac: FN[0], cls: 'Rogue', level: 3, near: nm, why: 'the world first'});
   ok(r.ok, 'far from the company: the world\'s share' + (r.ok ? '' : ': ' + r.error));

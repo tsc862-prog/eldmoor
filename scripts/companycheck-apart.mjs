@@ -213,7 +213,7 @@ section('E. crypt and raid draft per company (#441, #449/#538)');
   let r = act(ld, 'propose', {kind: 'crypt'});
   const PC = W.P1.props.find(q => q.kind === 'crypt');
   ok(r.ok && PC, 'a green company\'s crypt proposal is never refused for level');
-  ok(PC && /Crypt\. Those who went below were tried blades; you are not\./.test(PC.details), 'the proposal everyone hears carries the warning: ' + (PC && PC.details));
+  ok(PC && /Crypt together\. Those who went below were tried blades; you are not\./.test(PC.details), 'the proposal everyone hears carries the warning: ' + (PC && PC.details));
   ok(!W.P2.props || !W.P2.props.some(q => q.kind === 'crypt'), 'the other pair hears nothing of it');
   {let g2 = 0; while (g2++ < 60 * 40 && PC.status === 'open') {const sc = sf(W.P1); if (sc && sc.phase !== 'frame') for (const a of P) if (sc.ids.includes(a.id) && !sc.acts[a.id]) act(a, 'scene_act', {option: 'yes'}); step(1 / 60)}}
   ok(PC.status === 'passed', 'the company votes to go: ' + PC.result);
