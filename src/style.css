@@ -433,7 +433,16 @@ button.frrh:hover,button.frrh:focus-visible{border-bottom-color:var(--gold)}
 .pfhpt{position:absolute;inset:0;font-size:14px;line-height:12px;text-align:center;color:#fff;text-shadow:1px 1px 0 #000;font-variant-numeric:tabular-nums}
 .pfdo,.pftg,.pfrep{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pftg{color:#ffb060}
-.pftg:empty,.pfrep:empty,.pfchips:empty{display:none}
+.pfdo{min-height:17px}
+/* fixed-height slots: the frame row is the same height in every state (#843) */
+.pfsl{position:relative;overflow:hidden}
+.pfsl1{height:17px}.pfsl2{height:15px}
+.pfsl>*{position:absolute;left:0;right:0;top:0}
+.pfsl1>.pfdown{background:inherit;height:17px}
+.pfsl1>.pfdown:not([hidden])~*,.pfsl1>.pfdown:not([hidden]){z-index:1}
+.pfsl2>.pfchips{flex-wrap:nowrap;overflow:hidden}
+.pfchips:not(:empty)~.pfrep{display:none}
+.pffoot{min-height:15px}
 .pfchips{display:flex;flex-wrap:wrap;gap:3px}
 .chip{font-family:var(--px);font-size:6px;padding:2px 3px;border:1px solid currentColor;letter-spacing:.04em;white-space:nowrap}
 .chip.c-good{color:#9ad0ff} .chip.c-bad{color:var(--red)} .chip.c-dim{color:var(--dim)} .chip.c-crypt{color:#c58cff} .chip.c-warn{color:var(--amber)} .chip.c-oath{color:var(--gold)}
@@ -457,7 +466,7 @@ button.runbtn.off{opacity:.55}
   .pf{font-size:14px;padding:3px 4px}
   .pfport{width:20px;height:24px}
   .pfname{font-size:7px}
-  .pftg,.pfrep,.pfchips{display:none}
+  .pfsl{display:none}
 }
 /* the World group: the world panels, folded under one heading while a Fellowship rides */
 .worldgrp{border-style:dashed}
@@ -624,6 +633,13 @@ button.tbtn.danger{border-color:var(--red)}
 .dmseat .dmnotes{margin-left:auto}
 .dmfdo{color:#d9c27a;overflow-wrap:anywhere}
 .dmfdo:empty,.dmfstg:empty{display:none}
+/* calm (#848): one line while the seat is healthy; counters and the runner line behind Details, everything on an alert */
+.dmfsum{margin-left:auto}
+.dmfmore{font-size:6px;padding:2px 4px}
+.dmf.calm .dmfdo,.dmf.calm .dmfact,.dmf.calm .dmffol,.dmf.calm .dmfstg{display:none}
+.dmf.calm .dmffull{flex-direction:row;align-items:center;flex-wrap:wrap;gap:3px 10px}
+.dmf.calm .dmffoot{margin-left:0}
+.dmf:not(.calm) .dmfsum{display:none}
 .dmfact,.dmffol,.dmfstg{color:var(--dim);overflow-wrap:anywhere}
 .dmffoot{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .dmfrun{min-width:0;flex:1 1 auto}

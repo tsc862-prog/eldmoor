@@ -1595,5 +1595,15 @@ console.log('page watchdog');
   ok(/page busy \(no answer for 16\.2 s\)/.test(ML.mindLabel(a).text),'a relay time-out on a silent page reads page busy as well: '+ML.mindLabel(a).text);
   PW.resetPageWatch();ok(ML.linkOf(a)==='connected','once it passes the label is live again');
   BR.bridgeFeed(null);PW.setPageLog(null)}
+// ---- #843/#848: the frame row never changes height; the DM bar is one line while calm ----
+{const fs=await import('node:fs'),css=fs.readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  const shape=()=>[...$('frames').querySelectorAll('.pf[data-hid]')].map(f=>f.children.map(c=>c.className.split(' ')[0]).join(','));
+  uiFast();const before=shape();ok(before.length>0&&before.every(x=>x==='pfkey,pftop,meter,purp,pfsl,pfsl,pffoot'),'frames: the same six parts in every frame ('+before[0]+')');
+  const f0=$('frames').querySelector('.pf[data-hid]'),sl=f0.querySelectorAll('.pfsl');
+  ok(sl.length===2&&sl[0].querySelector('.pftg')&&sl[0].querySelector('.pfdown')&&sl[1].querySelector('.pfchips')&&sl[1].querySelector('.pfrep'),'frames: target and downed share one fixed slot, chips and the replacement line the other');
+  ok(!/\.pf(tg|rep|chips):empty\{display:none\}/.test(css)&&/\.pfsl1\{height:17px\}/.test(css)&&/\.pfsl2\{height:15px\}/.test(css),'frames: nothing collapses when empty; the slots have fixed heights');
+  const m=sim.S.mobs.find(x=>x.alive&&!x.gone),a=sim.S.agents.find(x=>x.company!=null&&x.state!=='dead'&&!x.hidden);
+  if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
+  ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
