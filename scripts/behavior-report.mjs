@@ -114,14 +114,14 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   // ---- per seat ----
   L.push('## Per-seat health', '');
   const seats = new Map();
-  for (const t of T) {const k = t.seat || '?'; let s = seats.get(k); if (!s) seats.set(k, s = {seat: k, name: t.hero && t.hero.name || (k === 'dm' ? 'DM' : k), minds: new Set(), n: 0, empty: 0, repeat: 0, foreign: 0, stale: 0, refused: 0, calls: 0, failed: 0, secs: [], tin: [], tout: [], cr: [], cost: 0, costKnown: false, last: null, lastNarr: null});
+  for (const t of T) {const k = t.seat || '?'; let s = seats.get(k); if (!s) seats.set(k, s = {seat: k, name: t.hero && t.hero.name || (k === 'dm' ? 'DM' : k), minds: new Set(), n: 0, empty: 0, repeat: 0, foreign: 0, chatbot: 0, stale: 0, refused: 0, calls: 0, failed: 0, secs: [], tin: [], tout: [], cr: [], cost: 0, costKnown: false, last: null, lastNarr: null});
     s.n++; s.minds.add(mind(t)); const f = new Set(t.flags || []);
-    if (f.has('empty')) s.empty++; if (f.has('repeat')) s.repeat++; if (f.has('foreign')) s.foreign++; if (f.has('stale')) s.stale++; if (f.has('refused')) s.refused++;
+    if (f.has('empty')) s.empty++; if (f.has('repeat')) s.repeat++; if (f.has('foreign')) s.foreign++; if (f.has('chatbot')) s.chatbot++; if (f.has('stale')) s.stale++; if (f.has('refused')) s.refused++;
     s.calls += t.calls || 0; s.failed += t.failed || 0; s.secs.push(t.seconds); if (legacyTokens(t)) s.legacy = (s.legacy || 0) + 1; else {s.tin.push(t.tokensIn); s.tout.push(t.tokensOut); s.cr.push(t.cacheRead)}
     if (Number.isFinite(t.cost)) {s.cost += t.cost; s.costKnown = true}
     s.last = t.ts; if (t.narration) s.lastNarr = t.narration}
-  L.push(table(['seat', 'who', 'mind', 'turns', 'empty', 'repeat', 'foreign', 'stale', 'refused', 'calls (failed)', 'avg s', 'tokens in/out per turn', 'cache read per turn', 'cost', 'last turn'],
-    [...seats.values()].map(s => [s.seat, s.name, [...s.minds].join(', '), s.n, pct(s.empty, s.n), s.repeat, s.foreign, s.stale, s.refused, `${s.calls} (${s.failed})`, f1(avg(s.secs)), `${f1(avg(s.tin))} / ${f1(avg(s.tout))}`, f1(avg(s.cr)), s.costKnown ? money(s.cost) : '-', (s.last || '').slice(0, 19)])), '');
+  L.push(table(['seat', 'who', 'mind', 'turns', 'empty', 'repeat', 'foreign', 'chatbot', 'stale', 'refused', 'calls (failed)', 'avg s', 'tokens in/out per turn', 'cache read per turn', 'cost', 'last turn'],
+    [...seats.values()].map(s => [s.seat, s.name, [...s.minds].join(', '), s.n, pct(s.empty, s.n), s.repeat, s.foreign, s.chatbot, s.stale, s.refused, `${s.calls} (${s.failed})`, f1(avg(s.secs)), `${f1(avg(s.tin))} / ${f1(avg(s.tout))}`, f1(avg(s.cr)), s.costKnown ? money(s.cost) : '-', (s.last || '').slice(0, 19)])), '');
   for (const s of seats.values()) if (s.lastNarr) L.push(`- ${s.name}, last narration: "${q(s.lastNarr, 200)}"`);
   L.push('');
 
