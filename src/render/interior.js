@@ -191,9 +191,11 @@ function roomEdge(ctx,m,r,px1){const ok=(x,y)=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+
 // box: {x, y, w, h} in device px. Returns the fit {sc, ox, oy} so the caller can map pointer positions later.
 // The view's framing (#742): the whole dungeon, or, while a round is played, the chamber in progress close up; eased between.
 const ZM={m:null,cx:0,cy:0,sc:0,last:-1};
-function frameOf(box,m,cv,now){const fit=(w,h)=>{let s=Math.min(box.w/(w*T),box.h/(h*T));if(s>=2)s=Math.floor(s);else if(s>1)s=Math.floor(s*4)/4;return s};
+function frameOf(box,m,cv,now){const fit=(w,h)=>{let s=Math.min(box.w/(w*T),box.h/(h*T));if(s>=2)s=Math.floor(s*2)/2;else if(s>1)s=Math.floor(s*4)/4;return s}; // half steps from 2 up keep the 2x art whole (2 art px a unit) and lose less of the pane than whole steps
   let cx=m.w*T/2,cy=m.h*T/2,sc=fit(m.w,m.h);
-  if(cv.live){const r=m.rooms[cv.room];if(r){cx=(r.x+r.w/2)*T;cy=(r.y+r.h/2+.35)*T;sc=Math.max(sc,Math.min(fit(r.w+7,r.h+5.5),8))}} // the room with a margin for names and the summary
+  if(cv.live){const r=m.rooms[cv.room];if(r){cx=(r.x+r.w/2)*T;cy=(r.y+r.h/2+.35)*T;sc=Math.max(sc,Math.min(fit(r.w+7,r.h+3.6),8));
+    // a wide pane: when the chamber is tall for it, widen the frame to take the lit way in (the room before) if it fits at this scale
+    const q=m.rooms[cv.room-1];if(q&&box.w/(sc*T)>=Math.max(r.x+r.w,q.x+q.w)-Math.min(r.x,q.x)+4){const x0=Math.min(r.x,q.x),x1=Math.max(r.x+r.w,q.x+q.w);cx=(x0+x1)/2*T}}} // the room with a margin for names and the summary
   const dt=ZM.last<0?1:Math.min(1,Math.max(0,now-ZM.last));ZM.last=now;
   if(ZM.m!==m||dt>.75||!ZM.sc){ZM.m=m;ZM.cx=cx;ZM.cy=cy;ZM.sc=sc}
   else{const k=1-Math.exp(-dt*7);ZM.cx+=(cx-ZM.cx)*k;ZM.cy+=(cy-ZM.cy)*k;ZM.sc+=(sc-ZM.sc)*k;if(Math.abs(ZM.sc-sc)<.01&&Math.abs(ZM.cx-cx)<.3&&Math.abs(ZM.cy-cy)<.3){ZM.sc=sc;ZM.cx=cx;ZM.cy=cy}}
