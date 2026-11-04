@@ -26,6 +26,7 @@
 //   - World-changing tools are rate limited (RATE per game hour).
 // Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
+import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
 import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
@@ -916,6 +917,7 @@ const T={
       weather:weatherName(z),you:{hp:pct(a.hp,maxHp(a))+'%',state:a.state,doing:a.playDoing||null},sight:here?'the whole town':Math.round(sightOf(a))+' tiles',...s};
     const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv;
     const near=LANDMARKS.filter(l=>dist(a,l)<20).map(l=>l.name+' ('+r1(dist(a,l))+' tiles)');if(near.length)r.landmarks=near;
+    {const road=roadLook(a);if(road.length)r.on_the_road=road} // carts, travellers and guards in sight, in words (#796)
     {const f=followLine(a);if(f)r.following=f;const by=followersOf(a);if(by.length)r.walks_with_you=by.map(b=>b.name+' walks with you')} // follow (#445)
     lookSnap(a);return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);

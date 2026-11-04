@@ -87,3 +87,4 @@
 - [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap
 - [Wait is not progress #790](wait_not_progress.md) — wait cap 240, level condition -> hunt, 12 h town-idle guard, refusals list the board
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
+- [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
