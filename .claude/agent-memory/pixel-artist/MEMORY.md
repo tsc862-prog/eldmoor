@@ -9,3 +9,4 @@
 - [Towns and landmarks](towns.md) — #177 slice 3: townart.js pieces, faction styles in data/townart.js, wall is tile kind, Node raster check
 - [Site dungeon view](sitesview.md) — #642 themed site interiors, per-dungeon keys, staging a site crawl shot
 - [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes
+- [Sprite sheets](spritesheets.md) — #711 post-sheet.mjs: figures from the full image (no pixel grid), layout/key rejection, staging a sheets shot
