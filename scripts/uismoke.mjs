@@ -54,6 +54,14 @@ tick(120);
 const busy=ranked().slice().sort((a,b)=>(b.history||[]).length-(a.history||[]).length)[0];
 select(busy);setView('follow');tick(1);
 
+// Log tags (#785): outcomes carry no source, decisions keep who drove the hero
+{const {record}=await import('../src/sim/history.js');const f={player:true,name:'T',history:[]};
+  record(f,'Reached level 2.');record(f,'Slew ',{t:'a wolf',c:'gd'},'.');record(f,'Fell at level 3, slain by a wolf.');record(f,'Looted ',{t:'Axe'},' from a wolf.');
+  record(f,'Set out for Highgate.');record(f,'Took a job: x.');
+  ok(f.history.slice(0,4).every(e=>!('src' in e)),'log: outcome lines (level, slew, fell, looted) carry no source');
+  ok(f.history[4].src==='agent'&&f.history[5].src==='agent','log: decision lines of an agent hero keep the agent tag');
+  record(f,'Went down at level 3 to a wolf.');ok(!('src' in f.history[6]),'log: a downing carries no source')}
+
 // Scroll a list, tick, check it held. get() re-finds the list after the tick (a rebuilt list would be a new node).
 // ranked: rows move by rank, so only the scroll position must hold
 function holds(name,get,{sec=20,min=3,ranked=false}={}){let n=get();
