@@ -192,6 +192,7 @@ jobs:
       - {name: Pay and mark tools, run: npm run paymarkcheck}
       - {name: Wish tool for the builders (DM and heroes), run: npm run wishcheck}
       - {name: Hire tool, run: npm run hirecheck}
+      - {name: Companion voice (scripted companions voiced by the DM), run: npm run compvoicecheck}
       - {name: Challenge tool (honour duels at the table), run: npm run challengecheck}
       - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
       - {name: DM voices long-poll and answer in time (issue 680), run: npm run voicecheck}

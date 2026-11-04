@@ -25,6 +25,7 @@ import {S} from '../sim/state.js';
 import {classColor,DISP,toneOf} from '../core/colors.js';
 import {drawConditions} from './conditions.js';
 import {drawFoes} from './dgfoes.js';
+import {crawlView,crawlLight,drawCrawl,crawlSummary} from './crawlview.js'; // the crawl as it is played (#742)
 import {maxHp} from '../sim/heroes.js';
 import {spokenOf,unrole} from '../core/spoken.js';
 import {slotted} from '../sim/company.js'; // the slotted company (#588)
@@ -188,10 +189,20 @@ function roomEdge(ctx,m,r,px1){const ok=(x,y)=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+
 
 // ---- one frame ----
 // box: {x, y, w, h} in device px. Returns the fit {sc, ox, oy} so the caller can map pointer positions later.
+// The view's framing (#742): the whole dungeon, or, while a round is played, the chamber in progress close up; eased between.
+const ZM={m:null,cx:0,cy:0,sc:0,last:-1};
+function frameOf(box,m,cv,now){const fit=(w,h)=>{let s=Math.min(box.w/(w*T),box.h/(h*T));if(s>=2)s=Math.floor(s);else if(s>1)s=Math.floor(s*4)/4;return s};
+  let cx=m.w*T/2,cy=m.h*T/2,sc=fit(m.w,m.h);
+  if(cv.live){const r=m.rooms[cv.room];if(r){cx=(r.x+r.w/2)*T;cy=(r.y+r.h/2+.35)*T;sc=Math.max(sc,Math.min(fit(r.w+7,r.h+5.5),8))}} // the room with a margin for names and the summary
+  const dt=ZM.last<0?1:Math.min(1,Math.max(0,now-ZM.last));ZM.last=now;
+  if(ZM.m!==m||dt>.75||!ZM.sc){ZM.m=m;ZM.cx=cx;ZM.cy=cy;ZM.sc=sc}
+  else{const k=1-Math.exp(-dt*7);ZM.cx+=(cx-ZM.cx)*k;ZM.cy+=(cy-ZM.cy)*k;ZM.sc+=(sc-ZM.sc)*k;if(Math.abs(ZM.sc-sc)<.01&&Math.abs(ZM.cx-cx)<.3&&Math.abs(ZM.cy-cy)<.3){ZM.sc=sc;ZM.cx=cx;ZM.cy=cy}}
+  return ZM}
 export function drawInterior(ctx,box,m,st,now,dpr=1){
-  const tex=interiorTexture(m);let sc=Math.min(box.w/(m.w*T),box.h/(m.h*T));if(sc>=2)sc=Math.floor(sc);else if(sc>1)sc=Math.floor(sc*4)/4;
-  const ox=Math.round(box.x+(box.w-m.w*T*sc)/2),oy=Math.round(box.y+(box.h-m.h*T*sc)/2);
-  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;ctx.drawImage(tex,0,0,tex.width,tex.height,ox,oy,Math.round(m.w*T*sc),Math.round(m.h*T*sc));
+  const tex=interiorTexture(m),cv=crawlView(m,st,now),play=cv.live; // a round in progress: members on the spots their acts name, the foes at the den, the beats (render/crawlview.js)
+  const Z=frameOf(box,m,cv,now),sc=Z.sc,ox=Math.round(box.x+box.w/2-Z.cx*sc),oy=Math.round(box.y+box.h/2-Z.cy*sc);
+  ctx.setTransform(1,0,0,1,0,0);ctx.save();ctx.beginPath();ctx.rect(box.x,box.y,box.w,box.h);ctx.clip(); // close up, the rest of the map is cut at the box
+  ctx.imageSmoothingEnabled=false;ctx.drawImage(tex,0,0,tex.width,tex.height,ox,oy,Math.round(m.w*T*sc),Math.round(m.h*T*sc));
   ctx.setTransform(sc,0,0,sc,ox,oy);
   // flickering light from candles and braziers in rooms the party can see
   const G=glowSprite(),reached=st.fog;ctx.globalCompositeOperation='lighter';
@@ -199,7 +210,8 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
     const f=.75+.25*Math.sin(now*7+p.x*1.7+p.y),R=P.light==='crypt'||P.light==='cold'?44:30,wall=m.tiles[p.y*m.w+p.x]===IT.WALL;ctx.globalAlpha=f;
     if(wall){ctx.save();ctx.beginPath();ctx.rect(0,p.y*T,m.w*T,m.h*T);ctx.clip()} // a wall torch lights the room, not the dark above its wall
     ctx.drawImage(G[P.light],p.x*T+8-R,p.y*T+8-R,R*2,R*2);if(wall)ctx.restore()}
-  if(st.party&&st.party.length){const pp=partySpot(m,st);ctx.globalAlpha=.7;ctx.drawImage(G.warm,pp.x*T-52,pp.y*T-52,104,104)} // the party's torches
+  if(play)crawlLight(ctx,G,cv); // the lit pool follows the party; the den is lit enough to read
+  else if(st.party&&st.party.length){const pp=partySpot(m,st);ctx.globalAlpha=.7;ctx.drawImage(G.warm,pp.x*T-52,pp.y*T-52,104,104)} // the party's torches
   ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   if(reached>=0&&reached<m.rooms.length-1)ctx.drawImage(fogOf(m,reached),0,0,m.w*T,m.h*T);
   // chamber marks: the boss skull (always), cleared badges, the chamber in progress
@@ -210,13 +222,14 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
       for(const [a,b] of [[1,4],[2,5],[3,6],[4,5],[5,4],[6,3],[7,2]])ctx.fillRect(r.x*T+r.w*T-11+a,r.y*T+2+b,2,1)}
     if(r.boss)skull(ctx,Math.round(r.cx*T)-4,Math.round(r.y*T-5-13*px1-12),1); // above the chamber's name, fog or not
     if(st.cur===r.i){ctx.save();ctx.strokeStyle=D.cur;ctx.globalAlpha=pulse;ctx.lineWidth=2*px1;roomEdge(ctx,m,r,px1);ctx.restore()}} // the outline sits inside the floor, so the wall faces never hide it
-  drawFoes(ctx,m,st,now,dpr,sc,PS); // the live crawl's foes with their HP bars (render/dgfoes.js)
+  if(!play)drawFoes(ctx,m,st,now,dpr,sc,PS); // the live crawl's foes with their HP bars (render/dgfoes.js); a round in progress draws its own
   // the hand that rests on a chamber (hover or pinned), and a cross where a hero fell on the last run
   for(const r of m.rooms){const hot=st.hover===r.i||st.pin===r.i;if(hot){ctx.save();ctx.strokeStyle=st.pin===r.i?D.cur:'#ffffff';ctx.globalAlpha=st.pin===r.i?.9:.5;ctx.lineWidth=px1;ctx.setLineDash([3,3]);ctx.strokeRect(r.x*T+3*px1,r.y*T+3*px1,r.w*T-6*px1,r.h*T-6*px1);ctx.restore()}}
   if(st.falls)for(const q of st.falls){const r=m.rooms[q.room];if(!r)continue;const gx=r.x*T+4+q.k*8,gy=r.y*T+r.h*T-12;
     ctx.fillStyle=MARK.edge;ctx.fillRect(gx-1,gy-1,7,11);ctx.fillStyle='#b8b4c8';ctx.fillRect(gx+2,gy,1,8);ctx.fillRect(gx,gy+2,5,1);ctx.fillStyle='#e0584a';ctx.fillRect(gx+2,gy+8,1,1)}
   // the party, outlined hero sprites in a line facing the chamber; they step while a scene is playing
-  if(st.party&&st.party.length){const pp=partySpot(m,st),n=st.party.length,fr=st.busy?Math.floor(now*2.2)&1:0;
+  if(play)drawCrawl(ctx,m,cv,now,dpr,sc,PS);
+  else if(st.party&&st.party.length){const pp=partySpot(m,st),n=st.party.length,fr=st.busy?Math.floor(now*2.2)&1:0;
     st.party.forEach((a,k)=>{const s=outlined(heroSprite(a,false,(fr+k)&1&&st.busy?1:0)),x=Math.round((pp.x+(k-(n-1)/2)*1.05)*T-s.width/2),y=Math.round(pp.y*T+(k&1?3:0)-s.height);
       ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x+s.width/2,y+s.height-1,5,1.5,0,0,7);ctx.fill();ctx.drawImage(s,x,y);
       if(st.foes){const mh=maxHp(a),f=mh>0?Math.max(0,Math.min(1,a.hp/mh)):1,bx=x+(s.width>>1)-5,by=y-2; // a small health bar while foes stand in the room
@@ -229,7 +242,8 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
     text(ctx,name,r.cx*T,r.y*T-5,col,13,dpr,sc);
     if(cur&&st.round)text(ctx,st.round,r.cx*T,r.y*T+r.h*T+12,D.cur,12,dpr,sc);
     if(cur&&st.foeText)text(ctx,st.foeText,r.cx*T,r.y*T+r.h*T+12+13*dpr/sc,DISP.hostile.color,12,dpr,sc)}
-  ctx.setTransform(1,0,0,1,0,0);return {sc,ox,oy}}
+  {const line=play&&crawlSummary(cv),r=line&&m.rooms[cv.room];if(r)text(ctx,line,r.cx*T,r.y*T+r.h*T+12+(st.cur===cv.room?(st.foeText?26:13)*dpr/sc:0),'#d8d0e0',12,dpr,sc)} // the last round, in words, under its room
+  ctx.restore();ctx.setTransform(1,0,0,1,0,0);return {sc,ox,oy}}
 
 // Where the party stands: in its room, a little below the middle (clear of the boss dais), or on the stair.
 function partySpot(m,st){const i=st.spot!=null?st.spot:st.cur,r=m.rooms[Math.max(0,Math.min(m.rooms.length-1,i<0?0:i))];
