@@ -17,6 +17,7 @@ import {inSlots,slotted} from './company.js';
 import {sceneOf} from './scenes.js';
 
 export const ASIDE={WHISPER:2,WHISPER_LEN:200,WHISPER_PER_HOUR:6,EMOTE_LEN:120,EMOTE_PER_HOUR:10,SAME:.8};
+const MSG_EMOTE_SAME='You already did that. Do something else, speak, or wait.';
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.';
 const r1=v=>Math.round(v*10)/10;
 const push=(b,e)=>{(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()};
@@ -66,12 +67,15 @@ export function emoteAct(a,{text}){
   if(!t)return fail('Emote what? emote takes text: a short act, like "spits in the fire".');
   if(t.length>ASIDE.EMOTE_LEN)return fail('Too long: keep an emote under '+ASIDE.EMOTE_LEN+' characters (this was '+t.length+').');
   if(notEnglish(t))return fail(ENGLISH);
+  const R=a.emoteSaid||(a.emoteSaid=[]); // the same repeat rule as say (#801): one of the last 5 emotes or lines, or 80% alike
+  if(R.some(s=>sameLine(s,t))||(a.talkSaid||[]).some(s=>sameLine(s,t)))return fail(MSG_EMOTE_SAME);
   const lim=allow(a,'emoteAt',ASIDE.EMOTE_PER_HOUR,'gestures');if(lim)return fail(lim);
-  a.emoteAt.push(S.gameMin);
+  a.emoteAt.push(S.gameMin);R.push(t);if(R.length>5)R.shift();
   const hs=sayHearers(a),fh=fhOf(a,hs);
   const e=tagAgent(a,stampE(a,t,{emote:true}));if(S.table&&S.table.ctx)e.scene=true;if(fh)e.fh=true;
   push(a,e);for(const b of hs)push(b,e);
   a.bubble={text:'*'+t+'*',life:BUBBLE*2,...(fh?{fh:true}:{})};
+  if(!hs.length)return {ok:true,emoted:t,seen_by:[],act:false,note:'no one is near to see it'}; // an unseen act changes nothing in the world (#801)
   return {ok:true,emoted:t,seen_by:hs.map(x=>x.name)}}
 
 // Earshot's whisper line: who is close enough to whisper to.
