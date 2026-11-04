@@ -80,3 +80,4 @@
 - [Check flakes](check-flakes.md) — #324/#378 hunt: SAVECHECK_SEED, crawlcheck PARTS, upcheck lock, not reproduced
 - [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons
 - [DM every mind](dm-every-mind.md) — #824 PROVIDERS one list, compat DM, mindSwitched, budget in waits, fitTools 1024, dm-mind-cases, pitfalls
+- [Role words](role-words.md) — #863 placeWord(cls): class word for a company place, never Tank/Healer/Damage; personacheck guard
