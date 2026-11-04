@@ -64,6 +64,7 @@ import {openScene,sceneFor} from './table.js';
 import {campCraft,fireRecipes} from './craft.js'; // cooking and brewing at the fire (#258)
 import {sceneOf} from './scenes.js';
 import {reflexMay} from './runlink.js';
+import {compLine} from './compvoice.js'; // scripted companions of an agent company: the DM's voice (#764)
 import {advCampable} from './dm.js'; // a night camp may fall between an adventure's scenes (#325)
 
 export const CAMP={
@@ -241,9 +242,11 @@ function talk(F,g,L){if(L.length<2)return;
   const finish=()=>{
     if(topic==='quarrel'){g.stats.quarrels++;for(const [x,y] of [[sp,other],[other,sp]]){x.bonds=x.bonds||{};x.bonds[y.id]=Math.max(-10,bond(x,y)-1)}
       stanceEvent(sp,other,'Snapped at '+other.name+' round the fire.');stanceEvent(other,sp,'Was sharp with me round the fire.');
-      const rp=QUARREL_REPLY[Math.floor(hash(h,other.id,12)*QUARREL_REPLY.length)%QUARREL_REPLY.length];if(reflexMay(other))partySay(other,rp)
+      const rp=QUARREL_REPLY[Math.floor(hash(h,other.id,12)*QUARREL_REPLY.length)%QUARREL_REPLY.length];if(!compLine(other,{to:[sp],trigger:'quarrel',from:sp,zone:zn})&&reflexMay(other))partySay(other,rp) // a companion of an agent company answers back through the DM's voice (#764)
       campaign(F,'camp',sp,' and ',other,' snap at each other over the fire, then let it lie.')}
     else if(topic==='song'||topic==='story')campaign(F,'camp',sp,topic==='song'?' leads a song round the fire.':' tells a story round the fire.')};
+  // a scripted companion riding with an agent company speaks through the DM's voice, remembers and never repeats (#764)
+  {const v=compLine(sp,{to:others,trigger:'camp',topic,from:other,zone:zn});if(v){if(v.said!=='silent')finish();return}}
   if(asked){const gen=g.start;askRelay('say',snapshotFor(sp,'say',{trigger:'camp',ctx:{topic,place:zn,kind:g.why}}),4000).then(j=>{
       const t=j&&cleanLine(j.line),c=F.camp;if(!c||c.start!==gen||sp.state!=='camp')return;say(t||text)}).catch(()=>{});finish()}
   else{say(text);finish()}}
