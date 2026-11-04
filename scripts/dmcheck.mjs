@@ -67,6 +67,7 @@ const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {ZONES, ZPTS, zoneAt, LANDMARKS} = await import('../src/world/map.js');
+const {spotErr: SPOTERR} = await import('../src/sim/levers.js');
 (await import('../src/sim/outposts.js')).OP.ON = false; // the DM scenarios below set their own fixtures; contested outposts (#11) move hunters and would shift them (outposts have their own check)
 // a spot well inside its region (not within 11 tiles of a border): a staged cast lands 6-10 tiles away, and over a border it would stand in ground far above a level-2 party, which changes which refusal comes first
 const awayFromSites = p => LANDMARKS.every(l => Math.hypot(p.x - l.x, p.y - l.y) > 9); // a fixture spot never sits on the Crypt or the lair (a pull there is refused for its own reasons)
@@ -92,6 +93,7 @@ if (process.argv[2] === '--opening') {
   init({fellowship: false}); run(10);
   SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); setDmSeat(true); sim.setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
   if (!closed) {const D = S.dmAgent; D.notes.plans.push({id: 9001, title: 'The Lanterns', text: 'PREMISE-PLANTED the road lights are failing.', tags: ['premise'], pin: true}, {id: 9002, title: 'Opening beats', text: 'Day 1: a dark shrine.', tags: ['openings']})}
+  {const L = F_.slotHeroes(SLT.slotted()); for (const a of L) {a.x = L[0].x; a.y = L[0].y}} // founded mid-world: session zero waits for members out of range (#771)
   A.planOpening(); step(1 / 60); const sc = S.table;
   let call = null, k = 0; while (S.table && S.table.phase === 'frame' && k++ < 600) {if (!closed) dmAct('table_call'); step(1 / 60)}
   if (!closed) {const t = dmAct('table_call'); call = t.call; if (call) dmAct('table_answer', {call: call.id, text: 'The hall smells of wet wool and lamp oil.'})}
@@ -342,6 +344,13 @@ console.log('when and watch (scripts/dmwhen-test.mjs)');
   const n = (out.match(/^\s+ok /gm) || []).length;
   ok(k.status === 0 && /WHEN OK/.test(out), `when and watch: ${n} checks (set, list, cancel, every trigger, firing through the same tools, expiry, refused at fire time, caps, reserve, save/restore, the runner's wake)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
 
+// ---------------------------------------------------------------- 0b. summon_hero (issue #780), in a world of its own
+console.log('summon_hero (scripts/summon-test.mjs)');
+{const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'summon-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
+  for (const l of out.split(/\r?\n/)) if (/^\s+FAIL /.test(l)) console.error(l);
+  const n = (out.match(/^\s+ok /gm) || []).length;
+  ok(k.status === 0 && /SUMMON OK/.test(out), `summon_hero: ${n} checks (one scripted hero at the level asked, its caps and refusals, the DM log, the companies' reserve, a when, no replacement, save/restore)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
+
 // ---------------------------------------------------------------- 1. the DM tools in the sim
 console.log('the DM tools');
 init({fac: 0}); run(60);
@@ -497,6 +506,16 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
     'post_hook posts through the lever: on ' + hall + '\'s board, by dm-agent, the reason in the DM log, one pull counted' + (r.ok ? '' : ': ' + r.error));
   r = dmAct('post_hook', {town: 'fellowship', tpl: 'hunt', reason: 'a beast near their camp'});
   ok(r.ok && S.adventures.some(h => h.id === r.effect.hook && CITY.some(c => c.name === h.town)), 'post_hook town "fellowship" takes the nearest board' + (r.ok ? '' : ': ' + r.error));
+  // a goods job (#720): the same tool, a goods template as tpl; it lands on S.supply, never on the adventure board
+  S.supply = []; const nAdv = S.adventures.length, pulls0 = S.dmAgent.day.pulls;
+  r = dmAct('post_hook', {town: hall, tpl: 'draughts', reward: 'generous', reason: 'the chapel is out of draughts'});
+  const gj = r.ok && (S.supply || []).find(j => j.id === r.effect.hook);
+  ok(r.ok && gj && gj.town === hall && gj.by === 'dm-agent' && gj.want.id === 'Redroot Draught' && S.adventures.length === nAdv && lastLever().detail.lever === 'post_hook' && lastLever().detail.result === 'applied',
+    'post_hook with tpl draughts posts a goods job by dm-agent (wants ' + (gj && gj.want.n + ' ' + gj.want.id) + '), logged as a post_hook pull' + (r.ok ? '' : ': ' + r.error));
+  dmAct('post_hook', {town: hall, tpl: 'ore', reason: 'the forge is cold'}); r = dmAct('post_hook', {town: hall, tpl: 'perch', reason: 'a third'});
+  ok(r.ok === false && /goods jobs/.test(r.error), 'a third goods job on one board is refused: ' + (r.error || '').slice(0, 90));
+  r = dmAct('withdraw_hook', {hook: gj.id, reason: 'the chapel found a supplier'}); ok(r.ok && !S.supply.some(j => j.id === gj.id), 'withdraw_hook takes a goods job down');
+  S.supply = []; S.dmAgent.day.pulls = pulls0; // the goods pulls above are not the cap check's business
   r = dmAct('post_hook', {town: hall, reason: 'no template'});
   const viaPull = dmAct('pull_lever', {lever: 'post_hook', params: {town: hall}, reason: 'no template'});
   ok(r.ok === false && /^Refused: tpl is required/.test(r.error) && /post_hook takes: town/.test(r.error) && /post_hook takes params: town/.test(r.error) && r.usage,
@@ -529,7 +548,8 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
     'mark_place near the Fellowship puts a shrine on open ground by them' + (r.ok ? ' at ' + r.at.x + ',' + r.at.y : ': ' + r.error));
   const zl = zoneAt(pl.x, pl.y);
   r = dmAct('mark_place', {kind: 'ruin', near: 'the lantern stone', reason: 'a second marker in that region'});
-  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: {x: pl.x + 4, y: pl.y}}, reason: 'a second marker in that region'});
+  const at2 = [[4, 0], [-4, 0], [0, 4], [0, -4], [3, 3], [-3, -3], [3, -3], [-3, 3]].map(([dx, dy]) => ({x: pl.x + dx, y: pl.y + dy})).find(p => !SPOTERR(p, {region: zl})) || {x: pl.x + 4, y: pl.y}; // ground the lever would take, so the cooldown is what refuses it
+  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: at2}, reason: 'a second marker in that region'});
   ok(r.ok === false && /^Refused: cooldown/.test(r.error) && pv.ok === false && /^Refused: cooldown/.test(pv.error) && !r.usage, 'a second mark_place in ' + ZONES[zl] + ' meets the lever\'s cooldown, as pull_lever does: ' + r.error);
   r = dmAct('mark_place', {kind: 'ruin', near: '0,0', reason: 'off the map'});
   ok(r.ok === false && /no open ground at 0,0/.test(r.error) && /mark_place needs at: a point/.test(r.error), 'mark_place on bad ground says what the lever needed: ' + r.error.slice(0, 100));
@@ -864,7 +884,7 @@ console.log('NPC conversations');
   r = dmAct('npc_offer', {npc: String(capt.id), kind: 'combat', text: 'Guards! Take them!'});
   ok(r.ok === false && /badly hurt/.test(r.error) && !(A.chat || []).some(e => /Take them/.test(e.text)), 'a hostile follow-up is refused while a member is badly hurt (and the line is not spoken)');
   B.hp = maxHp(B); if (S.staged) {S.staged.day.n = 0; if (S.staged.cur) S.staged.cur.phase = 'done'}
-  r = dmAct('npc_offer', {npc: String(capt.id), kind: 'combat', text: 'Then pay in blood.', frame: 'At a whistle, beasts break from the brush outside the gate and bar the way.'});
+  r = dmAct('npc_offer', {npc: String(capt.id), kind: 'combat', text: 'Then pay in blood.', frame: 'At a whistle, beasts and vermin break from the brush outside the gate and bar the way.'});
   ok(r.ok && r.mark === '[combat]' && S.staged.cur && S.staged.cur.kind === 'ambush' && capt.hostile && capt.mood === 'hostile' && /outside the .* gate/.test(r.hint),
     'npc_offer combat in town stages an ambush outside the gate; the person is hostile (mood hostile, hostile true)' + (r.ok ? '' : ': ' + r.error));
   if (S.staged && S.staged.cur) S.staged.cur.phase = 'done';
@@ -909,6 +929,25 @@ console.log('NPC conversations');
   ok(sm2.fmem && sm2.fmem.notes.length && typeof sm2.warmth === 'number' && S.talks && S.talks.past.length, 'the people\'s records and the conversations survive snapshot -> JSON -> restore');
   if (cap2.hostile) ok(cap2.mood === 'hostile', 'a hostile person stays hostile after a reload');
   away(); clear()}
+
+// ---------------------------------------------------------------- 1b. the prep clock (issue #733)
+console.log('the prep clock starts at the DM\'s first call');
+{const PR = await import('../src/sim/prep.js'); let clk = 0; PR.setPrepClock(() => clk); PR.resetPrep();
+  PR.beginPrep('opening'); let v = PR.prepView();
+  ok(v.state === 'running' && v.started === false && v.seconds === 0 && v.seconds_left === PR.PREP.MS / 1000, 'at the gate the prep waits for its DM: no clock yet (' + JSON.stringify(v) + ')');
+  clk = 60000; PR.prepTick(); dmAct('dm_status', {_poll: true}); dmAct('table_call');
+  v = PR.prepView(); ok(PR.prepActive() && v.started === false && v.calls === 0 && v.waited === 60, 'the runner reaches the game 60 s after the gate: its wait (dm_status _poll) and idle polls neither count nor start the clock');
+  dmAct('dm_status'); v = PR.prepView();
+  ok(v.started === true && v.calls === 1 && v.seconds === 0 && v.seconds_left === PR.PREP.MS / 1000, 'its first call starts the clock: the full ' + PR.PREP.MS / 1000 + ' s are still ahead');
+  clk = 60000 + PR.PREP.MS - 1000; PR.prepTick(); ok(PR.prepActive() && PR.prepView().seconds === PR.PREP.MS / 1000 - 1, 'at 149 s from the gate (89 s of its own) the prep still runs');
+  clk = 60000 + PR.PREP.MS; PR.prepTick(); v = PR.prepView();
+  ok(!PR.prepActive() && v.why === 'time' && v.seconds === PR.PREP.MS / 1000 && v.waited === 60, 'the prep whose runner came 60 s late still got its ' + PR.PREP.MS / 1000 + ' s, then the time cap ended it (' + JSON.stringify(v) + ')');
+  clk = 0; PR.beginPrep('opening'); clk = PR.PREP.HARD_MS - 1; PR.prepTick(); ok(PR.prepActive(), 'a DM that never begins: the world is still held just before the hard cap');
+  clk = PR.PREP.HARD_MS; PR.prepTick(); v = PR.prepView(); ok(!PR.prepActive() && v.why === 'hard' && v.calls === 0, 'the hard cap (' + PR.PREP.HARD_MS / 1000 + ' s from the gate) ends a prep whose DM never called');
+  clk = 0; PR.beginPrep('opening'); clk = 150000; dmAct('dm_status'); clk = PR.PREP.HARD_MS; PR.prepTick(); v = PR.prepView();
+  ok(!PR.prepActive() && v.why === 'hard', 'a DM that starts 150 s late is ended by the hard cap at 180 s, not given 90 s more');
+  clk = 0; PR.beginPrep('opening'); clk = 150000; dmAct('dm_status'); v = PR.prepView(); ok(v.seconds_left === (PR.PREP.HARD_MS - 150000) / 1000, 'seconds_left counts the hard cap when it comes first (' + v.seconds_left + ' s)');
+  PR.endPrep('done'); PR.resetPrep(); PR.setPrepClock(null)}
 
 // ---------------------------------------------------------------- 2. save and restore
 console.log('save and restore');
@@ -1127,6 +1166,17 @@ console.log('DM visibility: hear, carries/quests/knows, survey, world_standing')
   const after = JSON.stringify(S.agents.map(a => [a.x, a.y, a.hp, a.gold, a.lore ? 1 : 0, a.qlog ? 1 : 0]));
   ok(before === after, 'the new reads touch no hero (position, HP, gold, lore, quest log)');
   ok(dmAct('dm_status').fellowship_needs.items.some(x => /Toll-Token/.test(x)), 'fellowship_needs mentions what a member carries');
+  {const L = SLT.slotHeroes(SLT.slotted()), [p, q] = L, kp = p.goal, kq = q.goal; // what is offered and what is sworn (#800)
+   p.goal = {type: 'ascend', tier: 0, text: 'Reach level 20', need: 20, progress: 1, done: false, offered: true, offeredAt: Math.round(S.gameMin)};
+   q.goal = {type: 'own', kind: 'vow', tier: 0, text: 'I will see the sea.', need: 1, progress: 0, done: false, sworn: {at: 0, by: 'tool', heard: [], words: true}};
+   const n = dmAct('dm_status').fellowship_needs, v = dmAct('fellowship_view').fellowship;
+   ok(n.oaths.offered.some(r => r.hero === p.name && /something to prove/.test(r.thread)) && n.oaths.sworn.some(r => r.hero === q.name && r.oath === 'I will see the sea.'), 'fellowship_needs tells what is offered and what is sworn');
+   ok(n.items.some(x => x.startsWith(p.name + ' has sworn nothing') && /never say they swore/.test(x)) && !JSON.stringify(n).includes('Reach level 20'), 'an offered thread is told as the past, with how to use it');
+   const vp = v.members.find(m => m.name === p.name), vq = v.members.find(m => m.name === q.name);
+   ok(vp.oath === null && vp.offered_thread && vq.oath === 'I will see the sea.' && !vq.offered_thread, 'fellowship_view names an oath only once sworn');
+   ok(!v.open_threads.some(t => /Reach level 20/.test(t.text)) && v.open_threads.some(t => /see the sea/.test(t.text)), 'open threads too');
+   p.goal.aside = true; ok(!dmAct('dm_status').fellowship_needs.oaths.offered.some(r => r.hero === p.name), 'a thread set aside drops from the DM\'s list');
+   p.goal = kp; q.goal = kq}
   speak(A, 'One more word for the DM to miss.', 'agent'); A.chat[A.chat.length - 1].from = A;
   ok(dmAct('dm_status').fellowship_needs.items.some(x => /not heard.*hear/.test(x)), 'fellowship_needs says they spoke and to read hear');
   const snap2 = JSON.parse(JSON.stringify(snapshot())); restore(snap2); ok(dmAct('hear', {n: 3}).ok && S.dmAgent.ear.lines.length > 0, 'the ring survives snapshot -> JSON -> restore');

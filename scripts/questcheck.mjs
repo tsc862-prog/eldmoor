@@ -61,7 +61,7 @@ Math.random = rand; seed = 0x9e3779b9 ^ 211;
 init({fellowship: false}); run(2);
 const a = S.agents.find(x => x.fac === 0 && x.state === 'town' && !x.party) || S.agents.find(x => x.fac === 0);
 a.lvl = 8; a.hp = maxHp(a); a.gold = 200; a.party = null;
-P.markPlayer(a, true);
+P.markPlayer(a, true); delete a.goal.offered; // an oath held from before (#800): the own-oath section below starts from a thread
 const call = (tool, args) => {const h = S.agents.find(x => x.id === a.id); h.playRate = []; return P.playerAct(a.id, tool, args || {})}; // the rate limit is playcheck's
 for (const t of ['quests', 'take_quest', 'focus_quest', 'abandon_quest']) ok(TOOL_NAMES.includes(t), `tool ${t} is listed`);
 const c = homeOf(a);
@@ -119,7 +119,7 @@ const killId = questLog(a).active.find(q => q.id.startsWith('kill:')).id;
 r = call('focus_quest', {id: killId}); ok(r.ok && !a.adv && advB.held === a.id && questLog(a).focus === killId, `focus the kill quest: ${r.set_aside || r.error} set aside`);
 
 // oaths cannot be set down
-const oath = questLog(a).active.find(q => q.kind === 'oath');
+delete a.goal.offered; delete a.goal.aside; const oath = questLog(a).active.find(q => q.kind === 'oath');
 r = call('abandon_quest', {id: oath.id}); ok(!r.ok && /oath/i.test(r.error), 'abandon_quest on an oath is refused');
 
 // abandon B (held): it ends, logged as abandoned with the hero's reason
@@ -198,6 +198,7 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
   ok(doneWakes(b, nT).length === 1, 'turn_in wakes the agent once (no second wake from the quest log)');
   const nO = b.playEvN || 0;
   const n0 = questLog(b).done.length;
+  if (b.goal) delete b.goal.offered; // a thread sworn (#800): kept below
   if (b.goal && b.goal.type === 'hoard') {b.gold = b.goal.need + 1} else {b.goal = {type: 'hoard', tier: 0, text: 'Hold 1 gold at once', need: 1, progress: 0, done: false, at: 0}; b.gold = 5}
   run(1); ok(questLog(b).done.length > n0 && questLog(b).done.some(q => q.kind === 'oath' && q.status === 'done'), 'a kept oath lands in the done list');
   ok(doneWakes(b, nO).length === 1 && !/\dg\)/.test(doneWakes(b, nO)[0].text), `a kept oath wakes the agent once: "${(doneWakes(b, nO)[0] || {}).text}"`);
@@ -211,6 +212,7 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
 // ---- 7. sworn vows (#526) ----
 {
   const me = () => S.agents.find(x => x.id === a.id);
+  if (me().goal) delete me().goal.offered; // holds an oath, so what it swears here is a vow beside it (#800)
   const {goalEvent} = await import('../src/sim/goals.js');
   const {openThreads} = await import('../src/sim/company.js');
   const {ELITES} = await import('../src/data/mobs.js');
@@ -263,7 +265,7 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
   ok((ob().playEv || []).some(e => e.n > nR && /broken the vow/.test(e.text)), 'witnesses are told');
   ok(questLog(me()).done.some(q => q.status === 'abandoned' && /leave this company/.test(q.title)), 'the done list shows it abandoned');
   ok(openThreads({ids: [a.id], plans: [], log: [], seq: 0}).some(t => t.kind === 'broken'), 'the DM sees the broken word as a thread');
-  r = call('renounce_oath'); ok(!r.ok && /no sworn vow/.test(r.error), 'renounce with no vow is refused');
+  const keptGoal = me().goal; me().goal = null; r = call('renounce_oath'); ok(!r.ok && /no sworn vow/.test(r.error), 'renounce with no vow is refused'); me().goal = keptGoal;
   // protect: a companion's fall breaks it
   const {foundCompany} = await import('../src/sim/company.js');
   const fc = foundCompany([me(), ob()]); r = call('swear_oath', {kind: 'protect', about: ob().name});
@@ -272,6 +274,151 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
   ob().state = 'dead'; run(1); ok(!me().vow && me().vowBroke && me().vowBroke.how === 'failed', 'the companion fell: the vow failed');
   // scripted heroes hold no vows and are not touched
   ok(S.agents.filter(x => !x.player).every(x => !x.vow), 'no scripted hero holds a vow');
+}
+
+
+// ---- own oaths (#800): the past is given, the oath is chosen ----
+{console.log('\nown oaths');
+  const O = await import('../src/sim/oath.js'), W = await import('../src/sim/sworn.js'), {goalEvent} = await import('../src/sim/goals.js'), {openThreads, foundCompany} = await import('../src/sim/company.js');
+  const {reflectDone, reflectDue} = await import('../src/sim/reflect.js'), {ELITES} = await import('../src/data/mobs.js'), {DG_EPICS} = await import('../src/data/items.js'), {ZONES} = await import('../src/world/map.js');
+  const words = ps => (ps || []).map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '').join('');
+  Math.random = rand; seed = 0x9e3779b9 ^ 800; init({fellowship: false}); run(2);
+  const free = S.agents.filter(x => x.fac === 0 && !x.party), [h, c, o] = free, oldSave = free[3], scr = free[4];
+  const say = (x, t, g) => {x.playRate = []; return P.playerAct(x.id, t, g || {})};
+  const put = x => {x.state = 'town'; x.x = homeOf(x).gate.x; x.y = homeOf(x).gate.y; x.hidden = false; x.pq = []};
+  ok(!scr.goal.offered && O.swornOf(scr) === scr.goal, 'a scripted hero reads as it always did: its goal is its oath');
+  const rolled = {...h.goal}; for (const x of [h, c, o]) {P.markPlayer(x, true); put(x)}
+  ok(h.goal.offered && h.goal.text === rolled.text && !O.swornOf(h), 'agent-played: the rolled goal is an offered thread');
+  let L = questLog(h); const th = L.offered.find(q => q.kind === 'oath');
+  ok(th && th.status === 'offered' && th.sworn === false && th.title === O.threadText(h) && !L.active.some(q => q.kind === 'oath'), 'the quest log shows it offered, not held: ' + th.title);
+  ok(P.playerAct(h.id, 'quests').offered.some(q => q.kind === 'thread' && q.sworn === false), 'the quests tool calls it a thread');
+  ok(P.playerAct(h.id, "status").thread === O.threadText(h) && P.playerAct(h.id, "status").oath === null, 'status: a thread, no oath');
+  // a hero who never swears: no nagging, one offer only
+  ok(paceBrief(h.id).brief.thread, 'the header names it while the offer stands');
+  S.gameMin = Math.floor(S.gameMin / 1440) * 1440 + 1300; h.playEvN = 99; h.playActAt = S.gameMin; run(0.05);
+  const due = reflectDue(h), rb = paceBrief(h.id).brief.reflect;
+  ok(due && rb && rb.thread === O.threadText(h), 'the first dusk asks once more');
+  ok(reflectDone(h, due.id, 0).ok && h.goal.quiet && h.goal.offered, 'answered or not, that was the last time');
+  ok(!paceBrief(h.id).brief.thread && !O.askOpen(h) && O.threadOf(h), 'the header stops naming it; it stays in the hero\'s own log');
+  S.gameMin += 1440; h.playEvN = 199; h.playActAt = S.gameMin; run(0.05); ok(!(paceBrief(h.id).brief.reflect || {}).thread, 'no second dusk asks');
+  // a thread that comes true unsworn: no oath was kept
+  {const n0 = (h.playEv || []).length, c0 = S.chronicle.length, d0 = questLog(h).done.length, g0 = h.goal; h.goal = {...g0, type: 'hoard', need: 1, text: 'Bank 1 gold'}; h.gold = 50; run(1);
+   ok(h.goal.offered && h.goal.aside && !O.threadOf(h) && questLog(h).done.length === d0, 'a thread that came true unsworn ends in silence, and the next is read by nobody');
+   ok(!S.chronicle.slice(0, S.chronicle.length - c0).some(e => /oath/i.test(words(e.parts))), 'the Chronicle says no oath was kept')}
+  // sworn later, from nothing
+  let r = say(h, 'swear_oath', {text: 'I will stand in ' + ZONES[1] + ' before I die.'});
+  ok(r.ok && r.oath && h.goal.kind === 'reach' && !h.vow, 'with no oath and no term, swear_oath is the oath: matched to a place');
+  r = say(h, 'swear_oath', {text: 'And not drink till then.', days: 3}); ok(r.ok && h.vow && !r.oath, 'with an oath held, a vow beside it');
+  h.x = S.agents[0].x; const keptBefore = h.oathKept; h.goal.about.zone = 0; h.goal.about.x = h.x; {const {zoneAt} = await import('../src/world/map.js'); h.goal.about.zone = zoneAt(h.x, h.y)} run(1);
+  ok(h.oathKept && h.oathKept !== keptBefore && O.swornOf(h) === null && questLog(h).done.some(q => q.kind === 'oath' && q.status === 'done'), 'a place reached keeps the oath');
+  ok(S.timeline.some(e => e.kind === 'oath' && /kept the oath/.test(words(e.parts))), 'kept, in the timeline');
+  // matching
+  const E = ELITES[0], ep = DG_EPICS[0];
+  ok(W.matchWords(c, 'I will slay ' + E.name + ' for my sister.').type === 'avenge' && W.matchWords(c, 'I will slay ' + E.name + '.').target === E.name, 'words naming an elite are held to it');
+  ok(W.matchWords(c, 'The ' + ep + ' comes home with me.').type === 'heirloomCrypt', 'words naming an epic are held to it');
+  ok(W.matchWords(c, 'I will never again be cold.').kind === 'vow', 'anything else is kept as words');
+  r = say(c, 'swear_oath', {text: 'I will slay ' + E.name + ' for my sister.'}); ok(r.ok && c.goal.type === 'avenge' && c.goal.text.includes('sister'), 'the hero\'s text is the oath');
+  ok(openThreads({ids: [c.id]}).some(t => t.kind === 'oath') && !openThreads({ids: [o.id]}).some(t => t.kind === 'oath'), 'open threads list only the sworn');
+  goalEvent(c, 'kill', {elite: true, name: E.name}); ok(c.oathKept && /sister/.test(c.oathKept.text) && (c.goal === null || !O.swornOf(c)), 'the game sees it kept');
+  ok(S.chronicle.some(e => /kept the oath/.test(words(e.parts))) && !S.chronicle.some(e => /A new oath/.test(words(e.parts)) && e.parts.some(p => p && p.id === c.id)), 'kept in their words, and no new oath is rolled in their name');
+  // what the game cannot track: kept as words; only the hero can say it is done
+  r = say(o, 'swear_oath', {text: 'I will never again be cold.'});
+  ok(r.ok && W.wordsOnly(o.goal) && /keep_oath/.test(r.note), 'untrackable words stand as an oath');
+  run(1); ok(O.swornOf(o), 'the game never calls them kept');
+  ok(!say(c, 'keep_oath', {how: 'done'}).ok, 'keep_oath with no oath is refused');
+  r = say(o, 'keep_oath', {how: 'The fire is mine now and I am warm.'}); ok(r.ok && !O.swornOf(o) && o.oathKept && questLog(o).done.some(q => q.status === 'done' && q.kind === 'oath'), 'the hero says it is done, aloud');
+  // renouncing, with witnesses, and an owner pin
+  put(o); put(c); c.x = o.x; c.y = o.y; o.bonds = {[c.id]: 5}; c.bonds = {[o.id]: 5};
+  r = say(o, 'swear_oath', {text: 'My sword is for this road alone.'}); ok(r.ok && r.heard_by.includes(c.name) && o.goal.sworn.heard.includes(c.id), 'sworn before a witness');
+  o.persona = o.persona || {}; o.persona.pins = {oath: true};
+  r = say(o, 'renounce_oath', {why: 'no'}); ok(!r.ok && /fixed/.test(r.error), 'a pinned oath cannot be renounced');
+  o.persona.pins = {}; const nc = (c.playEv || []).length;
+  ok(!say(o, 'abandon_quest', {id: questLog(o).active.find(q => q.kind === 'oath').id}).ok, 'abandon_quest still refuses it');
+  r = say(o, 'renounce_oath', {why: 'The road changed me'});
+  ok(r.ok && !o.goal && o.vowBroke.how === 'renounced' && (o.bonds[c.id] || 0) < 5 && (c.playEv || []).slice(nc).some(e => /broken the oath/.test(e.text)), 'renounced: the word broken, bonds cooled, the witness told');
+  ok(S.chronicle.some(e => /broke their word/.test(words(e.parts))) && (o.tiers.marks || []).some(m => /Broke their word/.test(m.text)), 'a Chronicle line and a landmark');
+  // an older save: agent heroes with oaths from before keep them
+  {oldSave.player = true; delete oldSave.goal.offered; (S.playerHeroes = S.playerHeroes || []).push(oldSave.id); const sv = JSON.parse(JSON.stringify(snapshot())); restore(sv);
+   const b = S.agents.find(x => x.id === oldSave.id); ok(O.swornOf(b) && !b.goal.offered && questLog(b).active.some(q => q.kind === 'oath' && q.sworn), 'an older save: an agent hero\'s oath stays sworn');
+   P.markPlayer(b, true); ok(!b.goal.offered, 'marking it again takes nothing away');
+   const n = {...b.goal}; b.playRate = []; ok(P.playerAct(b.id, 'renounce_oath', {}).ok && !b.goal, 'and it can be renounced: ' + n.text)}
+  // a recruit and a hand-back
+  {const z = S.agents.find(x => !x.player && x.kind === 'hero' && x.state !== 'dead' && !x.party); P.markPlayer(z, true); ok(z.goal.offered && O.askOpen(z), 'a recruit made agent-played starts with an open offer');
+   P.markPlayer(z, false); ok(!z.goal.offered && O.swornOf(z) === z.goal, 'handed back to the scripted rules, it is an oath again')}
+  {const p0 = S.agents.find(x => x.state !== 'dead' && x.kind === 'hero' && !x.player && x.goal); const s1 = JSON.stringify(p0.goal); P.markPlayer(p0, true); const sv = JSON.parse(JSON.stringify(snapshot())); restore(sv); const q = S.agents.find(x => x.id === p0.id); ok(q.goal.offered && O.threadOf(q), 'an offered thread survives a save'); ok(s1.length > 0, 'its goal is the same goal')}
+}
+
+// ---- goods jobs (#720): board and DM jobs that ask for crafted or gathered goods ----
+{console.log('\ngoods jobs');
+  const {SUPPLY, SUPPLY_KEYS} = await import('../src/data/adventures.js');
+  const SP = await import('../src/sim/supply.js');
+  const {learn, gainSkill} = await import('../src/sim/professions.js');
+  const {addUse, addGood, count, invOf} = await import('../src/sim/inv.js');
+  Math.random = rand; seed = 0x9e3779b9 ^ 720;
+  init({fellowship: false}); run(2);
+  const h = S.agents.find(x => x.fac === 0 && x.state === 'town' && !x.party) || S.agents.find(x => x.fac === 0);
+  const hc = homeOf(h); h.lvl = 8; h.hp = maxHp(h); h.gold = 100; h.party = null; P.markPlayer(h, true);
+  h.x = hc.ah.x; h.y = hc.ah.y; h.state = 'town'; h.pq = [];
+  const hcall = (tool, args) => {h.playRate = []; return P.playerAct(h.id, tool, args || {})};
+  const by = {by: 'dm-agent', reason: 'the chapel is short of draughts'};
+  ok(SUPPLY_KEYS.length >= 8 && SUPPLY_KEYS.every(k => !ADVENTURES[k]), 'goods job templates are kept apart from the adventure templates (' + SUPPLY_KEYS.length + ')');
+  const advBefore = (S.adventures || []).length;
+  let rr = pull('post_hook', {town: hc.name, tpl: 'draughts', reward: 'generous'}, by); const j1 = rr.ret;
+  ok(rr.ok && j1 && j1.phase === 'open' && j1.by === 'dm-agent' && S.supply.includes(j1) && (S.adventures || []).length === advBefore, 'post_hook with a goods tpl posts a goods job (by the DM agent), not an adventure: ' + (j1 && SP.textOf(j1)));
+  ok(j1.want.kind === 'craft' && j1.want.id === 'Redroot Draught' && j1.want.n >= 3 && j1.want.n <= 4 && j1.gold > 0, 'it asks for ' + j1.want.n + ' ' + j1.want.id + ' and pays ' + j1.gold + 'g');
+  pull('post_hook', {town: hc.name, tpl: 'ore'}, by); rr = pull('post_hook', {town: hc.name, tpl: 'perch'}, by);
+  ok(!rr.ok && /goods jobs/.test(JSON.stringify(rr)), 'a board holds at most ' + SP.SUP.BOARD_MAX + ' goods jobs: ' + (rr.reason || rr.error || ''));
+  const wd = pull('withdraw_hook', {hook: S.supply.find(x => x.tpl === 'ore').id}, by); ok(wd.ok && !S.supply.some(x => x.tpl === 'ore'), 'withdraw_hook takes a goods job down');
+  let r = hcall('list_jobs'); const gj = (r.jobs || []).find(x => x.goods && x.id === j1.id);
+  ok(gj && /Redroot Draught/.test(gj.wants) && /g/.test(gj.pays) && gj.giver, 'list_jobs shows the goods job with what it wants and pays: ' + (gj && gj.wants));
+  ok(!JSON.stringify(gj).match(/dm-agent|DM agent|scripted/i), 'the hero is not told who posted it');
+  r = hcall('turn_in'); ok(!r.filled, 'turn_in with an empty pack fills nothing');
+  r = hcall('take_quest', {id: 'supply:' + j1.id}); ok(r.ok && j1.phase === 'taken' && j1.taker === h.id && r.wants, 'take_quest supply:' + j1.id + ': ' + (r.took || r.error));
+  const q1 = hcall('quests').active.find(x => x.id === 'supply:' + j1.id);
+  ok(q1 && q1.kind === 'job' && /bring \d Redroot Draught/.test(q1.objective) && q1.progress === '0/' + j1.want.n && q1.giver, 'quests lists it: ' + (q1 && q1.objective));
+  ok(questLog(h).active.find(x => x.id === 'supply:' + j1.id).kind === 'dm', 'the watcher sees it as a DM job');
+  addUse(h, 'Redroot Draught', j1.want.n - 1); r = hcall('turn_in'); ok(!r.filled && j1.phase === 'taken', 'one short: nothing is handed in');
+  addUse(h, 'Redroot Draught', 1); const g0 = h.gold, hon0 = h.honor || 0; r = hcall('turn_in');
+  ok(r.ok && r.filled && h.gold === g0 + j1.gold && (h.honor || 0) === hon0 + 1 && count(h, 'Redroot Draught') === 0 && !S.supply.includes(j1), 'turn_in hands the goods in and is paid ' + j1.gold + 'g, a line of honor: ' + (r.filled || r.error));
+  ok(questLog(h).done.some(x => x.id === 'supply:' + j1.id && x.status === 'done' && x.progress.have === j1.want.n), 'the quest log keeps it as done');
+  ok(S.supplyStats.filled === 1 && S.supplyStats.taken === 1 && S.supplyStats.gold === j1.gold, 'the counters: one posted job taken, filled, paid');
+  // crafted gear: a Wolfhide Cowl made by the hero is recognised by its pattern
+  const j2 = pull('post_hook', {town: hc.name, tpl: 'cowl'}, by).ret; ok(j2 && j2.want.id === 'Wolfhide Cowl' && j2.want.n === 1 && /^A /.test(SP.textOf(j2)), 'a gear job: ' + SP.textOf(j2));
+  learn(h, 'leatherworking'); gainSkill(h, 'leatherworking', 5); addGood(h, 'Wolf Pelt', 2); addGood(h, 'Wolf Sinew', 2); h.gold = 100;
+  const cr = hcall('craft', {recipe: 'cure-wolfhide'}); ok(cr.ok, 'the hero crafts a Wolfhide Cowl: ' + (cr.result || cr.why || cr.error));
+  const g1 = h.gold; r = hcall('turn_in'); ok(r.ok && r.filled && h.gold === g1 + j2.gold && !invOf(h).list.some(e => e.craft === 'Wolfhide Cowl') && !S.supply.includes(j2), 'the cowl is handed in from the pack and paid');
+  // gathered goods, filled without taking the job first
+  const j3 = pull('post_hook', {town: hc.name, tpl: 'ore'}, by).ret; addGood(h, 'Tin Ore', j3.want.n); const g2 = h.gold; r = hcall('turn_in');
+  ok(r.ok && r.filled && h.gold === g2 + j3.gold && !S.supply.includes(j3), 'a gathered-goods job is filled straight from the pack: ' + (r.filled || r.error));
+  // a job for another company is not this hero's
+  const j4 = pull('post_hook', {town: hc.name, tpl: 'herbs'}, by).ret; j4.ff = 1; j4.cid = 99999; addGood(h, 'Redroot Leaf', j4.want.n);
+  r = hcall('turn_in'); ok(!r.filled && S.supply.includes(j4), 'a hall job reserved to another company is not filled by this hero');
+  r = hcall('take_quest', {id: j4.id}); ok(!r.ok, 'nor taken by it: ' + r.error); j4.ff = 0; j4.cid = null;
+  // abandon, then expiry
+  r = hcall('take_quest', {id: j4.id}); ok(r.ok, 'take it once it is open to all'); r = hcall('abandon_quest', {id: 'supply:' + j4.id}); ok(r.ok && j4.phase === 'open' && !j4.taker, 'abandon_quest puts it back on the board');
+  hcall('take_quest', {id: j4.id}); S.gameMin += 4 * 1440; run(1);
+  ok(!S.supply.includes(j4) && questLog(h).done.some(x => x.id === 'supply:' + j4.id && x.status === 'expired') && S.supplyStats.expired >= 1, 'a taken job that is not filled goes cold: expired in the log');
+  const j5 = pull('post_hook', {town: hc.name, tpl: 'sinew'}, by).ret; S.gameMin += 3 * 1440; run(1); ok(!S.supply.includes(j5), 'an open job comes down after its time');
+  // save and restore with a taken job
+  const j6 = pull('post_hook', {town: hc.name, tpl: 'meals'}, by).ret; hcall('take_quest', {id: j6.id}); const snap = JSON.parse(JSON.stringify(snapshot()));
+  ok(snap.supply && snap.supply.some(x => x.id === j6.id && x.phase === 'taken'), 'the goods job is in the save');
+  restore(snap); const h2 = S.agents.find(x => x.id === h.id), j6b = (S.supply || []).find(x => x.id === j6.id);
+  ok(j6b && j6b.taker === h.id && questLog(h2).active.some(x => x.id === 'supply:' + j6.id), 'after restore the hero still holds it');
+  addUse(h2, 'Spit-Roast Perch', j6b.want.n); h2.playRate = []; r = P.playerAct(h2.id, 'turn_in', {}); ok(r.ok && r.filled, 'and fills it after restore');
+  // scripted heroes: the board asks, a hero of the town who holds the trade answers from its pack, no dice
+  const sh = S.agents.find(x => !x.player && x.fac === 0 && x.state !== 'dead' && homeOf(x) === hc);
+  learn(sh, 'alchemy'); gainSkill(sh, 'alchemy', 30); sh.state = 'town'; S.supply.length = 0; delete S.supplyAt;
+  const plan = SP.supplyPlan(hc, null); ok(plan && SUPPLY[plan.tpl].prof === 'alchemy' && !plan.ff, 'the scripted DM plans a job for a town hero who holds the trade: ' + (plan && plan.tpl));
+  const pj = SP.postSupply(hc, 'draughts', {}); sh.gold = 50; addUse(sh, 'Redroot Draught', pj.want.n); const sg0 = sh.gold;
+  ok(SP.supplyVisit(sh) >= 1 && !S.supply.includes(pj) && sh.gold === sg0 + pj.gold, 'a scripted hero in town fills it from its pack before the sale (' + pj.gold + 'g)');
+  // the Fellowship first: a member with a trade is offered a hall job reserved to its company
+  Math.random = rand; seed = 0x9e3779b9 ^ 721; init({}); run(2);
+  const F = (await import('../src/sim/dmfocus.js')).focus(), fm = F && F.members[0];
+  if (fm) {learn(fm, 'alchemy'); gainSkill(fm, 'alchemy', 30); S.supply = []; delete S.supplyAt; run(30);
+    const ffj = (S.supply || []).find(x => x.ff);
+    ok(ffj && ffj.cid === F.cid && SUPPLY[ffj.tpl].prof === 'alchemy', 'the scripted DM posts a Fellowship-first goods job for a member who holds a trade: ' + (ffj && SP.textOf(ffj)));
+    ok(ffj && SP.mayHave(fm, ffj) && !SP.mayHave({id: 1e9, company: null}, ffj), "it is the company's: a member may have it, a stranger may not")}
+  else ok(false, 'a Fellowship founded');
 }
 
 console.log(fail ? `\n${fail} check(s) FAILED\n` : '\nAll quest log checks passed.\n');

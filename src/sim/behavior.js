@@ -40,6 +40,7 @@ import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
 import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
 import {gambitRec,noFlee} from './gambits.js';
+import {takeWishes} from './wish.js'; // wishes for the builders (#663)
 import {drainHolds} from './gambithold.js'; // finished gambit holds (#630) // the hero's own rules (#617)
 import {missCause} from './scenewait.js'; // why a live member missed its scene (#687)
 
@@ -62,6 +63,7 @@ export const BW={
   DM_MIN_CALLS:4,    // ... and at least this many answerable calls in it
   NO_NOTES_MIN:2*1440, // game minutes an agent-played Fellowship member goes without writing a memory -> no-memories (#179)
   NO_FLEE_MIN:720, // game minutes between two no-flee-rule lines for one hero (#617)
+  TOWN_IDLE_MIN:720, // game minutes an agent hero earns nothing in town -> town-idle (#790; the same 12 hours as TP.IDLE_TOWN in sim/player.js)
   NO_AIM_MIN:INTENT.NO_AIM, // game minutes an agent hero goes with no stated aim outside camp and town rest -> no-aim (#535)
 };
 
@@ -90,7 +92,7 @@ export function makeWatch(opts={}){
   const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
-  function baseline(){base=true;lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
+  function baseline(){base=true;seenRuling.clear();for(const p of (S.rulings&&S.rulings.past)||[])seenRuling.add(p.id);lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
     T.clear();seenProps.clear();emitted.clear();H=fresh();tLast=tStats();dmC=dmCounts();dmWin=[];dmHeld=null;
     seq0.clear();for(const a of seats())seq0.set(a.id,a.memories?a.memories.seq||0:0); // notes written before a seat is first tracked still count (#179)
     iseq0.clear();for(const a of seats())iseq0.set(a.id,a.intentSeq||0); // aims stated before a seat is first tracked still count (#535)
@@ -103,7 +105,7 @@ export function makeWatch(opts={}){
 
   function track(out,a,dt){let t=T.get(a.id);const now=S.gameMin;
     if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:seq0.has(a.id)?seq0.get(a.id):a.memories?a.memories.seq||0:0,noteAt:now,iseq:iseq0.has(a.id)?iseq0.get(a.id):a.intentSeq||0,aimAt:now};T.set(a.id,t)}
-    notes(out,a,t,now);aims(out,a,t,now);rules(out,a,t,now);
+    notes(out,a,t,now);aims(out,a,t,now);townIdle(out,a,t,now);rules(out,a,t,now);
     H.share[mindOf(a)]+=dt;
     if(a.player&&a.playActAt!==t.act){t.act=a.playActAt;H.acts++}
     // idle in one place (outside camp)
@@ -128,11 +130,14 @@ export function makeWatch(opts={}){
     if(!a.player||aimHeld(a)||a.state==='camp'||a.state==='dead'||a.state==='ghost'||resting){t.aimAt=now;return}
     if(now-t.aimAt>=BW.NO_AIM_MIN){const I=a.intent;anomaly(out,'no-aim',a,a.name+' has had no stated aim for '+Math.round((now-t.aimAt)/60*10)/10+' game hours ('+(I?'the last one is '+(I.done?'done':'stale'):'never stated')+')',
       {minutes:Math.round(now-t.aimAt),state:a.state,place:place(a),mind:mindOf(a),last:I?(I.done?'done':'stale'):'none',aims:a.intentSeq||0});t.aimAt=now}}
+  // town-idle (issue #790): an agent hero in town with nothing earned for BW.TOWN_IDLE_MIN game minutes (sim/player.js townGuard woke it); again every BW.TOWN_IDLE_MIN
+  function townIdle(out,a,t,now){const T=a.player&&a.state==='town'?a.townIdle:null;if(!T||now-T.at<BW.TOWN_IDLE_MIN){t.tiAt=null;return}
+    if(t.tiAt==null||now-t.tiAt>=BW.TOWN_IDLE_MIN){t.tiAt=now;anomaly(out,'town-idle',a,a.name+' has earned nothing in town for '+Math.round((now-T.at)/60*10)/10+' game hours',{hours:Math.round((now-T.at)/60*10)/10,place:place(a),mind:mindOf(a),aim:a.intent&&!a.intent.done?a.intent.goal:null,level:a.lvl})}}
   // gambits (issue #617): rule-driven acts and edits per hero each digest; an agent hero whose list has no flee rule is
   // flagged no-flee-rule (once, and again every BW.NO_FLEE_MIN while it lasts)
   function rules(out,a,t,now){if(!a.player)return;const g=gambitRec(a),n=g?g.n:0,nf=noFlee(a);const en=a.gambitEdits||0;if(t.gn==null){t.gn=n;t.ge=en}
     const edits=Math.max(0,en-t.ge),acts=Math.max(0,n-t.gn);t.gn=n;t.ge=en;
-    if(acts||edits||nf||a.gambits){const G=H.gambits[a.name]||(H.gambits[a.name]={acts:0,edits:0,noFlee:false,own:false});G.acts+=acts;G.edits+=edits;G.noFlee=nf;G.own=!!a.gambits}
+    if(acts||edits||nf||a.gambits){const G=H.gambits[a.name]||(H.gambits[a.name]={acts:0,edits:0,noFlee:false,own:false,wrote:0,wroteAb:0});G.acts+=acts;G.edits+=edits;G.noFlee=nf;G.own=!!a.gambits;G.wrote=a.gambitWrote?a.gambitWrote.n:0;G.wroteAb=a.gambitWrote?a.gambitWrote.ab:0}
     if(!nf){t.nfAt=null;return}if(t.nfAt==null||now-t.nfAt>=BW.NO_FLEE_MIN){t.nfAt=now;
       anomaly(out,'no-flee-rule',a,a.name+' runs with no rule that breaks it off a losing fight (its gambits have no flee_home or retreat_to)',{rules:(a.gambits||[]).length,place:place(a),mind:mindOf(a),hp:pct(a)})}}
   // The log entries that tell who answered (issue #541): levers and posted hooks by caller, scripted board posts and branches,
@@ -206,13 +211,19 @@ export function makeWatch(opts={}){
   function companyDigest(){const L=companies().map(C=>({id:C.id,name:C.name||null,size:C.ids.length,minds:minds(C).length,deaths:coDeaths[C.id]||0,...(C.slots?{fellowship:true}:{})}));
     for(const id in coDeaths)if(!L.some(c=>c.id===+id))L.push({id:+id,name:null,size:0,minds:0,deaths:coDeaths[id],ended:true});return L}
 
+  // wishes (#663) and the attempts the DM ruled on (S.rulings) go to the builders' wishes.jsonl; read-only on the world
+  const seenRuling=new Set();
+  function wishes(out){for(const w of takeWishes())out.push({kind:'wish',rec:w});
+    const R=S.rulings;if(R)for(const p of R.past){if(seenRuling.has(p.id))continue;seenRuling.add(p.id);
+      out.push({kind:'wish',rec:{type:'attempt',seat:'hero:'+p.hero,name:p.name||null,day:p.day||null,gameMin:Math.round(S.gameMin),what:String(p.what||'').slice(0,300),skill:p.skill||null,pass:p.pass==null?null:!!p.pass,by:p.by||null}})}}
+
   return {
     tick(){const out=[];
       if(!base||S.gameMin<lastGm||(S.dmLogSeq||0)<dmSeen){baseline();return out}
       const dt=S.gameMin-lastGm;lastGm=S.gameMin;
       // a paused world (a Table scene at 1x) keeps its clock: scenes, votes and levers are still read
       if(dt>0){dmSeat(out,dt);for(const a of seats())track(out,a,dt);for(const id of [...T.keys()]){const a=byId(id);if(!a||a.state==='dead')T.delete(id)}}
-      dmLog(out);holds(out);table(out);votes(out);decisions(out);heard();deaths();for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
+      dmLog(out);holds(out);table(out);votes(out);decisions(out);wishes(out);heard();deaths();for(const a of seats())if(a.company!=null)coSeen.set(a.id,a.company);
       const h=Math.floor(S.gameMin/BW.DIGEST_MIN);if(h>hour){hour=h;digest(out)}
       return out},
     reset(){base=false}};

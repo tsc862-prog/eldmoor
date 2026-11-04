@@ -16,6 +16,7 @@
 import {rnd,clamp,hash} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
 import {tiles,I,ZONES,REGIONS,CITY,CRYPT,zoneAt,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {EPICS,DG_EPICS} from '../data/items.js';
 import {baseId,ELITE_TEMPLATE} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
@@ -205,7 +206,7 @@ function clearSite(s,g,L,share){S.sites.stats.clears++;const who=gd(g.name||'The
 function rollSite(g,s){const n=g.mem.length,avg=g.mem.reduce((t,a)=>t+a.lvl+a.gear*.3,0)/n;
   const pw=avg+(g.mem.some(a=>CLS[a.cls]&&CLS[a.cls].heal)?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+n*.6;
   const need=s.band[1]+s.grow+1,ok=rnd()<clamp((pw-need)/8,.15,.92);
-  for(const a of g.mem){a.hidden=false;a.x=s.x+(rnd()-.5)*1.5;a.y=s.y+.5+rnd()*.6}
+  for(const a of g.mem){a.hidden=false;Object.assign(a,standAt(s.x+(rnd()-.5)*1.5,s.y+.5+rnd()*.6))}
   if(ok){siteEnd(g,'clear');return}
   const lost=[];for(const a of g.mem){if(rnd()<SITE.LOST){lost.push(a);record(a,'Lost forever in ',gd(s.name),'.');fall(a,'lost in '+s.name)}else{record(a,'Fled ',gd(s.name),'.');goHome(a)}}
   for(const a of g.mem)delete a.siteIn;S.sites.stats.wipes++;
@@ -219,7 +220,7 @@ export function wireSites(){provide('createSite',createSite);setSiteHook(VOTE);s
 // ---- once per step (sim/index.js), a no-op until a site exists ----
 export function siteTick(dt){const X=S.sites;if(!X)return;
   for(const s of X.list){const g=s.group;if(!g)continue;
-    g.mem=g.mem.filter(a=>a.state==='dungeon');
+    g.mem=g.mem.filter(a=>a.state==='dungeon'||(a.down&&a.down.crawl&&a.state==='downed')); // the downed below ground stay with the crawl (#654)
     if(!g.mem.length){if(g.crawl)crawlLost(g);s.group=null;continue}
     if(g.crawl){crawlTick(g,dt);continue}
     g.t-=dt;if(g.t<=0){s.group=null;rollSite(g,s)}}

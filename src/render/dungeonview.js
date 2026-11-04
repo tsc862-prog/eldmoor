@@ -28,7 +28,9 @@ import {companyById,slotted,members} from '../sim/company.js';
 import {siteById} from '../sim/crawl.js';
 import {siteInterior,roomKind} from './siteview.js';
 import {drawInterior} from './interior.js';
-import {foeKind,foeAt} from './dgfoes.js';
+import {foeKind,foeAt as foeAtRow} from './dgfoes.js';
+import {foeAt as foeAtCrawl,crawlRoom} from './crawlview.js'; // the crawl as it is played (#742): who stands where, the beats
+import {sceneFor} from '../sim/table.js';
 import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {classColor} from '../core/colors.js';
 import {isArena,arenaOf,raidState,raidDetail,raidRows,raidHistory,drawArena,arenaHit} from './raidview.js';
@@ -103,6 +105,9 @@ function siteQuiet(s,st,L){const nm=i=>(roomsOf(s)[i]||{}).name||'the dark';
   if(s.state==='hidden'){st.status='Hidden: no one has come upon it yet. '+(s.boss||'Its keeper')+' waits below.';return}
   if(s.state==='discovered'){st.status='Found'+(s.found?' on day '+dayOf(s.found.at)+' by '+s.found.by:'')+'; no one has gone down yet.';return}
   st.status='Quiet. Gone down '+(s.runs||0)+((s.runs||0)===1?' time':' times')+'; not cleared yet.'}
+// The Table scene of a live crawl's round (sim/crawl.js openRound): its company's, for this dungeon and this room.
+function crawlScene(s,cr){const C=coOf(cr),sc=C?sceneFor(C):S.table;if(!sc||sc.kind!=='crawl'||!sc.ctx||sc.ctx.room!==cr.i)return null;
+  const id=sc.ctx.site;return (id!=null?isSite(s)&&s.id===id:!isSite(s))?sc:null}
 export function stateOf(s0=site||CRYPT){const s=fresh(s0),rooms=roomsOf(s),n=rooms.length,g=groupOf(s),cr=g&&g.crawl,cur=curOf(s);
   const st={company:'',phase:'empty',fog:-1,cur:-1,round:'',party:[],at:null,busy:false,cleared:rooms.map(()=>false),status:'',rooms:[]};
   const living=a=>a&&a.state!=='dead';
@@ -127,6 +132,7 @@ export function stateOf(s0=site||CRYPT){const s=fresh(s0),rooms=roomsOf(s),n=roo
     else if(live(s)&&C&&C.runs)st.status='Quiet. The Fellowship has gone down '+C.runs+(C.runs===1?' time':' times')+': '+C.clears+' cleared, '+(C.driven+C.withdrawn)+' turned back, '+C.wipes+' lost.';
     else st.status='Quiet. No one is inside.'}
   if(cr&&cr.foes&&!cr.end&&g.tSite&&cr.foes.length){st.foes=cr.foes;st.foeRoom=cr.i;st.foeText=foeSummary(cr.foes)}
+  if(cr&&g.tSite){st.crawl=cr;st.dkey=keyOf(s);st.roomSpec=rooms[cr.i]||null;st.scene=crawlScene(s,cr)} // for render/crawlview.js (#742)
   if(isSite(s)&&!cr&&s.grow>0&&s.state!=='cleared'&&s.state!=='collapsed')st.status+=' It has grown more dangerous for being left (+'+s.grow+(s.grow===1?' level).':' levels).');
   const run=cur||runsOf(s).pop();
   if(run&&run.falls.length){const per={};st.falls=run.falls.map(f=>({room:f.room,name:f.name,k:per[f.room]=(per[f.room]||-1)+1}))}
@@ -182,7 +188,7 @@ function build(){const scr=document.getElementById('screen');if(!scr)return fals
 // Pointer to chamber: the pixel under the pointer, through the last frame's fit, to a tile; chambers have even regions.
 function onMove(e){if(!fit||!site)return;if(isArena(site))return onArenaMove(e);const r=cv.getBoundingClientRect(),dpr=cv.width/Math.max(1,r.width),m=interiorOf(fresh(site)),st=stateOf(site);
   const wx=((e.clientX-r.left)*dpr-fit.ox)/fit.sc,wy=((e.clientY-r.top)*dpr-fit.oy)/fit.sc,tx=Math.floor(wx/T),ty=Math.floor(wy/T);
-  hov.foe=foeAt(m,st,wx,wy);const reg=tx<0||ty<0||tx>=m.w||ty>=m.h?-1:m.reg[ty*m.w+tx];hov.room=hov.foe?st.foeRoom:reg>=0&&(reg&1)===0?reg>>1:-1;
+  hov.foe=crawlRoom()>=0?foeAtCrawl(m,st,wx,wy):foeAtRow(m,st,wx,wy);const reg=tx<0||ty<0||tx>=m.w||ty>=m.h?-1:m.reg[ty*m.w+tx];hov.room=hov.foe?st.foeRoom:reg>=0&&(reg&1)===0?reg>>1:-1;
   hov.x=e.clientX-root.getBoundingClientRect().left;hov.y=e.clientY-root.getBoundingClientRect().top;cv.style.cursor=hov.room>=0?'pointer':'default';placeTip(st)}
 // The raid arena: the boss, a raider or an add under the pointer (the hit boxes of the last frame).
 let arenaSt=null;

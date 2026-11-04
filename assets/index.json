@@ -1,56 +1,1596 @@
 {
- "version": 1,
- "assets": {
-  "tile:fen-grass@32": {
-   "id": "tile:fen-grass",
-   "kind": "tile",
-   "file": "tile/32/fen-grass.png",
-   "w": 32,
-   "h": 32,
-   "colors": 9,
-   "grid": "8x8",
-   "sha256": "d5e09d8e8d46950ffa58955645758eca1dbc9c4951c32043ee276ddbc4173159",
-   "model": "pixel-xl",
-   "repo": "nerijs/pixel-art-xl",
-   "provider": "fal-ai",
-   "seed": 9692,
-   "at": "2026-11-03T15:57:13.357Z",
-   "tier": 32,
-   "accepted": "2026-11-03T20:47:51.994Z"
-  },
-  "tile:grass@32": {
-   "id": "tile:grass",
-   "kind": "tile",
-   "file": "tile/32/grass.png",
-   "w": 32,
-   "h": 32,
-   "colors": 13,
-   "grid": "8x8",
-   "sha256": "3f68ca1660f7d3266583f1ae949b0606fb111628f8a98cea44d868e2701e1d5f",
-   "model": "pixel-xl",
-   "repo": "nerijs/pixel-art-xl",
-   "provider": "fal-ai",
-   "seed": 9690,
-   "at": "2026-11-03T15:56:58.142Z",
-   "tier": 32,
-   "accepted": "2026-11-03T20:47:51.993Z"
-  },
-  "tile:meadow@32": {
-   "id": "tile:meadow",
-   "kind": "tile",
-   "file": "tile/32/meadow.png",
-   "w": 32,
-   "h": 32,
-   "colors": 8,
-   "grid": "8x8",
-   "sha256": "191ec3c963209132aad10136a266d221df77c2ca5a1b86f0c40a77c3d6b8c8d8",
-   "model": "pixel-xl",
-   "repo": "nerijs/pixel-art-xl",
-   "provider": "fal-ai",
-   "seed": 9691,
-   "at": "2026-11-03T15:57:05.812Z",
-   "tier": 32,
-   "accepted": "2026-11-03T20:47:51.994Z"
+  "version": 1,
+  "assets": {
+    "autotile:bank-water-corner@32": {
+      "id": "autotile:bank-water-corner",
+      "kind": "autotile",
+      "file": "autotile/32/bank-water-corner.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "b369dac233a31deece4c37d6ad367ffc72875078654ed46f2b8ab32e28c84178",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:bank-water-inner@32": {
+      "id": "autotile:bank-water-inner",
+      "kind": "autotile",
+      "file": "autotile/32/bank-water-inner.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "c2efa83c7d8f23cf6d738dbb9df28c88216adf0dc3fa7b794d9737daffa0c72a",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:bank-water@32": {
+      "id": "autotile:bank-water",
+      "kind": "autotile",
+      "file": "autotile/32/bank-water.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "dac49b6377ca5996edd1a7c355af4a5f05b54ef3f8bfd50724be78b4a4fd03ac",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:grass-road-corner@32": {
+      "id": "autotile:grass-road-corner",
+      "kind": "autotile",
+      "file": "autotile/32/grass-road-corner.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "c6b01d6bea8c53b58917053359ff5c5c5d37ce845301e9fc421dd008e7257f32",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:grass-road-inner@32": {
+      "id": "autotile:grass-road-inner",
+      "kind": "autotile",
+      "file": "autotile/32/grass-road-inner.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "6064f80ce2ab03918c31d088364ca5c76bb96756527904e94c16a46a74b96eaa",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:grass-road@32": {
+      "id": "autotile:grass-road",
+      "kind": "autotile",
+      "file": "autotile/32/grass-road.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "eedeebf28f59b8c256580001491e8546bb21dc80da8301642b5c8f5160b42af8",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-hunter-ashfolk@32": {
+      "id": "sprite:hero-hunter-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "class": "Hunter",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-hunter-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "dac89690e55a7b108ac198815efaf28c1ef2fc550457478a84dfadaf63665fae",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "quiver",
+        "torso/clothes/shortsleeve/shortsleeve/male",
+        "weapon/ranged/bow/normal"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-hunter-hallowan@32": {
+      "id": "sprite:hero-hunter-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Hunter",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-hunter-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "89381127618d5874e68b8f6e297e3b936f3ca4a604900f624ee4048383222158",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "quiver",
+        "torso/clothes/shortsleeve/shortsleeve/male",
+        "weapon/ranged/bow/normal"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-hunter-mirekin@32": {
+      "id": "sprite:hero-hunter-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "class": "Hunter",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/hero-hunter-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "84fd2b3bd7da09f00d7384ba9ebc40005c8db526f8b0747126769b74bafcc327",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "quiver",
+        "torso/clothes/shortsleeve/shortsleeve/male",
+        "weapon/ranged/bow/normal"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-hunter-skerrin@32": {
+      "id": "sprite:hero-hunter-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "class": "Hunter",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-hunter-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "89381127618d5874e68b8f6e297e3b936f3ca4a604900f624ee4048383222158",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "quiver",
+        "torso/clothes/shortsleeve/shortsleeve/male",
+        "weapon/ranged/bow/normal"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-hunter-tarrow@32": {
+      "id": "sprite:hero-hunter-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "class": "Hunter",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/hero-hunter-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "b70c000e8279bbac54a5e0ddce54fd8a79a0916f85e6bebab0e34f7049c9b4f2",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "quiver",
+        "torso/clothes/shortsleeve/shortsleeve/male",
+        "weapon/ranged/bow/normal"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-hunter-thornhide@32": {
+      "id": "sprite:hero-hunter-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "class": "Hunter",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/hero-hunter-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "11e9d4a751bf2d5d8203e30cf058d7e12c3a422ae75b90f1bcf4de44cd84ce42",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "quiver",
+        "torso/clothes/shortsleeve/shortsleeve/male",
+        "weapon/ranged/bow/normal"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-hunter@32": {
+      "id": "sprite:hero-hunter",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Hunter",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-hunter.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "89381127618d5874e68b8f6e297e3b936f3ca4a604900f624ee4048383222158",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "quiver",
+        "torso/clothes/shortsleeve/shortsleeve/male",
+        "weapon/ranged/bow/normal"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-mage-ashfolk@32": {
+      "id": "sprite:hero-mage-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "class": "Mage",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-mage-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "ee87315c6844d860eb96814efaddf562ce0265d9dd6096250330ac53d7865912",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/orc/female",
+        "torso/clothes/robe",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-mage-hallowan@32": {
+      "id": "sprite:hero-mage-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Mage",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-mage-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "305c10399f40680683c83f48d19af1b084852e5ed27397df0fd449d8c529c62c",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-mage-mirekin@32": {
+      "id": "sprite:hero-mage-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "class": "Mage",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/hero-mage-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "d2211a6f99c1c794c6c2c6f30e14fd36211b0bfa079c79f544af6e5be5e7fc9b",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-mage-skerrin@32": {
+      "id": "sprite:hero-mage-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "class": "Mage",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-mage-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "890581687febbf268b61a65f8054e51dbe2f1df656aa74c4d8a9e17978436eed",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-mage-tarrow@32": {
+      "id": "sprite:hero-mage-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "class": "Mage",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/hero-mage-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "0a4b055259405e7fd4670838610b2a50719db4686a5526a6eecbf25587be606c",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-mage-thornhide@32": {
+      "id": "sprite:hero-mage-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "class": "Mage",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/hero-mage-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "0852afb87f1ea3e127b8f911612aa9545d0ee61f6eb71e3e8c8b2a56296d1d86",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-mage@32": {
+      "id": "sprite:hero-mage",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Mage",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-mage.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "305c10399f40680683c83f48d19af1b084852e5ed27397df0fd449d8c529c62c",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-priest-ashfolk@32": {
+      "id": "sprite:hero-priest-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "class": "Priest",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-priest-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "1ede652052437c5521c76956fc8100379e727ddbeb082aed8edad765a93a7e3f",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/orc/female",
+        "legs/pants/thin",
+        "torso/clothes/longsleeve/longsleeve/female",
+        "weapon/blunt/mace"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-priest-hallowan@32": {
+      "id": "sprite:hero-priest-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Priest",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-priest-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "3fd9eebf31da54541d3589b9eb6f3d5bd2c4a1c510862e291233a21d3f25bad9",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/longsleeve/longsleeve/female",
+        "weapon/blunt/mace"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-priest-mirekin@32": {
+      "id": "sprite:hero-priest-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "class": "Priest",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/hero-priest-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "5f2da65ef60534b9f30aa81af68b583b16abe0e060a084a8dcdf9e95fc0aeffd",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/longsleeve/longsleeve/female",
+        "weapon/blunt/mace"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-priest-skerrin@32": {
+      "id": "sprite:hero-priest-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "class": "Priest",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-priest-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "9c2ab26f0bf6b7e29b2587c36f363f35413f9a26550a5a60f08b9fce3a6fa7e0",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/longsleeve/longsleeve/female",
+        "weapon/blunt/mace"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-priest-tarrow@32": {
+      "id": "sprite:hero-priest-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "class": "Priest",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/hero-priest-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "ec652a5baf286eb03cf677e23e77832f96f9e00dcbe9aa7eafc88ff08057d42f",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/longsleeve/longsleeve/female",
+        "weapon/blunt/mace"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-priest-thornhide@32": {
+      "id": "sprite:hero-priest-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "class": "Priest",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/hero-priest-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "8153442e512ae0803e9ece7a432647bbbd33bbc4c619ba01a1e976f7fef32115",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/longsleeve/longsleeve/female",
+        "weapon/blunt/mace"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-priest@32": {
+      "id": "sprite:hero-priest",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Priest",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-priest.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "3fd9eebf31da54541d3589b9eb6f3d5bd2c4a1c510862e291233a21d3f25bad9",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/longsleeve/longsleeve/female",
+        "weapon/blunt/mace"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-rogue-ashfolk@32": {
+      "id": "sprite:hero-rogue-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "class": "Rogue",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-rogue-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "e99ce694d8c50649c7dfcdc4bb1ed4b901c47ce484f3b14d8a83afdec92e895e",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/clothes/vest",
+        "weapon/sword/dagger"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-rogue-hallowan@32": {
+      "id": "sprite:hero-rogue-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Rogue",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-rogue-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "a282cc1a6bb298194ed7ba7d3bf62a374d71cd4b6a2430ec79c34275fb7474bb",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/vest",
+        "weapon/sword/dagger"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-rogue-mirekin@32": {
+      "id": "sprite:hero-rogue-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "class": "Rogue",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/hero-rogue-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "94a80d9b8dd81cf24bee79a750c22708440bf8c4263b70ce48af1774d69331d9",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/vest",
+        "weapon/sword/dagger"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-rogue-skerrin@32": {
+      "id": "sprite:hero-rogue-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "class": "Rogue",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-rogue-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "a282cc1a6bb298194ed7ba7d3bf62a374d71cd4b6a2430ec79c34275fb7474bb",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/vest",
+        "weapon/sword/dagger"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-rogue-tarrow@32": {
+      "id": "sprite:hero-rogue-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "class": "Rogue",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/hero-rogue-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "7dedbd1a45d6b3ac05c197723e891dd48c2474860f612e3e77fff4beb6703af9",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/vest",
+        "weapon/sword/dagger"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-rogue-thornhide@32": {
+      "id": "sprite:hero-rogue-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "class": "Rogue",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/hero-rogue-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "92eeea56a4d81501be6109e73a35c641d43e5aad8e77bb429cdde3348a73e873",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/vest",
+        "weapon/sword/dagger"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-rogue@32": {
+      "id": "sprite:hero-rogue",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Rogue",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-rogue.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "a282cc1a6bb298194ed7ba7d3bf62a374d71cd4b6a2430ec79c34275fb7474bb",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/vest",
+        "weapon/sword/dagger"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-skald-ashfolk@32": {
+      "id": "sprite:hero-skald-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "class": "Skald",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-skald-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "3496c45c8e948e8d03ec9a591d44228a5963bd718775f564bf652b759a94c4dc",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/long",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/rapier"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-skald-hallowan@32": {
+      "id": "sprite:hero-skald-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Skald",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-skald-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "46e6dc74999ed08acf4d6ba638a45d7ac555fb3d259ee83ddbe91832ecc23851",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/long",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/rapier"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-skald-mirekin@32": {
+      "id": "sprite:hero-skald-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "class": "Skald",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/hero-skald-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "e3909fb28635283a6ee2f3bc9e52552962bd4491a7108b6fd978b8a222d37907",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/long",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/rapier"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-skald-skerrin@32": {
+      "id": "sprite:hero-skald-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "class": "Skald",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-skald-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "648375dbe1913e4c987c750d319f3028b6c7e88edb92a85b1dfbeed17d2a1570",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/long",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/rapier"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-skald-tarrow@32": {
+      "id": "sprite:hero-skald-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "class": "Skald",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/hero-skald-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "ad267b5e4af47363031705406759b09ab7616e9757a3bf144df3bdf3b2bbb808",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/long",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/rapier"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-skald-thornhide@32": {
+      "id": "sprite:hero-skald-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "class": "Skald",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/hero-skald-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "a28450e5e37fd61abc4d0327d9793a6d39f34bda244559beb430cb37e97eb661",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/long",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/rapier"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-skald@32": {
+      "id": "sprite:hero-skald",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Skald",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-skald.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "46e6dc74999ed08acf4d6ba638a45d7ac555fb3d259ee83ddbe91832ecc23851",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/long",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/rapier"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-warrior-ashfolk@32": {
+      "id": "sprite:hero-warrior-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "class": "Warrior",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-warrior-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "cc65594b805a1534c8ecb44182e1e19f87f2668b48732c788ca498f8b585f2aa",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/kettle",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/arming"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-warrior-hallowan@32": {
+      "id": "sprite:hero-warrior-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Warrior",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-warrior-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "6235b28b4c3e9a6bb9c5cc855186c9378ad13f2542c1f564c514fd2fc3af6447",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/kettle",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/arming"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-warrior-mirekin@32": {
+      "id": "sprite:hero-warrior-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "class": "Warrior",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/hero-warrior-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "fcecf2defb96f4ba3e483320adb02eafd0294d3df1675a31e881d4390c1872f4",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/kettle",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/arming"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-warrior-skerrin@32": {
+      "id": "sprite:hero-warrior-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "class": "Warrior",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-warrior-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "6235b28b4c3e9a6bb9c5cc855186c9378ad13f2542c1f564c514fd2fc3af6447",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/kettle",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/arming"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-warrior-tarrow@32": {
+      "id": "sprite:hero-warrior-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "class": "Warrior",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/hero-warrior-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "f07f858eb1694eecce6c5f63280122d6934441e81f92e0584061fd776001eb53",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/kettle",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/arming"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-warrior-thornhide@32": {
+      "id": "sprite:hero-warrior-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "class": "Warrior",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/hero-warrior-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "c952f6dc36079b52744c9f55893c501cf0175468b5d5b2f76889119f5684fd0e",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/kettle",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/arming"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-warrior@32": {
+      "id": "sprite:hero-warrior",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Warrior",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-warrior.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "6235b28b4c3e9a6bb9c5cc855186c9378ad13f2542c1f564c514fd2fc3af6447",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/kettle",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/arming"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-wildspeaker-ashfolk@32": {
+      "id": "sprite:hero-wildspeaker-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "class": "Wildspeaker",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-wildspeaker-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "22b1d088e988291e431a7cd9e447867984b81df41af342bdb27572d2b4af212a",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "head/heads/orc/female",
+        "legs/pants/thin",
+        "torso/clothes/tunic",
+        "weapon/magic/simple"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-wildspeaker-hallowan@32": {
+      "id": "sprite:hero-wildspeaker-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Wildspeaker",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-wildspeaker-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "edce33c38ed5e4bd5d2ab0a0e276e43211a4523e2b424118a92b25e4a344e4a6",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/tunic",
+        "weapon/magic/simple"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-wildspeaker-mirekin@32": {
+      "id": "sprite:hero-wildspeaker-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "class": "Wildspeaker",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/hero-wildspeaker-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "bc147f739b254ca52d4aea2a284cb814fb8d7c9e36675944fc55dbd6a3763a1c",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/tunic",
+        "weapon/magic/simple"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-wildspeaker-skerrin@32": {
+      "id": "sprite:hero-wildspeaker-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "class": "Wildspeaker",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/hero-wildspeaker-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "9e2cb91fb55bbd24cacc8d05f62fd2dea6614f40bba96e4a12e4897d2ec0bd32",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/tunic",
+        "weapon/magic/simple"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-wildspeaker-tarrow@32": {
+      "id": "sprite:hero-wildspeaker-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "class": "Wildspeaker",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/hero-wildspeaker-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "b00eb2970ee48dec98ed924f0ec54d4044fe710275014bdfae273aab3362dd62",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/tunic",
+        "weapon/magic/simple"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-wildspeaker-thornhide@32": {
+      "id": "sprite:hero-wildspeaker-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "class": "Wildspeaker",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/hero-wildspeaker-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "d800996e1d71ad9dd69b89e247e5c99e5bfe421b4d479045022421e66ee71a87",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/tunic",
+        "weapon/magic/simple"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-wildspeaker@32": {
+      "id": "sprite:hero-wildspeaker",
+      "kind": "sprite",
+      "people": "hallowan",
+      "class": "Wildspeaker",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/hero-wildspeaker.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "edce33c38ed5e4bd5d2ab0a0e276e43211a4523e2b424118a92b25e4a344e4a6",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/tunic",
+        "weapon/magic/simple"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "tile:fen-grass@32": {
+      "id": "tile:fen-grass",
+      "kind": "tile",
+      "file": "tile/32/fen-grass.png",
+      "w": 32,
+      "h": 32,
+      "colors": 9,
+      "grid": "8x8",
+      "sha256": "d5e09d8e8d46950ffa58955645758eca1dbc9c4951c32043ee276ddbc4173159",
+      "model": "pixel-xl",
+      "repo": "nerijs/pixel-art-xl",
+      "provider": "fal-ai",
+      "seed": 9692,
+      "at": "2026-11-03T15:57:13.357Z",
+      "tier": 32,
+      "accepted": "2026-11-03T20:47:51.994Z"
+    },
+    "tile:grass@32": {
+      "id": "tile:grass",
+      "kind": "tile",
+      "file": "tile/32/grass.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "d1cdc617dd5e6fca2b8aa584ffcf83748747d524d0af069c19d52b1b6032408b",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04",
+      "replaces": "pixel-xl"
+    },
+    "tile:meadow@32": {
+      "id": "tile:meadow",
+      "kind": "tile",
+      "file": "tile/32/meadow.png",
+      "w": 32,
+      "h": 32,
+      "colors": 8,
+      "grid": "8x8",
+      "sha256": "191ec3c963209132aad10136a266d221df77c2ca5a1b86f0c40a77c3d6b8c8d8",
+      "model": "pixel-xl",
+      "repo": "nerijs/pixel-art-xl",
+      "provider": "fal-ai",
+      "seed": 9691,
+      "at": "2026-11-03T15:57:05.812Z",
+      "tier": 32,
+      "accepted": "2026-11-03T20:47:51.994Z"
+    },
+    "tile:road@32": {
+      "id": "tile:road",
+      "kind": "tile",
+      "file": "tile/32/road.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "39ee353baa1b8b0efff1386ecbf1fdf872759e863f332ceb4b74bff9461cdb01",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "tile:water@32": {
+      "id": "tile:water",
+      "kind": "tile",
+      "file": "tile/32/water.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "aaa9300e11a99829475970cfc250464c3eccd42f6387c0ac829202f1487bbd07",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    }
   }
- }
 }

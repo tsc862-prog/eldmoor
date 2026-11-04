@@ -1,11 +1,13 @@
 // Heroes: stats, quests, movement, combat, death and the per-hero state
-// machine (town, travel, hunt, follow, fight, return, downed, aid, duel, assist, regroup, dungeon, raid).
+// machine (town, mend, travel, hunt, follow, fight, return, downed, aid, duel, assist, regroup, dungeon, raid).
 // Party behaviour (forming, following, joining fights, shared XP) lives in party.js.
 // Owned by ai-designer (behaviour) and character-builder (stat formulas).
 import {writeSighting} from './sightings.js';
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {outpostHonor,outpostDest} from './outposts.js';
 import {SPEED} from '../world/tiles.js';
+import {standAt} from '../world/passable.js';
+import {pathLeg,pathReached,pathStep,clearLine,HOLD,DONE} from './path.js'; // paths, not straight lines (#794)
 import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {assignRace,homeOf} from '../data/races.js';
 import {FAC,genName} from '../data/factions.js';
@@ -13,10 +15,10 @@ import {CLS} from '../data/classes.js';
 import {rollTraits,tm,traitPhrase} from '../data/traits.js';
 import {MOBS} from '../data/mobs.js';
 import {EPICS,GOODS,price} from '../data/items.js';
-import {S,clockStr} from './state.js';
+import {S,clockStr,noOthers} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
-import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,regroup,steerClear} from './party.js';
+import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,leaveParty,regroup,steerClear} from './party.js';
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
@@ -30,6 +32,9 @@ import {record,timeline,first} from './history.js';
 import {bondEvent,inheritGrudge,avenged} from './bonds.js';
 import {checkEncounter} from './encounters.js';
 import {goDown,downedStep,reviveBonus} from './downed.js'; // downed and death saves (#626, #652/#653)
+import {WOUND,wounded,woundSpeed} from './wounds.js'; // lasting wounds (#656)
+import {tendBy,woundedMate,chapelVisit} from './tend.js'; // tending them, the chapel priest (#656)
+import {reflexMay} from './runlink.js';
 import {scoutCheck,fleeCheck} from './narrator.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {held} from './scenes.js'; // the engaged of a live-clock Table scene (#518)
@@ -42,9 +47,11 @@ import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hook
 import {killDone,killAbandoned,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
 import {dmDepart,dmTravel,dmHunt,BOUNTY,bountyFor,takeBounty,fellowBounty} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 import {scriptedBuy,scriptedList} from './market.js'; // hero-to-hero trades (#14)
+import {supplyVisit} from './supply.js'; // goods jobs on the home board (#720): filled from the pack before the sale
 import {townCraft,keepFor,townSmith} from './craft.js'; // crafting (#258): a scripted crafter makes what it wants in town before the sale
 import {gatherTick} from './gather.js'; // gathering (#257): a scripted hunter works a node of its trade now and then
 import {inSlots} from './company.js'; // the slotted company (#588)
+import {mercyCount} from './mercy.js'; // finish or spare (#657)
 
 // ---- stat formulas (tuning knobs) ----
 export const xpNeed=l=>Math.round(60*Math.pow(l,1.45)*(1+.8*Math.min(1,Math.max(0,(l-9)/7)))); // veterans: L10-16 ramp to +80% (balance #107)
@@ -60,17 +67,18 @@ function chooseBounty(a,c,z){
   if(a.quest&&MOBS[a.quest.type]&&MOBS[a.quest.type].z!==z){killAbandoned(a,'left for '+ZONES[z]);record(a,'Let the bounty on '+MOBS[a.quest.type].pl+' go.');a.quest=null}
   if(a.quest)return;const b=bountyFor(a,c,z);if(b&&rnd()<BOUNTY.TAKE*tm(a,'greed'))takeBounty(a,b)}
 
-export function makeHero(f,cls,guild,wait){
+export function makeHero(f,cls,guild,wait,name){
   const a={id:++S.uid,kind:'hero',name:genName(f),fac:f,cls,lvl:1,xp:0,gear:0,gold:ri(2,6),
-    inv:newInv(),kills:0,deaths:0,honor:0,epics:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
+    inv:newInv(),kills:0,deaths:0,honor:0,epics:[],wounds:[],skin:pickA(FAC[f].skin),x:0,y:0,state:'town',townStep:1,
     wait,face:1,cd:0,healCd:0,scan:0,quest:null,target:null,dest:null,zone:0,moving:false,guild,nemesis:{},hidden:false,spotCd:0,party:null,linger:0,adv:null};
   a.traits=rollTraits(cls);
   a.slots=emptySlots();
   assignRace(a,S.agents); // people, skin, hair, name and home town (data/races.js)
+  if(name)a.name=name; // a name chosen for them (summon_hero, #780), before the backstory speaks it
   assignBackstory(a);
   rollScores(a); // six ability scores and skill training, after the people and trade are known
   a.hp=maxHp(a);
-  const c=homeOf(a);a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
+  const c=homeOf(a);Object.assign(a,standAt(c.x0+2+rnd()*7,c.y0+4+rnd()*3)); // not inside a building (#793)
   S.agents.push(a);
   // Trait reveal for recruits (not the opening roster): "Thrakash is reckless and greedy; Grimhold will remember that."
   if(S.gameMin>0&&rnd()<.3)log(a,' is ',{t:traitPhrase(a),c:'gd'},'; ',c.name,' will remember that.');
@@ -81,9 +89,15 @@ export function seedLevel(a,lvl){lvl=Math.max(1,Math.min(20,Math.round(lvl)));if
   for(let l=a.lvl+1;l<=lvl;l++)if(l%5===0)growScores(a,l);
   a.lvl=lvl;a.xp=0;a.hp=maxHp(a);return a}
 
-export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);if(d<.12){e.moving=false;return true}
-  const st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt;e.moving=true;if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
-  if(st>=d){e.x=x;e.y=y;e.moving=false;return true}e.x+=dx/d*st;e.y+=dy/d*st;return false}
+// One tick's walk toward (x,y), around whatever is solid (sim/path.js, #794). True on arrival, or as near as the ground allows.
+export function moveTo(e,x,y,dt,sp){let st=-1;
+  for(let k=0;k<12;k++){if(Math.hypot(x-e.x,y-e.y)<.12){e.moving=false;e.path=null;return true}
+    const q=pathLeg(e,x,y);if(q===DONE){e.moving=false;return true}if(q===HOLD){e.moving=false;return false}
+    if(st<0){st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt*(1-woundSpeed(e));if(!(st>=0)){e.moving=false;return false}e.moving=true} // a bad pace walks nowhere
+    const dx=q.x-e.x,dy=q.y-e.y,d=Math.hypot(dx,dy);if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
+    if(st<d){const nx=e.x+dx/d*st,ny=e.y+dy/d*st;if(pathStep(e,nx,ny)){e.x=nx;e.y=ny}else e.moving=false;return false}
+    e.x=q.x;e.y=q.y;st-=d;pathReached(e)} // a leg's end inside this tick: the rest of the step goes on along the next
+  return false}
 
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
   while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)growScores(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
@@ -117,7 +131,7 @@ export function killMob(a,m){actKill(a,m);m.alive=false;m.respawn=22+rnd()*20;m.
 let fallHook=null;
 export function setFallHook(f){fallHook=typeof f==='function'?f:null}
 export function fall(a,cause){
-  a.deaths++;a.state='dead';a.cause=cause;a.diedAt=clockStr();a.hp=0;a.target=null;a.raid=false;a.moving=false;a.hidden=false;a.dest=null;
+  a.deaths++;a.state='dead';a.cause=cause;a.diedAt=clockStr();a.hp=0;a.wounds=[];a.target=null;a.raid=false;a.moving=false;a.hidden=false;a.dest=null;
   if(a.party)disband(a.party);
   for(const m of S.mobs)if(m.target===a)m.target=null;
   S.facStats[a.fac].fallen++;
@@ -125,32 +139,39 @@ export function fall(a,cause){
   if(a.will&&fallHook)fallHook(a);
   goalEvent(a,'died');
   if(a.lvl>=10&&!/^lost in/.test(cause))timeline('death',a,' fell at level '+a.lvl+' ('+cause+').'+(a.lvl>=15?' A legend ends.':''));
-  if(!a.hire)S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8}); // a hired blade is not replaced (sim/hire.js)
+  if(!a.hire&&!a.summoned&&!noOthers())S.recruits.push({fac:a.fac,cls:a.cls,t:8+rnd()*8}); // a hired blade is not replaced (sim/hire.js), nor one the DM summoned; a world with no others queues nobody (#780)
   const graves=S.agents.filter(x=>x.state==='dead');
   if(graves.length>40){const old=graves.find(x=>x!==S.pinned);if(old)S.agents.splice(S.agents.indexOf(old),1)}}
 
 const GUILD_GRUDGE_LVL=12,RAID_FLEE=.15;
 // A hero at zero HP: downed first when it may be (sim/downed.js), else slain. slay() is the one road to fall().
 export function agentDie(a,killer){if(goDown(a,killer))return;slay(a,killer)}
-export function slay(a,killer){
-  actDeath(a,killer);if(killer.kind==='hero')actKill(killer,a);
+// o.finish: a hero finished them where they lay (sim/mercy.js): the whole guild swears, as for a veteran. o.bled: they
+// bled out after an enemy hero downed them: nobody gets the honour, the XP or the gold (#657, owner answer 3 on #626).
+export function slay(a,killer,o){o=o||{};
+  if(killer.kind==='hero'&&!o.bled&&!o.finish&&a.state==='downed')o.finish=true; // any blow on the downed is a finish
+  if(o.finish)mercyCount('finished');else if(o.bled)mercyCount('bled');
+  actDeath(a,killer);if(killer.kind==='hero'&&!o.bled)actKill(killer,a);
   if(killer&&killer.kind==='mob')loreWitness(a,killer); // those who see it learn what it can do (#188)
   const lv={t:'(level '+a.lvl+')',c:'dm'};
   record(a,'Fell at level '+a.lvl+', slain by ',killer.kind==='hero'?killer:killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+MOBS[killer.type].name,'.');
   bondEvent(a,'died',[killer]);
   for(const x of nearHeroes(a.x,a.y,10))if(x!==a&&x.state!=='dead'&&((a.guild&&x.guild===a.guild)||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
-  if(killer.kind==='hero'){const oh=outpostHonor(a);killer.honor+=oh;S.facStats[killer.fac].honor+=oh;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
+  if(killer.kind==='hero'&&o.bled){log(a,' ',lv,' bled out in ',ZONES[zoneAt(a.x,a.y)],', left where ',killer,' struck them down.');
+    S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild).forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name});
+    inheritGrudge(a,killer);fall(a,'bled out after '+killer.name+' struck them down')}
+  else if(killer.kind==='hero'){const oh=outpostHonor(a);killer.honor+=oh;S.facStats[killer.fac].honor+=oh;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
     killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
     say(killer,'kill',{target:a.name});
-    record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':'Killed ',a,' (level '+a.lvl+').');
+    record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':o.finish?'Finished ':'Killed ',a,' (level '+a.lvl+')'+(o.finish&&!killer.nemesis[a.id]?' where they lay':'')+'.');
     avenged(killer,a);
     if(killer.nemesis[a.id]){debtDone(killer,a);log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
-    else log(killer,' killed ',a,' ',lv,' in ',ZONES[zoneAt(a.x,a.y)],'.');
+    else log(killer,o.finish?' finished ':' killed ',a,' ',lv,o.finish?' where they lay':'',' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild);
-    mates.forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran swears the whole guild; lesser deaths bind just their party
+    mates.forEach(x=>{if(o.finish||a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran, or one finished where they lay (#657), swears the whole guild; lesser deaths bind just their party
     inheritGrudge(a,killer);
     goalEvent(killer,'slay',a);
-    if(mates.length&&a.guild&&a.lvl>=4)log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
+    if(mates.length&&a.guild&&(a.lvl>=4||o.finish))log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
     fall(a,'slain by '+killer.name);}
   else if(killer.kind==='boss'){log(a,' ',lv,' was incinerated by ',{t:'Kragmaw',c:'gd'},'.');fall(a,'incinerated by Kragmaw')}
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
@@ -170,15 +191,17 @@ export function strike(a,t,o){
 
 export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){tendAlly(a,list);return}let low=null; // spell on cooldown: a potion for a member nearly down (sim/inv.js)
   for(const b of list){if(b.state==='ghost'||dist(a,b)>(b.state==='downed'?5:4))continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
+  if(!low&&(a.state==='hunt'||a.state==='follow')&&reflexMay(a))low=woundedMate(a,list); // nothing presses: a scripted healer tends a wounded mate (#656)
   if(low)healOne(a,low)}
 // One cast of the class heal on one hero (priestHeal's pick, or a gambit's target, #617).
-export function healOne(a,low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'healMul'))+reviveBonus(low);low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;actHeal(a,low,h,'Heal');if(low!==a)bondEvent(a,'heal',[low])}
+export function healOne(a,low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'healMul'))+reviveBonus(low);low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;actHeal(a,low,h,'Heal');if(low!==a)bondEvent(a,'heal',[low]);tendBy(a,low,'heal')}
 
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
 // Town: craft (#258), wear a better spare, pass spares to a party member they suit, sell goods and the rest, buy gear, then stock the pack.
-export function sellAndShop(a){const c=homeOf(a);townCraft(a);scriptedBuy(a,keepFor(a));autoEquip(a);passSpares(a);scriptedList(a);const sold=sellLoot(a,keepFor(a)),tot=sold.gold,n=sold.goods;a.gold+=tot; // craft first (#258): it uses the materials the sale would take
+export function sellAndShop(a){const c=homeOf(a);supplyVisit(a);townCraft(a);scriptedBuy(a,keepFor(a));autoEquip(a);passSpares(a);scriptedList(a);const sold=sellLoot(a,keepFor(a)),tot=sold.gold,n=sold.goods;a.gold+=tot; // craft first (#258): it uses the materials the sale would take
   if(n>=6&&rnd()<.35)log(a,' sold ',String(n),' goods at the ',c.name,' auction house for ',gold(tot+'g'),'.');
+  chapelVisit(a); // a wound, and the gold from the sale: the priest takes a day off it (#656)
   if(shopUpgrade(a))a.hp=maxHp(a);
   restock(a);townSmith(a)}
 
@@ -188,10 +211,12 @@ export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a
   if(rnd()<.4)log(a,' completed ',{t:'“'+M.q+'”',c:'gd'},' for ',gold(g+'g'),'.');killDone(a);a.quest=null;if(S.dmStats)S.dmStats.bountiesDone=(S.dmStats.bountiesDone||0)+1}}
 
 export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9)*sightMul(a.zone),lq=L&&L.quest?L.quest.type:null;
-  for(const m of nearMobs(a.x,a.y,range)){if(!m.alive||(m.target&&m.target!==a)||held(m)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+1||m.spared>S.gameMin)continue; // spared: talked down at the Table (#296)
-    const d=dist(a,m);if(d>range)continue;const s=d-(a.quest&&a.quest.type===m.type||m.type===lq?4:0);if(s<bs){bs=s;best=m}}return best}
+  for(const m of nearMobs(a.x,a.y,range)){if(!m.alive||(m.target&&m.target!==a)||held(m)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+(wounded(a)?0:1)||m.spared>S.gameMin)continue; // spared: talked down at the Table (#296)
+    const d=dist(a,m);if(d>range||!clearLine(a,m))continue;const s=d-(a.quest&&a.quest.type===m.type||m.type===lq?4:0);if(s<bs){bs=s;best=m}}return best}
 
-// Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
+// A background hero badly wounded stays in town to mend (state 'mend'); a company rides on as one, an agent decides for itself.
+const mendHold=a=>!a.player&&a.company==null&&a.wounds.length>=WOUND.MEND_AT;
+// Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered). A wounded hero leaves prey above its level alone.
 // Personality traits (data/traits.js) scale these via tm(a,key): Reckless lowers retreat/flee, Cautious raises them, etc.
 export function updAgent(a,dt){
   a.cd-=dt*combatStats(a).speed;a.healCd-=dt;if(a.potCd>0)a.potCd-=dt;if(a.wardT>0)a.wardT-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
@@ -201,7 +226,8 @@ export function updAgent(a,dt){
       if(a.townStep===0)say(a,'idle',{p:.35});
       if(a.townStep===0){sellAndShop(a);a.townStep=1;a.wait=1+rnd()*1.5}
       else if(a.townStep===1){turnIn(a);a.townStep=2;a.wait=.2;a.linger=a.cls==='Warrior'?4+rnd()*2:2;seekParty(a)}
-      else{if(a.linger>0&&!a.party&&seekParty(a)==='wait'){a.linger--;a.wait=1;break}
+      else{if(mendHold(a)){if(a.party)leaveParty(a);a.state='mend';break}
+        if(a.linger>0&&!a.party&&seekParty(a)==='wait'){a.linger--;a.wait=1;break}
         if(a.linger>0&&a.party&&partyMates(a).some(b=>b.state==='town'&&b.townStep<2)){a.linger--;a.wait=1;break}
         // Order is deliberate: a posted adventure outranks any zone plan, so the DM goes first
         // and an AI hero's (or leader's) town plan is then settled 'overruled' (brainJob).
@@ -211,6 +237,9 @@ export function updAgent(a,dt){
         chooseBounty(a,c,tz); // no adventure: the captain's bounty for that region, if the hero wants it (issue #67)
         say(a,'depart',{zone:ZONES[tz]});
         a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate);if(a.player)writeSighting(a,ZONES[tz],c.name)}}break}
+  // At the inn until only one wound is left, seeing the priest each game day it has the gold. Then the town's last step: out the gate.
+  case 'mend':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const inn=c.spots&&c.spots.inn||c.ah;moveTo(a,inn.x,inn.y,dt,2.2);chapelVisit(a);
+    if(!mendHold(a)){a.state='town';a.townStep=2;a.wait=.2;a.linger=0}break}
   case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
     if(a.adv&&dmTravel(a,dt))break; // DM: walking to the adventure's next scene
     if(checkEncounter(a,dt))break; // road encounter in reach: detour and resolve (sim/encounters.js)

@@ -26,6 +26,7 @@ import {ELITES} from '../data/mobs.js';
 import {TRADES} from '../data/origins.js';
 import {cleanText,PERSONA_FIELDS,STANCE_MAX,BACKSTORY_FIELDS,LINK_KINDS} from '../data/prompts.js';
 import {S} from './state.js';
+import {swornOf,threadOf,threadText} from './oath.js'; // an unsworn thread is not an oath (#800)
 import {bond,FRIEND,CLOSE} from './bonds.js';
 import {topScores,SKILLS} from './abilities.js';
 import {ARCHETYPES} from '../data/archetypes.js';
@@ -46,10 +47,10 @@ const goalTarget=a=>a.goal&&a.goal.target?a.goal.target:null;
 // ---- facts: what the sim knows about this hero, compact ----
 const NOTABLE=/^(Reached level (5|10|15|20)|Slew |Looted |Paid the blood debt|Avenged |Killed |Lost a |Now counts |Became friends|Saw through |Failed at |Cleared |Completed )/;
 export function factsOf(a){const r=raceOf(a),c=homeOf(a);
-  return {people:r.name,culture:r.culture,home:a.home||null,town:c.name,cls:a.cls,role:ROLE_NAME[roleOf(a)],lvl:a.lvl,
+  return {people:r.name,culture:r.culture,home:a.home||null,town:a.born||c.name,cls:a.cls,role:ROLE_NAME[roleOf(a)],lvl:a.lvl,
     scores:topScores(a,3).join(', '),skills:(a.prof||[]).map(k=>SKILLS[k]?SKILLS[k].name:k).join(', '),
     origin:a.origin||null,trade:tradeOf(a),traits:(a.traits||[]).map(t=>t+(TRAITS[t]?': '+TRAITS[t].desc:'')),
-    oath:a.goal?a.goal.text+(a.goal.done?' (kept)':''):null,
+    oath:a.goal&&!a.goal.offered?a.goal.text+(a.goal.done?' (kept)':''):null,...(threadOf(a)?{thread:threadText(a)}:{}),
     history:(a.history||[]).filter(h=>NOTABLE.test(h.text||'')).slice(-6).map(h=>h.text),
     nemesis:nemesisOf(a).slice(0,3).map(x=>x.name),
     kills:a.kills||0,eliteKills:a.eliteKills||0,honor:a.honor||0}}
@@ -145,7 +146,7 @@ const LINK={
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!=null?String(v[k]):m);
 
 export function buildBackstory(a,mates=[],fname='the Fellowship'){const f=a.fac===1?1:0,r=raceOf(a),c=homeOf(a),T=worldTies(a);
-  const v={name:a.name,home:a.home||c.name,people:r.plural||r.name,town:c.name,trade:tradeOf(a),child:((a.origin||'').match(/\b(son|daughter)\b/)||[])[1]||pick(a,5,['eldest','youngest'])}; // never contradict the origin line
+  const v={name:a.name,home:a.home||a.born||c.name,people:r.plural||r.name,town:a.born||c.name,trade:tradeOf(a),child:((a.origin||'').match(/\b(son|daughter)\b/)||[])[1]||pick(a,5,['eldest','youngest'])}; // never contradict the origin line
   const family=fill(pick(a,6,FAMILY[f]),v)+(a.origin?' '+a.origin:'');
   const arms=a.name+' '+fill(pick(a,7,ARMS[a.cls]||ARMS.Warrior),v)+'. Now a '+a.cls.toLowerCase()+' of the '+FAC[a.fac].name+', level '+a.lvl+'.';
   let defining;
@@ -157,7 +158,7 @@ export function buildBackstory(a,mates=[],fname='the Fellowship'){const f=a.fac=
   const p=buildPersona(a,[]);
   const wants=a.name+' wants '+lc(p.wants).replace(/\.$/,'')+'. What keeps them awake is '+lc(p.fears).replace(/\.$/,'')+'.';
   const role=ROLE_NAME[roleOf(a)];
-  const joined=a.name+' joined '+fname+' as its '+(role==='Damage'?'blade':lc(role))+' because '+(a.goal&&!a.goal.done?'one sword alone will not '+lc(a.goal.text):'the roads are getting worse and five live longer than one')+'.';
+  const joined=a.name+' joined '+fname+' as its '+(role==='Damage'?'blade':lc(role))+' because '+(swornOf(a)?'one sword alone will not '+lc(a.goal.text):'the roads are getting worse and five live longer than one')+'.';
   const link=pickLink(a,mates),ltext=link?fill(LINK[link.kind]||LINK.debt,{name:a.name,other:link.name,home:v.home===(byId(link.id)||{}).home?v.home:'quarter of '+c.name}):'';
   const summary=(a.originShort?a.name+', '+a.originShort+', ':a.name+', a '+r.name+' '+a.cls.toLowerCase()+', ')+'who wants '+lc(p.wants).replace(/\.$/,'')+'.';
   return {src:'scripted',edited:false,at:S.gameMin,paras:{family,arms,defining,flaw,wants,joined,link:ltext},summary:summary.slice(0,BACKSTORY_FIELDS.summary),link,world:T}}
@@ -264,7 +265,8 @@ export function selfOf(a){if(!a)return null;const P=a.persona||(a.persona=buildP
 // Is this field fixed by the owner? (stance covers every stance and view)
 export const pinned=(a,f)=>!!(a&&a.persona&&a.persona.pins&&a.persona.pins[f]);
 // The owner's pin from the sheet editor. -> true when the field is known.
-export function pinField(a,f,on){const k=selfField(f)||f;if(!a||!SELF_FIELDS.includes(k))return false;const P=selfOf(a);if(on)P.pins[k]=true;else delete P.pins[k];return true}
+export function pinField(a,f,on){const k=selfField(f)||f;if(!a||(!SELF_FIELDS.includes(k)&&k!=='oath'))return false; // oath: renounce_oath refuses it (#800)
+  const P=selfOf(a);if(on)P.pins[k]=true;else delete P.pins[k];return true}
 // A sheet rebuilt from the sim (sim/company.js sheets) keeps what the agent made of itself and the owner's pins.
 export function keepSelf(old,fresh){if(!old||!fresh)return fresh;const out={...fresh};
   for(const k of ['hist','pins','by','views','selfDay','selfN','selfAt','beliefs','traits'])if(old[k]!==undefined)out[k]=old[k];
@@ -301,7 +303,7 @@ export function selfView(a){const P=selfOf(a),T=changesToday(P),M=a.memory,tr=tr
   for(const id in P.stanceBy||{})if(P.stanceBy[id]==='self'&&!stances.some(s=>s.id==id)&&P.stances&&P.stances[id]){const b=byId(id);if(b)stances.push({who:b.name,id:b.id,line:P.stances[id],yours:true})}
   const people=Object.values(P.views).map(v=>({who:v.name,line:v.line}));
   const left=Math.max(0,SELF.PER_DAY-T.n),pins=SELF_FIELDS.filter(f=>P.pins[f]);
-  return {ok:true,who_you_are:personaLine(a),voice:P.voice,wants:P.wants,...(a.vow?{sworn_vow:a.vow.text+' ('+Math.max(0,Math.ceil((a.vow.ends-S.gameMin)/1440))+' game days left)'}:{}),fears:P.fears,quirk:P.quirk,never_says:P.never_says,
+  return {ok:true,who_you_are:personaLine(a),voice:P.voice,wants:P.wants,...(swornOf(a)?{oath:a.goal.text}:threadOf(a)?{from_your_past:threadText(a),not_sworn:'It binds you to nothing. swear_oath makes it, or anything else, your oath; thread no sets it aside.'}:{}),...(a.vow?{sworn_vow:a.vow.text+' ('+Math.max(0,Math.ceil((a.vow.ends-S.gameMin)/1440))+' game days left)'}:{}),fears:P.fears,quirk:P.quirk,never_says:P.never_says,
     beliefs:P.beliefs||'(none named yet)',traits:tr.length?tr:['(none named yet)'],stances,...(people.length?{people}:{}),
     backstory:a.backstory&&a.backstory.summary?a.backstory.summary:null,...(a.epithet?{name_given:a.epithet.refused?'You refused the name '+a.epithet.t+'.':'The world calls you '+a.name+' '+a.epithet.t+' (given by '+a.epithet.by+'); yours to wear, use in become, or refuse aloud.'}:{}),...(a.told&&a.told.length?{stories_told:a.told.map(x=>'Day '+x.d+' to '+(x.to.join(', ')||'the fire')+': "'+x.text+'"')}:{}),...(P.archetype&&ARCHETYPES[P.archetype]?{began_as:ARCHETYPES[P.archetype].name}:{}),
     ...(pins.length?{fixed:pins.map(f=>SELF_LABEL[f])}:{}),
