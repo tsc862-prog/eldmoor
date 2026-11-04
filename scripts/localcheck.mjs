@@ -425,7 +425,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     Object.assign(DOWN, keep); sim.markPlayer(a, false)}
 
   // B. a notification that cannot wait starts a turn at once, inside the gap; the hero's other news waits for the gap
-  {const a = pick();
+  {const a = pick(), pinB = setInterval(() => {if (a.state !== 'dead') {park(a); a.hp = maxHpOf(a)}}, 50); // kept alive, as in C: a hero lost to the unseeded world would end its runner early, and both checks below would read null
     const R = runner(a, 'mock-tools:1b', ['--heartbeat', '1440', '--min-gap', '4']);
     ok(await until(() => R.turns.length >= 1, 30000), 'a local runner without --max-turns plays (until stopped)');
     ok(/until stopped/.test(R.out), 'and says it runs until stopped');
@@ -447,9 +447,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     }
     ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`);
     await until(() => R.turns.length >= R.wakes.length + 1, 30000);
-    sim.markPlayer(a, false);
+    clearInterval(pinB); sim.markPlayer(a, false);
     const code = await Promise.race([R.done, sleep(20000).then(() => 'timeout')]);
-    ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 ? '' : '\n' + R.out.slice(-1200)))}
+    ok(code === 0 && /the hero left agent play/.test(R.out), 'a hero taken out of agent play ends its runner' + (code === 0 && /the hero left agent play/.test(R.out) ? '' : ' (hero ' + a.state + ') ' + '\n' + R.out.slice(-1200)))}
 
   // C. a lazy model (the owner's live bug): re-prompted once per turn, empty turns stop the runner, the scripted rules take over
   {const a = pick(), n0 = seen.length;
