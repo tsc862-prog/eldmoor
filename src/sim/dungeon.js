@@ -57,7 +57,7 @@ export function dungeonCheck(dt){const agents=S.agents;
     if(CRYPT.group||cryptReserved()||mem.length<need)return; // the Fellowship may have just taken or reserved the Crypt
     if(gu&&cryptWeight(gu)>1&&mem.filter(a=>a.guild===gu).length>=3)focusCount('crypt');
     musterCrypt(mem,f,gu&&mem.filter(a=>a.guild===gu).length>=3?gu:null,co?co.name:null);return}
-  g.mem=g.mem.filter(a=>a.state==='dungeon');
+  g.mem=g.mem.filter(a=>a.state==='dungeon'||(a.down&&a.down.crawl&&a.state==='downed')); // the downed below ground stay with the crawl (#654)
   if(!g.mem.length){if(g.crawl&&CRAWL)CRAWL.lost(g);CRYPT.group=null;return} // a crawl whose last hero fell at the table
   g.t-=dt;
   if(g.phase==='gather'){const here=g.mem.filter(a=>dist(a,CRYPT)<2.4);
