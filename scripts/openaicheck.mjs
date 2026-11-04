@@ -221,7 +221,7 @@ console.log('npm run fellowship -- --provider openai (headless Fellowship, mock 
   ok(code === 0, 'the Fellowship runner finishes' + (code ? '\n' + out.slice(-3000) : ''));
   ok((out.match(/\[turn 1(, scene)?\] gpt-6-luna \(openai\)/g) || []).length === 5 && /\| run \$0\.\d+ of \$1\.0000/.test(out), 'each of the five plays an OpenAI turn with the run total against the budget');
   ok(!out.includes(KEY), 'the key is not in the output');
-  const j = JSON.parse(readFileSync(join(ROOT, 'logs', 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop());
+  const j = JSON.parse(readFileSync(join(tmp, 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop());
   ok(j.url === FB && j.spent > 0 && j.members.every(m => m.provider === 'openai' && m.tokensIn > 0 && m.cost > 0), 'the run record lists the members with tokens and real cost');
   fw.p.kill();
 }

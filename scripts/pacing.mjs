@@ -42,13 +42,17 @@ const num = (v, d) => {const n = Number(v); return v === null || v === undefined
 
 // The pacing settings from flags (--heartbeat MIN, --min-gap S, --max-fails N), then env (AGENT_HEARTBEAT,
 // AGENT_MIN_GAP, AGENT_MAX_FAILS), then the defaults. cadence: an older flag name for the gap (Fellowship).
+// hearWake (--hear-wake MIN, AGENT_HEAR_WAKE_MIN, #787): game minutes between the turns a companion's line may start for this
+// listener, sent with every pace call; null keeps the game's own PK.HEAR_WAKE (15). The owner's knob for a chatty company.
 export function paceSettings(opt, env = {}, {cadence = null} = {}) {
   return {
     heartbeat: Math.min(1440, Math.max(5, num(opt('heartbeat', null), num(env.AGENT_HEARTBEAT, PACE_DEFAULTS.heartbeat)))),
     minGap: Math.max(0, num(opt('min-gap', null), num(cadence, num(env.AGENT_MIN_GAP, PACE_DEFAULTS.minGap)))),
     maxFails: Math.max(1, Math.round(num(opt('max-fails', null), num(env.AGENT_MAX_FAILS, PACE_DEFAULTS.maxFails)))),
+    hearWake: hearWakeOf(num(opt('hear-wake', null), num(env.AGENT_HEAR_WAKE_MIN, null))),
   };
 }
+const hearWakeOf = v => v == null || !(v > 0) ? null : Math.min(1440, Math.max(1, Math.round(v)));
 export const paceText = p => `a turn on an event, else every ${p.heartbeat} game min, at least ${p.minGap} s apart`;
 // --max-turns when asked, else until stopped (owner, #563: paid minds are limited by their budget in dollars, not by turns;
 // a local mind costs nothing). provider and paidDefault are kept for callers; neither caps a run any more.
@@ -68,12 +72,12 @@ export const localWorked = r => r && r.looped && !r.tools ? null : r && r.gameDo
 // makePacer({base, hero, runner, heartbeat, minGap, log, stopped}) -> {next(), turnDone(), state}
 //   next(): waits for the next turn. -> {wake:'now'|'soft'|'heartbeat', why, table, clock} or {dead} / {gone, why} / {stopped}
 //   turnDone(): call when a turn ends (the gap and the heartbeat count from here).
-export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbeat, minGap = PACE_DEFAULTS.minGap, log = () => {}, stopped = () => false, fetchImpl = fetch}) {
+export function makePacer({base, hero, runner, heartbeat = PACE_DEFAULTS.heartbeat, minGap = PACE_DEFAULTS.minGap, hearWake = null, log = () => {}, stopped = () => false, fetchImpl = fetch}) {
   let lastEnd = null, since = null, nows = [], legacy = false, said = false;
   const st = {waiting: false, wake: null};
   async function pace(wake, realMs) {
     try {
-      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, since, minutes: heartbeat, wake, realMs, reflect: REFLECT_ON}), signal: AbortSignal.timeout(realMs + 20000)});
+      const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, since, minutes: heartbeat, wake, realMs, reflect: REFLECT_ON, ...(hearWake ? {hearWake} : {})}), signal: AbortSignal.timeout(realMs + 20000)});
       if (r.status === 404) return {unsupported: true};
       const j = await r.json().catch(() => ({ok: false, error: 'bad answer'}));
       if (j && j.ok === false && /unknown tool pace|not found/i.test(String(j.error || ''))) return {unsupported: true};
@@ -163,6 +167,8 @@ export function briefText(b) {
 // The in-sight line (brief.insight, src/sim/sighthero.js, #570): companions and the one you seek, in sight beyond earshot.
 export const sightNote = b => b && typeof b.insight === 'string' && b.insight ? `\nIn sight: ${b.insight.slice(0, 300)}.` : '';
 // The gambit hold (brief.hold, #630): the world waits for this hero's next acting call.
+// Session zero held for members out of range (brief.gather, #771).
+export const gatherNote = b => b && typeof b.gather === 'string' && b.gather ? `\nSESSION ZERO: ${b.gather.slice(0, 200)}` : '';
 export const holdNote = b => b && typeof b.hold === 'string' && b.hold ? `\nTHE WORLD IS HELD FOR YOU by your rule (${b.hold.slice(0, 160)}): nothing moves until you act (any acting tool), at most 2 minutes. Look, then act.` : '';
 export const earshotNote = b => b && typeof b.earshot === 'string' && b.earshot ? `\nIn earshot: ${b.earshot.slice(0, 300)} (the earshot tool tells more).` : '';
 export function talkText(b) {
@@ -180,7 +186,7 @@ export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
 What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return personaNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return gatherNote(b) + personaNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
 // header; when it is done, stale or was never stated, the turn asks first "What are you trying to do now?" (any mind: the

@@ -121,11 +121,11 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     if (narration && S.narr.some(p => similar(p, narration) >= BD.REPEAT_SIM)) flags.add('repeat');
     if (narration && notEnglish(narration)) flags.add('foreign');
     const stale = rec.brief || rec.after ? staleClaim(narration, rec.brief, rec.after, tools) : null; if (stale) flags.add('stale');
-    S.turns++; if (narration) {S.narr.push(narration); if (S.narr.length > BD.REPEAT_BACK) S.narr.shift()}
+    S.turns++; if (Number.isFinite(rec.ctx)) S.ctx = rec.ctx; if (narration) {S.narr.push(narration); if (S.narr.length > BD.REPEAT_BACK) S.narr.shift()}
     const line = {seat, hero: rec.hero || null, runner: rec.runner || null, provider: rec.provider || null, model: rec.model || null, turn: rec.turn ?? S.turns,
       gameMin: rec.gameMin ?? null, clock: rec.clock || null, wake: rec.wake || null, brief: rec.brief || null, after: rec.after || null,
       tools: tools.map(t => ({name: cut(t.name, 40), ok: !!t.ok, ...(t.ok ? {} : {error: cut(t.error, 140)}), ...(t.refused ? {refused: true} : {})})),
-      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, ...(Number.isFinite(rec.tokensCached) ? {tokensCached: rec.tokensCached} : {}), cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, cost: rec.cost ?? null, ...(Array.isArray(rec.sceneS) && rec.sceneS.length ? {sceneS: rec.sceneS.slice(0, 8).map(Number).filter(Number.isFinite)} : {}), flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
+      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, ...(Number.isFinite(rec.tokensCached) ? {tokensCached: rec.tokensCached} : {}), cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, ...(Number.isFinite(rec.ctx) ? {ctx: rec.ctx} : {}), cost: rec.cost ?? null, ...(Array.isArray(rec.sceneS) && rec.sceneS.length ? {sceneS: rec.sceneS.slice(0, 8).map(Number).filter(Number.isFinite)} : {}), flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
     write('turn', line);
     sawModel(line.provider, line.model, seat);
     // detectors
@@ -161,6 +161,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     if (!rec || typeof rec !== 'object') return false;
     if (kind === 'world') {
       const r = {...rec}; if (Array.isArray(r.members) && links) r.members = r.members.map(m => ({...m, link: links[m.id] || 'none', ...(runners && runners[m.id] ? {runner: runners[m.id]} : {})}));
+      const ctx = {}; for (const [k, v] of seats) if (Number.isFinite(v.ctx)) ctx[k] = v.ctx; if (Object.keys(ctx).length) r.ctx = ctx; // each seat's last prompt size (#787)
       write('world', r); return true}
     if (kind === 'wish' && (rec.type === 'wish' || rec.type === 'attempt')) { // #663: the text is the agent's own, English-only and capped by the game; the writer scrubs keys
       const r = {...rec}; for (const k of ['tool', 'what', 'why', 'moment', 'summary', 'place', 'name', 'skill']) if (typeof r[k] === 'string') r[k] = cut(r[k], k === 'what' ? 300 : 200);
