@@ -133,7 +133,9 @@ const dmOf=sc=>sc&&EXTRA[sc.kind]&&EXTRA[sc.kind].dm?EXTRA[sc.kind].dm:staged(sc
 // A kind may bring more (#571, the fireside): next(sc) -> true to play another round (acts cleared, the same order); liveMs, the
 // real wait for a live agent instead of TABLE.liveMs (a member that ran it out once is not waited for again in that scene);
 // lineMax, the length of a member's line; view(sc, a), more fields for tableView; everyBeat, its DM's onBeat call in every
-// round, not only the first (#431: an interrogation's suspect answers each question).
+// round, not only the first (#431: an interrogation's suspect answers each question). move(sc, a, text) reads scene_act's move
+// ({x, y, word} or {error}, nothing changed yet) and place(sc, a, plan) makes it; spotOf(sc, a) names where a member stands, for
+// so_far (#744: sim/crawl.js; a kind without them has no moving, and scene_act says so).
 const kindOf=sc=>sc&&EXTRA[sc.kind]||null;
 const liveOf=sc=>{const K=kindOf(sc);return K&&K.liveMs||TABLE.liveMs};
 const moreOf=sc=>{const K=kindOf(sc);return !!(K&&K.next)};
@@ -353,7 +355,7 @@ function wakeStep(sc,dt){const W=sc.wk;if(!W||W.done||sc.phase!=='turn'||framing
   if(!left){W.done=1;if(!all)startTurn(sc)}}
 
 // An agent's answer (scene_act), before or during its turn. Returns an error string or the act.
-export function sceneAct(a,opt,line){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
+export function sceneAct(a,opt,line,move){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))return 'No scene at the table for you right now.';
   if(isDown(a))return 'You are down and bleeding: you cannot act. Your death save is rolled on your turn.'; // #654
   if(sc.phase==='outcome'||sc.phase==='done')return 'The scene is over.';
   if(together(sc)&&sc.resolved)return 'The table has already answered.';
@@ -364,14 +366,17 @@ export function sceneAct(a,opt,line){const sc=sceneOf(a);if(!sc||!sc.ids.include
   const o=key==='use'?optionsFor(sc,a).find(x=>x.k.startsWith('use:')):optionsFor(sc,a).find(x=>x.k===key);if(!o)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.'; // a bare 'use': the first item offered
   const said=clean(line,1e4);if(said.length>TABLE.LINE_MAX)return 'Too long: keep your line under '+TABLE.LINE_MAX+' characters (yours has '+said.length+').';
   if(said&&sameLine(sc,a,said))return 'Someone already said that at this table; say it your own way, about yourself.';
+  const K=kindOf(sc),mv=K&&K.move&&String(move==null?'':move).trim()?K.move(sc,a,String(move)):null;if(mv&&mv.error)return mv.error; // a refused move leaves the act unsaid (#744)
+  const moved=()=>{if(!mv)return {};K.place(sc,a,mv);return {moved:mv.word}}; // it lands now, the formation building as answers come in
   if(o.k==='attempt'){if(!ATT)return 'Choose one of: '+optionsFor(sc,a).map(x=>x.k).join(', ')+'.';const rid=ATT.start(sc,a,said);if(typeof rid==='string')return rid;
-    sc.acts[a.id]={k:'attempt',line:said,by:'agent',rid};return sc.acts[a.id]} // the DM rules on it before the member's turn plays (#522)
-  sc.acts[a.id]={k:o.k,line:said,by:'agent'};return sc.acts[a.id]}
+    sc.acts[a.id]={k:'attempt',line:said,by:'agent',rid,...moved()};return sc.acts[a.id]} // the DM rules on it before the member's turn plays (#522)
+  sc.acts[a.id]={k:o.k,line:said,by:'agent',...moved()};return sc.acts[a.id]}
 
 // ---- turns ----
 function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc,use=sc.ru;delete sc.rr;delete sc.rc;delete sc.ru; // a strike's roll as data (#285), a parley's check (#296)
   const F=sceneCompany(sc);if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
-  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{})}); // an item used (#360): {item, on, ok, effect, healed?}
+  const spot=kindOf(sc)&&kindOf(sc).spotOf?kindOf(sc).spotOf(sc,a):null; // where they stand as they act (#744)
+  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(spot?{spot}:{}),...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{})}); // an item used (#360): {item, on, ok, effect, healed?}
   const first=!(sc.rd>1);sc.beats[sc.beats.length-1].rd=sc.rd||1;
   {const H=dmOf(sc),K=kindOf(sc);if(H&&H.onBeat&&!together(sc)&&(first||(K&&K.everyBeat)))H.onBeat(sc,sc.beats[sc.beats.length-1])} // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
   if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
@@ -647,7 +652,7 @@ export function tableView(a){const sc=sceneOf(a);if(!sc||!sc.ids.includes(a.id))
   if(all){const n=answered(sc);v.everyone_answers=true;v.answered=n.done+'/'+n.of;if(live&&n.wait.length)v.waiting_on=n.wait.map(b=>b.name)} // all answer at once; once you have, you may wait
   if(!sc.acts[a.id]&&sc.phase!=='outcome')v.options=optionsFor(sc,a).map(o=>o.k+' = '+o.text);
   if(v.your_turn)v.waiting_for_you=true; // #148: the table waits for your scene_act (a reflex only after a long wait)
-  if(sc.beats.length)v.so_far=sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':''));
+  if(sc.beats.length)v.so_far=sc.beats.map(b=>b.name+(b.spot?' ('+b.spot+')':'')+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':''));
   {const dn=downIn(sc);if(dn.length)v.downed=dn.map(b=>({name:b.name,saved:b.down.s,failed:b.down.f,stable:!!b.down.stable}));if(isDown(a))v.you_are_down=true} // #654: who lies bleeding, and the tally
   if(sc.narr)v.narrator=sc.narr.text; // the DM's narrate line at this table (issue #123)
   {const K=kindOf(sc);if(K&&K.view)Object.assign(v,K.view(sc,a))} // a kind's own fields (#571: the fireside's topic and round)
