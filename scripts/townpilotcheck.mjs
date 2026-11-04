@@ -217,6 +217,12 @@ A.target = null; A.pq = []; A.state = 'hunt';
 for (const m of S.mobs) if (m.placed) {m.placed = false; m.scan = 0; m.wait = 0}
 for (const m of cleared) {m.alive = true; m.gone = false; m.target = null; m.hp = m.maxhp} rebuild(); // the field as it was
 
+// a hero left in the hunt state at a town's edge (a hunter walking along the wall counts as in town) carries on too: it stood there for good, in neither branch
+console.log('town edge');
+c = homeOf(A); fresh(A, 3); A.x = c.x1 + 1.3; A.y = (c.y0 + c.y1) / 2; A.state = 'hunt'; A.playOrder = {kind: 'hunt', n: 2, flee: .15}; idle(A); run(.1);
+ok(A.playIdle && A.playAuto && (A.pq || []).length > 0, `left hunting at the town's edge with no order, autopilot carries on (${A.state}, ${A.playAuto}: ${A.playDoing})`);
+A.playOrder = null; A.pq = [];
+
 void xpNeed; void last;
 
 console.log(fail ? `\ntownpilotcheck: ${fail} FAILED\n` : '\ntownpilotcheck: all ok\n');
