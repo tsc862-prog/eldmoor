@@ -253,10 +253,12 @@ export function cutForeign(text) {return String(text || '').replace(FOREIGN_RUN,
 // written as text; after one more miss the turn ends and the table's reflex acts later, as before.
 export const SCENE_LINE_MAX = 600; // the game's TABLE.LINE_MAX (#571): a longer line is refused there, never cut
 // strict: OpenAI's strict json_schema (no maxLength there; the line is cut to SCENE_LINE_MAX here).
-export function sceneSchema(keys, {strict = false} = {}) {
-  return {type: 'object', additionalProperties: false, required: ['option', 'line'], properties: {
+// moves: the spots a crawl room names (#744): the answer may carry a move. Strict schemas (OpenAI) require every field, so it is empty to stay.
+export function sceneSchema(keys, {strict = false, moves = null} = {}) {
+  const mv = moves && moves.length ? {move: {type: 'string', description: `Where you go as you act, or empty to stay: ${moves.join(', ')}; or beside or behind a companion, toward or away from a foe, or steps such as 2 ahead`}} : null;
+  return {type: 'object', additionalProperties: false, required: ['option', 'line', ...(strict && mv ? ['move'] : [])], properties: {
     option: {type: 'string', enum: keys.slice(), description: 'The key of the option you choose'},
-    line: {type: 'string', description: 'What you say aloud as you act, in your own voice and about yourself (a sentence or two; a story of your past may be longer)', ...(strict ? {} : {maxLength: SCENE_LINE_MAX})}}};
+    line: {type: 'string', description: 'What you say aloud as you act, in your own voice and about yourself (a sentence or two; a story of your past may be longer)', ...(strict ? {} : {maxLength: SCENE_LINE_MAX})}, ...(mv || {})}};
 }
 // The open scene as the brief (/play/pace {brief:true}, field scene) or a status/look reply (field table) gives it
 // -> {title, kind, frame, keys, options, your_turn, so_far}, or null when there is nothing to answer.
@@ -268,7 +270,7 @@ export function sceneFrom(t) {
   const options = Array.isArray(t.options) ? t.options : [], keys = Array.isArray(t.keys) && t.keys.length ? t.keys : options.map(o => String(o).split(' = ')[0].trim()).filter(Boolean);
   if (!keys.length) return null;
   return {key: sceneKey(t), title: t.title || t.scene || 'a scene', kind: t.kind || null, frame: t.frame || '', keys, options: options.length ? options : keys, your_turn: !!t.your_turn, so_far: t.so_far || [],
-    ...(t.you ? {you: t.you} : {}), ...(t.topic ? {topic: t.topic} : {}), ...(t.asked_you ? {asked_you: t.asked_you} : {})}; // who answers (#571)
+    ...(t.you ? {you: t.you} : {}), ...(t.room ? {room: t.room} : {}), ...(t.moves ? {moves: t.moves} : {}), ...(t.topic ? {topic: t.topic} : {}), ...(t.asked_you ? {asked_you: t.asked_you} : {})}; // who answers (#571)
 }
 // The scene a turn has to answer: from the brief, or (a page or relay from before #163 sends no brief.scene) from
 // status when the brief or the wake says a scene is open. call(tool, args) -> the game's reply.
@@ -287,10 +289,10 @@ export function sceneDue(t, sess = null) {
 const youText = y => y && y.name ? `You are ${y.name}${y.cls ? ', a ' + String(y.cls).toLowerCase() : ''}.` + (y.persona ? ' Who you are: ' + String(y.persona).slice(0, 300) + '.' : '') + (y.oath ? ' Your own oath: ' + String(y.oath).slice(0, 160) + '.' : '') + (y.told ? ' ' + String(y.told).slice(0, 400) : '') : '';
 export function scenePrompt(sc) {
   return [`A scene at the table: ${sc.title}${sc.kind ? ' (' + sc.kind + ')' : ''}. The world is paused and the party waits for you${sc.your_turn ? ': it is your turn now' : ''}.`,
-    sc.frame ? 'The DM: ' + sc.frame : '', sc.topic ? 'The talk: ' + sc.topic : '', sc.so_far && sc.so_far.length ? 'So far: ' + sc.so_far.join(' / ') : '',
+    sc.frame ? 'The DM: ' + sc.frame : '', sc.topic ? 'The talk: ' + sc.topic : '', sc.so_far && sc.so_far.length ? 'So far: ' + sc.so_far.join(' / ') : '', sc.room ? 'The room: ' + sc.room : '',
     sc.asked_you ? 'You were asked: ' + sc.asked_you : '', youText(sc.you),
     'Your options:', ...sc.options.map(o => '- ' + o),
-    `Choose ONE option by its key (${sc.keys.join(', ')}) and say your line in your own voice, in English, about yourself: your own name, your own oath and past, never the DM's words or a companion's line as your own. Answer only with the JSON object {"option": key, "line": what you say}.`].filter(Boolean).join('\n');
+    `Choose ONE option by its key (${sc.keys.join(', ')}) and say your line in your own voice, in English, about yourself: your own name, your own oath and past, never the DM's words or a companion's line as your own. Answer only with the JSON object {"option": key, "line": what you say${sc.moves && sc.moves.length ? ', "move": a spot or a relation such as beside a companion or toward the stair, or empty to stay' : ''}}.`].filter(Boolean).join('\n');
 }
 // ask(system, user, schema) over the loop's chat(): Ollama `format`, OpenAI strict json_schema (chat({strict:true})).
 // timeoutMs: past the table's wait (TABLE.liveMs 120 s) the reflex has acted, so a busy Ollama is not waited on longer.
@@ -311,7 +313,7 @@ export const adapterAsk = (adapter, model, effort = 'low') => async (system, use
 // (mode 'scene', forced: true, misses: answers that were not a legal option). keep: write it into sess.local.history.
 export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep = true, strict = false}) {
   const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, cached: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'scene', forced: true, calls: [], misses: 0};
-  const schema = sceneSchema(sc.keys, {strict}), user = scenePrompt(sc);
+  const schema = sceneSchema(sc.keys, {strict, moves: sc.moves}), user = scenePrompt(sc);
   let pick = null, note = '';
   for (let k = 0; k < 2 && !pick; k++) {
     const r = await ask(sess.system || '', user + note, schema), u = r.usage || {};
@@ -319,13 +321,14 @@ export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep
     let j = null; try {j = JSON.parse(r.text)} catch {}
     if (!j || typeof j !== 'object') {const c = parseTextCalls(r.text).find(x => x.function.name === 'scene_act'); if (c) j = c.function.arguments} // the call written as text still counts
     const opt = j && String(j.option || '').trim().toLowerCase();
-    if (opt && sc.keys.includes(opt)) pick = {option: opt, line: cleanNarration(String(j.line || ''), PLAYER_TOOLS, []).replace(/\s+/g, ' ').slice(0, SCENE_LINE_MAX)};
+    if (opt && sc.keys.includes(opt)) pick = {option: opt, line: cleanNarration(String(j.line || ''), PLAYER_TOOLS, []).replace(/\s+/g, ' ').slice(0, SCENE_LINE_MAX), move: sc.moves && typeof j.move === 'string' ? j.move.trim().slice(0, 80) : ''};
     else {stat.misses++; note = `\n\nThat was not one of the options. Answer with {"option": one of ${sc.keys.join(', ')}, "line": "..."}.`}
   }
   if (!pick) {stat.ms = Date.now() - t0; return stat}
-  const args = pick.line ? pick : {option: pick.option};
+  const args = {option: pick.option, ...(pick.line ? {line: pick.line} : {}), ...(pick.move ? {move: pick.move} : {})};
   on('tool', 'scene_act', args); stat.tools++;
   let r; try {r = await call('scene_act', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+  if (r && r.ok === false && args.move) {delete args.move; try {r = await call('scene_act', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}} // a move the game could not read: the act still stands, from where they are (#744)
   const text = typeof r === 'string' ? r : JSON.stringify(r); on('result', text);
   if (r && r.ok !== false) {stat.acts++; if (sess && sc.key) sess.answeredScene = {key: sc.key, at: Date.now()}; stat.calls.push({name: 'scene_act', ok: true}); stat.narration = pick.line ? `${pick.line} (${pick.option})` : `Chose ${pick.option} at the table.`;
     if (r && Number.isFinite(r.waited_s)) stat.sceneS = [r.waited_s]} // how long the table had waited (issue #515)

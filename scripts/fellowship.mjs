@@ -370,6 +370,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const ad = m.paid ? m.ad : m.local ? ollama : (claudeWarm = claudeWarm || claudeWarmAdapter(env.ANTHROPIC_API_KEY));
     await warmUp({base, seat: {hero: m.id}, runner: runnerId, model: m.rs.model, adapter: await ad, log: s => out(m.name, s)});
     let w = null;
+    {const r = await pacer.ready(); if (r.dead) m.ended = 'dead'; else if (r.gone) m.ended = 'left agent play'} // the first turn waits for a held world like a paced one (#770)
     while (!m.ended && !stopping && m.turns < m.maxTurns) {
       // the budget binds the paid members (Claude, OpenAI); a local member plays on
       if (spent >= budget && !(m.local && !m.paid)) {m.ended = 'budget reached'; break}
