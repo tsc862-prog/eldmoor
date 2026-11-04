@@ -785,19 +785,20 @@ const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-');
 export const ASSET_SPRITES={};
 for(const cls of Object.keys(CLS))ASSET_SPRITES['sprite:hero-'+slug(cls)]={kind:'hero',cls};
 for(const key of Object.keys(MOBS))ASSET_SPRITES['sprite:mob-'+slug(key)]={kind:'mob',type:key};
-const heroId=cls=>'sprite:hero-'+slug(cls),mobId=type=>'sprite:mob-'+slug(type);
+const HERO_ID={},MOB_ID={};for(const [id,v] of Object.entries(ASSET_SPRITES))(v.kind==='hero'?HERO_ID:MOB_ID)[v.kind==='hero'?v.cls:v.type]=id;
+// Per id, the sheet canvas per faction (a hero sheet recoloured; a creature's under 0); undefined = not built yet.
 const sheetC=new Map();
-// The sheet canvas for id in faction fac's colours, or null while it is missing or loading.
-function sheetOf(id,fac){const key=id+'|'+fac;let c=sheetC.get(key);if(c!==undefined)return c;
+// The sheet canvas for id in faction fac's colours, or null while it is missing or loading. No allocation once built.
+function sheetOf(id,fac){let per=sheetC.get(id);if(per&&per[fac])return per[fac];
   const A=assetPixels(id);if(!A)return null; // not cached: it may still arrive
-  const swap=recolour(fac);c=document.createElement('canvas');c.width=A.w;c.height=A.h;const x=c.getContext('2d'),img=x.createImageData(A.w,A.h);
+  const swap=recolour(fac),c=document.createElement('canvas');c.width=A.w;c.height=A.h;const x=c.getContext('2d'),img=x.createImageData(A.w,A.h);
   for(let i=0;i<A.w*A.h;i++){const h=A.hex[i];if(!h)continue;const s=swap[h]||h,o=i*4;img.data[o]=parseInt(s.slice(1,3),16);img.data[o+1]=parseInt(s.slice(3,5),16);img.data[o+2]=parseInt(s.slice(5,7),16);img.data[o+3]=255}
-  x.putImageData(img,0,0);sheetC.set(key,c);return c}
+  x.putImageData(img,0,0);if(!per)sheetC.set(id,per=[]);per[fac]=c;return c}
 onAssets(()=>sheetC.clear());
 // One frame of the entity's generated sheet: {img, sx, sy, fw, fh} in art pixels, or null (draw the procedural sprite).
 // dir: 0 down, 1 left, 2 right, 3 up; col: 0 stand, 1 step, 2 other step.
 const FR={img:null,sx:0,sy:0,fw:0,fh:0};
 export function sheetFrame(e,dir,col){
-  const id=e.kind==='hero'?heroId(e.cls):e.kind==='mob'?mobId(e.type):null;if(!id)return null;
+  const id=e.kind==='hero'?HERO_ID[e.cls]:e.kind==='mob'?MOB_ID[e.type]:null;if(!id)return null;
   const c=sheetOf(id,e.kind==='hero'?e.fac:0);if(!c)return null;
   FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}

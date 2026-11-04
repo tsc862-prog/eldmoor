@@ -178,6 +178,8 @@ export const shadesOf=(hex,tier=32)=>[hex,...((TIER_SHADES[tier]||TIER_SHADES[32
 export const SPRITE={
   outline:[MARK.outline],
   key:[FAC[0].color,FAC[0].dark],
+  // the tabard's lit and shaded steps: the key colours by the 32 tier's first two shade factors, which recolour maps too
+  keyRamp:[FAC[0].color,FAC[0].dark].flatMap(c=>TIER_SHADES[32].factors.slice(0,2).map(f=>shadeHex(c,f))),
   skin:FAC.flatMap(f=>f.skin.slice(0,3)),
   hair:['#2a2020','#5a3a20','#8a6a3a','#d8c890'],
   leather:['#7a5632','#5a3a20','#3e2a18'],

@@ -139,12 +139,14 @@ export async function fetchRaw({man,m,mp,e,token,seed=e.seed,timeout,count,tier=
   if(mp.provider==='space')return callSpace(buildSpaceRequest(man,m,mp,e,seed,tier),token,{timeout,count,now});
   return callImage(buildRequest(man,m,mp,e,seed,tier),token,{timeout,count})}
 
-// Raw bytes -> asset image and PNG (post-texture.mjs). Throws ArtError 'image' (not a PNG) or 'flat' (too few colours).
+// Raw bytes -> asset image and PNG (post-texture.mjs). Throws ArtError 'image' (not a PNG) or 'flat' (too few colours; a
+// sprite sheet without cols x rows figures or, for a hero, without its faction tabard: post-sheet.mjs).
 // At a tier: its size from e.sizes, the model's pixel grid and the palette widening from the tier's settings.
 export function processRaw(bytes,e,PAL,m,tier=TILE,man=null){
   let raw;try{raw=decodePng(bytes)}catch(err){throw new ArtError('image',err.message)}
   const cfg=tierCfg(man,m,tier),sh=(PAL.TIER_SHADES&&PAL.TIER_SHADES[tier])||{};
-  try{const img=postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline,{hint:cfg.grid||(m&&m.grid)||8,tier,minPalette:cfg.minPalette??sh.minPalette??6,factors:sh.factors});return {img,png:encodePng(img)}}
+  const key=e.frames&&((e.palette&&e.palette.from)||[]).includes('SPRITE.key')&&PAL.recolour?Object.keys(PAL.recolour(1)):null; // a hero sheet must keep its tabard recolourable
+  try{const img=postProcess(raw,e,resolvePalette(e.palette,PAL).colors,PAL.MARK.outline,{hint:cfg.grid||(m&&m.grid)||8,tier,minPalette:cfg.minPalette??sh.minPalette??6,factors:sh.factors,key});return {img,png:encodePng(img)}}
   catch(err){if(err.kind==='flat')throw Object.assign(new ArtError('flat',err.message),{notes:err.notes});throw err}}
 
 // Keep the provider's image as it came, before post-processing, so every later tweak re-runs offline

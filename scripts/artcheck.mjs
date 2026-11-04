@@ -31,6 +31,10 @@
 //     view, sizes = their footprint boxes, a clean flat building passing and a painterly facade (and the old recipe's output)
 //     refused by the style gate, art:accept refusing a building without an art:preview shot of this very image at 3440x1440
 //     zoom 1 or one that fails the gate, the check recorded on accept, the kindModel trial switch, and the renderer's base strip.
+// 10. sprite sheets (slice 4, #711, scripts/art/post-sheet.mjs): a model answer drawn from each sheet's fixture (figures in a
+//     3x4 grid on white, not on the frame grid) comes out one figure a frame, feet on the frame floor, clear ground, palette
+//     and outline only, deterministic; a hero keeps its tabard in the recolourable key; 3 rows, 2 columns or a hero with
+//     no tabard are rejected (raw kept); the 64 tier; the mock answers sprite prompts with such sheets in the runs above.
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,utimesSync,mkdirSync} from 'node:fs';
@@ -171,6 +175,30 @@ console.log('the building recipe and its gates (#763)');
   {const m2=JSON.parse(JSON.stringify(man));ok(m2.kindModel&&m2.kindModel.on===false&&m2.kindModel.model==='ume-flux'&&man.assets.every(e=>e.model===undefined),'kindModel: ume-flux prepared for buildings and landmarks, switched off');
     m2.kindModel.on=true;withKindModel(m2);ok(m2.assets.every(e=>(e.kind==='building'||e.kind==='landmark')===(e.model==='ume-flux')),'switched on, every building and landmark asks ume-flux and nothing else changes');
     const m3=JSON.parse(JSON.stringify(man));m3.kindModel.model='nope';ok(validateManifest(m3,PAL,resolvePalette).some(x=>/kindModel: unknown model nope/.test(x)),'an unknown kindModel model is a manifest error')}}
+console.log('sprite sheets (#711, scripts/art/post-sheet.mjs)');
+{const F=await import('./art/fixtures.mjs'),{processRaw}=await import('./art/gen.mjs'),A=id=>man.assets.find(a=>a.id===id),pm=man.models['pixel-xl'];
+  const keySet=new Set(Object.keys(PAL.recolour(1))),hex=(d,o)=>'#'+[d[o],d[o+1],d[o+2]].map(v=>v.toString(16).padStart(2,'0')).join('');
+  const run=(e,v={},tier=32)=>{try{return processRaw(encodePng(F.sheetArt(e,{tier,...v})),e,PAL,pm,tier,man).img}catch(err){return {err}}};
+  let bad=[];
+  for(const e of man.assets.filter(a=>a.kind==='sprite')){const im=run(e);if(im.err){bad.push(`${e.id}: ${im.err.message}`);continue}
+    const [W,H]=sizeOf(e,32),{cols,rows}=e.frames,fw=W/cols,fh=H/rows,pal=new Set([...expandPalette(resolvePalette(e.palette,PAL).colors,PAL.TIER_SHADES[32].minPalette,PAL.TIER_SHADES[32].factors),PAL.MARK.outline]);
+    if(im.w!==W||im.h!==H){bad.push(`${e.id}: ${im.w}x${im.h}`);continue}
+    const floors=new Set();let empty=0,corner=0,off=0;
+    for(let r=0;r<rows;r++)for(let k=0;k<cols;k++){let n=0,low=-1;
+      for(let y=r*fh;y<(r+1)*fh;y++)for(let x=k*fw;x<(k+1)*fw;x++){const o=(y*W+x)*4;if(!im.data[o+3])continue;n++;low=Math.max(low,y-r*fh);if(!pal.has(hex(im.data,o)))off++}
+      if(!n)empty++;floors.add(low);for(const [x,y] of [[0,0],[fw-1,0]]){if(im.data[((r*fh+y)*W+k*fw+x)*4+3])corner++}}
+    if(empty||corner||off||floors.size!==1||[...floors][0]!==fh-1)bad.push(`${e.id}: ${empty} empty frames, ${corner} filled top corners, ${off} pixels off the palette, feet at ${[...floors]}`)}
+  ok(!bad.length,`every sheet (${man.assets.filter(a=>a.kind==='sprite').length}): the model's 3x4 figures found and laid on the frame grid, one per frame, feet on the frame floor, clear background, palette and outline only`+(bad.length?': '+bad.join('; '):''));
+  const w=A('sprite:hero-warrior'),a=run(w),b=run(w);ok(!a.err&&Buffer.from(a.data).equals(Buffer.from(b.data)),'deterministic');
+  ok(!a.err&&a.notes.key==='12/12'&&a.notes.grid==='figures',`a hero sheet keeps its tabard in the faction key (${a.notes&&a.notes.key} frames)`);
+  {let key=0,stray=0;const ramp=new Set([...PAL.SPRITE.key,...PAL.SPRITE.keyRamp]);for(let i=0;i<a.w*a.h;i++){const o=i*4;if(!a.data[o+3])continue;const h=hex(a.data,o);if(keySet.has(h))key++;if(ramp.has(h)&&!keySet.has(h))stray++}
+    ok(key>100&&!stray&&PAL.SPRITE.keyRamp.every(c=>keySet.has(c)),`every tabard pixel takes the faction recolour (${key} pixels; the key ramp is in palette.js recolour)`)}
+  const r3=run(w,{rows:3});ok(r3.err&&r3.err.kind==='flat'&&/layout: 3 rows of figures \(needs 4\)/.test(r3.err.message),'a sheet with 3 rows of figures is rejected (raw kept): '+(r3.err&&r3.err.message));
+  const c2=run(w,{cols:2});ok(c2.err&&c2.err.kind==='flat'&&/layout: 2 columns/.test(c2.err.message),'a sheet with 2 columns is rejected: '+(c2.err&&c2.err.message));
+  const nk=run(w,{key:false});ok(nk.err&&nk.err.kind==='flat'&&/no faction key/.test(nk.err.message),'a hero whose tabard is not the key colour is rejected: '+(nk.err&&nk.err.message));
+  const wolf=run(A('sprite:mob-wolf'),{key:false});ok(!wolf.err&&!wolf.notes.key,'a creature sheet needs no faction key');
+  const t64=run(w,{block:2},64);ok(!t64.err&&t64.w===192&&t64.h===384,`the 64 tier lays out the same figures at ${t64.w}x${t64.h}`+(t64.err?": "+t64.err.message:""));
+  ok(/sprite sheet/.test(man.kindStyle.sprite)&&!/seamless/.test(man.kindStyle.sprite),'sprite prompts carry their own style (a sheet on plain ground, not a seamless tile)')}
 
 console.log('gen.mjs and daily.mjs against a mock Hugging Face server');
 const tmp=mkdtempSync(join(tmpdir(),'eldmoor-art-'));
@@ -188,10 +216,11 @@ try{
   // what a prompt asks for: a transition (two grounds, top and bottom) or a prop on a plain white background
   // the building recipe (#763): a prompt that asks for the flat look gets a flat top-down house in its style's flat palette
   const FB=await import('./art/fixtures-buildings.mjs'),flatOf=s=>encodePng(FB.flatBuilding(PAL.FLAT[s],[96,64]));
-  const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt()),
+  const FX=await import('./art/fixtures.mjs'),sheetOf=id=>encodePng(FX.sheetArt(man.assets.find(a=>a.id===id)));
+  const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt()),hero:sheetOf('sprite:hero-warrior'),beast:sheetOf('sprite:mob-wolf'),
     'flat-stone':flatOf('stone'),'flat-timber':flatOf('timber'),'flat-crypt':flatOf('crypt'),'flat-lair':flatOf('lair')},
     flatKind=pr=>/limestone/.test(pr)?'flat-stone':/tarred timber/.test(pr)?'flat-timber':/crypt/.test(pr)?'flat-crypt':/dragon's nest/.test(pr)?'flat-lair':null,
-    mockKind=pr=>/town wall|town gate/.test(pr)?'stone':/thick black outline/.test(pr)&&flatKind(pr)?flatKind(pr):/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/transition tile/.test(pr)?'two':'tile';
+    mockKind=pr=>/character sprite sheet/.test(pr)?'hero':/creature sprite sheet/.test(pr)?'beast':/town wall|town gate/.test(pr)?'stone':/thick black outline/.test(pr)&&flatKind(pr)?flatKind(pr):/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/transition tile/.test(pr)?'two':'tile';
   const srv=http.createServer((req,res)=>{let body='';req.on('data',c=>body+=c);req.on('end',()=>{
     const u=new URL(req.url,'http://x');S.headers.push(req.headers);
     if(req.method==='GET'&&u.pathname.startsWith('/api/models/')){S.lookups++;const id=u.pathname.slice(12);res.setHeader('content-type','application/json');
