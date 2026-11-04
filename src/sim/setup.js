@@ -42,6 +42,7 @@ import {S} from './state.js';
 import {makeHero} from './heroes.js';
 import {rollScores} from './abilities.js';
 import {disableBrain,MIND_PROVIDERS} from './brain.js';
+import {PROVIDERS} from '../data/providers.js';
 import {markPlayer} from './player.js';
 import {setDmSeat} from './dmagent.js';
 import {PROF,MAX_PROF} from '../data/professions.js';
@@ -64,7 +65,7 @@ export function seatCap(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];re
 export function seatNote(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];
   return H.length>SEATS.PAID&&seatCap(s0)===SEATS.LOCAL?H.length+' local minds share one GPU: each agent turn will be slow (expect long waits between turns).':''}
 export const CLAUDE_MODELS={haiku:'claude-haiku-5-5',sonnet:'claude-sonnet-5-5'};
-export const SETUP_PROVIDERS=['anthropic','ollama','openai','huggingface','google']; // what the runners can start with
+export const SETUP_PROVIDERS=PROVIDERS; // what the runners can start with, hero or DM: the one list (#824)
 export const MIND_MODES=['agent']; // a hero's mind (#148)
 export const DM_MODES=['agent']; // the DM's mind (#520): always an agent
 export const ARCHETYPE_RANDOM='random';
