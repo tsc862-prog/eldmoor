@@ -9,7 +9,7 @@ app_file: app.py
 suggested_hardware: zero-a10g
 pinned: false
 license: other
-short_description: Private pixel-art generator for Eldmoor (SDXL + LoRA on ZeroGPU)
+short_description: Eldmoor pixel-art generator (SDXL + LoRA, ZeroGPU)
 tags:
   - zerogpu
   - pixel-art
