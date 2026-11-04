@@ -72,5 +72,6 @@
 - [Pay and mark tools #628/#632](pay_mark_tools.md) — pay.js, marks.js (lore mk:1/2), emote chat flag, set_attitude steps, edit pitfalls
 - [Hire tool #634](hire_tool.md) — hires are scripted heroes outside slots, wanderers only, voters skip them, inSlots true in Fellowship
 - [Downed and saves #652/#653](downed_saves.md) — downed.js: hero blows finish, table/crawl keep old death until #654, aid state, finishes flag, fixture pitfalls
+- [PvP mercy #657](pvp_mercy.md) — mercy.js: downs not kills, finish/spare odds, life-debts, bled = no credit, finish = guild grudge
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
