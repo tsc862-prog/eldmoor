@@ -410,6 +410,112 @@ console.log('company runners (fake children, #460)');
   server.close();
 }
 
+// ---------------------------------------------------------------- 2c. budget stops (#807), fake children
+console.log('budget stops (fake children, #807)');
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-bud-'));
+  const heroes = [{id: 1, name: 'Ann', alive: true, company: 7, size: 2, lead: true}, {id: 2, name: 'Bo', alive: true, company: 7, size: 2}, {id: 3, name: 'Cy', alive: true, company: 8, size: 1}, {id: 5, name: 'Fi', alive: true, company: 12, size: 2, lead: true}, {id: 6, name: 'Gu', alive: true, company: 12, size: 2}, {id: 9, name: 'Ivo', alive: true, company: 13, size: 1}, {id: 11, name: 'Kit', alive: true, company: 14, size: 1}];
+  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes, dm: true, worldId: 'w1'})};
+  const kids = [];
+  const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 60000 + kids.length; k.args = args; k.got = '';
+    k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d}});
+    k.kill = () => {setTimeout(() => k.emit('exit', null), 5)}; kids.push(k); return k};
+  const host = async () => {const server = http.createServer((q, r) => {r.writeHead(404); r.end('{}')}), play = attachPlay(server, {backend: be, log: () => {}}), lines = [];
+    const sup = attachRunners(server, {play, enabled: true, log: l => lines.push(l), spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '10'}});
+    await new Promise(r => server.listen(0, '127.0.0.1', r)); return {server, play, sup, lines, B: `http://127.0.0.1:${server.address().port}`}};
+  const A = await host(), {B, sup} = A;
+  const start = (body, origin = PAGE) => req(B, '/play/runner/start', {method: 'POST', body: {provider: 'anthropic', ...body}, origin});
+  const say = (k, l) => k.stdout.emit('data', Buffer.from(l + '\n'));
+  const look = async key => (await req(B, '/play/runner')).runners.find(r => r.key === key);
+  const events = () => readFileSync(join(tmp, 'runners', 'events.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  const active = () => JSON.parse(readFileSync(sup.activeFile, 'utf8'));
+  const RN = await import('../src/ui/runners.js');
+
+  // a hero runner ends on its own budget: stopped, marked, logged, and nothing starts it again
+  let s = await start({hero: 3, by: 'owner'}); const kc = kids[0], n0 = kids.length;
+  say(kc, '[turn 83] 1 tool calls | turn $0.0175 | run $1.0067 | session $2.4588 | error_max_budget_usd');
+  say(kc, '[agent] stopped after 83 turns this session (budget reached); this run $1.0067, session $2.4588.');
+  kc.emit('exit', 0); await sleep(10);
+  let v = await look('hero:3');
+  ok(v.state === 'stopped' && v.budgetSpent === true && v.endWhy === 'budget reached' && v.by === 'owner', `a hero runner that spent its budget reads stopped, marked, with why and who started it (${v.state}, ${v.endWhy}, by ${v.by})`);
+  for (let i = 0; i < 3; i++) sup.adopt();
+  ok(kids.length === n0 && !active().runners.length && active().spent.some(x => x.key === 'hero:3' && x.cost === 1.0067), 'a budget stop is not adopted, leaves the active list and is kept as spent');
+  // the alert names the spend and the price of another start
+  ok(RN.reasonOf(v, null) === 'budget spent: $1.01 of $1.00', 'the alert names the spend: ' + RN.reasonOf(v, null));
+  ok(RN.costNote('fellowship') === ' · another $2.00' && RN.anotherText(RN.startCost('hero', 3)) === 'another $1.00', 'and what another start costs: ' + RN.costNote('fellowship'));
+  // the stop reason is logged: the runner's log, and events.jsonl for reports
+  ok(/stopped \(exit 0\) \| why budget reached, \$1\.01 of \$1\.00/.test(readFileSync(join(tmp, 'runners', 'hero-3.log'), 'utf8')) && /\| by owner/.test(readFileSync(join(tmp, 'runners', 'hero-3.log'), 'utf8')), 'the runner log says who started it and why it ended, with the spend');
+  {const e = events().filter(x => x.key === 'hero:3');
+    ok(e.some(x => x.event === 'start' && x.by === 'owner' && x.budget === 1) && e.some(x => x.event === 'end' && x.why === 'budget reached' && x.cost === 1.0067 && x.budget === 1 && x.exit === 0 && x.world === 'w1'), 'events.jsonl has the start with who asked and the end with why and how much')}
+
+  // the owner's click brings it back; a spent seat's start is told apart in the log
+  s = await start({hero: 3, by: 'owner'}); const kc2 = kids[kids.length - 1];
+  ok(s.status === 200 && !(await look('hero:3')).budgetSpent && !active().spent, 'the owner\'s click starts it again, and it is no longer spent');
+  ok(events().some(x => x.event === 'start' && x.key === 'hero:3' && x.by === 'owner' && x.afterBudget === 1.0067), 'the log shows that start came after a budget stop');
+  s = await start({hero: 9, by: 'owner'}, 'http://evil.example'); ok(s.status === 403, 'another origin is still refused');
+  s = await req(B, '/play/runner/start', {method: 'POST', body: {hero: 9, by: 'owner', provider: 'anthropic'}, origin: null});
+  ok(s.status === 200 && s.runner.by === 'local', 'only the page may say "owner": a local tool logs as local');
+  const k9 = kids[kids.length - 1]; say(k9, '[agent] stopped after 1 turns this session (5 empty or failed turns); this run $0.01.'); k9.emit('exit', 0); await sleep(10);
+  v = await look('hero:9'); ok(v.endWhy === '5 empty or failed turns' && !v.budgetSpent, 'another way to end is logged as itself, not as a budget stop');
+  say(kc2, '[agent] stopped from the game: releasing the hero and stopping'); await req(B, '/play/runner/stop', {method: 'POST', body: {hero: 3}}); kc2.emit('exit', 0); await sleep(10);
+  ok(events().some(x => x.event === 'end' && x.key === 'hero:3' && x.by === 'owner' && /stopped by owner/.test(x.why)), 'a stop from the page is logged as the owner\'s');
+
+  // a crash: not a budget stop, and the seats that restart themselves still do. A crash with the hero alive starts nothing, as
+  // before (the supervisor has no crash restart since #691); the hero's heir does.
+  s = await start({hero: 11, provider: 'ollama', model: 'mock-heir:1b', by: 'owner'}); const kk = kids[kids.length - 1];
+  kk.stderr.emit('data', Buffer.from('TypeError: boom\n')); heroes[6] = {...heroes[6], alive: false}; kk.emit('exit', 1); await sleep(10);
+  v = await look('hero:11'); ok(v.state === 'crashed' && v.endWhy === 'crash' && !v.budgetSpent && events().some(x => x.event === 'end' && x.key === 'hero:11' && x.why === 'crash' && x.exit === 1), 'a crash is logged as a crash, not a budget stop');
+  heroes.push({id: 12, name: 'Lem', alive: true, succeeds: 11, company: 15, size: 1});
+  let got = sup.adopt(), kl = kids[kids.length - 1];
+  ok(got.includes('hero:12') && kl.args.includes('mock-heir:1b'), 'a crash still restarts its seat: the heir of a crashed runner\'s fallen hero gets a runner');
+  ok(events().some(x => x.event === 'start' && x.key === 'hero:12' && x.by === 'adopt'), 'and the log says adopt started it, not the owner');
+
+  // a heir still gets a seat when the runner ended for any other reason (above, and #460's check); not when it was out of money
+  s = await start({hero: 9, by: 'owner'}); const k92 = kids[kids.length - 1], n1 = kids.length;
+  say(k92, '[turn 9] x | run $1.0100 | session $1.01'); say(k92, '[agent] stopped after 9 turns this session (budget reached); this run $1.01.');
+  heroes[5] = {...heroes[5], alive: false}; k92.emit('exit', 0); await sleep(10);
+  heroes.push({id: 10, name: 'Jo', alive: true, succeeds: 9, company: 16, size: 1});
+  ok(!sup.adopt().length && kids.length === n1 && A.lines.some(l => /Jo: no hero runner: Ivo spent its budget/.test(l)) && events().some(x => x.event === 'no-restart' && x.by === 'adopt' && x.hero === 10), 'a heir of a runner that ended on its budget gets none; the refusal is logged');
+
+  // a company runner on budget: the first member let go marks it at once; none of its members gets a hero runner, even one who leaves
+  s = await start({kind: 'company', company: 7, by: 'owner'}); const ko = kids[kids.length - 1], rid = hostname() + ':' + ko.pid + ':company', n2 = kids.length;
+  for (const id of [1, 2]) await req(B, '/play/claim', {method: 'POST', body: {hero: id, runner: rid, provider: 'anthropic', model: 'claude-haiku-5-5'}, origin: null});
+  await look('company:7'); sup.adopt();
+  say(ko, '[08:07:47] [Bo] [turn 9] x | turn $0.20 | member $0.60 | run $2.2545 of $2.0000'); say(ko, '[08:07:48] [Bo] done (budget reached): 6 turns, 1 at the table, $0.3716');
+  await req(B, '/play/release', {method: 'POST', body: {hero: 2, runner: rid}, origin: null});
+  v = await look('company:7');
+  ok(v.state !== 'stopped' && v.budgetSpent === true && !active().runners.some(x => x.key === 'company:7' || x.kind === 'company') && active().spent.some(x => x.key === 'company:7'), `a company runner is out of budget from its first member's "done" while another plays on (${v.state}), and is off the active list`);
+  heroes[1] = {...heroes[1], company: 9, size: 1}; heroes[0] = {...heroes[0], size: 1};
+  ok(!sup.adopt().length && kids.length === n2 && A.lines.some(l => /Bo: no hero runner:/.test(l)), 'a member who leaves that company gets no hero runner');
+  say(ko, '[08:07:50] [Ann] done (budget reached): 8 turns, 2 at the table, $0.51'); await req(B, '/play/release', {method: 'POST', body: {hero: 1, runner: rid}, origin: null}); ko.emit('exit', 0); await sleep(10);
+  ok(!sup.adopt().length && kids.length === n2, 'and when it ends none of its members gets one');
+  v = await look('company:7'); ok(v.state === 'stopped' && v.endWhy === 'budget reached' && Math.abs(v.cost - 2.2545) < 1e-9, 'it ends as a budget stop with the spend: $' + v.cost);
+
+  // a member leaving a company on a live budget keeps its seat
+  s = await start({kind: 'company', company: 12, by: 'owner'}); const kf = kids[kids.length - 1], rf = hostname() + ':' + kf.pid + ':company';
+  for (const id of [5, 6]) await req(B, '/play/claim', {method: 'POST', body: {hero: id, runner: rf, provider: 'anthropic', model: 'claude-haiku-5-5'}, origin: null});
+  await look('company:12'); say(kf, '[turn 1] x | run $0.2000 of $2.0000'); heroes[4] = {...heroes[4], company: 17, size: 1};
+  await req(B, '/play/release', {method: 'POST', body: {hero: 6, runner: rf}, origin: null});
+  got = sup.adopt(); ok(got.includes('hero:6'), 'a member who leaves a company on a live budget still gets a hero runner');
+
+  // the DM: a budget stop survives a relay restart; resume starts neither it nor anything spent, and the page still sees why
+  s = await start({kind: 'dm', by: 'owner'}); const kd = kids[kids.length - 1];
+  say(kd, '[turn 3] x | turn $0.05 | run $1.0100 | session $1.01'); say(kd, '[dm] stopped after 3 turns this session (budget reached); this run $1.01, session $1.01.'); kd.emit('exit', 0); await sleep(10);
+  ok(active().spent.some(x => x.key === 'dm' && x.cost === 1.01), 'a DM on budget is kept as spent');
+  await sup.shutdown(300); A.server.close(); const n3 = kids.length;
+  const C = await host(), r = await C.sup.resume({waitMs: 2000, pollMs: 20, settleMs: 10, heroWaitMs: 50});
+  ok(!r.resumed.includes('dm') && !r.resumed.includes('company:7') && !r.resumed.includes('hero:9') && kids.slice(n3).every(k => !/dm-agent|--company 7/.test(k.args.join(' '))), 'resume brings back no runner that spent its budget, the open DM seat included: ' + JSON.stringify(r.resumed));
+  ok(r.skipped.some(x => x.what === 'dm' && /budget/.test(x.why)) && C.lines.some(l => /DM agent spent its budget \(\$1\.01\): not started/.test(l)), 'and says so');
+  v = (await req(C.B, '/play/runner')).runners.find(x => x.key === 'dm');
+  ok(v && v.state === 'stopped' && v.budgetSpent && v.cost === 1.01 && v.budget === 1 && RN.reasonOf(v, null) === 'budget spent: $1.01 of $1.00', 'after the restart the page still reads the budget stop: ' + (v && RN.reasonOf(v, null)));
+  s = await req(C.B, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic', by: 'owner'}, origin: PAGE});
+  ok(s.status === 200 && s.runner.by === 'owner', 'the owner can still start it');
+  // a world reset forgets them: a new world's DM is not held back by the old world's spend
+  await req(C.B, '/play/runner/stop-all', {method: 'POST', body: {}, origin: PAGE}).then(() => {});
+  ok(!JSON.parse(readFileSync(C.sup.activeFile, 'utf8')).spent, 'a world reset clears the spent list');
+  C.sup.killAll(); await sleep(20); C.server.close();
+}
+
 // ---------------------------------------------------------------- 3. end to end
 const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
 const mock = await startMockOllama();
