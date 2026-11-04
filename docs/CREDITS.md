@@ -9,7 +9,7 @@ by `npm run art:packs` into `assets/packs/<set>/`, which is gitignored: only the
 
 | Set | Author | Licence | Link | Used |
 | --- | --- | --- | --- | --- |
-| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions |
+| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions, the crypt mouth and the lair |
 | Universal LPC Spritesheet Character Generator (layers) | per layer, below | CC-BY-SA 3.0 (each layer also offered under the licences listed below) | https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator | the hero sheets (seven classes by six peoples) |
 | Ninja Adventure | pixel-boy | CC0 1.0 | https://pixel-boy.itch.io/ninja-adventure-asset-pack | not fetched (itch needs a browser click) |
 | Kenney Tiny Town, Tiny Dungeon, Roguelike/RPG pack | Kenney (kenney.nl) | CC0 1.0 | https://kenney.nl/assets | reviewed, not used (does not fit) |
@@ -22,6 +22,13 @@ CC0 needs no credit; Kenney is listed anyway.
 tiles `grass.png`, `dirt.png` and `water.png` by Leana Zimmerman (Sharm), CC-BY-SA 3.0 (also GPL 3.0 and OGA-BY 3.0), from
 the 2012 Liberated Pixel Cup base assets (https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles).
 The cut pieces are derivative works and stay under CC-BY-SA 3.0. The script is `scripts/art/packcut.mjs`.
+
+## LPC landmarks
+
+`landmark:crypt-mouth` is cut from the arch and brick course of `castlewalls.png` by Daniel Armstrong (HughSpectrum) and `landmark:lair` from
+the charcoal rock of `lavarock.png` by Leana Zimmerman (Sharm), both from the 2012 Liberated Pixel Cup base assets, CC-BY-SA 3.0 (also GPL 3.0).
+The stone is recoloured onto the crypt's violet-grey and a few details are drawn by hand; the pieces are derivative works and stay under CC-BY-SA 3.0.
+The script is `scripts/art/landmarkcut.mjs`.
 
 ## LPC hero sheets
 

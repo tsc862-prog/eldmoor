@@ -1591,6 +1591,36 @@
         "Leana Zimmerman (Sharm)"
       ],
       "accepted": "2026-11-04"
+    },
+    "landmark:crypt-mouth@32": {
+      "id": "landmark:crypt-mouth",
+      "kind": "landmark",
+      "file": "landmark/32/crypt-mouth.png",
+      "w": 96,
+      "h": 96,
+      "sha256": "416f1df576fdb8c54387edc7880d8e6c130f9bdaf0ebb153567622b317c49cf6",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "landmark:lair@32": {
+      "id": "landmark:lair",
+      "kind": "landmark",
+      "file": "landmark/32/lair.png",
+      "w": 256,
+      "h": 256,
+      "sha256": "2eeb8a322c3bc851cd8b31c97a98e2c357d0e81ebf493b5515b5403f6b416c43",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
     }
   }
 }
