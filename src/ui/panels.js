@@ -9,6 +9,7 @@ import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
 import {heroStream,sysLine} from './chatpanel.js';
 import {CITY,CRYPT,LAIR,ZONES,OUTPOSTS,zoneFor} from '../world/map.js';
+import {cryptOfHero} from '../sim/crypts.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
@@ -88,7 +89,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'follow':return a.party?`Following ${a.party.leader.name}'s party in ${zn}`:'Following the party';
     case 'camp':return a.playDoing||'Resting at camp';
     case 'regroup':return 'Pulling back after a skirmish';
-    case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
+    case 'dungeon':{const D=cryptOfHero(a)||CRYPT;return a.hidden?`Inside ${D.name}, fighting toward ${D.boss}`:`Gathering a group at ${D.name}`}}return ''}
 
 // ---- hero dossier ----
 const TABS=[['stats','Stats'],['quests','Quests'],['log','Log'],['combat','Combat'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['inv','Pack'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
@@ -415,7 +416,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   // header and body are patched in place (#145): scroll, focus and open rows survive the 0.3 s tick
   patch(k.hd,h=>{h.append(heroName(a));
     h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
-    const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=a.siteIn!=null?'site:'+a.siteIn:CRYPT.name;b.title='Open the dungeon view';dg.append(' ',b)}if(a.state==='raid'&&a.raid&&LAIR){const b=el('button','dglink','View the raid ▸');b.type='button';b.dataset.dungeon=LAIR.name;b.title='Open the raid arena';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
+    const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=a.siteIn!=null?'site:'+a.siteIn:(cryptOfHero(a)||CRYPT).name;b.title='Open the dungeon view';dg.append(' ',b)}if(a.state==='raid'&&a.raid&&LAIR){const b=el('button','dglink','View the raid ▸');b.type='button';b.dataset.dungeon=LAIR.name;b.title='Open the raid arena';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
     h.append(el('div','dm','HP'),meter('hp',a.hp/mh));{const dr=downRow(a);if(dr)h.append(dr)} // DOWNED, the tally and the timer (#659)
     h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
     if(short){const b=el('button','mini fullsheet','Full sheet ▸');b.type='button';b.dataset.fullsheet=a.id;b.title='Open '+a.name+'’s full sheet: stats, gear, story and mind';h.append(b)}});

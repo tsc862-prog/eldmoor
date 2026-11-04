@@ -30,7 +30,8 @@
 //   S.opening  {queue:[{company, kind:'new'|'heir', fallen?, cause?, hold?:{since, away:[id], where}}]}  openings still to play; gone once all have
 //   C.arrivals [{slot?, cls, fallen, name, lvl, since}]                   recruits waiting for the next camp or town
 import {S,clockStr,dayNo,noOthers} from './state.js';
-import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
+import {ZONES,zoneAt,dist} from '../world/map.js';
+import {cryptOfHero} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
@@ -188,8 +189,8 @@ setCompanyDeathHook((C,a)=>{const none=noOthers();if(!(hosted()||none)||!a||!a.p
 function heirReady(q){if(q.kind!=='heir')return true;const C=companyById(q.company),h=C&&members(C)[0];
   return !h||agentLive(h)||S.gameMin-(q.since||0)>=ARRIVE.HEIR_WAIT}
 // Settled: out of the Crypt, a raid and every fight, and at a camp or in town.
-function settled(C){const L=memOf(C);if(!L.length)return false;const g=CRYPT.group;
-  if(g&&g.mem.some(a=>L.includes(a)))return false;
+function settled(C){const L=memOf(C);if(!L.length)return false;
+  if(L.some(cryptOfHero))return false;
   if(L.some(a=>['raid','dungeon','fight','duel','assist'].includes(a.state)||a.raid))return false;
   if(C.camp&&C.camp.phase&&L.some(a=>a.state==='camp'))return 'camp';
   const ld=leadOf(C);return ld&&ld.state==='town'?'town':false}
@@ -293,7 +294,7 @@ export function sessionTick(){const O=S.opening,CS=S.companies;
   if(O&&O.queue&&O.queue.length){if(prepActive())return;const i=O.queue.findIndex(q=>heirReady(q)&&!sceneFor(companyById(q.company))&&gathered(q));
     if(i>=0){const q=O.queue.splice(i,1)[0];if(!O.queue.length)delete S.opening;openOpening(q);return}}
   for(const C of companies()){if(!C.arrivals||!C.arrivals.length||sceneFor(C))continue; // each company its own table (#518)
-    const where=settled(C)||(noOthers()&&!memOf(C).length?'town':false)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!(CRYPT.group&&CRYPT.group.mem.some(a=>memOf(C).includes(a)))?'town':false);if(!where)continue;
+    const where=settled(C)||(noOthers()&&!memOf(C).length?'town':false)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!memOf(C).some(cryptOfHero)?'town':false);if(!where)continue;
     const q=C.arrivals.shift();if(!C.arrivals.length)delete C.arrivals;openArrival(C,q,where);return}}
 // The panels: what waits.
 export function arrivalsView(C){return (C&&C.arrivals||[]).map(q=>({cls:q.cls,fallen:q.name,since:q.since}))}

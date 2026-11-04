@@ -10,6 +10,7 @@
 //   - a save taken mid-crawl resumes it; 8x resolves without stalling
 //   - positions (#744): tiles set on entering a room, a move by name, relation and steps, refusals that name the spots, pre-answers,
 //     reflexes on the spots their acts name, the room in words in tableView, the brief and the forced schema, a save mid-room
+//   - a second spec dungeon (#891): its own rooms, group, record and save; two groups side by side; who answers which call; a company and an oath choosing one
 //   - without a Fellowship the abstract roll runs and a seeded background world repeats exactly
 //     (CRAWL_BASELINE_HASH=<hash from main> also asserts it equals main's)
 // Usage: npm run crawlcheck   (CRAWLCHECK_SEED to vary)
@@ -210,7 +211,8 @@ if (argv[0] === '--stepping') {
   sok(rooms.length === 3 && rooms.map(r => r.name).join('|') === NAMES.join('|'), 'the Stepping crypt lists its three rooms from the spec: ' + rooms.map(r => r.id).join(', '));
   sok(rooms.every(r => r.name && r.frame && r.foes.every(f => species(f.type) && f.n >= 1)), 'every room names bestiary species');
   sok(rooms.map(r => !!r.boss).join() === 'false,false,true' && rooms[2].foes.some(f => f.name === CRYPT.boss), 'only the last room is the boss room and it holds ' + CRYPT.boss);
-  const M = descend(14); const seen = crawl(M, {act: () => 'strike'});
+  // a party that only strikes can be driven back by the dice: the checks want one run that went the whole way
+  let M, seen; for (let i = 0; i < 4; i++) {M = descend(14); seen = crawl(M, {act: () => 'strike'}); if ((SLT.slotted().crawl || {}).clears) break}
   const order = [...new Set(seen.map(s => s.room))];
   sok(seen.length >= 3 && seen.every(s => s.title && s.beats >= 1), seen.length + ' room scenes opened, each resolved at the table');
   sok(order.every((r, i) => r === i), 'rooms come in order, none skipped: ' + order.join(' > '));
@@ -229,10 +231,87 @@ if (argv[0] === '--stepping') {
     try {
       crawl(W, {act: () => 'strike', maxS: 300});
       sok(W.every(a => a.state === 'dead') && W.every(a => /felled by/.test(a.cause || '')), 'a wipe: everyone falls and each death names the foe');
-      sok(!CRYPT.group && !S.table, 'after the wipe the group and table are cleared');
+      sok(!CRYPT.group && !(S.table && S.table.kind === 'crawl'), 'after the wipe the group and the crawl scene are cleared'); // a recruit's own trouble in the world may open a scene by now
     } finally {CRYPT.rooms[0] = JSON.parse(orig)}
   }
   console.log('SIG ' + signature(M, seen));
+  process.exit(sk.n ? 1 : 0);
+}
+
+// A second spec dungeon (#891): runs in a child with ELDMOOR_WORLD=stepping. Each dungeon keeps its own group, cooldown and record.
+if (argv[0] === '--cairn') {
+  const sk = {n: 0}; const sok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); sk.n++}};
+  const {CRYPTS} = await import('../src/world/map.js'), X = await import('../src/sim/crypts.js'), CN = await import('../src/sim/council.js'), SW = await import('../src/sim/sworn.js'), LR = await import('../src/sim/lore.js'), {goalEvent} = await import('../src/sim/goals.js');
+  const CAIRN = CRYPTS.find(d => d !== CRYPT && d.rooms.length);
+  sok(CRYPTS.length >= 2 && CRYPTS[0] === CRYPT && CAIRN && CAIRN.rooms.some(r => r.boss) && CAIRN.rooms[CAIRN.rooms.length - 1].foes.some(f => f.name === CAIRN.boss), 'the world lists ' + CRYPTS.map(d => d.name + ' (' + d.rooms.length + ' rooms)').join(', '));
+  // the whole Fellowship at a dungeon's door, sent down it
+  const down = (Dn, lvl = 12) => {init(); run(20); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; const M = SLT.slotHeroes(SLT.slotted()); S.mobs.length = 0;
+    for (const a of M) {a.lvl = lvl; a.hp = maxHp(a); a.state = 'hunt'; a.hidden = false; a.target = null; a.dest = null; a.x = Dn.x + (Math.random() - .5); a.y = Dn.y + 1}
+    D.musterCrypt(M, M[0].fac, null, SLT.slotted().name, Dn); return M};
+  const playOn = (Dn, maxS, each) => {let went = false; const seen = []; let last = null;
+    for (let f = 0; f < maxS * 60 && (Dn.group || !went); f++) {step(1 / 60); if (Dn.group) went = true; if (each) each(f);
+      const sc = T.sceneFor(SLT.slotted()); if (sc && sc.kind === 'crawl' && sc.id !== last) {last = sc.id; seen.push(sc)}}
+    return seen};
+  const txt = ps => (ps || []).map(p => typeof p === 'string' ? p : p && (p.t || p.name) || '').join('');
+  const bare = t => t.replace(/ \(round.*/, '');
+  {
+    down(CAIRN); const seen = playOn(CAIRN, 900);
+    sok(!CRYPT.group && !CAIRN.group, 'both dungeons are free at the end');
+    sok(seen.length >= 1 && seen.every(sc => sc.ctx.dun === CAIRN.name), seen.length + ' room scenes, each naming the Cairn: ' + [...new Set(seen.map(sc => bare(sc.title)))].join(' > '));
+    const names = CAIRN.rooms.map(r => r.name); sok(seen.every(sc => names.includes(bare(sc.title))), 'every scene is a room of the Cairn, none of the Crypt');
+    const rec = S.dunRec[CAIRN.name], C = SLT.slotted().crawl;
+    sok(rec && rec.runs === 1 && !S.dunRec[CRYPT.name], 'the world record has the run under the Cairn only: ' + JSON.stringify(S.dunRec));
+    sok(C.by && C.by[CAIRN.name] && C.by[CAIRN.name].runs === 1 && !C.by[CRYPT.name], 'so does the company record');
+    sok(S.chronicle.some(e => txt(e.parts).includes(CAIRN.name)) && !S.chronicle.some(e => /room by room/.test(txt(e.parts)) && txt(e.parts).includes(CRYPT.name)), 'the chronicle names the Cairn, not the Crypt');
+  }
+  { // a clear pays and records on the dungeon entered
+    let cleared = null; for (let i = 0; i < 12 && !cleared; i++) {const M = down(CAIRN, 12); M.forEach(a => {a.gear = 6}); playOn(CAIRN, 900); if (S.dunRec[CAIRN.name].clears) cleared = M}
+    sok(cleared, 'the Fellowship can clear the Cairn');
+    if (cleared) sok(S.timeline.some(e => e.kind === 'crypt' && txt(e.parts).includes(CAIRN.name)), 'a first clear of the Cairn goes on the timeline');
+  }
+  { // side by side: the Fellowship below the Cairn, a background group in the Crypt
+    const M = down(CAIRN), bg = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !SLT.companyOf(a) && a.fac === M[0].fac).slice(0, 4);
+    for (const a of bg) {a.lvl = 9; a.hp = maxHp(a); a.state = 'hunt'; a.target = null; a.dest = null; a.x = CRYPT.x; a.y = CRYPT.y + 1}
+    D.musterCrypt(bg, bg[0].fac, null, 'Test Blades', CRYPT);
+    sok(CRYPT.group && CAIRN.group && CRYPT.group !== CAIRN.group, 'two groups at once, one in each dungeon');
+    sok(bg.every(a => X.cryptOfHero(a) === CRYPT) && M.every(a => X.cryptOfHero(a) === CAIRN), 'each hero belongs to its own dungeon');
+    let both = false; playOn(CAIRN, 900, () => {if (CRYPT.group && CAIRN.group && CRYPT.group.phase === 'inside' && CAIRN.group.crawl) both = true});
+    for (let f = 0; f < 120 * 60 && CRYPT.group; f++) step(1 / 60);
+    const r = (S.dunRec || {})[CRYPT.name] || {runs: 0}; sok(both && !CRYPT.group && r.runs >= 1, 'the crawl and the Crypt\'s roll ran side by side and each ended on its own record: ' + JSON.stringify(S.dunRec));
+  }
+  { // a save mid-crawl in the second dungeon
+    down(CAIRN); let snap = null; playOn(CAIRN, 600, () => {const sc = T.sceneFor(SLT.slotted()); if (!snap && sc && sc.kind === 'crawl') snap = JSON.stringify(snapshot())});
+    sok(snap && JSON.parse(snap).CRYPTS && JSON.parse(snap).CRYPTS[CAIRN.name], 'a save carries the Cairn\'s group');
+    if (snap) {restore(JSON.parse(snap)); T.TABLE.speed = 1;
+      sok(CAIRN.group && CAIRN.group.crawl && !CRYPT.group, 'the crawl comes back in the Cairn');
+      playOn(CAIRN, 600); sok(!CAIRN.group && !T.sceneFor(SLT.slotted()), 'it plays on to its end');
+      const o = JSON.parse(snap); delete o.CRYPTS; restore(o); sok(!CAIRN.group, 'a save from before keeps nobody below the Cairn')}
+  }
+  { // who answers which call
+    init(); const a = S.agents.find(b => b.kind === 'hero' && !SLT.companyOf(b)), at = (x, y, l) => {a.x = x; a.y = y; a.lvl = l};
+    at(CAIRN.x, CAIRN.y + 2, 14); sok(X.cryptFor(a) === CAIRN, 'a tried blade near the Cairn answers its call');
+    at(CAIRN.x, CAIRN.y + 2, X.entryOf(CAIRN) - 1); sok(X.cryptFor(a) === CRYPT, 'below its entry level the same hero goes to the Crypt');
+    at(CRYPT.x, CRYPT.y + 2, 14); sok(X.cryptFor(a) === CRYPT, 'a tried blade near the Crypt stays with the Crypt');
+    sok(X.needOf(CRYPT) === 8 && X.needOf(CAIRN) > 8, 'the abstract roll sets the bar by entry level (' + X.needOf(CRYPT) + ', ' + X.needOf(CAIRN) + ')');
+    sok(X.cryptByWord('the hollow cairn') === CAIRN && X.cryptByWord('cairn') === CAIRN && X.cryptByWord('crypt') === CRYPT && !X.cryptByWord('moon'), 'a dungeon is found by the word a hero uses');
+  }
+  { // a company chooses, an oath is to one dungeon
+    init(); SIM.setRunnerLinks(() => 'connected'); T.TABLE.mode = 'off'; const F = SLT.slotted(), M = SLT.slotHeroes(F), L = CN.leaderOfC(F); S.mobs.length = 0;
+    M.forEach((b, i) => {b.lvl = 12; b.hp = maxHp(b); b.state = 'hunt'; b.target = null; b.dest = null; b.x = CAIRN.x + i * .4; b.y = CAIRN.y + 3; b.pq = []});
+    const act = (a, t, x) => {a.playRate = []; return SIM.playerAct(a.id, t, x)};
+    let r = act(L, 'propose', {kind: 'crypt', dungeon: 'hollow cairn'});
+    sok(r.error && /never been/.test(r.error), 'a dungeon never heard of is refused: ' + r.error);
+    for (const b of M) LR.learnPlace(b, CAIRN.name, 'told');
+    r = act(L, 'propose', {kind: 'crypt', dungeon: 'moon'}); sok(r.error && /no dungeon/.test(r.error), 'a name that is no dungeon is refused and lists the known: ' + r.error);
+    r = act(L, 'propose', {kind: 'crypt', dungeon: 'hollow cairn'});
+    const P = CN.openProps(F).find(p => p.kind === 'crypt'); sok(P && P.dun === CAIRN.name && P.details.includes(CAIRN.name), 'the vote names the Cairn: ' + (P && P.details));
+    sok(CN.cryptReserved(CAIRN) && !CN.cryptReserved(CRYPT), 'it holds the Cairn and leaves the Crypt to the world');
+    for (const b of M) if (b !== L) act(b, 'vote', {proposal_id: P.id, vote: 'yes'});
+    sok(CAIRN.group && CAIRN.group.mem.length === M.length && !CRYPT.group, 'the vote sends the whole company to the Cairn');
+    SIM.setRunnerLinks(null);
+    const g1 = {type: 'delve', at: CAIRN.name, text: 'x'}, a = M[0]; a.goal = g1; goalEvent(a, 'crypt', CRYPT.name); sok(!g1.done, 'an oath to the Cairn is not kept in the Crypt');
+    const m = SW.matchWords(a, 'I will clear the Hollow Cairn', null, null); sok(m.type === 'delve' && m.at === CAIRN.name, 'the words of an oath name the dungeon');
+  }
   process.exit(sk.n ? 1 : 0);
 }
 
@@ -342,6 +421,13 @@ console.log('determinism');
   const a = sig(7), b = sig(7), c = sig(8);
   ok(a && a === b, 'the same seed crawls the same way');
   ok(a && c && a !== c, 'a different seed crawls differently');
+}
+
+console.log('A second dungeon (#891)');
+{
+  const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--cairn'], {encoding: 'utf8', env: {...process.env, ELDMOOR_WORLD: 'stepping'}});
+  process.stdout.write(r.stdout || ''); if (r.status !== 0) process.stderr.write(r.stderr || '');
+  ok(r.status === 0, 'the two-dungeon checks pass in a stepping-world child');
 }
 
 console.log('Stepping crypt, three rooms');

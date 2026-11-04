@@ -5,7 +5,7 @@ import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
 import {S,newWorldId,resetS} from './state.js';
 import {GOODS} from '../data/items.js';
-import {CRYPT} from '../world/map.js';
+import {CRYPTS} from '../world/map.js';
 import {reserveNames} from '../data/races.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
@@ -95,12 +95,12 @@ installRumourLever();installBestowLever();installSummonLever(); // DM levers tha
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
 // o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
-// What a process starts with outside S: the auction house's opening supply and the Crypt's cooldown (init() puts them back, #507).
+// What a process starts with outside S: the auction house's opening supply and each dungeon's cooldown (init() puts them back, #507).
 const GOODS0={};for(const n in GOODS)GOODS0[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
-const CRYPT_CD0=CRYPT.cd;
+const CRYPT_CD0=CRYPTS.map(D=>D.cd);
 function resetWorld(){resetS();
   for(const n in GOODS0){GOODS[n].supply=GOODS0[n].supply;GOODS[n].prev=GOODS0[n].prev}
-  CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[]);
+  CRYPTS.forEach((D,i)=>{D.group=null;D.cd=CRYPT_CD0[i]});reserveNames([],[]);
   resetCompanyWatch();resetLocals();resetMemorials();resetBrain();resetChatSeed();resetNpcSeed();resetTalkSeed();resetLeverSeed();resetTableSeed();resetStagedSeed()} // the modules' private random streams start over with a world (#674)
 export function init(o={}){resetWorld();
   S.worldId=newWorldId(); // a new world instance (hosts purge the old world's memory mirror on a new id)
