@@ -70,6 +70,8 @@ export function startCost(kind,hero){const k=keyOf(kind,hero),p=picks[k]||'',r=r
   return s&&s.left!=null?Math.min(b,s.left):b}
 export const anotherText=v=>v>0?'another '+usd(v):'';
 export const costNote=(kind,hero)=>{const t=anotherText(startCost(kind,hero));return t?' · '+t:''};
+// the ended runner that spent the budget this hero played on: its own, or the Fellowship's or company's it was part of
+const spentFor=a=>allRunners().find(x=>x.budgetSpent&&DONE[x.state]&&(x.key==='hero:'+a.id||(x.heroes||[]).includes(a.id)||x.kind==='fellowship'&&((slotted()&&slotted().ids)||[]).includes(a.id)))||null;
 export const NO_SESSION='No session budget is set: nothing caps what all runners spend together.';
 export const noSessionBudget=()=>{const s=sessionInfo();return !!(info&&info.enabled)&&s.want==null&&s.budget==null};
 
@@ -87,7 +89,7 @@ export function runnerFor(a){if(!a||!info||!info.runners)return null;const own=r
   return any||info.runners.find(r=>!DONE[r.state]&&leftOf(r,a))||own}
 // {id, name, why} when runner r held hero a and let it go, else null (#563)
 export const leftOf=(r,a)=>r&&a&&Array.isArray(r.left)&&r.left.find(x=>x.id===a.id)||null;
-export const runnerSig=a=>{poll();const k=a?'hero:'+a.id:'fellowship',r=a?runnerFor(a):runnerByKey('fellowship'),lf=a&&leftOf(r,a);return (r?r.key+':'+r.state+':'+r.turns+':'+(r.model||'')+':'+r.cost+(r.budgetSpent?':spent':'')+(lf?':left:'+lf.why:''):'-')+':'+(note[k]||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks[k]||'')};
+export const runnerSig=a=>{poll();const k=a?'hero:'+a.id:'fellowship',r=a?runnerFor(a):runnerByKey('fellowship'),lf=a&&leftOf(r,a);return (r?r.key+':'+r.state+':'+r.turns+':'+(r.model||'')+':'+r.cost+(r.budgetSpent?':spent':'')+(lf?':left:'+lf.why:''):'-')+(a&&spentFor(a)?':spent':'')+':'+(note[k]||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks[k]||'')};
 export const relayUp=()=>up;
 export const kindInfo=kind=>info&&info.kinds&&info.kinds[kind]||null;
 export const pickOf=k=>picks[k]||'';
@@ -174,7 +176,7 @@ export function runnerControl(a,{line=true}={}){poll();const d=el('span','runctl
   if(lf){d.append(el('span','dm',rl));if(line){const s=el('span','dm runstate r-none',' done with '+a.name+' ('+lf.why+'): no runner; Restart the '+rl.toLowerCase()+' to play on'+(r.budgetSpent?costNote(r.kind,r.kind==='hero'?r.hero:undefined):''));s.title=tip(r,4);d.append(s)}return d}
   if(fel)d.append(el('span','dm',rl));
   else if(on)d.append(button('Stop runner','stop','hero',a.id,'Stop this hero\'s agent runner (it lets go of the hero; reflexes play on)'));
-  else{const b=button('Start runner'+(r&&r.budgetSpent?costNote('hero',a.id):''),'start','hero',a.id,info&&!info.enabled?HOW_TEXT:'Start an agent runner for '+a.name+' from the relay (no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
+  else{const b=button('Start runner'+(spentFor(a)?costNote('hero',a.id):''),'start','hero',a.id,info&&!info.enabled?HOW_TEXT:'Start an agent runner for '+a.name+' from the relay (no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   if(line){const s=el('span','dm runstate r-'+(r&&!note[k]?r.state:'none'),' '+stateLine(r,k));s.title=tip(r,4);d.append(s)}
   return d}
 

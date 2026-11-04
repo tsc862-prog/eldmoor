@@ -175,8 +175,13 @@ ok(rv && !rv.heroes.includes(done.id) && rv.left && rv.left[0].id === done.id &&
   ok(st4.status === 200 && !ctl.held, 'a DM runner is back (its warm-up failed, but it is there and playing: active)');
   dkid.emit('exit', 1); for (let i = 0; i < 3; i++) {T += 1000; await up3(); await view(); G.checkRunGate(T)}
   ok(ctl.held && /^DM: /.test(gate()[0] || ''), 'the override held only until the next change: the DM runner goes again and the world pauses again');
+  // a member of a Fellowship runner that ended on its budget: its own Start says the price too (#807)
+  {const k = k3; k.stdout.emit('data', Buffer.from(`[07:40:00] [${mem[0].name}] done (budget reached): 1 turns, 0 at the table, $0.10
+`)); k.emit('exit', 0); T += 1000; await view(); await sleep(5); await view();
+    ok(/Start runner · another \$1\.00/.test(RN.runnerControl(mem[0]).textContent), 'the Start on the hero card names the price: ' + RN.runnerControl(mem[0]).textContent);
+    const st5 = await post('/play/runner/start', {kind: 'fellowship', provider: 'anthropic', model: 'claude-haiku-5-5'}, 'http://localhost:5173'); ok(st5.status === 200, 'the page can still start it')}
   // Restart is one click (#807): it waits for the old child to go; the relay refuses a start while it is stopping
-  const n5 = kids.length, p5 = RN.restartRunner('fellowship'); await sleep(40); k3.emit('exit', 0); const r5 = await p5;
+  const n5 = kids.length, k5 = kids[n5 - 1], p5 = RN.restartRunner('fellowship'); await sleep(40); k5.emit('exit', 0); const r5 = await p5;
   ok(r5.ok && kids.length === n5 + 1, 'Restart stops the runner and starts it again with one click: ' + JSON.stringify(r5.error || 'started'))}
 
 server.close(); try {rmSync(tmp, {recursive: true, force: true})} catch {}
