@@ -395,13 +395,16 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     kids.push(p); const R = {p, out: '', turns: [], wakes: [], done: new Promise(r => p.on('close', c => r(c)))}; let part = '';
     const take = d => {R.out += d; part += d; const ls = part.split(/\r?\n/); part = ls.pop();
       for (const l of ls) {const t = {real: Date.now(), gm: S.gameMin, line: l};
-        if (/^\[turn \d+\]/.test(l)) R.turns.push(t); const w = l.match(/\[pace\] woke \((\w+)/); if (w) R.wakes.push({...t, kind: w[1]})}};
+        if (/^\[turn \d+\]/.test(l)) R.turns.push(t); const w = l.match(/\[pace\] woke \((\w+)/); if (w) R.wakes.push({...t, kind: w[1], line: l})}};
     p.stdout.on('data', take); p.stderr.on('data', take); return R;
   }
   const until = async (f, ms) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {if (f()) return true; await sleep(50)} return false};
 
   // A. a quiet hero: turns come from the heartbeat (60 game minutes here), never back to back
-  {const a = pick(), hb = 60, gap = 1;
+  // The world around the hero is not scripted: a hero going down within 12 tiles of the town gate tells it (an urgent 'down and dying' event,
+  // #658) and starts a 'now' turn early (#762). This section is about the heartbeat, so the downed hearing is switched off while it runs.
+  {const {DOWN} = await import('../src/sim/downed.js'), keep = {REACH: DOWN.REACH, SEE: DOWN.SEE}; DOWN.REACH = 0; DOWN.SEE = 0;
+   const a = pick(), hb = 60, gap = 1;
     const R = runner(a, 'mock-tools:1b', ['--max-turns', '5', '--heartbeat', String(hb), '--min-gap', String(gap)]);
     const code = await R.done, g0 = R.turns[0], gN = R.turns[R.turns.length - 1];
     const hours = (gN.gm - g0.gm) / 60, perHour = (R.turns.length - 1) / Math.max(hours, 1e-9);
@@ -410,9 +413,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     ok(code === 0 && R.turns.length === 5, `a quiet hero plays its 5 turns (${R.turns.length})` + (code === 0 ? '' : '\n' + R.out.slice(-1500)));
     ok(gaps.length === 4 && gaps.every(x => x >= minGm - 6), `turns wait for the game: ${gaps.map(x => Math.round(x)).join(', ')} game minutes between turns (at least ${minGm})`);
     ok(perHour <= 60 / minGm + .05, `at most one turn per ${minGm} game minutes on a quiet world: ${perHour.toFixed(2)} turns per game hour`);
-    ok(R.wakes.every(w => w.kind === 'heartbeat' || w.kind === 'soft') && /up to 5 turns/.test(R.out) && /every 60 game min, at least 1 s apart/.test(R.out), `woken by the heartbeat or the hero's own news (${R.wakes.map(w => w.kind).join(', ')})`);
+    ok(R.wakes.every(w => w.kind === 'heartbeat' || w.kind === 'soft') && /up to 5 turns/.test(R.out) && /every 60 game min, at least 1 s apart/.test(R.out), `woken by the heartbeat or the hero's own news (${R.wakes.map(w => w.kind).join(', ')})${R.wakes.map(w => ' | ' + w.line).join('')}`);
     ok(/Right now \(from the game/.test(JSON.stringify(seen.slice(-6))) && !/still battling/.test(R.out), 'every local turn prompt carries the hero\'s state from the game');
-    sim.markPlayer(a, false)}
+    Object.assign(DOWN, keep); sim.markPlayer(a, false)}
 
   // B. a notification that cannot wait starts a turn at once, inside the gap; the hero's other news waits for the gap
   {const a = pick();

@@ -6,6 +6,11 @@
 // <space>/gradio_api/call/generate {data:[prompt, negative, seed, steps, guidance, width, height, lora_scale, lora]} ->
 // {event_id}; GET <space>/gradio_api/call/generate/<event_id> streams server-sent events until `complete` (data: [image
 // FileData {url,...}, gpu seconds]) or `error` (data: the message). Both carry Authorization: Bearer <token> (a private Space).
+// Image to image (#763): the same protocol on <space>/gradio_api/call/img2img, {data:[prompt, negative, seed, steps, guidance,
+// init PNG in base64, strength, lora_scale, lora]}. Gradio takes files only as URLs over this API (guide read 2026-11-03), and
+// the game's init image has none, so it travels as text. A Space that predates it has no such API, which Gradio answers with a
+// bare HTTP 500 (FnIndexInferError, seen on Gradio 6.30), so a failed img2img call reads <space>/gradio_api/info: no /img2img there
+// stops the run with the word to push, before any GPU is spent.
 // The quota refusal: an HTTP 429, or an error event, whose text says the GPU quota is exceeded and "Try again in H:MM:SS";
 // it becomes ArtError kind 'gpu' with resetAt, so the art loop sleeps until exactly then.
 //
@@ -35,11 +40,15 @@ export const spacePage=id=>`https://huggingface.co/spaces/${id}`;
 
 // GPU seconds the Space reserves for one image: the same rule as app.py gpu_duration (base + per step, scaled by pixels,
 // capped). The quota is charged by the time used; this reserved figure is what a run plans against (an upper bound).
-export function spaceDuration(m){const px=(m.width*m.height)/(1024*1024);return Math.min(120,Math.ceil(10+(m.steps||25)*0.6*px))}
+// Image to image denoises only the last steps x strength of the schedule, so it reserves that share.
+export function spaceDuration(m,strength=1){const px=(m.width*m.height)/(1024*1024);return Math.min(120,Math.ceil(10+(m.steps||25)*strength*0.6*px))}
 
 // The request: the same prompt, negative, seed, steps, guidance and size as the router body, the tier's LoRA scale.
-export function buildSpaceRequest(man,m,mp,e,seed=e.seed,tier=TILE,env=process.env){
+// With init (scripts/art/init.mjs makeInit): the img2img API; the size comes from the init image.
+export function buildSpaceRequest(man,m,mp,e,seed=e.seed,tier=TILE,env=process.env,init=null){
   const cfg=tierCfg(man,m,tier),scale=cfg.loraScale??m.loraScale??1;
+  if(init)return {space:mp.space,init:true,url:`${spaceUrl(mp.space,env)}/gradio_api/call/img2img`,
+    body:{data:[promptOf(man,m,e),negativeOf(man,e),seed,m.steps,m.guidance,init.b64,init.strength,scale,m.repo]},reserve:spaceDuration(m,init.strength)};
   return {space:mp.space,url:`${spaceUrl(mp.space,env)}/gradio_api/call/generate`,
     body:{data:[promptOf(man,m,e),negativeOf(man,e),seed,m.steps,m.guidance,m.width,m.height,scale,m.repo]},reserve:spaceDuration(m)}}
 
@@ -87,6 +96,10 @@ export function parseSse(text){const out=[];let ev={event:'message',data:''};
     if(line.startsWith('event:'))ev.event=line.slice(6).trim();else if(line.startsWith('data:'))ev.data+=(ev.data?'\n':'')+line.slice(5).trim()}
   if(ev.data!==''||ev.event!=='message')out.push(ev);return out}
 
+// Whether the Space lists the img2img API; null when its info cannot be read.
+async function hasImg2img(req,auth,timeout){try{const r=await timed(req.url.replace(/\/call\/img2img$/,'/info'),{headers:auth},timeout);if(!r.ok)return null;
+  const j=await r.json();return !!(j.named_endpoints&&j.named_endpoints['/img2img'])}catch{return null}}
+
 async function timed(url,opt,timeout){const ac=new AbortController(),t=setTimeout(()=>ac.abort(),timeout);
   try{return await fetch(url,{...opt,signal:ac.signal})}catch(err){throw new ArtError('transient',err.name==='AbortError'?`the Space did not answer in ${timeout/1000}s`:err.message)}finally{clearTimeout(t)}}
 
@@ -98,7 +111,7 @@ export async function callSpace(req,token,{timeout=120000,count=()=>{},now=()=>n
   if(!r.ok){const body=await r.text().catch(()=>''),ra=Number(r.headers.get('retry-after'))||0;
     if(r.status===429||GPU_QUOTA.test(body))throw gpuQuotaError(body,now(),ra);
     if(r.status===401||r.status===403)throw new ArtError('auth',`HTTP ${r.status}: the token cannot use the Space ${req.space} (it needs read access; ${spacePage(req.space)})`,r.status);
-    if(r.status===404)throw new ArtError('space',`HTTP 404: the Space ${req.space} has no generate API: run npm run art:space -- --push (${spacePage(req.space)})`,404);
+    if(r.status===404||(req.init&&await hasImg2img(req,auth,timeout)===false))throw new ArtError('space',`HTTP ${r.status}: the Space ${req.space} has no ${req.init?'img2img':'generate'} API: run npm run art:space -- --push (${spacePage(req.space)})`,r.status);
     throw new ArtError('transient',`Space HTTP ${r.status} ${body.slice(0,160).replace(/\s+/g,' ')}`,r.status)}
   let id;try{id=(await r.json()).event_id}catch{}
   if(!id)throw new ArtError('transient','the Space gave no event id');
