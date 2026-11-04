@@ -41,6 +41,7 @@
 import {rnd,ri,hash} from '../core/rng.js';
 import {CITY,LAIR,CRYPT,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
 import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
+import {solidAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {USES} from '../data/items.js';
 import {campMeal,campLight} from './inv.js'; // rations and torches (sim/inv.js)
@@ -108,7 +109,7 @@ const soloSleeps=g=>!!g.solo&&g.watchIdx>=0&&g.watchIdx%2===1;
 export const isCamped=a=>!!(a&&a.state==='camp');
 
 // ---- the safe spot: asked of the world module ----
-const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!==PEAK};
+const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!==PEAK&&!solidAt(x,y)};
 function safe(x,y){if(!open(x,y))return false;
   for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(!open(x+dx,y+dy))return false;
   for(const c of CITY)if(x>=c.x0-CAMP.TOWN_MIN&&x<=c.x1+CAMP.TOWN_MIN&&y>=c.y0-CAMP.TOWN_MIN&&y<=c.y1+CAMP.TOWN_MIN)return false;
