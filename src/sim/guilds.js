@@ -22,7 +22,7 @@
 import {rnd,pickA} from '../core/rng.js';
 import {dist} from '../world/map.js';
 import {FAC,genGuild} from '../data/factions.js';
-import {S} from './state.js';
+import {S,noOthers} from './state.js';
 import {log} from './chronicle.js';
 import {record} from './history.js';
 import {bond,FRIEND,CLOSE} from './bonds.js';
@@ -31,6 +31,8 @@ export const CAP=12,MAX_FOUND=6,NEAR_FOUND=20,JOIN_LVL=3,SPLIT_DAYS=6,DISBAND_DA
 const DAY=1440;
 
 const alive=a=>a&&a.state!=='dead';
+// A world with no others (#780) raises no banner around a company: its people and their companions stay out of the guilds. Heroes the DM summons found and join as ever.
+const open=a=>!(noOthers()&&(a.company!=null||a.companion!=null));
 const stats=()=>S.guildStats||(S.guildStats={founded:0,joined:0,succeeded:0,split:0,disbanded:0});
 export const livingGuilds=()=>S.GUILDS.filter(g=>!g.retired);
 export const membersOf=g=>S.agents.filter(a=>a.guild===g&&alive(a));
@@ -55,7 +57,7 @@ function linked(a,b){
   return (a.state==='town'&&b.state==='town')||dist(a,b)<=NEAR_FOUND}
 
 function found(f){
-  const un=S.agents.filter(a=>alive(a)&&a.fac===f&&!a.guild).sort((x,y)=>y.lvl-x.lvl);
+  const un=S.agents.filter(a=>alive(a)&&a.fac===f&&!a.guild&&open(a)).sort((x,y)=>y.lvl-x.lvl);
   for(const root of un){
     const grp=[root],seen=new Set([root]);
     for(let i=0;i<grp.length&&grp.length<MAX_FOUND;i++)
@@ -70,7 +72,7 @@ function found(f){
 // ---- 2 joining ----
 function join(sizes){
   for(const a of S.agents){
-    if(!alive(a)||a.guild)continue;
+    if(!alive(a)||a.guild||!open(a))continue;
     let g=null,why='Joined ';
     const pl=a.party&&a.party.leader;
     if(pl&&pl!==a&&pl.guild&&pl.guild.fac===a.fac&&!pl.guild.retired&&(sizes.get(pl.guild)||0)<CAP){g=pl.guild;why='Followed a party leader into '}
