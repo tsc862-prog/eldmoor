@@ -268,6 +268,7 @@ async function shutdown(why, code = 0) {
 // ---- code-change notice ----
 function watchCode() {
   const note = (_, f) => {
+    if (process.env.UP_DEBUG_WATCH) up('watch event ' + _ + ' ' + f + ' quiet=' + Math.max(0, quietUntil - Date.now()) + 'ms changed=' + codeChanged);
     if (!f || !/\.mjs$/.test(String(f)) || /(check|smoke|^up)\.mjs$|(^|[\\/])up\.mjs$/.test(String(f)) || Date.now() < quietUntil || codeChanged) return;
     codeChanged = true; up(`relay code changed (${basename(String(f))}): press u (or r) to apply`);
   };

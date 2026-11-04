@@ -135,7 +135,7 @@ for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
 const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
 ok(memA.ok, 'A wrote a memory (#179)');
-const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Hold the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
+const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Patrol the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
 ok(aimA.ok, 'A stated an aim (#535)');
 // C's agent keeps it in town on purpose (#466: a silent member's autopilot now walks out of town to hunt, so a stuck member
 // is one whose agent keeps acting without going anywhere): every game hour its runner orders a rest in town.

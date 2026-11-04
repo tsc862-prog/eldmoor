@@ -24,6 +24,20 @@ import {attachPlay} from './relay-mcp.mjs';
 import {attachRunners} from './runners.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// One upcheck at a time per checkout (#324 family): every launcher watches this checkout's scripts/, and the code-change test writes
+// a file there, so a second upcheck running at once would trip the first one's notice early (it prints once, then stays quiet) and
+// fail it. A run waits its turn on a lock file; a lock whose owner is gone is taken over.
+{const lock = join(tmpdir(), 'eldmoor-upcheck-' + Buffer.from(ROOT).toString('hex').slice(-24) + '.lock'), t0 = Date.now();
+  const gone = p => {try {process.kill(p, 0); return false} catch {return true}};
+  for (;;) {
+    try {writeFileSync(lock, String(process.pid), {flag: 'wx'}); break} catch {
+      let owner = 0; try {owner = Number(readFileSync(lock, 'utf8'))} catch {}
+      if (!owner || gone(owner)) {try {rmSync(lock, {force: true})} catch {}} else if (Date.now() - t0 > 900000) {console.error('upcheck: another run holds ' + lock + ' (pid ' + owner + ') for 15 minutes'); process.exit(1)} else await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+  process.on('exit', () => {try {if (readFileSync(lock, 'utf8') === String(process.pid)) rmSync(lock, {force: true})} catch {}});
+}
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
