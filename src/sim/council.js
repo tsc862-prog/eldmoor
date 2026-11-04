@@ -34,6 +34,8 @@ import './company.js'; // load order: keep the module graph as before (an import
 import {companyOf,companyById,companies,members,isSolo,campaign as clog,slotted} from './company.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
 import {reflexMay,ownerHeld} from './runlink.js';
+import {wounded} from './wounds.js';
+import {wishInvite} from './wish.js'; // #829
 import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {inRange,together,outOfRange,nameList,makePlan,reachTick,toldBy,REACH} from './reach.js';
 
@@ -108,7 +110,7 @@ export function setCampHook(f){campHook=f} // sim/camp.js: break the camp when a
 // How a member votes by reflex: its runner is gone (and the owner said go on), or its agent let HOLD_MIN pass.
 export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
   switch(P.kind){
-  case 'crypt':return a.lvl>=7&&!hurt?'yes':'no';
+  case 'crypt':return a.lvl>=7&&!hurt&&!wounded(a)?'yes':'no'; // a reflex says no with a wound on it (#656)
   case 'raid':return a.lvl>=14&&!hurt?'yes':'no';
   case 'split':return 'no';
   case 'site':return siteHook?siteHook.vote(a,P):'no';
@@ -126,7 +128,7 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   if(isSolo(F)&&kind!=='break_camp')return SOLO;
   if(kind==='site'&&o.site==null)return 'Put a site to the party with enter_site {site}: it names the place.';
   if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break: the '+word(F)+' is not camped. Go on with move_to'+(leaderOfC(F)===a&&!isSolo(F)?' or lead_to':'')+'.';
-  let ex=null;if(kind==='expel'||kind==='merge'){if(!groupHook)return 'Not available here.';ex=groupHook.prepare(a,F,kind,o);if(ex.error)return ex.error}
+  let ex=null;if(kind==='expel'||kind==='merge'){if(!groupHook)return 'Not available here.'+(a&&a.player?wishInvite(a):'');ex=groupHook.prepare(a,F,kind,o);if(ex.error)return ex.error}
   {const O=openProps(F).find(P=>P.kind===kind);if(O)return 'Proposal '+propLine(O)+' is already open. Vote on it with vote('+O.id+', yes|no), or wait for it to settle'+leftText(O)+' before proposing another.'}
   const d=ex?ex.details:clean(details,200);if(!d&&kind==='other')return 'Say what you propose.';
   // presence (#182): only members within shouting range hear a proposal and vote; the absent hear of it on rejoining

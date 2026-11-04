@@ -315,6 +315,9 @@ and is hunted on sight ("spots X, who killed their friend Y, and charges"). The 
 friend swears the death will be paid for. Whoever finally kills the killer has paid the
 blood debt, and the dead hero's friends warm to them. A grudge ends only with the killer.
 
+## Wounds and the chapel (issue #656)
+A hero brought down and brought back carries a lasting wound for days: less health, a slower step and a slower arm. Healers and the fire shorten it. In town the Priest (the Shaman, in Warband towns) dresses wounds at the chapel for a few coins; no one there raises the dead, and no one ever will.
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |
@@ -353,6 +356,19 @@ Sample lines:
 - "Zugmar pries at a strongbox on the Mirefen road... rolls 20 vs 12. Gold: 35g."
 - "Vexzar brings the pilgrim safe to the gate of Grimhold... rolls 20. +3 honor and a gift of 19g."
 - "Pellora and party are ambushed by 2 Rookscar bandits on the Mirefen road... rolls 12+3 vs 14. The bandits break and run; 20g in their purses."
+
+## Road traffic
+
+The people between the towns (issue #796). Nobody here fights or has a name of their own: they are presence, seen in passing.
+Carters belong to neither faction and take their loads to any gate; the road is the one place the Concord and the Warband
+buy from each other without a word said.
+
+- **Carts** go by their load: a salt cart, a grain cart, an ale cart, a timber cart, a wool cart, a hide cart, a pelt cart, a silk
+  cart, a moss cart. The last five carry what the auction house trades (Hoar Wool, Thick Hide, Wolf Pelt, Silk Bundle, Fen Moss).
+- **Travellers** on foot: a pedlar, a pilgrim, a tinker, a drover, a road courier, a wandering minstrel. They also walk to the
+  outposts and the dungeon mouths at the ends of the roads, and back. Nobody takes the road to a wyrm's lair for choice.
+- **Guards**: a guard of the town on its gate road, day and night; a watchman of the nearest town on each bridge, by day.
+- A cart that never arrives reads in the Chronicle as "A salt cart never came off the road in Mirefen."
 
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.

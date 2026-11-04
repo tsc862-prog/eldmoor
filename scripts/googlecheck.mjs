@@ -9,6 +9,8 @@
 // rpm spacing), the relay (/decide, /health, its queue), the runner checks and tables, a real
 // `agent-player.mjs --provider google` run and a real `dm-agent.mjs --provider google` run on headless worlds.
 // Usage: npm run googlecheck
+import {dmMindCases} from './dm-mind-cases.mjs';
+import {schemaFill, toolsProblem, isDmTurn, dmTurnMessage} from './mock-dm.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync} from 'node:fs';
@@ -34,7 +36,7 @@ let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const KEY = 'AIzaTestKey_0123456789abcdef';
-const G38 = 'gemini-3.8-flash', G25 = 'gemini-2.5-flash', NOSCHEMA = 'gemini-3.6-flash', SIG = 'gemini-3.5-flash-lite';
+const G38 = 'gemini-3.8-flash', G25 = 'gemini-2.5-flash', NOSCHEMA = 'gemini-3.6-flash', SIG = 'gemini-3.5-flash-lite', DMPLAN = G25; // DMPLAN: the mock plays the two-call DM turn on this model
 const LISTED = ['models/' + G38, 'models/' + G25, 'models/' + NOSCHEMA, 'models/' + SIG, 'models/gemini-embedding-001', 'models/gemini-3.1-flash-live-preview', 'models/gemini-2.5-flash-image', 'models/imagen-4'];
 const compat = [], native = [], st = {mode: 'ok'};
 // A value for a JSON schema (enum: the first; strings: a short English line).
@@ -69,10 +71,12 @@ const server = http.createServer((req, res) => {
     }
     if (req.method !== 'POST' || req.url !== '/v1beta/openai/chat/completions') return send(404, {error: {message: 'not found'}});
     compat.push(body);
+    const tp = toolsProblem(body); if (tp) return send(400, [{error: {code: 400, status: 'INVALID_ARGUMENT', message: tp}}]);
     const rf = body.response_format, usage = {prompt_tokens: 900, completion_tokens: 20, total_tokens: 1020}; // 100 thinking tokens not in completion_tokens
     const reply = (message, finish = 'stop') => send(200, {id: 'x', object: 'chat.completion', model: body.model, usage, choices: [{index: 0, finish_reason: finish, message}]});
     if (body.model === NOSCHEMA && rf && rf.type === 'json_schema') return send(400, [{error: {code: 400, status: 'INVALID_ARGUMENT', message: 'Invalid JSON payload received. Unknown name "strict" at \'response_format.json_schema\': Cannot find field.'}}]);
-    if (rf && rf.type === 'json_schema') return reply({role: 'assistant', content: JSON.stringify(fill(rf.json_schema.schema))});
+    if (rf && rf.type === 'json_schema') return reply({role: 'assistant', content: JSON.stringify(rf.json_schema.schema.properties && rf.json_schema.schema.properties.text ? schemaFill(rf.json_schema.schema) : fill(rf.json_schema.schema))});
+    if (isDmTurn(body) && body.model === DMPLAN) {const m = dmTurnMessage(body); return reply(m, m.tool_calls ? 'tool_calls' : 'stop')}
     const msgs = body.messages, last = msgs.map((m, i) => m.role === 'user' ? i : -1).filter(i => i >= 0).pop(), turn = msgs.slice(last + 1);
     if (body.model === SIG && turn.some(m => m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.some(c => !(c.extra_content && c.extra_content.google && c.extra_content.google.thought_signature === 'sig-abc'))))
       return send(400, [{error: {code: 400, status: 'INVALID_ARGUMENT', message: 'Function call is missing a thought_signature in functionCall parts.'}}]);
@@ -264,6 +268,7 @@ try {
     ok(!out.includes(KEY), 'the key is not in the DM output');
     world.p.kill();
   }
+  await dmMindCases({provider: 'google', model: DMPLAN, env, ok, port: 19860 + Math.floor(Math.random() * 30) * 3, seen: compat}); // #824: the same cases as OpenAI and the router; the free tier has no budget stop
 } finally {
   for (const k of kids) try {k.kill()} catch {}
   try {rmSync(tmp, {recursive: true, force: true})} catch {}

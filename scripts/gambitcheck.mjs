@@ -34,7 +34,7 @@ const D = await import('../src/data/gambits.js');
 const {CLS} = await import('../src/data/classes.js');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {rebuild} = await import('../src/sim/spatial.js');
-const {dist} = await import('../src/world/map.js');
+const {dist, CITY, zonePoint} = await import('../src/world/map.js');
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
@@ -55,6 +55,8 @@ init({fellowship: false}); run(5);
 const heroes = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.party);
 const fightSetup = (a, hpShare, lvl) => {
   if (!a.player) P.markPlayer(a, true);
+  // fight in the field, well away from every gate: a hero that flees home from a step outside the gate arrives (state town) within the run
+  if (CITY.some(c => dist(a, c.gate) < 12)) {let p = null; for (let i = 0; i < 80 && !p; i++) {const q = zonePoint(a.zone, null, CITY[0].gate); if (CITY.every(c => dist(q, c.gate) >= 12)) p = q} if (p) {a.x = p.x; a.y = p.y}}
   a.pq = []; a.party = null; a.partyOk = false; a.adv = null; a.traits = []; a.hidden = false; a.playActAt = S.gameMin; a.playIdle = false; a.playTurn = null;
   const m = S.mobs.find(x => x.alive && !x.gone && !x.elite && !x.named && !x.target && dist(x, a) > 3);
   for (const x of S.mobs) if (x !== m && x.target === a) x.target = null;
@@ -131,7 +133,12 @@ r = call('gambits'); ok(r.no_flee_rule && /one life/.test(r.no_flee_rule), 'gamb
 {const W = makeWatch(); W.tick(); const out = []; for (let i = 0; i < 70 * 60 && !out.some(x => x.kind === 'world'); i++) {step(1 / 60); out.push(...W.tick())}
   const an = out.filter(x => x.kind === 'anomaly' && x.rec.kind === 'no-flee-rule' && x.rec.hero && x.rec.hero.id === K.id), wd = out.find(x => x.kind === 'world');
   ok(an.length === 1, 'the behavior watch flags no-flee-rule once (' + an.length + ')');
-  ok(wd && wd.rec.gambits && wd.rec.gambits[K.name] && wd.rec.gambits[K.name].noFlee && wd.rec.gambits[K.name].own, 'the hourly digest counts it per hero (gambits: ' + JSON.stringify(wd && wd.rec.gambits && wd.rec.gambits[K.name]) + ')')}
+  ok(wd && wd.rec.gambits && wd.rec.gambits[K.name] && wd.rec.gambits[K.name].noFlee && wd.rec.gambits[K.name].own, 'the hourly digest counts it per hero (gambits: ' + JSON.stringify(wd && wd.rec.gambits && wd.rec.gambits[K.name]) + ')');
+  ok(wd && wd.rec.gambits[K.name].wrote === 1 && wd.rec.gambits[K.name].wroteAb === 0, 'it counts the one rule the hero wrote itself, none with an ability (#779)')}
+{r = call('set_gambit', {when: 'always', then: 'use_ability id=taunt'}); const W = K.gambitWrote;
+  ok(r.ok && W.n === 2 && W.ab === 1, 'a rule naming use_ability counts as written and as an ability rule (' + JSON.stringify(W) + ')');
+  call('set_gambit', {id: K.gambits[0].id, when: 'self_hp_below 50', then: 'drink_potion'}); call('toggle_gambit', {id: K.gambits[0].id, on: 'yes'});
+  ok(K.gambitWrote.n === 2, 'changing, moving or switching a rule is not writing a new one')}
 // save and restore
 const before = JSON.stringify(K.gambits);
 restore(JSON.parse(JSON.stringify(snapshot())));
@@ -260,7 +267,13 @@ console.log('\nhow a list differs from its class preset (#679)');
   ok(d.counts.added === 2 && !d.counts.dropped && !Object.keys(d.safety).length, 'the cautious preset: ' + d.summary);
   G.resetGambits(Wr, {preset: 'empty'}); d = G.gambitDiff(Wr);
   ok(d.dropped.length === Pr.length && d.safety.flee === 'gone' && d.safety.potion === 'gone' && d.safety.defend === 'gone', 'the empty preset: ' + d.summary);
-  Wr.gambits = saved; Wr.gambitHist = hist; Wr.gambitDay = day;
+  // the cap is 30 (#779): the class presets stay as they were, the list may grow to 30 and the 31st is refused naming 30
+  ok(D.GAMBIT.MAX === 30 && Pr.length < 30 && !Pr.some(x => x.then === 'use_ability'), 'the cap is 30; the class preset is untouched and has no use_ability rule');
+  Wr.gambitDay = null; let n = 0; while (n < 40 && G.setGambit(Wr, {when: 'always', then: 'rest 60'}).ok) { n++; Wr.gambitDay = null }
+  ok(Wr.gambits.length === 30 && n === 30, 'a hero can keep 30 rules (' + Wr.gambits.length + ')');
+  r = G.setGambit(Wr, {when: 'always', then: 'rest 60'}); ok(!r.ok && /at most 30 rules/.test(r.error), 'the 31st is refused: ' + r.error);
+  ok(G.gambitsView(Wr).max_rules === 30 || JSON.stringify(G.gambitsView(Wr)).includes('30'), 'gambits shows the 30 cap');
+  Wr.gambits = saved; Wr.gambitHist = hist; Wr.gambitDay = day; delete Wr.gambitWrote;
 }
 
 // ---------------------------------------------------------------- the downed (#658)

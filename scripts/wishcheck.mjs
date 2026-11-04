@@ -128,6 +128,47 @@ ok(dl && dl.name === 'DM' && /DM seat/.test(dl.summary) && dl.tool === 'rewind_c
 ok(!J(L).includes(secretKey) && J(hl).includes('[redacted]'), 'key-shaped text is redacted');
 ok(!wl.some(x => x.seat === 'hero:' + B2.id), 'no other seat\'s text on a line');
 
+// the real relay route (#829): a wish called over POST /play/call, as a runner's MCP tool does, lands as a line in wishes.jsonl
+S.gameMin += 1440;
+{ const n0 = readJsonl(WF, FILES.wish).filter(x => x.type === 'wish').length;
+  const rc = await post('/play/call', {tool: 'wish', args: W('via_relay'), hero: A2.id, runner: 'mock-A'});
+  ok(rc.status === 200 && rc.ok !== false && rc.filed === 'via_relay', 'POST /play/call wish answers filed: ' + J(rc).slice(0, 160));
+  pump();
+  const after = readJsonl(WF, FILES.wish).filter(x => x.type === 'wish');
+  const line = after.find(x => x.tool === 'via_relay');
+  ok(after.length === n0 + 1 && line && line.seat === 'hero:' + A2.id && line.model === 'qwen2.5:14b' && line.what && line.moment, 'and one new line is in wishes.jsonl with the seat and the runner\'s model'); }
+
+console.log('\nthe invitation (#829):');
+{ const {WISH_INVITE, wishInvite} = await import('../src/sim/wish.js');
+  const {reflectPrompt, WISH_ASK} = await import('./pacing.mjs');
+  const {cleanArgs, reflectSchema, reflectWish, reflectTurn} = await import('./local-agent.mjs');
+  const {wishNote, DM_WISH_ASK} = await import('./dm-agent.mjs');
+  const D = C; S.gameMin += 1440;
+  r = act(D, 'no_such_tool', {}); ok(!r.ok && /Unknown tool/.test(r.error) && r.error.includes(WISH_INVITE), 'a hero\'s unknown tool ends with the invitation: ' + r.error);
+  r = act(D, 'no_such_tool_again', {}); ok(!r.ok && /Unknown tool/.test(r.error) && !r.error.includes(WISH_INVITE), 'but only once a game day');
+  S.gameMin += 1440; r = act(D, 'no_such_tool_three', {}); ok(r.error.includes(WISH_INVITE), 'and again the next day');
+  r = act(D, 'move_to', {where: 'nowhere-land-xyz'}); ok(!r.error || !r.error.includes(WISH_INVITE), 'a legal tool refused for a legal reason does not invite');
+  r = DMA.dmAct('pull_lever', {lever: 'make_it_rain_frogs', params: {}, reason: 'fun'}); ok(!r.ok && /no such lever/.test(r.error) && r.error.includes(WISH_INVITE), 'the DM\'s unknown lever ends with the invitation: ' + r.error.slice(-170));
+  r = DMA.dmAct('pull_lever', {lever: 'make_it_rain_toads', params: {}, reason: 'fun'}); ok(!r.error.includes(WISH_INVITE), 'the DM is invited once a game day');
+  S.gameMin += 1440; r = DMA.dmAct('rain_frogs', {}); ok(!r.ok && /Unknown DM tool|not a tool/.test(r.error) && r.error.includes(WISH_INVITE), 'an unknown DM tool invites on a new day');
+  const cA = {}; ok(wishInvite(cA) === ' ' + WISH_INVITE && wishInvite(cA) === '', 'the helper gives it once a day to one holder');
+  const ca = cleanArgs('nope', {}, DM_TOOLS); ok(ca.error && ca.error.includes('wish {tool, what, why, moment}'), 'a runner-side unknown tool carries it once an hour');
+  const cb = cleanArgs('nope2', {}, DM_TOOLS); ok(!cb.error.includes('wish {tool'), 'and not again at once');
+  ok(WISH_INVITE.length < 160, 'it is one short sentence');
+  const dusk = reflectPrompt({id: 'd3', kind: 'dusk', why: 'the end of the day'}), camp = reflectPrompt({id: 'c1', kind: 'camp', why: 'making camp'});
+  ok(dusk.includes(WISH_ASK) && /wish \{tool, what, why, moment\}/.test(dusk) && !camp.includes(WISH_ASK), 'the dusk reflection asks, other moments do not');
+  ok(reflectPrompt({id: 'd3', kind: 'dusk'}, {tools: false}).includes(WISH_ASK), 'and the forced-answer prompt asks too');
+  const sc = reflectSchema({wish: true}), scS = reflectSchema({strict: true, wish: true});
+  ok(sc.properties.wish && !sc.required.includes('wish') && scS.required.includes('wish') && !reflectSchema({}).properties.wish, 'the dusk schema carries the optional wish object (strict: required, empty fields), other moments none');
+  ok(reflectWish(J({notes: [], wish: {tool: 'hear_all', what: 'hear the camp', why: 'they overlapped', moment: 'the fire'}})).tool === 'hear_all' && reflectWish(J({notes: [], wish: {tool: '', what: '', why: '', moment: ''}})) === null && reflectWish('nonsense') === null, 'an empty wish object is no wish; a full one is read');
+  const calls = [];
+  const tr = await reflectTurn({ask: async () => ({text: J({notes: [], wish: {tool: 'hear_all', what: 'hear the camp', why: 'they overlapped', moment: 'the fire'}}), usage: {}}), call: async t => {calls.push(t); return {ok: true}}, sess: {system: ''}, moment: {id: 'd9', kind: 'dusk', why: 'x'}, prompt: 'p'});
+  ok(calls.includes('wish') && tr.wished === 'hear_all', 'the runner sends the wish of a dusk answer through wish');
+  const calls2 = []; await reflectTurn({ask: async () => ({text: J({notes: [], wish: {tool: 'x_y', what: 'a', why: 'b', moment: 'c'}}), usage: {}}), call: async t => {calls2.push(t); return {ok: true}}, sess: {system: ''}, moment: {id: 'c9', kind: 'camp', why: 'x'}, prompt: 'p'});
+  ok(!calls2.includes('wish'), 'a wish offered at a camp reflection is not sent (only dusk asks)');
+  ok(wishNote({part: 'evening', day: 4}, {}) === DM_WISH_ASK && /wish \{tool, what, why, moment\}/.test(DM_WISH_ASK), 'the DM\'s evening prompt carries the question');
+  { const sess = {}; wishNote({part: 'evening', day: 4}, sess); ok(wishNote({part: 'evening', day: 4}, sess) === '' && wishNote({part: 'evening', day: 5}, sess) !== '' && wishNote({part: 'morning', day: 6}, sess) === '', 'once a game day, evening only'); } }
+
 console.log('\nprivacy across seats:');
 { const secret = 'QZXwishsecretK9Q';
   act(B2, 'wish', {tool: 'privacy_probe', what: 'Probe ' + secret, why: 'Because ' + secret, moment: 'Moment ' + secret});

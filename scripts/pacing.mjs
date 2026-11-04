@@ -170,12 +170,14 @@ export const sightNote = b => b && typeof b.insight === 'string' && b.insight ? 
 // Session zero held for members out of range (brief.gather, #771).
 export const gatherNote = b => b && typeof b.gather === 'string' && b.gather ? `\nSESSION ZERO: ${b.gather.slice(0, 200)}` : '';
 export const holdNote = b => b && typeof b.hold === 'string' && b.hold ? `\nTHE WORLD IS HELD FOR YOU by your rule (${b.hold.slice(0, 160)}): nothing moves until you act (any acting tool), at most 2 minutes. Look, then act.` : '';
+export const woundNote = b => b && typeof b.wounds === 'string' && b.wounds ? `\n${b.wounds.slice(0, 320)}.` : ''; // a lasting wound (brief.wounds, #656)
 export const earshotNote = b => b && typeof b.earshot === 'string' && b.earshot ? `\nIn earshot: ${b.earshot.slice(0, 300)} (the earshot tool tells more).` : '';
 export function talkText(b) {
   if (!b) return '';
   const heard = Array.isArray(b.heard) ? b.heard : [], met = Array.isArray(b.met) ? b.met : [];
   const near = Array.isArray(b.nearby) ? b.nearby : [];
-  return holdNote(b) + earshotNote(b) + sightNote(b) + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
+  const road = Array.isArray(b.road) ? b.road : [];
+  return holdNote(b) + earshotNote(b) + sightNote(b) + (road.length ? `\nOn the road: ${road.join('; ')}.` : '') + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
     (met.length ? `\nCompanions you have met: ${met.join(', ')}. You know each other: do not introduce yourself again or repeat a line; talk to move the party forward (propose, vote, lead_to, or answer a question you were asked).` : '');
 }
 
@@ -186,7 +188,7 @@ export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
 What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return gatherNote(b) + personaNote(b) + oathNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return gatherNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
 // header; when it is done, stale or was never stated, the turn asks first "What are you trying to do now?" (any mind: the
@@ -262,8 +264,9 @@ export function wakeNote(w) {
 
 // A Claude turn under the app's runner supervisor (scripts/runners.mjs): lease one of the Claude slots
 // for the turn and release it after, so any number of Claude runners can be started (five members and
-// the DM) while at most RUNNER_CLAUDE_MAX talk to the API at once. Outside the supervisor (a terminal
-// runner) or when the supervisor does not answer, the turn just runs.
+// the DM) while at most RUNNER_CLAUDE_MAX talk to the API at once (the DM has its own, RUNNER_DM_SLOTS, #733; while the DM's
+// prep holds the world a hero's request waits for it). Outside the supervisor (a terminal runner) or when the supervisor does
+// not answer, the turn just runs.
 // #687: due() says whether the member's own Table scene waits for its answer (the /play/health watch). While the runner waits for
 // a slot it asks every DUE_POLL_MS; once due, onDue() runs once (the runner tells the game its answer is queued: POST /play/pace
 // {queued:true, why:'slot'}) and the request is asked again with scene:true, which the supervisor serves first. The release
@@ -284,8 +287,9 @@ export async function takeClaudeSlot(base, log = () => {}, {key = process.env.EL
     if (watch) clearInterval(watch);
     if (cut) {log('[pace] its own Table scene opened while it waited for a Claude slot: asking again, scene first'); continue}
     if (!j) break; // no supervisor here: run without a lease
-    if (j.ok) {lease = j.lease; if (said) log('[pace] got a Claude slot' + (waitedFor ? ' (scene first)' : '')); break}
-    if (!said) {said = true; log(`[pace] waiting for a Claude slot (all ${j.slots} in use; RUNNER_CLAUDE_MAX)`)}
+    if (j.ok) {lease = j.lease; if (said) log('[pace] got a ' + (j.dm ? 'DM slot' : 'Claude slot') + (waitedFor ? ' (scene first)' : '')); break}
+    if (!said || (j.prep ? said !== 'prep' : said === 'prep')) {said = j.prep ? 'prep' : true; // #733: the DM's prep holds hero turns; the DM's line names its own slot
+      log(j.prep ? '[pace] the DM prepares the table: no Claude turn until it is done' : j.dm ? `[pace] waiting for the DM slot (its ${j.dmSlots ?? 1} and all ${j.slots} hero slots in use; RUNNER_DM_SLOTS)` : `[pace] waiting for a Claude slot (all ${j.slots} in use; RUNNER_CLAUDE_MAX)`)}
   }
   return Object.assign(() => {if (lease) {post('/play/runner/slot/release', {key, lease}, 5000).catch(() => {}); lease = null}}, {scene: waitedFor});
 }
@@ -326,12 +330,15 @@ export const BECOME_FIELDS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 
 export const REFLECT_ON = process.argv.includes('--reflect') || !(process.env.AGENT_REFLECT === '0' || process.argv.includes('--no-reflect'));
 // Downed (#658): the hero lies at zero health and cannot act; its turn is this reflection, with no acting tools.
 export const DOWNED_ASK = 'You lie in the dark, bleeding at zero health: you cannot move, fight or speak, and your acting tools are refused until someone brings you back or you rise. What do you hear? What do you think of, lying there?';
+// The dusk reflection asks once (#829): a thing wanted today that no tool allowed. One sentence, no extra turn.
+export const WISH_ASK = 'Was there a thing you wanted to do today that no tool allowed?';
+const wishAsk = (r, tools) => r && r.kind === 'dusk' ? ' ' + WISH_ASK + (tools ? ' If so, say it with wish {tool, what, why, moment} (read later by the builders; nothing changes now); if not, leave it.' : ' If so, fill "wish" {"tool": the name you would give it, "what", "why", "moment"}, else leave its fields empty.') : '';
 export function reflectPrompt(r, {tools = true} = {}) {
   const why = r && r.why ? ` (now: ${String(r.why).slice(0, 200)})` : '';
   const lead = r && r.kind === 'downed' ? `${DOWNED_ASK}${why} What is worth remembering? ` : `Before you rest${why}: what is worth remembering from today? `;
   const past = r && r.thread ? ` Asked once, and not again: your past holds this: ${String(r.thread).slice(0, 200)} Is it an oath to you? ` : '';
-  if (past) return lead + reflectBody(tools) + past + (tools ? 'swear_oath swears it in your own words (thread yes takes it as it stands, thread no sets it aside); or leave it and you are bound to nothing.' : 'In the JSON, "swear": your own words, or "yes" to take it as it stands, "no" to set it aside, or empty to leave it.');
-  return lead + reflectBody(tools);
+  if (past) return lead + reflectBody(tools) + wishAsk(r, tools) + past + (tools ? 'swear_oath swears it in your own words (thread yes takes it as it stands, thread no sets it aside); or leave it and you are bound to nothing.' : 'In the JSON, "swear": your own words, or "yes" to take it as it stands, "no" to set it aside, or empty to leave it.');
+  return lead + reflectBody(tools) + wishAsk(r, tools);
 }
 function reflectBody(tools) {
   return (tools
