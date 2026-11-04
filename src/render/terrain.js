@@ -321,7 +321,9 @@ export let chunkGen=0;
 let artOn=null;
 const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
 export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
-onAssets(()=>{chunks.clear();chunkGen++;planKey=-1;artOn=null}); // a tile asset arrived (or the index changed): repaint on the next request
+// A tile asset arrived (or the index changed): repaint on the next request. A sprite sheet is none of the terrain's business:
+// each one used to throw every chunk away, a stall on whatever camera was up when the sheets came in (#729).
+onAssets(id=>{if(id!=null&&!terrainIds().includes(id))return;chunks.clear();chunkGen++;planKey=-1;artOn=null});
 
 // Cached canvas for chunk (cx,cy): min(CH,W-cx*CH) by min(CH,H-cy*CH) tiles at k pixels a tile (TILE, or U with no
 // terrain asset). c.uw and c.uh give its size in world units (tiles * U), which is what the renderer scales it to.

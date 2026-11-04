@@ -29,7 +29,8 @@ import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
 import {drawCamp,drawCampLight} from './camp.js';
-import {trafficEnts,isTraffic,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
+import {trafficEnts,isTraffic,trafficShadow,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
+import {farMarks,gatherFar,drawMarks,homeLane} from './lod.js'; // the whole map's marks (#729)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y,chunkGen} from './terrain.js';
@@ -131,7 +132,6 @@ export function createRenderer(cv,screenEl){
         drawText(L.t,L.x,y,L.col,L.css);break}}}
   // A radial light of colour c=[r,g,b] and strength a at world (x,y), radius r (lighter pass).
   function glow(x,y,r,c,a){const g=ctx.createRadialGradient(x,y,0,x,y,r),k=c[0]+','+c[1]+','+c[2];g.addColorStop(0,'rgba('+k+','+a+')');g.addColorStop(1,'rgba('+k+',0)');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
-  function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()} // a traffic walker's shadow, filled at once (#856)
 
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
   // pixels so neighbouring chunks never show a seam at fractional scales.
@@ -201,20 +201,25 @@ export function createRenderer(cv,screenEl){
     if(cut)drawSceneRings(ctx,cam,cut); // who is in the scene: a ring at their feet (#431)
     const fxNow=performance.now()/1000;syncSpells(fx,fxNow,inView);drawSpells(ctx,0,close,inView,fxNow);ph(1); // spell effects on the ground: rings, roots, briars (#374)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
+    // Far out (#729) most of the world is marks and only those the watcher is looking at go on as sprites.
     ENTS.length=0;
-    for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ENTS.push(m);
-    for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
-    for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
-    if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
-    if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS); // road traffic, skipped at whole-map zoom (#856)
+    const far=farMarks(sc,cut);
+    if(far)gatherFar(S,cam,inView,MARGIN,ENTS);
+    else{
+      for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ENTS.push(m);
+      for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
+      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
+      if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
+      if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS)} // road traffic, skipped at whole-map zoom (#856)
     ENTS.sort(byY);
     // Pass 1 (#716): each entity's sprite (or generated sheet frame), size and x, and the shadows in one path a frame (the
     // living at full alpha, ghosts in a second path at theirs) instead of one fill per entity. Shadows now all sit under
     // every sprite, which is where they belong anyway.
     const nE=ENTS.length;
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
-    for(let i=0;i<nE;i++){const e=ENTS[i],ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',fr=e.moving?Math.floor(blink*6+e.id)%2:0;
-      if(isTraffic(e)){ESPR[i]=null;continue} // drawn whole in pass 2, with its own shadow
+    for(let i=0;i<nE;i++){const e=ENTS[i];
+      if(isTraffic(e)){trafficShadow(ctx,e,Math.round(e.x*T),Math.round(e.y*T));continue} // its shadow joins the path; the sprite is drawn whole in pass 2
+      const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',fr=e.moving?Math.floor(blink*6+e.id)%2:0;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
       else if(e.kind==='npc')s=npcSprite(e,e.moving?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
@@ -224,8 +229,7 @@ export function createRenderer(cv,screenEl){
       const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob')?sheetFrame(e,dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
       let F=null;if(G){F=EGF[i]||(EGF[i]={img:null,sx:0,sy:0,fw:0,fh:0});F.img=G.img;F.sx=G.sx;F.sy=G.sy;F.fw=G.fw;F.fh=G.fh} // sheetFrame hands back one shared object
       ESPR[i]=s;EG[i]=F;ESW[i]=G?G.fw/ART:s.width*PROC_SCALE;ESH[i]=G?G.fh/ART:s.height*PROC_SCALE;
-      // townsfolk at home stand on one wall column a tile apart (sim homeAt): stagger them over three lanes so the sprites do not stack (#701)
-      const px=EPX[i]=Math.round((e.x+(e.kind==='npc'&&e.state==='home'&&!e.moving?((e.id%3)-1)*.6:0))*T);
+      const px=EPX[i]=Math.round((e.x+homeLane(e))*T);
       if(live&&!ghost){const py=Math.round(e.y*T),w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7)}}
     ctx.fill();
     let ghosts=false;ctx.beginPath();
@@ -235,7 +239,7 @@ export function createRenderer(cv,screenEl){
     // save/translate/scale/restore.
     const tf=ctx.getTransform();
     for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=Math.round(e.y*T),live=e.state!=='dead';
-      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
+      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink);continue}
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
       if(close&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
       if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);
@@ -273,6 +277,7 @@ export function createRenderer(cv,screenEl){
       drawCampLight(ctx,S,dk,inView);
       if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-HEAD/2,22*PROC_SCALE*.75,SCENE_LIGHT,dk*.6); // a Table scene's people keep a pool of light at night (#471)
       ctx.globalCompositeOperation='source-over'}
+    ph(4);if(far){drawMarks(ctx,cam.dpr,dk);ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ph(2)} // the marks, timed with the entities
     drawSpells(ctx,1,close,inView,fxNow);ph(4); // spell effects in the air, over the night wash: they carry their own light (#374)
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
     // that would overlap a placed label is dropped, so a crowd shows its most important names.
