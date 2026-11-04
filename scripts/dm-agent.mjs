@@ -153,6 +153,9 @@ const notesNow = st => st && Array.isArray(st.relevant_notes) && st.relevant_not
 const heardNote = st => st && st.unheard && st.unheard.total ? ` ${st.unheard.total} line${st.unheard.total === 1 ? '' : 's'} said aloud wait for you: read hear first.` : ' Nothing new was said aloud; a quiet turn is hear, then one act or nothing.';
 // The first turn after a roll (#787): the DM's memory is in the game, so it re-reads it. The notes are the campaign; a hero's journal is not the DM's to read.
 export const DM_RESUME = ' You are picking up after a pause, with no memory of this conversation: start with notes_read and read_dm_log, to recall what you have set in motion.';
+// The evening turn asks once a game day (#829): a thing the story wanted that no tool or lever allowed. One sentence, no extra call.
+export const DM_WISH_ASK = ' Was there a thing the story wanted today that no tool or lever allowed? If so, say it with wish {tool, what, why, moment} (read later by the builders; nothing changes now); if not, leave it.';
+export const wishNote = (st, sess) => st && st.part === 'evening' && sess && sess.wishAsk !== st.day ? (sess.wishAsk = st.day, DM_WISH_ASK) : '';
 export const dmTurnPrompt = (turns, st) => turns === 0
   ? 'You take the DM seat. Orient yourself: dm_status, hear, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
   : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign, the Fellowship first.${heardNote(st)}${notesNow(st)}`;
@@ -418,7 +421,8 @@ export const talkNote = st => {const w = talkWaiting(st); return w.length ? ` A 
 // 20 tool calls; half on Continue or for a DM runner started again mid-session). A fresh runner waits for the host to start
 // it (dm_status prep.state 'running'): as long as session zero is due (prep.opening_due), else PREP_WAIT_MS. The turn has
 // the prep's call cap as its model-call cap and is aborted at its time cap; then the runner calls prep_done (a cap the game
-// counted may already have ended it) and the opening scene opens; the table voice frames it.
+// counted may already have ended it) and the opening scene opens; the table voice frames it. The game starts the prep's
+// clock at the turn's first call (#733), and the DM's turn leases the reserved DM slot (RUNNER_DM_SLOTS), never queued behind heroes.
 export const PREP_WAIT_MS = 15000;
 export const prepPrompt = st => {const p = st.prep || {}, cap = `at most ${p.max_calls || 20} tool calls and ${p.max_seconds || 90} seconds`;
   return p.kind === 'opening'
@@ -428,7 +432,7 @@ export async function waitPrep({base, log = () => {}, stopped = () => false, too
   const t0 = Date.now(); let said = false;
   for (;;) {
     if (stopped()) return null;
-    const st = await tool(base, 'dm_status'), p = st && st.ok ? st.prep : null;
+    const st = await tool(base, 'dm_status', {_poll: true}), p = st && st.ok ? st.prep : null; // _poll: this wait neither counts nor starts the prep clock (#733)
     if (p && p.state === 'running') return st;
     if (!(p && p.host)) return null; // nobody holds the world for a prep (an older page, play-headless without --wait-ready)
     if (!(p && p.opening_due) && Date.now() - t0 >= waitMs) return null;
@@ -555,7 +559,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       let r = null, err = null;
       const prepping = st === prepSt && !!prepSt, prepAt = Date.now();
       {const rd = rollDue(sess, 0, {busy: prepping}); if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}} // only when asked from the page (#787)
-      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
+      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + wishNote(st, sess) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
         // the breaker and the minute cap (issue #467): 3 refusals of one tool or 5 in a row end the turn; at most
         // DM_CALLS_PER_MIN (default 30) tool calls a real minute across turns, well under the relay's flood line (90)
         opts: {endOnWait: false, sameRefusals: 3, consecutiveRefusals: 5, callsPerMin: Math.max(5, Number(opt('calls-per-min', env.DM_CALLS_PER_MIN || 30)) || 30)},
@@ -626,7 +630,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const prepping = st === prepSt && !!prepSt, prepTimer = prepping ? setTimeout(() => {if (turnAbort) turnAbort.abort()}, prepSt.prep.max_seconds * 1000) : null;
-    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {
+    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + wishNote(st, sess) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?role=dm&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': runner}, timeout: 30000}},

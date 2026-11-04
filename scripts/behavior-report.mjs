@@ -305,6 +305,12 @@ export function wishSection(rows, turns, table) {
     for (const g of d.groups) {const b = g.best; L.push(`- **${g.tool}** (${g.n}): ${b.what} Why: ${b.why} Moment: ${b.moment} (${b.seat === 'dm' ? 'the DM' : b.name || b.seat}, day ${b.day ?? '?'}${b.place ? ', ' + b.place : ''}${b.model ? ', ' + (b.provider || '?') + '/' + b.model : ''})`)}
     L.push('');
   }
+  { // wishes per seat per game day (#829): who is asking at all, beside the memories table
+    const w = rows.filter(r => r.type === 'wish'), seats = new Map();
+    for (const r of w) {const k = r.seat === 'dm' ? 'DM' : r.name || r.seat || '?'; let x = seats.get(k); if (!x) seats.set(k, x = {n: 0, days: new Set()}); x.n++; if (r.day != null) x.days.add(r.day)}
+    const span = new Set(w.map(r => r.day).filter(x => x != null)), nd = Math.max(1, span.size ? Math.max(...span) - Math.min(...span) + 1 : 1);
+    L.push('### Wishes per seat per game day', '', seats.size ? table(['seat', 'wishes', 'game days with one', 'per game day'], [...seats].sort((p, q) => q[1].n - p[1].n).map(([k, x]) => [k, x.n, x.days.size, (x.n / nd).toFixed(2)])) : 'No seat has written a wish yet.', '');
+  }
   L.push('### Tools tried that do not exist', '');
   L.push(d.unknown.length ? table(['name tried', 'times', 'seats'], d.unknown.slice(0, 15).map(u => [u.tool, u.n, u.seats.slice(0, 6).join(', ')])) : 'None in the turn lines.', '');
   L.push('### Free actions the DM ruled on most', '');
