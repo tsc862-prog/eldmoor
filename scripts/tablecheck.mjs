@@ -146,12 +146,21 @@ if (process.argv[2] === '--arrival') {
   for (const [t, a] of ACTS) {const r = P.playerAct(live.id, t, a); ok(r.ok === false && r.held === 'prep' && r.error === 'The DM is preparing the table; wait for the opening scene.', 'the DM prepares: ' + t + ' is refused with the prep line')}
   for (const t of ['look', 'status', 'self', 'lore', 'recall', 'journal_read']) {const r = P.playerAct(live.id, t, {}); ok(r.ok !== false || !r.held, 'the DM prepares: ' + t + ' (read-only) still answers' + (r.ok === false ? ' (' + r.error + ')' : ''))}
   ok(PC.paceCheck(live.id, {since: 0, minutes: 5, wake: 'all'}) === null, 'the DM prepares: no paced turn');
+  { // a runner's first turn waits for the hold like a paced one (#770): the real pacer against the real host answer
+    const {hostPace} = await import('../src/sim/player-host.js'), {makePacer} = await import('./pacing.mjs');
+    const pc = makePacer({base: 'x', hero: live.id, runner: 'r', fetchImpl: async (u, o) => ({status: 200, json: async () => hostPace(live.id, JSON.parse(o.body))})});
+    const h = await hostPace(live.id, {held: true}); ok(h.ok && h.held === 'prep', 'pace {held} says the DM prep holds the world');
+    let started = false; const first = pc.ready().then(r => {started = true; return r});
+    await new Promise(r => setTimeout(r, 1500)); ok(!started, 'a runner started during the prep takes no first turn while it holds');
+    globalThis.__firstTurn = {first, flag: () => started};
+  }
   run(2); ok(!heardIntro(), 'no hero line lands before the opening scene');
   ok(A.openingDue() && PR.prepView().state === 'running' && PR.prepView().max_calls === PR.PREP.CALLS, 'session zero is due and the DM prepares (full caps)');
   run(2); ok(!S.table, 'no opening scene while the DM prepares');
   dmAct('dm_status'); dmAct('notes_read'); ok(PR.prepView().calls === 2, 'DM tool calls during the prep are counted');
   dmAct('table_call'); ok(PR.prepView().calls === 2, 'an idle table_call poll is not counted');
   const pd = dmAct('prep_done', {summary: 'Plans written.'}); ok(pd.ok && PR.prepView().state === 'done' && PR.prepView().why === 'done', 'prep_done ends the prep');
+  {const ft = globalThis.__firstTurn, t0 = Date.now(), r = await Promise.race([ft.first, new Promise(r => setTimeout(() => r(null), 4000))]); ok(r && !r.dead && !r.gone && !r.stopped && ft.flag() && Date.now() - t0 < 2500, 'the first turn runs promptly when the hold lifts (' + (Date.now() - t0) + ' ms)'); delete globalThis.__firstTurn}
   step(1 / 60); let sc = S.table;
   ok(sc && sc.kind === 'opening' && /^SESSION ZERO · /.test(sc.title) && sc.all && sc.pause, `the opening scene opens, everyone at once, paused (${sc && sc.title})`);
   ok(!A.openingPending() && !S.opening, 'one company: the opening queue is empty');
@@ -227,6 +236,49 @@ if (process.argv[2] === '--arrival') {
   HE.fall(d3, 'a third test'); step(1 / 60);
   ok(SLT.slotted().slots[s3] != null && !(SLT.slotted().arrivals || []).length && !S.table, 'with no host (npm run sim) the seat is refilled at once, no scene');
   console.log(fail ? 'ARRIVAL FAILED ' + fail : 'ARRIVAL OK'); process.exit(fail ? 1 : 0);
+}
+
+// ---- a company of mixed peoples at its first table (#771), in the Stepping Lands: ELDMOOR_WORLD=stepping node scripts/tablecheck.mjs --hall ----
+if (process.argv[2] === '--hall') {
+  const A = await import('../src/sim/arrival.js'), PC = await import('../src/sim/pace.js'), HE = await import('../src/sim/heroes.js'), {inRange} = await import('../src/sim/reach.js');
+  const {cleanSetup, defaultSetup, applyPreset} = SIM, {CITY} = await import('../src/world/map.js'), {gatherNote} = await import('./pacing.mjs');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const mixed = () => {const s = defaultSetup(771, 'stepping', 1); ['ashfolk', 'mirekin', 'mirekin', 'ashfolk', 'thornhide'].forEach((r, i) => s.heroes[i].race = r); return s};
+  const world = () => {init({setup: cleanSetup(mixed())}); const M = SLT.slotHeroes(SLT.slotted()); SIM.setRunnerLinks(x => M.includes(x) ? 'connected' : 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; return M};
+  const murk = CITY.find(c => c.name === 'Murkstead'), send = L => {for (const [i, a] of L.entries()) {a.x = murk.x0 + 3 + i; a.y = murk.y0 + 5}};
+  // 1. the bug: session zero seats all five
+  let M = world(); step(1 / 60); let sc = S.table;
+  ok(sc && sc.kind === 'opening' && sc.ids.length === 5, `session zero opens at once with all five of a mixed company (${sc && sc.ids.length})`);
+  settle(); ok(T.tableView(M[0]).answered === '0/5', 'the table waits on five answers: ' + T.tableView(M[0]).answered);
+  for (const a of M) ok(PA(a.id, 'scene_act', {option: 'introduce'}).ok, a.name + ' introduces themself');
+  let g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
+  ok(!S.table && sc.beats.length === 5 && M.every(a => M.every(b => a === b || (a.talkHeard || {})[b.id])), 'all five sat at one table and have met');
+  // 2. a member out of range: the opening holds, says why and where, and opens once they are back
+  M = world(); const far = [M[3], M[4]]; send(far); step(1 / 60);
+  let w = A.openingWait();
+  ok(!S.table && A.openingDue() && w && w.names.join() === far.map(a => a.name).join() && w.where === SLT.slotted().hall, 'members out of range hold session zero: ' + JSON.stringify(w));
+  const br = PC.paceBrief(far[0].id).brief, br2 = PC.paceBrief(M[0].id).brief;
+  ok(/walk there/.test(br.gather) && /SESSION ZERO/.test(gatherNote(br)) && /stay close/.test(br2.gather), 'the turn header tells the absent to walk there and the others to stay');
+  ok((far[0].playEv || []).some(e => /first table/.test(e.text) && e.text.includes('move_to ' + SLT.slotted().hall)), 'the absent are told at once, with the way');
+  ok(SIM.dmAct('dm_status').prep.opening_waits_for.length === 2, 'the DM sees who the table waits for');
+  const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap); M = SLT.slotHeroes(SLT.slotted());
+  ok(S.opening.queue[0].hold && A.openingWait().names.length === 2, 'the hold survives a save');
+  const hall = homeOf(M[0]), back = () => {for (const [i, a] of M.entries()) {a.x = hall.spots.square.x + i * .5; a.y = hall.spots.square.y}}; back(); step(1 / 60); sc = S.table;
+  ok(sc && sc.kind === 'opening' && sc.ids.length === 5 && !A.openingWait(), 'once they are in range the table opens with all five');
+  // 3. the wait has an end: it opens with those present and the frame names who is missing
+  M = world(); const late = M[4]; send([late]); step(1 / 60); ok(!S.table && A.openingWait(), 'one member out of range: held');
+  S.gameMin += A.ARRIVE.GATHER_MIN; send([late]); step(1 / 60); sc = S.table;
+  const fr = sc ? sc.frame.map(p => typeof p === 'string' ? p : p.t || p.name || '').join('') : '';
+  ok(sc && sc.ids.length === 4 && !sc.ids.includes(late.id) && fr.includes(late.name + ' has not reached the table') && !fr.split(late.name + ' has')[0].includes(late.name), 'past the wait it opens with those present, the frame naming who is missing: ' + fr.slice(0, 160));
+  // 4. arrivals: the newcomer stands with the company, whatever town it was born to
+  const pair = () => {const s = applyPreset('pairs-and-solo', mixed()); init({setup: cleanSetup(s)}); delete S.opening; const C2 = SIM.S.companies.find(c => c.ids.length === 2), L = F_.members(C2); SIM.setRunnerLinks(x => L.includes(x) ? 'connected' : 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; return {C2, L}};
+  let {C2, L} = pair(); HE.fall(L[1], 'a test'); step(1 / 60); g = 0; while (!(S.table && S.table.kind === 'arrival') && g++ < 240) step(1 / 60); sc = S.table;
+  let nh = sc && S.agents.find(a => a.id === sc.ctx.recruit);
+  ok(nh && nh.town === C2.hall && inRange(L[0], nh) && homeOf(nh).name === C2.hall, `a company's newcomer comes to its town and calls it home (${nh && nh.town}, ${nh && dist(L[0], nh).toFixed(1)} tiles off)`);
+  ({C2, L} = pair()); HE.fall(L[1], 'a test'); const lead = L[0]; lead.state = 'hunt'; lead.x = murk.gate.x + 8; lead.y = murk.gate.y; lead.dest = null; lead.pq = []; step(1 / 60); C2.arrivals[0].since = S.gameMin - A.ARRIVE.WAIT_DAYS * 1440 - 1;
+  g = 0; while (!(S.table && S.table.kind === 'arrival') && g++ < 240) {lead.state = 'hunt'; step(1 / 60)} sc = S.table; nh = sc && S.agents.find(a => a.id === sc.ctx.recruit);
+  ok(nh && dist(lead, nh) < 3 && nh.state !== 'town' && sc.ctx.at === lead.name + '\'s side' && !sc.ctx.setting, 'the wait run out in the field: the newcomer comes to the company, not to an empty gate: ' + (sc && sc.ctx.at));
+  console.log(fail ? 'HALL FAILED ' + fail : 'HALL OK'); process.exit(fail ? 1 : 0);
 }
 
 // ---- talk round the fire and the debrief (#571), in a child with a fresh world: node scripts/tablecheck.mjs --fireside ----
@@ -1571,6 +1623,11 @@ ok(SLT.slotHeroes(SLT.slotted()).every(a => a.state === 'dungeon'), 'agent membe
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--arrival'], {encoding: 'utf8', env: {...process.env}});
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
   ok(ch.status === 0 && /ARRIVAL OK/.test(ch.stdout || ''), 'session zero (prep, DM frame, introductions, met) and arrivals (never in the Crypt, DM or scripted voice, the oath, the letter, no host = at once)')}
+
+// ---- 5d2. a company of mixed peoples at its first table (#771): the Stepping Lands in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--hall'], {encoding: 'utf8', env: {...process.env, ELDMOOR_WORLD: 'stepping'}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /HALL OK/.test(ch.stdout || ''), 'session zero seats a mixed company of five, holds for members out of range and opens without them past the wait; a newcomer stands with the company')}
 
 // ---- 5e. talk round the fire and the debrief (#571): a fresh world in a child ----
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fireside'], {encoding: 'utf8', env: {...process.env}});
