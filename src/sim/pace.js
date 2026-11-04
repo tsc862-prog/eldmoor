@@ -40,6 +40,7 @@ import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
 import {leaderFor} from './council.js';
 import {worldHeld} from './prep.js'; // the world held before play (#559)
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
+import {growthText} from './abilities.js'; // a waiting score point (#714)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -84,7 +85,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),earshot:earshotLine(a),hold:S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold.rule:null,insight:sightLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
-    quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
+    growth:growthText(a),quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}),...(toldLine(a)?{told:toldLine(a)}:{}), // stories it told of its past round the fire (#571): keep them straight // the hero's own persona (#409): one line for the header, a signature, and on request the full text
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)

@@ -22,7 +22,7 @@ import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
 import {blockOf} from '../data/bestiary.js';
 import {rollLoot} from './loot.js';
-import {rollScores,growScores} from './abilities.js'; // ability scores (sim/abilities.js)
+import {rollScores,growScores,levelGrowth} from './abilities.js'; // ability scores (sim/abilities.js)
 import {combatStats,dmgTaken} from './stats.js'; // Health, Attack, Defense, Crit, Speed (sim/stats.js)
 import {emptySlots,equipEpic,shopUpgrade} from './gear.js';
 import {newInv,load,sellLoot,autoEquip,passSpares,restock,fightAid,idleTend,tendAlly} from './inv.js'; // the pack (sim/inv.js)
@@ -88,7 +88,7 @@ export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);
   if(st>=d){e.x=x;e.y=y;e.moving=false;return true}e.x+=dx/d*st;e.y+=dy/d*st;return false}
 
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
-  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)growScores(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
+  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)levelGrowth(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     record(a,'Reached level '+a.lvl+'.');
     if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');

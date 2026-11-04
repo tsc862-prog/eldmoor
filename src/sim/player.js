@@ -108,6 +108,7 @@ import {worldHeld,holdLine} from './prep.js'; // the world held before play (#55
 import {defineGambits,idlePick,fightRules,reflexPick,HOLD,gambitRec,ruleText,GAMBIT,gambitsView,setGambit,moveGambit,toggleGambit,dropGambit,resetGambits,onSafetyChange} from './gambits.js'; // the hero's own rules (#617)
 import {aidOrder,aidView,DOWN} from './downed.js'; // help a downed companion: stabilize, tend, carry (#626, #658)
 import {histNote} from './persona.js';
+import {raiseScore,growthTick,growthText} from './abilities.js';
 onSafetyChange((a,before,after,why)=>histNote(a,'gambits',before,after,why)); // a safety rule changed: the persona history says so (#617)
 
 // ---- knobs ----
@@ -375,7 +376,7 @@ export const isPlayer=a=>!!(a&&a.player);
 // Returns true when it handled the step; false hands it to updAgent (duels, assists, regroups,
 // ghosts, a consented crypt or raid, following a party leader, and the DM-led legs of an adventure).
 export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
-  watch(a);intentWatch(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
+  growthTick(a);watch(a);intentWatch(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
   // A Fellowship member whose runner is gone, once the owner said go on (or with no host at all: the headless sim,
   // play-headless before a runner claims it): its reflexes play it whole, the scripted rules, until a runner holds
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
@@ -896,7 +897,7 @@ const T={
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
       oath:a.goal?a.goal.text+(a.goal.done?' (kept)':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
-      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
+      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),score_growth:growthText(a),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
     if(a.party&&a.party.leader===a)r.party_lead=true;
     const cv=campView(a);if(cv)r.camp=cv;
@@ -929,6 +930,7 @@ const T={
     return {ok:true,result:r.text,hp:pct(a.hp,maxHp(a))+'%',cooldown_s:M.cd}},
   combat_log(a,{n}){const k=Math.max(1,Math.min(10,Math.round(Number(n))||3)),fs=fights(a,k);
     return {ok:true,fights:fs.map(f=>({...f,minutes_ago:Math.round(S.gameMin-f.end)})),recent:actionLog(a,{n:12}).map(e=>({min_ago:Math.round(S.gameMin-e.t),kind:e.kind,target:e.target,name:e.name,amount:e.amount,crit:e.crit||undefined}))}},
+  raise_score(a,{score,why}){const r=raiseScore(a,score,why);need(r.ok,r.error);return {ok:true,result:r.text,value:r.value}},
   choose_specialisation(a,{path}){const key=String(path==null?'':path).toLowerCase().replace(/[^a-z]/g,'');
     const id=specChoices(a).find(x=>x.id===key||x.name.toLowerCase().replace(/[^a-z]/g,'')===key);
     const err=specBlock(a);need(!err,err);need(id,'Not a path for a '+a.cls+'. Yours: '+specChoices(a).map(x=>x.name).join(', ')+'.');
