@@ -40,6 +40,7 @@
     "runnercheck": "node scripts/runnercheck.mjs",
     "sessioncheck": "node scripts/sessioncheck.mjs",
     "tablecheck": "node scripts/tablecheck.mjs",
+    "talkcheck": "node scripts/talkcheck.mjs",
     "crawlcheck": "node scripts/crawlcheck.mjs",
     "sitecheck": "node scripts/sitecheck.mjs",
     "localscheck": "node scripts/localscheck.mjs",
