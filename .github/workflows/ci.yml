@@ -116,6 +116,7 @@ jobs:
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
       - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
+      - {name: Cost report (fixture logs), run: npm run costcheck}
 
   rate:
     name: Model request rate
