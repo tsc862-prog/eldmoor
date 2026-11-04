@@ -359,7 +359,7 @@ Sample lines:
     - **The Archers' Gallery**: a long gallery of arrow-slits and dry bowstrings; Bone Archers and a Shambler.
     - **The Drowned Court**: a floor of black still water, Grave Wardens standing in it to the knee (the court Ossian Vael drowned).
     - **The Vigil Chamber**: the last door; Lich-Warden Vesk with Tomb Skitters at his feet. He is a keeper holding Ossian Vael's oath, not a usurper (see the campaign seed), so his scene should read as a watch kept, not a lair raided. The boss fight's second phase is also called *The Drowned Court*: the same water, the same room, deliberately.
-- **DM-made sites** (#69): the DM raises dungeon sites as the story needs them (`create_site`; `src/data/sites.js`). Each is a barrow, fortress, temple, mine, den or ruin on open ground off the roads, 3-8 chambers of the region's own creatures and the site foes of its kind, and a boss from the encounter tables' site bosses (the Barrow-Reeve, Captain Redhand, the Veiled Cantor, the Cave Duchess, Dunmaw, the Stone Steward and their stronger kin). It stands until a company clears it (a ruin is left for a while) or, left alone about ten days, it falls in on itself.
+- **DM-made sites** (#69): the DM raises dungeon sites as the story needs them (`create_site`; `src/data/sites.js`). Each is a barrow, fortress, temple, mine, den or ruin on open ground off the roads, 3-8 chambers of the region's own creatures and the site foes of its kind, and a boss from the encounter tables' site bosses (the Grave-Sexton, Captain Redhand, the Veiled Cantor, the Cave Duchess, Mother Thistlewick, the Stone Steward and their stronger kin). It stands until a company clears it (a ruin is left for a while) or, left alone about ten days, it falls in on itself.
   - **Names** are built from a place word in the region's own vocabulary and the kind: *the Sedgemere Barrow*, *Cinderscar Hold*, *the Temple of Rimecairn*, *the Flinthearth Delvings*, *the Woldwick Den*, *the Ruins of Thornhollow*. Place words, first part then second, by the land: meadow (Thornvale) Thorn, Bramble, Oak, Hawk, Briar, Wold + hollow, ford, wick, dell, stead, ley; fen (Mirefen) Sedge, Reed, Murk, Eel, Bitter, Silt + mere, holm, fen, marsh, water, pool; ash (Cinderpass) Cinder, Ember, Slag, Soot, Char, Flint + crag, fell, gorge, scar, hearth, rock; tundra (Hoarfell) Rime, Frost, Hoar, Snow, Tarn, Winter + fell, cairn, reach, howe, moor, tor; any other land Grey, Stone, Black, Old, Raven, Wyrm + moor, holt, stead, cairn, dale, by. Never paired: a join that doubles a letter (Wold-dell, Frost-tor), a pair that names a region or town (Hoarfell, Sedgewater), Winterfell (another world's), Soothearth, Slagcrag, Brambleley.
   - **Chambers** by kind (a site walks its plan in order): barrow: the Bone Passage, the Grave Niches, the Low Hall, the Sunken Floor, the Narrow Stair, the Door of Names, the Candle Alcove, the Grave-Goods Vault, the Barrow-Heart. Fortress: the Gatehouse, the Barracks, the Wall Walk, the Killing Yard, the Murder Holes, the Barred Postern, the Old Chapel, the Strongroom, the Great Hall. Temple: the Narthex, the Cloister, the Choir, the Flooded Aisle, the Fallen Nave, the Rune Door, the Lady Chapel, the Reliquary, the Sanctum. Mine: the Upper Gallery, the Ore Chute, the Long Seam, the Shaft, the Rotten Props, the Winch Room, the Miners' Shrine, the Tally Room, the Deep Seam. Den: the Run, the Gnawing Hollow, the Litter Cave, the Sinkhole, the Loose Scree, the Choked Passage, the Old Spring, the Hoard of Bones, the Deep Den. Ruin: the Broken Court, the Cellars, the Collapsed Hall, the Fallen Stair, the Sagging Gallery, the Sealed Study, the Household Shrine, the Hidden Strongroom, the Throne Room.
   - **Loot**: the boss always carries one epic: a barrow's or temple's from the Sunken Crypt's epics, the others from the region's own.
@@ -542,9 +542,9 @@ an enrage timer and a named loot table.
   Dread frightens), *The Drowned Court* below 55% (the water in the crypt stands still and
   Grave Wardens rise from it), *Unbound* below 20% (he tears the phylactery from his own
   chest); enrages after four minutes. Loot: the Sunken Crypt epics.
-- **Site bosses**, one set per theme and three tiers: crypt the Barrow-Reeve, Marrowmother
+- **Site bosses**, one set per theme and three tiers: crypt the Grave-Sexton, Marrowmother
   Ysolt, the Hollow Abbot; fortress Captain Redhand, Warden Brannock Sull, the Iron Reeve; den
-  Dunmaw, Long Ursel, Snowdam; mine the Cave Duchess, Slagheart, Emberdeep Kor; temple the
+  Mother Thistlewick, Long Ursel, Snowdam; mine the Cave Duchess, Slagheart, Emberdeep Kor; temple the
   Veiled Cantor, Ashen Prior Orsan, the Tarnkeeper; ruin the Stone Steward, Lord Orrick
   Dane, the Sundered Queen; road Black Tam, Sable Marrin, the Winter Reeve.
 
@@ -941,6 +941,33 @@ Samples:
 - "Halfhorn, terror of the Mirefen drovers, comes out last... rolls 18+3 vs 11. Mireth is ready for it."
 - "Lurken delivers a salt wagon at the Thornvale waymark... rolls 7+2 vs 10. Two crates short. The tallyman docks the pay and does not apologise."
 - "Mireth's party returns from Smoke Out the Mirefen Den with the job done. 40g each, and Mireth takes Fenleather Vestment."
+
+### Goods jobs (issue #720, epic #238)
+
+Not every job is a walk. Some boards ask for goods: crafted by a hero's trade or dug, cut and
+caught with their own hands. No scenes and no party; a hero takes the posting, brings the goods
+to the town that posted it, and is paid at the counter (templates `SUPPLY` in
+`src/data/adventures.js`). The Chronicler files them under "errands" and is dry about it.
+
+| Job | Asks for | Given by | The giver adds |
+| --- | --- | --- | --- |
+| Draughts for the chapel | Redroot Draughts (alchemy) | priest, innkeeper | "The chapel's shelves are bare after the last fever." |
+| Tonics for the sick-room | Marrowmend Tonics (alchemy) | priest | "Bad cuts, and nothing left to knit them." |
+| A blade for the gate | a Tinforged Weapon (smithing) | gate captain, quartermaster | "The watch's steel is notched past mending." |
+| A cowl for the gate | a Wolfhide Cowl (leatherworking) | gate captain | "The winter watch wants something warm for the post on the wall." |
+| Suppers for the road | Spit-Roast Perch (cooking) | innkeeper, quartermaster | "A drover train is in, hungry and not particular." |
+| Wards for the chapel | Scrolls of Hearthward (scribing) | priest, bard | "The chapel hands them to travellers who ask." |
+| Redroot for the herbwives | Redroot Leaf (herbalism) | priest, innkeeper | "The herbwives cannot keep up with the cut." |
+| Ore for the forge | Tin Ore (mining) | smith, quartermaster | "The forge is cold until someone brings it ore." |
+| Sinew for the saddlers | Wolf Sinew (skinning) | quartermaster, smith | "Harness, stitching, and not a strand to be had." |
+| Perch for the inn | River Perch (fishing) | innkeeper | "The kitchen wants them whole and cold." |
+| A Rimebloom patch | Rimebloom (herbalism, band 3) | priest | "A drover saw a patch of it above the tarn, blue in the snow." |
+
+Crafted-goods jobs sometimes pay in the raw stuff the next batch wants (Hearthbloom, Fen Moss, Tin
+Ore, Wolf Sinew, River Perch, Rushpulp); gathering jobs pay gold only. The Rimebloom hook's "the
+tarn" is one of Hoarfell's frozen tarns (see Zones), where Tarn Wights climb out of the ice; the
+priest does not mention that. Titles read like "Three Redroot Draughts for the chapel" or
+"Five Redroot Leaf, fresh".
 
 ## The DM's hand
 The Dungeon Master does not reach into the world freely. It has a short list of levers

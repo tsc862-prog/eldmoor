@@ -274,5 +274,79 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
   ok(S.agents.filter(x => !x.player).every(x => !x.vow), 'no scripted hero holds a vow');
 }
 
+
+// ---- goods jobs (#720): board and DM jobs that ask for crafted or gathered goods ----
+{console.log('\ngoods jobs');
+  const {SUPPLY, SUPPLY_KEYS} = await import('../src/data/adventures.js');
+  const SP = await import('../src/sim/supply.js');
+  const {learn, gainSkill} = await import('../src/sim/professions.js');
+  const {addUse, addGood, count, invOf} = await import('../src/sim/inv.js');
+  Math.random = rand; seed = 0x9e3779b9 ^ 720;
+  init({fellowship: false}); run(2);
+  const h = S.agents.find(x => x.fac === 0 && x.state === 'town' && !x.party) || S.agents.find(x => x.fac === 0);
+  const hc = homeOf(h); h.lvl = 8; h.hp = maxHp(h); h.gold = 100; h.party = null; P.markPlayer(h, true);
+  h.x = hc.ah.x; h.y = hc.ah.y; h.state = 'town'; h.pq = [];
+  const hcall = (tool, args) => {h.playRate = []; return P.playerAct(h.id, tool, args || {})};
+  const by = {by: 'dm-agent', reason: 'the chapel is short of draughts'};
+  ok(SUPPLY_KEYS.length >= 8 && SUPPLY_KEYS.every(k => !ADVENTURES[k]), 'goods job templates are kept apart from the adventure templates (' + SUPPLY_KEYS.length + ')');
+  const advBefore = (S.adventures || []).length;
+  let rr = pull('post_hook', {town: hc.name, tpl: 'draughts', reward: 'generous'}, by); const j1 = rr.ret;
+  ok(rr.ok && j1 && j1.phase === 'open' && j1.by === 'dm-agent' && S.supply.includes(j1) && (S.adventures || []).length === advBefore, 'post_hook with a goods tpl posts a goods job (by the DM agent), not an adventure: ' + (j1 && SP.textOf(j1)));
+  ok(j1.want.kind === 'craft' && j1.want.id === 'Redroot Draught' && j1.want.n >= 3 && j1.want.n <= 4 && j1.gold > 0, 'it asks for ' + j1.want.n + ' ' + j1.want.id + ' and pays ' + j1.gold + 'g');
+  pull('post_hook', {town: hc.name, tpl: 'ore'}, by); rr = pull('post_hook', {town: hc.name, tpl: 'perch'}, by);
+  ok(!rr.ok && /goods jobs/.test(JSON.stringify(rr)), 'a board holds at most ' + SP.SUP.BOARD_MAX + ' goods jobs: ' + (rr.reason || rr.error || ''));
+  const wd = pull('withdraw_hook', {hook: S.supply.find(x => x.tpl === 'ore').id}, by); ok(wd.ok && !S.supply.some(x => x.tpl === 'ore'), 'withdraw_hook takes a goods job down');
+  let r = hcall('list_jobs'); const gj = (r.jobs || []).find(x => x.goods && x.id === j1.id);
+  ok(gj && /Redroot Draught/.test(gj.wants) && /g/.test(gj.pays) && gj.giver, 'list_jobs shows the goods job with what it wants and pays: ' + (gj && gj.wants));
+  ok(!JSON.stringify(gj).match(/dm-agent|DM agent|scripted/i), 'the hero is not told who posted it');
+  r = hcall('turn_in'); ok(!r.filled, 'turn_in with an empty pack fills nothing');
+  r = hcall('take_quest', {id: 'supply:' + j1.id}); ok(r.ok && j1.phase === 'taken' && j1.taker === h.id && r.wants, 'take_quest supply:' + j1.id + ': ' + (r.took || r.error));
+  const q1 = hcall('quests').active.find(x => x.id === 'supply:' + j1.id);
+  ok(q1 && q1.kind === 'job' && /bring \d Redroot Draught/.test(q1.objective) && q1.progress === '0/' + j1.want.n && q1.giver, 'quests lists it: ' + (q1 && q1.objective));
+  ok(questLog(h).active.find(x => x.id === 'supply:' + j1.id).kind === 'dm', 'the watcher sees it as a DM job');
+  addUse(h, 'Redroot Draught', j1.want.n - 1); r = hcall('turn_in'); ok(!r.filled && j1.phase === 'taken', 'one short: nothing is handed in');
+  addUse(h, 'Redroot Draught', 1); const g0 = h.gold, hon0 = h.honor || 0; r = hcall('turn_in');
+  ok(r.ok && r.filled && h.gold === g0 + j1.gold && (h.honor || 0) === hon0 + 1 && count(h, 'Redroot Draught') === 0 && !S.supply.includes(j1), 'turn_in hands the goods in and is paid ' + j1.gold + 'g, a line of honor: ' + (r.filled || r.error));
+  ok(questLog(h).done.some(x => x.id === 'supply:' + j1.id && x.status === 'done' && x.progress.have === j1.want.n), 'the quest log keeps it as done');
+  ok(S.supplyStats.filled === 1 && S.supplyStats.taken === 1 && S.supplyStats.gold === j1.gold, 'the counters: one posted job taken, filled, paid');
+  // crafted gear: a Wolfhide Cowl made by the hero is recognised by its pattern
+  const j2 = pull('post_hook', {town: hc.name, tpl: 'cowl'}, by).ret; ok(j2 && j2.want.id === 'Wolfhide Cowl' && j2.want.n === 1 && /^A /.test(SP.textOf(j2)), 'a gear job: ' + SP.textOf(j2));
+  learn(h, 'leatherworking'); gainSkill(h, 'leatherworking', 5); addGood(h, 'Wolf Pelt', 2); addGood(h, 'Wolf Sinew', 2); h.gold = 100;
+  const cr = hcall('craft', {recipe: 'cure-wolfhide'}); ok(cr.ok, 'the hero crafts a Wolfhide Cowl: ' + (cr.result || cr.why || cr.error));
+  const g1 = h.gold; r = hcall('turn_in'); ok(r.ok && r.filled && h.gold === g1 + j2.gold && !invOf(h).list.some(e => e.craft === 'Wolfhide Cowl') && !S.supply.includes(j2), 'the cowl is handed in from the pack and paid');
+  // gathered goods, filled without taking the job first
+  const j3 = pull('post_hook', {town: hc.name, tpl: 'ore'}, by).ret; addGood(h, 'Tin Ore', j3.want.n); const g2 = h.gold; r = hcall('turn_in');
+  ok(r.ok && r.filled && h.gold === g2 + j3.gold && !S.supply.includes(j3), 'a gathered-goods job is filled straight from the pack: ' + (r.filled || r.error));
+  // a job for another company is not this hero's
+  const j4 = pull('post_hook', {town: hc.name, tpl: 'herbs'}, by).ret; j4.ff = 1; j4.cid = 99999; addGood(h, 'Redroot Leaf', j4.want.n);
+  r = hcall('turn_in'); ok(!r.filled && S.supply.includes(j4), 'a hall job reserved to another company is not filled by this hero');
+  r = hcall('take_quest', {id: j4.id}); ok(!r.ok, 'nor taken by it: ' + r.error); j4.ff = 0; j4.cid = null;
+  // abandon, then expiry
+  r = hcall('take_quest', {id: j4.id}); ok(r.ok, 'take it once it is open to all'); r = hcall('abandon_quest', {id: 'supply:' + j4.id}); ok(r.ok && j4.phase === 'open' && !j4.taker, 'abandon_quest puts it back on the board');
+  hcall('take_quest', {id: j4.id}); S.gameMin += 4 * 1440; run(1);
+  ok(!S.supply.includes(j4) && questLog(h).done.some(x => x.id === 'supply:' + j4.id && x.status === 'expired') && S.supplyStats.expired >= 1, 'a taken job that is not filled goes cold: expired in the log');
+  const j5 = pull('post_hook', {town: hc.name, tpl: 'sinew'}, by).ret; S.gameMin += 3 * 1440; run(1); ok(!S.supply.includes(j5), 'an open job comes down after its time');
+  // save and restore with a taken job
+  const j6 = pull('post_hook', {town: hc.name, tpl: 'meals'}, by).ret; hcall('take_quest', {id: j6.id}); const snap = JSON.parse(JSON.stringify(snapshot()));
+  ok(snap.supply && snap.supply.some(x => x.id === j6.id && x.phase === 'taken'), 'the goods job is in the save');
+  restore(snap); const h2 = S.agents.find(x => x.id === h.id), j6b = (S.supply || []).find(x => x.id === j6.id);
+  ok(j6b && j6b.taker === h.id && questLog(h2).active.some(x => x.id === 'supply:' + j6.id), 'after restore the hero still holds it');
+  addUse(h2, 'Spit-Roast Perch', j6b.want.n); h2.playRate = []; r = P.playerAct(h2.id, 'turn_in', {}); ok(r.ok && r.filled, 'and fills it after restore');
+  // scripted heroes: the board asks, a hero of the town who holds the trade answers from its pack, no dice
+  const sh = S.agents.find(x => !x.player && x.fac === 0 && x.state !== 'dead' && homeOf(x) === hc);
+  learn(sh, 'alchemy'); gainSkill(sh, 'alchemy', 30); sh.state = 'town'; S.supply.length = 0; delete S.supplyAt;
+  const plan = SP.supplyPlan(hc, null); ok(plan && SUPPLY[plan.tpl].prof === 'alchemy' && !plan.ff, 'the scripted DM plans a job for a town hero who holds the trade: ' + (plan && plan.tpl));
+  const pj = SP.postSupply(hc, 'draughts', {}); sh.gold = 50; addUse(sh, 'Redroot Draught', pj.want.n); const sg0 = sh.gold;
+  ok(SP.supplyVisit(sh) >= 1 && !S.supply.includes(pj) && sh.gold === sg0 + pj.gold, 'a scripted hero in town fills it from its pack before the sale (' + pj.gold + 'g)');
+  // the Fellowship first: a member with a trade is offered a hall job reserved to its company
+  Math.random = rand; seed = 0x9e3779b9 ^ 721; init({}); run(2);
+  const F = (await import('../src/sim/dmfocus.js')).focus(), fm = F && F.members[0];
+  if (fm) {learn(fm, 'alchemy'); gainSkill(fm, 'alchemy', 30); S.supply = []; delete S.supplyAt; run(30);
+    const ffj = (S.supply || []).find(x => x.ff);
+    ok(ffj && ffj.cid === F.cid && SUPPLY[ffj.tpl].prof === 'alchemy', 'the scripted DM posts a Fellowship-first goods job for a member who holds a trade: ' + (ffj && SP.textOf(ffj)));
+    ok(ffj && SP.mayHave(fm, ffj) && !SP.mayHave({id: 1e9, company: null}, ffj), "it is the company's: a member may have it, a stranger may not")}
+  else ok(false, 'a Fellowship founded');
+}
+
 console.log(fail ? `\n${fail} check(s) FAILED\n` : '\nAll quest log checks passed.\n');
 process.exit(fail ? 1 : 0);

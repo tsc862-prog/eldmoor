@@ -25,7 +25,7 @@
     {"n": 6, "name": "props and icons (slice 7)"}
   ],
   "alternatesWhenComplete": 2,
-  "allowance": {"monthlyUsd": 2.0, "source": "https://huggingface.co/docs/inference-providers/pricing (read 2026-11-03): free accounts get no Inference Providers credits, PRO $2.00 a month, extra use is pay-as-you-go. daily.mjs spends at most monthlyUsd / days-in-month a day and stops for the month at monthlyUsd."},
+  "allowance": {"monthlyUsd": 2.0, "carry": true, "source": "https://huggingface.co/docs/inference-providers/pricing (read 2026-11-03): free accounts get no Inference Providers credits, PRO $2.00 a month, extra use is pay-as-you-go. daily.mjs spends at most monthlyUsd / days-in-month a day and stops for the month at monthlyUsd. carry: a day that made nothing adds its share to the next days of the month (the loop, art:loop)."},
   "pinnedModel": null,
   "candidates": ["pixel-xl", "pixel-redmond", "ume-flux", "z-turbo", "flux-schnell"],
   "tiers": {

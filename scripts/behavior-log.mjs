@@ -9,6 +9,8 @@
 //                    call as the relay saw it (status, latency, error; writing kinds too)
 //   world.jsonl      a game-side digest every game hour (src/sim/behavior.js), from the page through the
 //                    play bridge or from the headless world directly
+//   wishes.jsonl     wish notes the DM and the heroes leave for the builders (#663: type 'wish', and 'attempt' lines for the
+//                    free actions the DM ruled on); sent by the game with the world digest, never read by an agent or a tool
 //   anomalies.jsonl  detectors, as they fire: here (turns, relay calls) and in the game (src/sim/behavior.js)
 //
 // Rules (issue #123 and the owner's): no keys (every string is scrubbed of key-shaped text, headers are never
@@ -26,7 +28,7 @@ export {similar};
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // AGENT_LOGS moves logs/ for tests (as scripts/agent-sessions.mjs); BEHAVIOR_DIR moves just this folder.
 export const behaviorRoot = (env = process.env) => env.BEHAVIOR_DIR ? env.BEHAVIOR_DIR : join(env.AGENT_LOGS || join(ROOT, 'logs'), 'behavior');
-export const FILES = {turn: 'turns.jsonl', decision: 'decisions.jsonl', world: 'world.jsonl', anomaly: 'anomalies.jsonl'};
+export const FILES = {turn: 'turns.jsonl', decision: 'decisions.jsonl', world: 'world.jsonl', anomaly: 'anomalies.jsonl', wish: 'wishes.jsonl'};
 export const ROTATE = {bytes: 5 * 1024 * 1024, keep: 3};
 // Detector knobs (relay side; the game-side ones are in src/sim/behavior.js BW).
 export const BD = {
@@ -76,7 +78,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
   const calls = new Map(); // seat -> [times] for floods
   const decides = [];
   const models = new Map(); // ollama model -> {at, who}
-  const counts = {turn: 0, decision: 0, world: 0, anomaly: 0, dropped: 0};
+  const counts = {turn: 0, decision: 0, world: 0, anomaly: 0, wish: 0, dropped: 0};
   const dirOf = () => join(root, cur);
   function rot(file) {
     try {if (!existsSync(file) || statSync(file).size < rotate.bytes) return;
@@ -160,6 +162,9 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     if (kind === 'world') {
       const r = {...rec}; if (Array.isArray(r.members) && links) r.members = r.members.map(m => ({...m, link: links[m.id] || 'none', ...(runners && runners[m.id] ? {runner: runners[m.id]} : {})}));
       write('world', r); return true}
+    if (kind === 'wish' && (rec.type === 'wish' || rec.type === 'attempt')) { // #663: the text is the agent's own, English-only and capped by the game; the writer scrubs keys
+      const r = {...rec}; for (const k of ['tool', 'what', 'why', 'moment', 'summary', 'place', 'name', 'skill']) if (typeof r[k] === 'string') r[k] = cut(r[k], k === 'what' ? 300 : 200);
+      write('wish', r); return true}
     if (kind === 'anomaly' && typeof rec.kind === 'string') {anomaly({...rec, kind: cut(rec.kind, 40), text: cut(rec.text, 300)}); return true}
     if (kind === 'decision') {write('decision', {...rec, src: 'game'}); if (rec.outcome === 'offline' && /429|rate|timeout|unreachable/i.test(rec.error || '')) relayFail(cut(rec.error, 60), rec.provider); sawModel(rec.provider, rec.model, 'minds'); return true}
     return false;
