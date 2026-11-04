@@ -26,6 +26,7 @@ export const SETS={
   'kenney-tiny-dungeon':{kind:'kenney',slug:'tiny-dungeon',licence:'CC0 1.0',author:'Kenney (kenney.nl)',link:'https://kenney.nl/assets/tiny-dungeon'},
   'kenney-roguelike-rpg':{kind:'kenney',slug:'roguelike-rpg-pack',licence:'CC0 1.0',author:'Kenney (kenney.nl)',link:'https://kenney.nl/assets/roguelike-rpg-pack'},
   'lpc-base':{kind:'zip',url:'https://opengameart.org/sites/default/files/lpc_base_assets.zip',licence:'CC-BY-SA 3.0 / GPL 3.0 (per asset, see its credits)',author:'LPC contributors',link:'https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles'},
+  'lpc-terrains':{kind:'zip',url:'https://opengameart.org/sites/default/files/lpc-terrains.zip',licence:'CC-BY-SA 3.0 / 4.0',author:'bluecarrot16, Zabin, ZaPaper and others (see its credits)',link:'https://opengameart.org/content/lpc-terrains'},
   'lpc-generator':{kind:'git',repo:'https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator.git',licence:'CC-BY-SA 3.0/4.0, GPL 3.0 or OGA-BY 3.0 (per asset, CREDITS.csv)',author:'LPC contributors (CREDITS.csv)',link:'https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator'},
   'ninja-adventure':{kind:'hand',licence:'CC0 1.0',author:'pixel-boy (Pixel-boy and AAA)',link:'https://pixel-boy.itch.io/ninja-adventure-asset-pack',
     how:'Download "Ninja Adventure - Asset Pack" from the itch page (it needs a browser click) and drop the .zip into assets/packs/ninja-adventure/ ; run this script again to extract it.'}

@@ -407,7 +407,7 @@ try{
       const re=await node('review.mjs',['--dir',join(tmp,'no-such-assets'),'--log',join(tmp,'none.log')]);ok(re.code===0&&/nothing waiting/.test(re.s),'art:review with no assets/incoming and no queue prints "nothing waiting"')}
     r=await node('accept.mjs',['--dir',dir,'--reject','tile:mud']);q=Q();ok(r.code===0&&q.rejected['tile:mud@32']===1&&!q.incoming['tile:mud@32'],'a rejected asset leaves the queue for a redraw');
     r=await node('accept.mjs',['--dir',dir,'tile:nope']);ok(r.code===2,'accepting an unknown id is refused');
-    const p5=P0();r=await daily(['--now','--date',days[d]]);q=Q();
+    const p5=P0();r=await daily(['--now','--date',days[d]],{ART_MAX_CALLS:'400'});q=Q(); // ART_MAX_CALLS: the manifest has outgrown the default 100 calls
     ok(S.posts.slice(p5).some(p=>p.seed===1775+7919),'the rejected asset is redrawn with a new seed');
     ok(Object.keys(q.incoming).length+checkIndex(man,dir).count===N,`--now finishes the manifest (${Object.keys(q.incoming).length} waiting + ${checkIndex(man,dir).count} accepted)`);
     // buildings and landmarks (#763) wait for an in-game look: refused without an art:preview record, taken with one
@@ -426,9 +426,10 @@ try{
     ok(P0()-p6===3&&Object.keys(q.incoming).every(k=>/#alt1$/.test(k))&&S.posts.slice(p6).every(p=>p.seed>=2771),'complete manifest: alternates with new seeds (--max 3)');
     await previewAll(dir);const altKey=Object.keys(q.incoming)[0],before=checkIndex(man,dir);r=await node('accept.mjs',['--dir',dir,altKey]);
     {const ix=loadIndex(dir),id=altKey.split('#')[0];ok(r.code===0&&ix.assets[id].fromAlt===1&&before.count===N&&!checkIndex(man,dir).errs.length,'an accepted alternate replaces its asset')}
-    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
-    d++;const p7=P0();r=await daily(['--date','2026-12-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
-    ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
+    const bigM=join(tmp,'manifest-credits.json');{const mm=JSON.parse(readFileSync(join(ROOT,'scripts','art','manifest.json'),'utf8'));mm.allowance={...mm.allowance,monthlyUsd:20};writeFileSync(bigM,JSON.stringify(mm))} // two alternates for every asset cost more than the real $2.00 now
+    d++;r=await daily(['--date','2026-12-10','--manifest',bigM],{ART_MAX_CALLS:'800'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
+    d++;const p7=P0();r=await daily(['--date','2026-12-11','--manifest',bigM],{ART_MAX_CALLS:'400'});ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
+    ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$(?:2|20)\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
     S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
 
   // --- flat outputs are rejected but kept raw; art:reprocess re-makes them offline; the credit budget
