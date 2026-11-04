@@ -357,6 +357,36 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   ok(/dm-spoke-for/.test(md) && /DM spoke for a member \(`dm-spoke-for`\): 1 \(anthropic\/claude-haiku-5-5 1\)/.test(md), 'the report names the anomaly and counts it per DM model');
 }
 
+// ---- 6b. a busy page (#736): the page's own page-stall anomaly and hour digest, and the relay's when a call times out on a silent page ----
+console.log('a busy page (#736)');
+{const {EventEmitter} = await import('node:events'), {mkdirSync: mk4} = await import('node:fs');
+  const fakePage = () => {const ws = new EventEmitter(); ws.readyState = 1; ws.sent = []; ws.send = t => ws.sent.push(JSON.parse(t)); ws.close = () => {}; ws.say = o => ws.emit('message', Buffer.from(JSON.stringify(o))); return ws};
+  // the page side: the bridge sends the watchdog's anomaly and the digest with its page field
+  const dirP = join(ROOT, 'pagestall'); mk4(dirP, {recursive: true});
+  const blP = behaviorLog({root: dirP, world: 'ps', log: () => {}}), srvP = http.createServer(), playP = attachPlay(srvP, {behavior: blP, log: () => {}});
+  const wsP = fakePage(); playP.backend.attach(wsP); wsP.say({type: 'hello', heroes: [{id: 1, name: 'Ann', alive: true}], world: 'ps'});
+  wsP.say({type: 'behavior', kind: 'anomaly', rec: {kind: 'page-stall', seat: 'page', severity: 'bad', text: 'the page froze for 3.2 s · dungeon The Sunken Crypt room 2/5 · 3440x1300', evidence: {ms: 3200, render: 3198, where: 'dungeon The Sunken Crypt room 2/5'}}});
+  wsP.say({type: 'behavior', kind: 'world', rec: {gameMin: 60, members: [], page: {longFrames: 4, worstMs: 3200, where: 'dungeon The Sunken Crypt room 2/5'}}});
+  const anP = readJsonl(join(dirP, 'ps'), FILES.anomaly), wdP = readJsonl(join(dirP, 'ps'), FILES.world);
+  ok(anP.some(a => a.kind === 'page-stall' && a.seat === 'page' && a.evidence.ms === 3200), 'the page\'s page-stall anomaly lands in anomalies.jsonl');
+  ok(wdP.some(d => d.page && d.page.longFrames === 4 && d.page.worstMs === 3200 && /Sunken Crypt/.test(d.page.where)), 'the world digest carries page {longFrames, worstMs, where}');
+  const mdP = readFileSync(writeReport(dirP, 'ps').file, 'utf8'); ok(/page-stall/.test(mdP), 'the report lists page-stall next to the other anomalies');
+  srvP.close();
+  // the relay side: a call that times out while the page sent nothing (no beat) is page busy, an anomaly, and the page is told
+  const dirR2 = join(ROOT, 'pagestall-relay'); mk4(dirR2, {recursive: true});
+  const blR = behaviorLog({root: dirR2, world: 'pr', log: () => {}}), srvR = http.createServer(), lines = [];
+  const playR = attachPlay(srvR, {behavior: blR, log: l => lines.push(l), pageOpts: {callMs: 120, silentMs: 80}, offlineWaitMs: 50});
+  const wsR = fakePage(); playR.backend.attach(wsR); wsR.say({type: 'hello', heroes: [{id: 1, name: 'Ann', alive: true}], world: 'pr'});
+  await new Promise(r => setTimeout(r, 100)); // the page goes silent
+  const r = await playR.call(1, 'status', {});
+  ok(r.offline && r.why === 'page busy', 'a call the silent page never answers comes back offline: page busy (' + r.why + ')');
+  ok(wsR.sent.some(m => m.type === 'pagelate' && m.tool === 'status' && m.silentMs >= 80), 'the page is told the relay gave up on it (pagelate), so its labels read page busy');
+  const anR = readJsonl(join(dirR2, 'pr'), FILES.anomaly);
+  ok(anR.some(a => a.kind === 'page-stall' && a.src === 'relay' && a.evidence.tool === 'status'), 'the relay writes a page-stall anomaly of its own (src relay)');
+  ok(lines.some(l => /page busy/.test(l)), 'and logs a line that names the page');
+  srvR.close();
+}
+
 // ---- 7. rotation by size ----
 {const rot = behaviorLog({root: join(ROOT, 'rot'), world: 'r', rotate: {bytes: 1500, keep: 2}});
   for (let i = 0; i < 60; i++) rot.ingest('world', {gameMin: i, members: [], pad: 'x'.repeat(80)});

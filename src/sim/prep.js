@@ -12,7 +12,7 @@
 //     ('resume': one turn, half the caps) to re-read where the companies are.
 // State lives here, not on S: it is about the runner in the seat now, so it is never saved and never read by step().
 export const PREP={MS:90000,CALLS:20,SHORT:.5}; // DM_PREP_MS, DM_PREP_CALLS (owner: about 90 s and about 20 calls)
-const IDLE={table_call:1,npc_call:1,ruling_call:1,prep_done:1,turn_end:1};
+const IDLE={table_call:1,npc_call:1,ruling_call:1,companion_call:1,prep_done:1,turn_end:1};
 let P=null; // {kind, since, calls, maxCalls, ms, state:'running'|'done', why, ended}
 let last=null; // the last prep that ended, for the panels and the checks
 let clock=()=>Date.now(),host=false;

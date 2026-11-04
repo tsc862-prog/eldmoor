@@ -37,6 +37,8 @@
 // Ruling voice (issue #522): --ruling-model (or DM_RULING_MODEL; default the table model) rules on the heroes' free actions
 // (ruling_call -> ruling_answer: skill, DC word, bounded effects, the line heard); --no-ruling-voice leaves them to the scripted DM.
 // --ruling-budget S: real seconds the game waits per ruling (4-30; default 8 with Anthropic, 25 with a local model).
+// Companion voice (issue #764): with the talk model, speaks for the scripted companions of agent companies (companion_call ->
+// companion_say); --no-companion-voice leaves them to their usual talk; --companion-budget S (default 8 with Anthropic, 25 local).
 import {mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
@@ -293,6 +295,58 @@ export function talkVoice({base, adapter, model, effort = 'low', log = () => {},
   const p = loop().catch(e => log(`[talk] voice stopped: ${short(String(e && e.message || e), 120)}`));
   return {stop: () => {done = true; return p}};
 }
+// ---- the companion voice (issue #764) ----
+// A scripted hero riding with an agent company (a hire, a companion) speaks through the DM: the game puts a call (companion_call)
+// with its card, the day, what it heard and what it already said to each listener; one structured model call per line (the talk
+// model), then companion_say. A late, failed or refused answer changes nothing: its usual talk fills it, never repeating a row.
+export const COMP_POLL_IDLE = 1500, COMP_POLL_HOT = 400;
+export const COMP_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), voicing a companion who rides with a company of heroes, like a companion played by the DM at a tabletop game. ' +
+  'Say one or two sentences as that companion, in their own voice: true to their card (class, home, traits, oath, how they ride), to what the company did today and to what was just said. ' +
+  'Never repeat or rephrase a line they already said to that listener (you_said_to_them); say something new. Never put words in a hero\'s mouth, decide what a hero thinks or does, or quote a hero. Speak English, plainly, no stage directions. ' +
+  'Reply as JSON {"text": "..."}.';
+export function compPrompt(c) {
+  const p = c.companion || {}, w = c.their_words;
+  const why = c.trigger === 'camp' ? `It is night at the camp fire in ${c.where}; the talk turns to ${c.topic || 'whatever is on their mind'}.`
+    : c.trigger === 'quarrel' ? `At the fire in ${c.where}, someone just snapped at them; they answer back.`
+    : `In ${c.where}, a hero speaks to them and they answer.`;
+  return [`You are ${p.name}, a level ${p.level} ${p.cls}${p.race ? ' (' + p.race + ')' : ''} from ${p.home || 'somewhere'}${p.origin ? ', ' + p.origin : ''}. You ride with ${p.company || 'a company'}: ${p.rides}.`,
+    p.traits && p.traits.length ? `Your traits: ${p.traits.join(', ')}.` : '', p.oath ? `Your oath: ${p.oath}.` : '',
+    ['voice', 'wants', 'fears', 'quirk', 'never_says', 'backstory'].filter(k => p[k]).map(k => `${k.replace('_', ' ')}: ${p[k]}`).join(' | '),
+    `Time ${c.time}. ${why}`,
+    c.today && c.today.length ? `Today the company: ${c.today.join(' | ')}` : 'Nothing much happened today.',
+    c.heard && c.heard.length ? `Lately you heard: ${c.heard.join(' | ')}` : '',
+    ...(c.listeners || []).map(l => `${l.name} (${l.cls}, level ${l.level}) hears you.${l.you_said_to_them && l.you_said_to_them.length ? ' You already said to them: ' + l.you_said_to_them.join(' | ') : ''}`),
+    w ? `${w.from} ${w.how}: "${w.text}"` : ''].filter(Boolean).join('\n');
+}
+export const compSchema = () => ({type: 'object', properties: {text: {type: 'string'}}, required: ['text'], additionalProperties: false});
+export function companionVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = COMP_POLL_IDLE, pollHot = COMP_POLL_HOT, budgetS = 8, waitMs = VOICE_WAIT_MS}) {
+  let done = false, seen = 0;
+  const loop = async () => {
+    while (!done && !stopped()) {
+      const p0 = Date.now(), t = await tool(base, 'companion_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
+      const c = t && t.ok && t.call;
+      if (c && c.call !== seen && c.seconds_left > .8) {
+        seen = c.call; const t0 = Date.now(), who = c.companion && c.companion.name;
+        try {
+          const ms = Math.max(800, c.seconds_left * 1000 - 400);
+          const r = await adapter.call({system: COMP_SYSTEM, user: compPrompt(c), schema: compSchema(c), maxTokens: 300, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+          let j = null; try {j = JSON.parse(r.text)} catch {}
+          onCost(r.usage || {});
+          if (!j || typeof j.text !== 'string' || !j.text.trim()) log(`[companion] call ${c.call}: the model's reply was not usable; the usual talk fills it`);
+          else {
+            const said = await tool(base, 'companion_say', {call: c.call, text: j.text.trim()});
+            log(`[companion] ${who} (${c.trigger}): ${said.ok ? '"' + short(said.said || j.text, 140) + '"' : 'x ' + short(said.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+          }
+        } catch (e) {log(`[companion] call ${c.call}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the usual talk fills it`)}
+        continue;
+      }
+      if (t && t.ok && pollRest(p0, waitMs)) continue;
+      await sleep(pollIdle);
+    }
+  };
+  const p = loop().catch(e => log(`[companion] voice stopped: ${short(String(e && e.message || e), 120)}`));
+  return {stop: () => {done = true; return p}};
+}
 // ---- the ruling voice (issue #522) ----
 // A hero tries something the tools never named (attempt; scene_act attempt at the table). The game asks the DM for a ruling
 // (ruling_call): the hero in words, the attempt, the place and what is in sight, the legal skills, DCs and effect forms. It waits
@@ -477,6 +531,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     {const {warmUp} = await import('./warmup.mjs'); await warmUp({base, seat: {role: 'dm'}, runner, model: rs.model, adapter: ol, log})} // the start gate (issue #222): ready = answered
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost}); log(`[dm] table voice: ${rs.model}${where} answers the calls of staged scenes`)}
     if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || (gem ? 8 : 25)))}); log(`[dm] talk voice: ${rs.model}${where} answers the Fellowship's conversations with world characters`)}
+    if (!flag('no-companion-voice')) {companionVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || (gem ? 8 : 25)))}); log(`[dm] companion voice: ${rs.model}${where} speaks for the scripted companions of agent companies`)}
     if (!flag('no-ruling-voice')) {rulingVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || (gem ? 8 : 25)))}); log(`[dm] ruling voice: ${rs.model}${where} rules on the heroes' free actions`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
@@ -522,6 +577,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     talkVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: talkModel}), model: talkModel, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 8)),
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] talk voice: ${talkModel} answers the Fellowship's conversations with world characters`);
+  }
+  if (!flag('no-companion-voice')) {
+    const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
+    const compModel = opt('talk-model', env.DM_TALK_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
+    companionVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: compModel}), model: compModel, log, stopped: () => stopping, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || 8)),
+      onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
+    log(`[dm] companion voice: ${compModel} speaks for the scripted companions of agent companies`);
   }
   if (!flag('no-ruling-voice')) {
     const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
