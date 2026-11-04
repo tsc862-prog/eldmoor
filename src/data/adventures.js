@@ -85,6 +85,7 @@ export const OFFER={
   request:['{giver} of {town} has a favour to ask of {who}: {title}.','{giver} catches {who} in the {town} square. {title}, if they would.'],
   rumour:['By the {town} inn fire, {giver} tells {who} what the drovers saw. {title}.','{giver} leans over the {town} bar: there is talk, and coin, in {title}.'],
   oath:['{lead} hears of a road toward an old oath: {title}.','An oath sends {who} out of {town}: {title}.'],
+  thread:['{lead} hears of a road that touches an old story: {title}.','An old story draws {who} out of {town}: {title}.'], // the hero swore nothing (#800)
   death:['{giver} asks {who} to go back for {thing}: {title}.','{thing} died in {zone} with a pack nobody brought home. {giver} asks {who} to fetch it.'],
   remnant:['{giver} wants to know what happened on the {zone} road. {who} takes the job: {title}.','A job on the {zone} road from {giver}: {title}.'],
   follow:['Word of {who}’s last job travels. {giver} has another: {title}.','{giver} has been waiting for {who}: {title}.'],

@@ -234,9 +234,9 @@ holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 console.log('Agents panel');
 {const posts=[];const hk='hero:'+mem[1].id;
   const relay={ok:true,enabled:true,session:{budget:null,spent:.42,left:null},kinds:{hero:{defaults:{maxTurns:20,budget:1},caps:{maxTurns:200,budget:5}},fellowship:{defaults:{maxTurns:6,budget:2},caps:{maxTurns:100,budget:10}},dm:{defaults:{maxTurns:12,budget:1},caps:{maxTurns:200,budget:5}}},
-    runners:[{key:hk,kind:'hero',hero:mem[1].id,heroes:[mem[1].id],name:mem[1].name,state:'live',turns:3,cost:.42,budget:1,provider:'anthropic',model:'claude-haiku-5-5',lines:[]}]};
+    runners:[{key:hk,kind:'hero',hero:mem[1].id,heroes:[mem[1].id],name:mem[1].name,state:'live',turns:3,cost:.42,budget:1,provider:'anthropic',model:'claude-haiku-5-5',ctx:212,rolls:1,lines:[]}]};
   globalThis.fetch=async(url,o)=>{url=String(url);const j=v=>({ok:true,status:200,json:async()=>v});
-    if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push({url,body});
+    if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push({url,body});if(url.endsWith('/fresh'))return j({ok:true,asked:[hk]});
       if(url.endsWith('/limits')){if('sessionBudget' in body)relay.session={budget:body.sessionBudget,spent:.42,left:body.sessionBudget==null?null:body.sessionBudget-.42};return j({ok:true,session:relay.session,applies:body.budget!=null&&body.budget<1?'now':'next start'})}
       return j({ok:true})}
     if(url.endsWith('/play/runner'))return j(relay);throw new Error('no route '+url)};
@@ -246,13 +246,17 @@ console.log('Agents panel');
   btn.click();ok(!pop.hidden&&btn.getAttribute('aria-expanded')==='true','it opens the Agents popover');
   // the runner poll is throttled in real time (5 s); an earlier step may have left the relay marked down, so wait for the stub to be read
   for(let i=0;i<250&&!pop.querySelector('select[data-agsess]');i++){await wait();uiSlow()}
-  const ss=pop.querySelector('select[data-agsess]');ok(!!ss,'the popover reads the relay');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
+  const ss=pop.querySelector('select[data-agsess]');ok(!!ss,'the popover reads the relay');ok(/No session budget is set/.test(pop.textContent),'with none set the popover says nothing caps the total (#807)');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
   ok(posts.some(p=>p.url.endsWith('/play/runner/limits')&&p.body.sessionBudget===5),'the session budget is sent to the relay');
   ok(/Spent \$0\.42 of \$5\.00/.test(pop.textContent),'the spend so far shows live against the budget');
   ok(/Agents · \$0\.42 \/ \$5\.00/.test(btn.textContent),'the button carries the spend: '+btn.textContent);
   ok(JSON.parse(localStorage.getItem('eldmoor.agentLimits')).session===5,'the session budget is kept per viewer');
   const row=pop.querySelector('.agr[data-k='+hk.replace(':','\\:')+']')||pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
   ok(!!row&&row.textContent.includes(mem[1].name),'a row for the agent-played hero');
+  ok(/ctx 212k/.test(row.textContent),'the state line shows the session size (#787): '+row.textContent.slice(0,120));
+  {const fb=pop.querySelector('[data-agfresh]');ok(!!fb&&/Fresh sessions for all/.test(fb.textContent),'Fresh sessions for all shows while a runner runs');
+    fb.dispatch('click',{target:fb,bubbles:true});pop.dispatch('click',{target:fb});await wait();await wait();uiSlow();
+    ok(posts.some(p=>p.url.endsWith('/play/runner/fresh')),'and asks the relay');ok(/Asked 1 runner/.test(pop.textContent),'and says so')}
   const bs=row.querySelectorAll('select').find(x=>x.dataset.agf==='budget');bs.value='0.5';bs.dispatch('change',{target:bs});await wait();uiSlow();
   ok(posts.some(p=>p.body.key===hk&&p.body.budget===.5),'a lower budget on a running runner is sent live');
   const row2=pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
@@ -488,6 +492,20 @@ console.log('the DM prepares the table');
   const start=dmf.querySelector('.dmfrun').querySelector('[data-runact=start]');ok(!!start&&/Start DM/.test(start.textContent),'a stopped DM offers Start DM');
   document._ls.pointerdown.forEach(f=>f({button:0,target:start,preventDefault(){},stopPropagation(){}}));await wait();
   ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'),'Start DM goes to the relay');
+  // the DM's picker offers every provider a hero's has (#824), with the same price labels, and a pick reaches the relay
+  {const mp=await import('../src/ui/mindpick.js'),rn=await import('../src/ui/runners.js'),ds=await import('../src/ui/dmseat.js');
+   relay.health={providers:{ollama:{ok:true,models:['q:1b']},openai:{ok:true,models:['gpt-6-luna'],prices:{'gpt-6-luna':{in:.1,out:.5}}},huggingface:{ok:true,models:['meta-llama/Llama-3.3-70B-Instruct']},google:{ok:true,models:['gemini-3.8-flash'],free:true,prices:{'gemini-3.8-flash':{in:0,out:0}}}}};
+   const pf=globalThis.fetch;globalThis.fetch=async(url,o)=>String(url).endsWith('/health')?{ok:true,status:200,json:async()=>relay.health}:pf(url,o);
+   mp.mindChange({dataset:{mprov:'-1'},value:'ollama'});mp.pulledModels();for(let i=0;i<20&&!mp.openaiModels().length;i++)await wait();
+   const pick=rn.runnerPick('dm',...mp.mindLists()).children[0],vals=pick.children.map(o=>o.value),texts=pick.children.map(o=>o.textContent||o.text||'').join(' | ');
+   ok(['ollama:q:1b','openai:gpt-6-luna','huggingface:meta-llama/Llama-3.3-70B-Instruct','google:gemini-3.8-flash','anthropic:claude-haiku-5-5'].every(v=>vals.includes(v)),'the DM picker lists Claude, local, OpenAI, Hugging Face and Gemini: '+vals.join(', '));
+   ok(/\$0\.10 \/ \$0\.50/.test(texts),'with the price labels of a hero\'s picker: '+texts);
+   ok(/another provider|set aside/.test(pick.title)&&/notes/.test(pick.title),'its title says what a switch keeps and what it sets aside');
+   ok(ds.dmSeatSig().includes('gpt-6-luna'),'a list that arrives late rebuilds the seat');
+   document._ls.change.forEach(f=>f({target:{dataset:{runpick:'dm'},value:'openai:gpt-6-luna'}}));
+   posts.length=0;await rn.startRunner('dm');
+   ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'&&p.body.provider==='openai'&&p.body.model==='gpt-6-luna'),'Start DM sends the picked mind');
+   document._ls.change.forEach(f=>f({target:{dataset:{runpick:'dm'},value:''}}));globalThis.fetch=pf}
   const box=$('dmlog'),wb=$('worldbox');box.open=false;wb.open=false;dmf.dispatch('click',{target:dmf.querySelector('.dmfdo')});
   ok(box.open&&wb.open,'a click on the frame opens the Dungeon Master panel');
   box.open=false;dmf.dispatch('click',{target:dmf.querySelector('[data-dmnotes]')});
@@ -872,7 +890,7 @@ console.log('the DM prepares the table');
 {const fb=$('felbody'),P=await import('../src/sim/persona.js'),LV=await import('../src/ui/lifeview.js');
   const a=SLT.slotHeroes(SLT.slotted())[0];let sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));
   if(!sb){fb.querySelector('[data-fact="drawer:members"]').click();uiFast();sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id))}sb.click();
-  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null);
+  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null&&i.dataset.fpin!=='oath'); // a sworn oath has its own pin (#800)
   ok(pins.length===P.PERSONA_ORDER.length+1,'pins: one per persona field and one for the stances ('+pins.length+')');
   ok(fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='beliefs')&&fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='traits'),'sheet editor: beliefs and traits boxes');
   const pw=pins.find(i=>i.dataset.fpin==='wants');pw.checked=true;pw.dispatch('change',{target:pw});uiFast();
