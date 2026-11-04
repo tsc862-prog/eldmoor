@@ -48,6 +48,10 @@ export const CONDS={
   potions_below:{args:{n:'potions (1-9)'},desc:'You carry fewer than n healing potions.'},
   vote_open:{desc:'Your company is voting on a proposal.'},
   past_flee_mark:{fight:true,desc:'Below your flee mark in a fight: 15% HP (or the flee_below of your hunt order); on autopilot 22%, or 50% against a foe above you, elite or named, moved by your nature.'},
+  // the downed (#626, #658): a companion at zero HP, bleeding or stable; the count of your own downings
+  ally_downed:{args:{who:'optional companion name'},desc:'A companion within 12 tiles (or the one named) is down at zero health, bleeding or stable; the nearest is the one revive_ally, stabilize and carry go to.'},
+  no_healer:{desc:'No other healer of the downed companion (a class that casts heals) is free to come to them.'},
+  self_downed_count:{args:{n:'downings (1-9)',days:'optional: only those of the last days game days (1-30)'},desc:'You have gone down n times or more (in your life, or in the last days game days).'},
 };
 
 // Actions. phase: fight (in a fight), idle (between turns), both. safety: the reflex it stands for (dropping or weakening
@@ -76,6 +80,11 @@ export const ACTS={
   hunt_again:{phase:'idle',desc:'Out in the field: carry on your last hunt order on the ground you stand on (if it still suits you).'},
   pursue_aim:{phase:'idle',desc:'Carry on your stated aim (intent): walk on to its place, hunt its ground, follow, or wait.'},
   hold:{phase:'both',desc:'Call your own mind AND stop the world at 1x until your next acting call (or 120 real seconds, or your runner is gone): for the moment you cannot afford to be late to. At most 4 a game day, one an hour per rule; no effect at a Table scene (it already waits).'},
+  // when a companion goes down (#626, #658): phase 'aid' rules are read the moment a companion within 12 tiles is downed
+  // (sim/downed.js callHelp): every one that holds adds what you will do for them; with none you do not come.
+  revive_ally:{phase:'aid',desc:'Bring a downed companion back up: your class heal from 5 tiles (it lands 15% of their health higher), else a healing potion at their side (a party mate).'},
+  stabilize:{phase:'aid',desc:'Stop the bleeding of a downed companion at their side: a Linen Bandage (sure), else a stabilize roll (d20 + Healing against 10, every 10 game minutes). They stay down but stop rolling death saves.'},
+  carry:{phase:'aid',args:{to:'town | camp | leader (default town)'},desc:'Once a downed companion is stable, carry them (at 60% of your pace) to your town, the company camp or your leader, and lay them down to wake.'},
 };
 
 // Presets: today's autopilot and reflexes written out as rules, in the order the hard-coded policy checked them, so an
@@ -107,4 +116,10 @@ export const PRESET_FIGHT=[
 export const PRESET_HEAL=R('always','heal');
 export const PRESET_GUARD=R('ally_hp_below','guard',{w:{pct:50},on:false}); // a tank's suggestion, off by default (no such reflex today)
 export const TANK_CLASSES=['Warrior']; // classes whose preset carries the guard suggestion
+// When a companion goes down (#658): a healer brings them up, the others bring them up with a potion when no healer can
+// come and stabilize them; every class has the stabilize rule (a lone healer whose heal is not ready binds or rolls too).
+// The three together are what agent heroes did as a reflex before #658 (sim/downed.js aid), so presets play as before.
+export const PRESET_DOWN_HEAL=R('ally_downed','revive_ally');                   // a healer's: above its heal rule
+export const PRESET_DOWN_POTION=R('ally_downed','revive_ally',{and:'no_healer'});// everyone else's: a potion when no healer comes
+export const PRESET_DOWN_STAB=R('ally_downed','stabilize',{and:'no_healer'});     // everyone's
 export const PRESETS=['class','cautious','empty']; // reset_gambits presets: the class list, it with a flee rule at 35% first, or no rules at all

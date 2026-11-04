@@ -22,7 +22,7 @@ import {tm} from '../data/traits.js';
 import {nearHeroes} from './spatial.js';
 import {held} from './scenes.js';
 import {reflexMay} from './runlink.js';
-import {DOWN,isDown} from './downed.js';
+import {DOWN,isDown,tellNear} from './downed.js';
 import {slay,maxHp} from './heroes.js';
 
 export const MERCY={
@@ -68,8 +68,8 @@ export function mercyTick(){for(const a of S.agents){const d=a.down;if(!d||d.vic
 
 // Finish: the one road for a hero to kill a downed hero on purpose. Credit and the guild grudge come from slay().
 export function finish(k,a){if(!isDown(a))return false;
-  for(const b of S.agents)if(b.aid===a.id){b.aid=null;if(b.state==='aid'){b.state='hunt';b.dest=null}}
-  pop(a.x,a.y-.8,'FINISHED','#ff4a3a');
+  for(const b of S.agents)if(b.aid===a.id){b.aid=null;if(b.aidHow)b.aidHow=null;if(b.state==='aid'){b.state='hunt';b.dest=null}}
+  pop(a.x,a.y-.8,'FINISHED','#ff4a3a');tellNear(a,'finished'); // agent heroes in range hear it (#658)
   a.down=null;a.hp=0;
   slay(a,k,{finish:true});
   return true}
