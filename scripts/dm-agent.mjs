@@ -45,9 +45,10 @@ import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
 import {withToolMap} from './toolmap.mjs';
-import {loadDmSession, saveDmSession, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
+import {loadDmSession, saveDmSession, setAsideDm, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
+import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
 import {paceSettings, turnCap, capText, failTracker, localWorked, takeClaudeSlot} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -144,6 +145,8 @@ export const withDmCampaignOrders = sys => /\bcampaign seed\b/.test(String(sys |
 export const withDmMemoryOrders = sys => /\bYour notes are searchable\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_MEMORY_ORDERS;
 const notesNow = st => st && Array.isArray(st.relevant_notes) && st.relevant_notes.length ? ` Notes that may matter now: ${st.relevant_notes.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id}).` : '';
 const heardNote = st => st && st.unheard && st.unheard.total ? ` ${st.unheard.total} line${st.unheard.total === 1 ? '' : 's'} said aloud wait for you: read hear first.` : ' Nothing new was said aloud; a quiet turn is hear, then one act or nothing.';
+// The first turn after a roll (#787): the DM's memory is in the game, so it re-reads it. The notes are the campaign; a hero's journal is not the DM's to read.
+export const DM_RESUME = ' You are picking up after a pause, with no memory of this conversation: start with notes_read and read_dm_log, to recall what you have set in motion.';
 export const dmTurnPrompt = (turns, st) => turns === 0
   ? 'You take the DM seat. Orient yourself: dm_status, hear, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
   : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign, the Fellowship first.${heardNote(st)}${notesNow(st)}`;
@@ -534,6 +537,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
       let r = null, err = null;
       const prepping = st === prepSt && !!prepSt, prepAt = Date.now();
+      {const rd = rollDue(sess, 0, {busy: prepping}); if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}} // only when asked from the page (#787)
       try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
         // the breaker and the minute cap (issue #467): 3 refusals of one tool or 5 in a row end the turn; at most
         // DM_CALLS_PER_MIN (default 30) tool calls a real minute across turns, well under the relay's flood line (90)
@@ -588,7 +592,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
   const {model, effort} = rs;
   log(`[dm] DM seat taken | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
-  const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-dm-agent/1.0'};
+  const rollAt = rollPoint('dm', model, env); let netSaid = false; // the roll and the compaction net (#787)
+  const childEnv = withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-dm-agent/1.0'}, rollAt, env);
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   {const {warmUp, claudeWarmAdapter} = await import('./warmup.mjs'); await claim(); await warmUp({base, seat: {role: 'dm'}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log})} // the start gate (issue #222)
@@ -598,10 +603,12 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
+    const rd = rollDue(sess, rollAt, {busy: st === prepSt && !!prepSt, legacy: /haiku/i.test(model)}); // between turns (waitTurn never returns with a scene or a vote open), never in the prep (#787)
+    if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}
     const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const prepping = st === prepSt && !!prepSt, prepTimer = prepping ? setTimeout(() => {if (turnAbort) turnAbort.abort()}, prepSt.prep.max_seconds * 1000) : null;
-    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {
+    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?role=dm&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': runner}, timeout: 30000}},
@@ -610,10 +617,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       cwd: join(ROOT, 'logs'), env: childEnv,
     }});
     try {for await (const m of q) {
-      if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; saveSess()}
+      if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; if (!prepping) delete sess.rolled; saveSess(); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => log('  ' + s))}}
       else if (m.type === 'system' && m.subtype === 'api_retry') {if (m.error_status === 429 || m.error === 'rate_limit' || m.error === 'overloaded') {limited = true; log(`  [rate limited: the SDK retries in ${Math.round(m.retry_delay_ms / 1000)} s (attempt ${m.attempt}/${m.max_retries})]`)}}
-      else if (m.type === 'system' && m.subtype === 'compact_boundary') log(`  [compacted: ${m.compact_metadata.pre_tokens} -> ${m.compact_metadata.post_tokens ?? '?'} tokens]`);
+      else if (m.type === 'system' && m.subtype === 'compact_boundary') {sess.compacts = (sess.compacts || 0) + 1; log(`  [compacted: ${m.compact_metadata.pre_tokens} -> ${m.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (m.type === 'assistant' && !m.parent_tool_use_id) {
+        sess.ctx = ctxOf(m.message.usage) ?? sess.ctx; // the last call's prompt (#787)
         if (m.error === 'rate_limit' || m.error === 'overloaded') {limited = true; failed = m.error}
         for (const b of m.message.content || []) {
           if (b.type === 'text' && b.text.trim()) {log(`  DM: ${b.text.trim()}`); tc.text(b.text)}
@@ -635,10 +643,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
       spent += cost; sess.costUsd += cost; turnCost = cost;
       if (result.is_error && isRateLimit(JSON.stringify(result.errors || result.result || ''))) failed = failed || 'rate_limit';
-      log(`[turn ${sess.turns + 1}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
+      log(`[turn ${sess.turns + 1}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(sess.ctx)} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
-    reportTurn(base, {role: 'dm', runner, provider: rs.provider, model, turn: sess.turns + 1, gameMin: st.gameMin ?? null, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost,
-      flags: result && result.subtype !== 'success' ? [result.subtype] : [], ...(failed ? {error: failed === 'rate_limit' || failed === 'overloaded' ? '429 ' + failed : failed} : {})});
+    reportTurn(base, {role: 'dm', runner, provider: rs.provider, model, turn: sess.turns + 1, gameMin: st.gameMin ?? null, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}),
+      flags: [...(rd ? ['session-rolled'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(failed ? {error: failed === 'rate_limit' || failed === 'overloaded' ? '429 ' + failed : failed} : {})});
     // A rate-limited turn that did nothing is retried after a growing pause; a turn that got work done counts.
     if (failed && failed !== 'error' && !tools) {const s = BACKOFF[Math.min(backoff, BACKOFF.length - 1)]; backoff++; log(`[dm] rate limited (${failed}); backing off ${s} s before trying the turn again`); saveSess(); await sleep(s * 1000); continue}
     backoff = 0; sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; turn++; lastEnd = Date.now(); sess.lastWatch = Math.max(sess.lastWatch || 0, seenMax(st.watches_fired, 'id')); sess.lastFired = Math.max(sess.lastFired || 0, seenMax(st.fired, 'seq'));
@@ -646,6 +654,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (fails.ok(!failed && tools > 0)) ended = fails.why();
   }
   clearInterval(beat); await release();
-  log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}${tableCost ? ' (table voice ' + money(tableCost) + ')' : ''}, session ${money(sess.costUsd)}. Session saved to ${dmSessionPath()}.`);
+  log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}${tableCost ? ' (table voice ' + money(tableCost) + ')' : ''}, session ${money(sess.costUsd)}, ${sess.rolls || 0} rolls, ${sess.compacts || 0} compactions. Session saved to ${dmSessionPath()}.`);
   process.exit(0);
 }
