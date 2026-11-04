@@ -10,3 +10,4 @@
 - [Site dungeon view](sitesview.md) — #642 themed site interiors, per-dungeon keys, staging a site crawl shot
 - [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes
 - [Sprite sheets](spritesheets.md) — #711 post-sheet.mjs: figures from the full image (no pixel grid), layout/key rejection, staging a sheets shot
+- [Art batch review](artreview.md) — reviewing a generated batch: scratch pipeline, reprocess --dir, why pixel-xl fails autotiles/sheets/ground

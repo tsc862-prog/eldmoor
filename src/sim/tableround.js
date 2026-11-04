@@ -28,6 +28,7 @@ import {actHurt,actItem} from './actlog.js';
 import {dmlog} from './dmlog.js';
 import {USES} from '../data/items.js';
 import {invOf,useItem,venomOn,take} from './inv.js';
+import {isDown,downHit,finisher} from './downed.js'; // a foe and the downed (#654)
 
 export const TR={
   ROUNDS:3,   // rounds a combat scene plays at most; then the fight goes on in the world (HP and cooldowns carry over)
@@ -58,7 +59,7 @@ const sg=n=>(n<0?'':'+')+n;
 // One line of the round's DM log entry.
 function note(sc,by,at,R,dmg,extra){(sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by,at,d20:R?R.d:null,bonus:R?R.b:null,ac:R?R.ac:null,hit:R?R.hit:true,dmg:dmg||0,...(extra?{note:extra}:{})})}
 // Parley and condition saves (#296) keep their die as `die` (not d20, which is an attack roll against AC).
-const lineOf=r=>r.kind==='use'?r.by+' uses '+r.item+(r.at!==r.by?' on '+r.at:'')+(r.note?' ('+r.note+')':''):r.kind==='parley'?r.by+' parleys with '+r.at+' ('+r.skill+' d20 '+r.die+sg(r.mod)+' vs DC '+r.dc+'): '+r.note
+const lineOf=r=>r.kind==='death'?r.by+' fights for breath (death save d20 '+r.die+' vs DC '+r.dc+'): '+r.note:r.kind==='use'?r.by+' uses '+r.item+(r.at!==r.by?' on '+r.at:'')+(r.note?' ('+r.note+')':''):r.kind==='parley'?r.by+' parleys with '+r.at+' ('+r.skill+' d20 '+r.die+sg(r.mod)+' vs DC '+r.dc+'): '+r.note
   :r.kind==='save'?r.by+', '+r.note+' (save d20 '+r.die+sg(r.mod)+' vs DC '+r.dc+(r.pass?': it ends':': it holds')+')'
   :r.kind==='poison'?r.by+' takes '+r.dmg+' from the poison'+(r.note?' ('+r.note+')':''):r.by+(r.d20==null?' '+(r.note||'acts')+' on '+r.at:' at '+r.at+': d20 '+r.d20+'+'+r.bonus+' vs AC '+r.ac+(r.hit?', '+r.dmg+' damage':', miss'))+(r.d20!=null&&r.note?' ('+r.note+')':'');
 // Fold the scene's rolls into one DM log entry, a sentence per round (kind 'table': not an adventure roll, so it opens no
@@ -121,15 +122,24 @@ export function foeTurn(sc,fs,L){const out=[];
     if(condOn(f,'stun')){const b=stunCheck(sc,f,nm);out.push(b);if(b.k==='stunned')continue} // a stun is checked on its holder's turn (#296)
     if(f.kind==='hero'&&f.state!=='dead'&&f.hp<maxHp(f)*TR.YIELD*tm(f,'flee')){yieldHero(f,L);sc.end='yield';out.push(beat(nm,'yield','Yields and breaks off',null));note(sc,nm,'the fight',null,0,'yields');break}
     if(f.kind==='mob'&&fs.length===1&&!f.elite&&!f.fledOnce&&!condOn(f,'root')&&(blk(f).beh||{}).flee&&f.hp<f.maxhp*blk(f).beh.flee){f.fledOnce=true;f.fled=2.5;sc.end='fled';out.push(beat(nm,'flee','Breaks away and runs',null));note(sc,nm,'the fight',null,0,'flees');break} // a rooted beast cannot run
-    const live=L.filter(b=>b.state!=='dead'&&b.hp>0);if(!live.length)break;
+    const live=L.filter(b=>b.state!=='dead'&&b.hp>0);
+    {const dt=downTarget(f,L,live);if(dt){out.push(downBlow(sc,f,dt,nm));continue}} // #654: a finisher, or nobody else standing
+    if(!live.length)break;
     if(f.kind==='boss'){out.push(...bossTurn(sc,f,live));continue}
     const t=targetOf(f,live),rooted=condOn(f,'root'),R=roll(f,t,rooted?-COND.ROOT_HIT:0),wd=condOn(t,'ward')?' (warded)':'';let res,rd;
     if(!R.hit){res=rollText(R)+': missed'+(rooted?' (rooted)':'');note(sc,nm,t.name,R,0);rd=rollData(R,0,t.name)}
     else{const dmg=f.kind==='hero'?heroBlow(f,t,R.crit):mobBlow(f,t,R.crit?1.5:1);const down=t.state==='dead';
-      res=rollText(R)+': hit for '+dmg+wd+(down?'; '+t.name+' falls':'');note(sc,nm,t.name,R,dmg,down?'down':wd?'warded':null);rd=rollData(R,dmg,t.name,down);if(down)(sc.fell||(sc.fell=[])).push(t.id)
+      res=rollText(R)+': hit for '+dmg+wd+(down?'; '+t.name+' falls':isDown(t)?'; '+t.name+' goes down':'');note(sc,nm,t.name,R,dmg,down?'down':wd?'warded':null);rd=rollData(R,dmg,t.name,down);if(down)(sc.fell||(sc.fell=[])).push(t.id)
       else{const c=trickCond(sc,f,t,dmg);if(c)res+='; '+c}}
     out.push(beat(nm,'attack','Strikes at '+t.name+(f.target===t?' (drawn)':''),res,rd))}
   return out}
+// A creature and the downed (#654, sim/downed.js rules): it strikes one who lies down only when it finishes (beh.finishes) and its
+// prey is down, or when nobody else in the fight stands. The roll is the usual one; a hit is a failed death save (a 20 two).
+function downTarget(f,L,live){if(f.kind!=='mob')return null;if(isDown(f.target)&&L.includes(f.target)&&finisher(f))return f.target;
+  if(live.length)return null;let t=null;for(const b of L)if(isDown(b)&&(!t||b.id<t.id))t=b;return t}
+function downBlow(sc,f,t,nm){const R=roll(f,t);note(sc,nm,t.name,R,0,R.hit?'on the downed':null);
+  if(R.hit)downHit(t,f,R.crit);const dead=t.state==='dead';if(dead)(sc.fell||(sc.fell=[])).push(t.id);
+  return beat(nm,'attack','Strikes at '+t.name+' where they lie',rollText(R)+(R.hit?': '+(R.crit?'two failed saves':'a failed save')+(dead?'; '+t.name+' dies':''):': missed'),rollData(R,0,t.name,dead))}
 const beat=(nm,k,text,res,roll)=>({id:'foe',name:nm,k,text,res,by:'foe',...(roll?{roll}:{})});
 
 // ---- conditions (#296): stunned, rooted, poisoned, warded ----
@@ -169,10 +179,10 @@ function trickCond(sc,f,t,dmg){if(f.kind!=='mob'||t.state==='dead')return null;c
 // The end of a round: poison bites, then rooted and poisoned holders save to end it; what is left runs down a round.
 // Returns beats (by 'cond': not a member's act). A hero the poison kills falls to whoever laid it.
 export function roundEnd(sc,L,fs){const out=[];
-  for(const e of [...L,...fs]){if(!e||(e.kind==='hero'?e.state==='dead':!e.alive))continue;const nm=e.kind==='hero'?e.name:name(e),me=e.kind==='hero'?e.id:'foe';
+  for(const e of [...L,...fs]){if(!e||(e.kind==='hero'?e.state==='dead'||isDown(e):!e.alive))continue;const nm=e.kind==='hero'?e.name:name(e),me=e.kind==='hero'?e.id:'foe';
     if(condOn(e,'poison')){const P=e.eff.poison,src=P.by!=null?(S.mobs.find(m=>m.id===P.by)||S.agents.find(x=>x.id===P.by)||null):null,mx=e.kind==='hero'?maxHp(e):e.maxhp||1;
       const d=Math.max(1,Math.min(P.v||1,Math.round(mx*.2)));e.hp-=d;if(e.hp<=0&&!src)e.hp=1;if(e.kind==='hero'&&src)actHurt(e,src,d,'venom');const down=e.hp<=0;
-      if(down&&e.kind==='hero'){agentDie(e,src);(sc.fell||(sc.fell=[])).push(e.id)}
+      if(down&&e.kind==='hero'){agentDie(e,src);if(e.state==='dead')(sc.fell||(sc.fell=[])).push(e.id)}
       (sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by:nm,at:nm,kind:'poison',dmg:d,note:down?'down':null});
       out.push({id:me,name:nm,k:'poison',text:'The poison bites',res:d+' damage'+(down?'; '+nm+' falls':''),by:'cond'});if(down)continue}
     for(const id of ['poison','root']){if(!condOn(e,id))continue;const V=condSave(e,id);
@@ -217,10 +227,10 @@ function yieldHero(f,L){for(const b of L)if(b.target===f&&['duel','assist'].incl
 function bossTurn(sc,f,L){const T=BOSSES[f.tpl||'kragmaw'],out=[],A=T.abilities&&T.abilities[0];
   const t=pickA(L),R=roll(f,t);
   if(!R.hit){out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': missed',rollData(R,0,t.name)));note(sc,f.name,t.name,R,0)}
-  else{let d=Math.round((T.attack.dmg[0]+rnd()*T.attack.dmg[1])*(R.crit?1.5:1)*dmgTaken(t));t.hp-=d;actHurt(t,f,d);const down=t.hp<=0;if(down){agentDie(t,f);(sc.fell||(sc.fell=[])).push(t.id)}
-    out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': hit for '+d+(down?'; '+t.name+' falls':''),rollData(R,d,t.name,down)));note(sc,f.name,t.name,R,d,down?'down':null)}
+  else{let d=Math.round((T.attack.dmg[0]+rnd()*T.attack.dmg[1])*(R.crit?1.5:1)*dmgTaken(t));t.hp-=d;actHurt(t,f,d);let down=t.hp<=0;if(down){agentDie(t,f);down=t.state==='dead';if(down)(sc.fell||(sc.fell=[])).push(t.id)}
+    out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': hit for '+d+(down?'; '+t.name+' falls':isDown(t)?'; '+t.name+' goes down':''),rollData(R,d,t.name,down)));note(sc,f.name,t.name,R,d,down?'down':null)}
   if(A){if(sc.br==null)sc.br=f.breath!=null?f.breath:A.cd;sc.br-=T.attack.cd;
     if(sc.br<=0){sc.br+=A.cd;const hit=[];
-      for(const b of L){if(b.state==='dead'||dist(b,f)>A.radius)continue;const d=Math.round(A.dmg[0]+rnd()*A.dmg[1]);b.hp-=d;actHurt(b,f,d,'breath');hit.push(b.name+' '+d);if(b.hp<=0){agentDie(b,f);(sc.fell||(sc.fell=[])).push(b.id)}}
+      for(const b of L){if(b.state==='dead'||dist(b,f)>A.radius)continue;const d=Math.round(A.dmg[0]+rnd()*A.dmg[1]);b.hp-=d;actHurt(b,f,d,'breath');hit.push(b.name+' '+d);if(b.hp<=0){agentDie(b,f);if(b.state==='dead')(sc.fell||(sc.fell=[])).push(b.id)}}
       out.push(beat(f.name,'breath',A.name||'Breath',hit.length?'no roll: '+hit.join(', '):'no one in reach'));note(sc,f.name,'everyone near',null,0,(A.name||'breath')+(hit.length?': '+hit.join(', '):''))}}
   return out}
