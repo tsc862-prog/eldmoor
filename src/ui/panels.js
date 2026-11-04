@@ -79,6 +79,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'hunt':return a.quest?`Hunting ${MOBS[a.quest.type].pl} in ${zn}`:`Hunting in ${zn}`;
     case 'fight':return a.target?`Fighting a level ${a.target.lvl} ${MOBS[a.target.type].name}`:'Fighting';
     case 'return':return `Heading back to ${c}`;
+    case 'mend':return `Mending from wounds in ${c}`;
     case 'duel':return a.target?`Fighting ${a.target.name} of the ${FAC[a.target.fac].name}`:'In a fight';
     case 'ghost':return `Dead. Running back to ${c} as a ghost`;
     case 'raid':return 'Raiding Kragmaw the Cinder Wyrm';

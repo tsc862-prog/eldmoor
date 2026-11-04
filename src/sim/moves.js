@@ -10,6 +10,7 @@
 // Attack moves ("swing" in the data) take the place of a weapon blow; every other move is a free action.
 // Agent-played heroes (a.player) choose their own moves (tool use_ability). Only when reflexes may decide for one (its runner
 // is gone, or no host: npm run sim) does the policy heal for it, with its class heal moves (reflexHeal, #347).
+import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
 import {rnd,ri} from '../core/rng.js';
 import {WALKABLE} from '../world/tiles.js';
 import {zoneAt,tileAt,dist} from '../world/map.js';
@@ -103,11 +104,11 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
     break;
   case 'ally':if(fx.taken){setEff(t,'taken',fx.taken,M.dur,M.durR,round);pop(t.x,t.y-.5,'WARDED','#c8c8e0')}
     if(fx.heal){const H=fx.heal,h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(t))*passiveMul(a,'healMul'))+reviveBonus(t),was=t.hp;
-      t.hp=Math.min(maxHp(t),t.hp+h);const got=Math.round(t.hp-was);R.healed+=got;R.hit++;actHeal(a,t,got,M.name);pop(t.x,t.y-.6,'+'+got,'#7dce5a');if(t!==a&&got>0)bondEvent(a,'heal',[t])}break;
+      t.hp=Math.min(maxHp(t),t.hp+h);const got=Math.round(t.hp-was);R.healed+=got;R.hit++;actHeal(a,t,got,M.name);pop(t.x,t.y-.6,'+'+got,'#7dce5a');if(t!==a&&got>0)bondEvent(a,'heal',[t]);tendBy(a,t,'heal')}break;
   case 'allies':if(fx.taken){for(const b of mates){if(dist(a,b)>M.range)continue;setEff(b,'taken',fx.taken,M.dur,M.durR,round);R.hit++;pop(b.x,b.y-.5,'WARDED','#e0709c')}}
     if(fx.heal){const H=fx.heal;
     for(const b of mates){if(dist(a,b)>M.range)continue;const h=Math.round((H.base+H.lvl*(a.lvl||1)+H.hp*maxHp(b))*passiveMul(a,'healMul'))+reviveBonus(b),was=b.hp;
-      b.hp=Math.min(maxHp(b),b.hp+h);const got=Math.round(b.hp-was);R.healed+=got;R.hit++;actHeal(a,b,got,M.name);pop(b.x,b.y-.6,'+'+got,'#7dce5a');if(b!==a&&got>0)bondEvent(a,'heal',[b])}}break;
+      b.hp=Math.min(maxHp(b),b.hp+h);const got=Math.round(b.hp-was);R.healed+=got;R.hit++;actHeal(a,b,got,M.name);pop(b.x,b.y-.6,'+'+got,'#7dce5a');if(b!==a&&got>0)bondEvent(a,'heal',[b]);tendBy(a,b,'heal')}}break;
   }
   // The spell effect (#374, drawn by render/spellfx.js): the move, where the caster stood and stands, and every one it touched. No dice.
   const pts=[];for(const e of M.target==='foes'?hits:M.target==='allies'?mates.filter(b=>dist(a,b)<=M.range):[t||a])pts.push(e.x,e.y);

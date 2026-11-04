@@ -15,7 +15,7 @@
 // member's notebook, sim/notebook.js), so a world with no runner is unchanged.
 import {S,clockStr} from './state.js';
 import {swornOf,threadText,askOpen} from './oath.js'; // the hero's own oath, or the thread its past offers (#800)
-import {wakeLevel} from './notify.js';
+import {wakeLevel,mostNews} from './notify.js';
 import {tableView,optionsFor} from './table.js';
 import {sceneOf} from './scenes.js';
 import {heardLines,metNames} from './talk.js';
@@ -39,6 +39,7 @@ import {followBrief} from './follow.js'; // who the hero follows and who follows
 import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
 import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
 import {leaderFor} from './council.js';
+import {woundLine} from './tend.js';
 import {worldHeld} from './prep.js'; // the world held before play (#559)
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 import {growthText} from './abilities.js'; // a waiting score point (#714)
@@ -81,7 +82,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
   if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};
   const t=a.target,fighting=(a.state==='fight'||a.state==='duel'||a.state==='assist')&&t&&(t.hp>0||t.alive);
   const foe=fighting?foeName(a,t):null;
-  const seen=a.playEvSeen||0,news=(a.playEv||[]).filter(e=>e.n>seen).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
+  const seen=a.playEvSeen||0,news=mostNews((a.playEv||[]).filter(e=>e.n>seen),8).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:placeOf(a),
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),earshot:earshotLine(a),hold:S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold.rule:null,insight:sightLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
@@ -92,6 +93,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
     aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
+    wounds:woundLine(a), // a lasting wound in words (#656); null when whole
     ...(swornOf(a)?{oath:a.goal.text}:{}),...(askOpen(a)?{thread:threadText(a)}:{}), // the turn header: what it swore, or for a while what its past holds
     reflect:reflectBrief(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
 // The first evening asks once more what the hero makes of its past (#800): the answer closes the offer (reflectDone).
