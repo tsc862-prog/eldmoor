@@ -171,6 +171,7 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: Dungeon crawl room by room, run: npm run crawlcheck}
+      - {name: Table fights on the map patch, run: npm run patchcheck}
       - {name: DM-made dungeon sites, run: npm run sitecheck}
       - {name: Camp and rest, run: npm run campcheck}
       - {name: Town autopilot and danger edges, run: npm run townpilotcheck}

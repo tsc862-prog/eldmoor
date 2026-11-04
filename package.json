@@ -42,6 +42,7 @@
     "sessioncheck": "node scripts/sessioncheck.mjs",
     "tablecheck": "node scripts/tablecheck.mjs",
     "crawlcheck": "node scripts/crawlcheck.mjs",
+    "patchcheck": "node scripts/patchcheck.mjs",
     "sitecheck": "node scripts/sitecheck.mjs",
     "localscheck": "node scripts/localscheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",

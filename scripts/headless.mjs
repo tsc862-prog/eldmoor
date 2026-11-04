@@ -5,9 +5,11 @@
 import {init, step, S, spatialStats} from '../src/sim/index.js';
 import {outpostsView} from '../src/sim/outposts.js';
 import {pathStats} from '../src/sim/path.js';
+import {FIELD} from '../src/sim/patch.js'; // ELDMOOR_PATCH=all: reflex fights play on the map patch too, for balance runs (#746)
 import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
 
 const minutes = Number(process.argv[2] || 60);
+if(process.env.ELDMOOR_PATCH==='all')FIELD.ALL=true;
 init();
 const frames = minutes * 60 * 60;
 for (let i = 0; i < frames; i++) step(1 / 60);
@@ -26,6 +28,7 @@ console.log('Rivalries:', JSON.stringify(S.rivals ? S.rivals.stats : {}), '| act
 console.log('Guild focus:', JSON.stringify(S.focusStats || {}), '| now', S.GUILDS.filter((g) => !g.retired).map((g) => `${g.tag} ${g.focus || 'open'}`).join(', ') || 'none');
 {const F=SLT.slotted();console.log('Fellowship:', F ? `${F.name} (${['Concord','Warband'][F.fac]}) | members ${F.ids.map((id) => S.agents.find((a) => a.id === id)).filter(Boolean).map((a) => `${a.name} L${a.lvl} ${a.cls}`).join(', ')} | fallen ${F.past.length}` : 'none')}
 {const L=(S.companies||[]).map((c)=>c.crawl).filter(Boolean),C=L.length?L.reduce((t,x)=>{for(const k of ['runs','clears','driven','withdrawn','wipes','deaths','rooms','scenes','downs','strikes','walks','flanks','free','blasts','tendWalks'])t[k]=(t[k]||0)+(x[k]||0);return t},{}):null;if(C)console.log(`Fellowship Crypt crawl (room by room): ${C.runs} runs | ${C.clears} cleared, ${C.driven} driven back, ${C.withdrawn} withdrew, ${C.wipes} wiped | ${C.deaths} fell, ${C.downs||0} downed | rooms won ${C.rooms} | scenes ${C.scenes||0}${C.strikes?` | tiles: ${C.walks||0} of ${C.strikes} strikes spent walking, ${C.flanks||0} flanked, ${C.free||0} free blows, ${C.blasts||0} blasts, ${C.tendWalks||0} tends out of reach`:''}${L.length>1?` | across ${L.length} companies`:''}`)}
+if(S.patchStats){const p=S.patchStats;console.log(`Open ground (Table fights on the map): ${p.scenes} scenes | ${p.walks} of ${p.strikes} strikes spent walking, ${p.flanks} flanked, ${p.free} free blows, ${p.closes} foe turns spent closing`)}
 console.log('Outposts:',outpostsView().map(o=>o.name+' '+(o.held_by||'unheld')+' ('+o.control+', flipped '+o.flips+')').join(' | '),'| flips total',(S.outposts&&S.outposts.flips)||0);
 {const t=S.traffic;if(t){const s=t.stats;console.log(`Road traffic: ${s.departed} set out, ${s.arrived} arrived, ${t.list.length} on the road | beset ${s.beset} (rescued ${s.rescued}, went on ${s.freed}, lost ${s.lost}, staged ${s.staged}) | goods to market ${s.goods} | guards ${t.guards.filter(g=>g.on).length}/${t.guards.length} on watch`)}}
 console.log('Kragmaw alive:', S.boss.alive, '| hp', Math.round(S.boss.hp));
