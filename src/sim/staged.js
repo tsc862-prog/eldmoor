@@ -24,7 +24,7 @@
 //   rec {id, kind, title, frame, reason, near:{hero, label}, at:{x,y}, z, lvl, cast:{...}, labels, born, until, phase, scene, result}
 //   S.table.calls [{id, kind, about, legal?, who?, t, done, by, text, pick}] while a staged scene is open
 import {S,clockStr,dayNo} from './state.js';
-import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,CRYPT,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {BESTIARY} from '../data/bestiary.js';
 import {WANDER_ROLES} from '../data/npcs.js';
@@ -47,7 +47,9 @@ import {setProps} from './props.js';
 import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
 import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {talkFromScene} from './talk.js'; // NPC conversations (#170)
-import {SETTINGS,SETTING_IDS} from '../data/settings.js'; // scene maps (#431): the rooms a meeting or social scene plays in
+import {SETTINGS,SETTING_IDS} from '../data/settings.js';
+import {inRange} from './reach.js'; // a vision takes the members within shouting range of the one it found (#639)
+ // scene maps (#431): the rooms a meeting or social scene plays in
 
 // ---- knobs ----
 export const STAGE={
@@ -70,13 +72,14 @@ export const STAGE={
   PAST_KEEP:8,
   TOWN_WAIT_MIN:720, // game minutes a person staged in a town (at) waits there for the party
   TOWN_PAD:1,       // tiles round a town's walls that count as being in it (the scene opens when a member is there)
+  VISION_H:12, VISION_MAX_H:48, // game hours a staged vision waits for its moment when the DM names none, and at most (#639)
 };
-export const STAGE_KINDS=['elite','ambush','meeting','trap','mystery','social','interrogation']; // interrogation: a suspect questioned at the table (#431 slice 3, sim/interrogate.js)
+export const STAGE_KINDS=['elite','ambush','meeting','trap','mystery','social','interrogation','vision']; // vision: an omen or a shared dream, no cast, no dice (#639, sim/vision.js) // interrogation: a suspect questioned at the table (#431 slice 3, sim/interrogate.js)
 const COMBAT_ACTS=['strike','guard','heal','potion','retreat'];
 // The legal Table actions per kind: the DM may relabel them (cast.choices), never add to them.
-export const STAGE_ACTS={elite:COMBAT_ACTS,ambush:COMBAT_ACTS,meeting:['hear','help','pass'],trap:['spot','disarm','round'],mystery:['study','search','leave'],social:['parley','press','leave'],interrogation:['ask','threaten','bargain','read','release','hand_over','watch']};
+export const STAGE_ACTS={elite:COMBAT_ACTS,ambush:COMBAT_ACTS,meeting:['hear','help','pass'],trap:['spot','disarm','round'],mystery:['study','search','leave'],social:['parley','press','leave'],interrogation:['ask','threaten','bargain','read','release','hand_over','watch'],vision:['see','ask','turn_away']};
 // The complications the DM may pick at the table (one per scene), per kind. 'none' and 'omen' change nothing but the words.
-export const COMPLICATIONS={elite:['none','omen','falter','reinforce'],ambush:['none','omen','falter','reinforce'],meeting:['none','omen','rival'],social:['none','omen','rival'],trap:['none','omen','tremor'],mystery:['none','omen','tremor'],interrogation:['none','omen','rival']};
+export const COMPLICATIONS={elite:['none','omen','falter','reinforce'],ambush:['none','omen','falter','reinforce'],meeting:['none','omen','rival'],social:['none','omen','rival'],trap:['none','omen','tremor'],mystery:['none','omen','tremor'],interrogation:['none','omen','rival'],vision:['none']}; // a vision has no complication (#639)
 const COMP_ABOUT={none:'nothing changes',omen:'a sign or a sound, words only',falter:'the foe, if already below half its health, breaks off for a moment',reinforce:'one more foe of the pack (two levels under the party) joins',
   rival:'the person turns one step colder (the next words are harder)',tremor:'the place turns against them: the remaining rolls are 2 harder'};
 const FIGHTING={elite:1,ambush:1,trap:1}; // kinds the pile-on rule guards
@@ -126,7 +129,7 @@ const band=z=>REGIONS[z]&&REGIONS[z].band?REGIONS[z].band:[1,99];
 // the scene from the Table's own outcome, in the world's words, never the DM's bookkeeping ("staged", reasons).
 const LOG=(kind,summary,detail)=>dmlog(kind,null,summary,{by:'dm-agent',...detail},{heroes:[]});
 // The call's contract, added to the refusals of a call shaped wrong (issue #401), so the next call can be right.
-export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark or a region), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, item (an object the first prop of the frame holds, found with search), choices); with preview "true" only kind, near and reason are needed';
+export const STAGE_USAGE='stage_scene takes: kind ('+STAGE_KINDS.join('|')+'), near ("fellowship", a member\'s name or id, "x,y", a place, a landmark or a region), frame (12-280 characters: what the heroes see as it begins), reason (one sentence for the DM log), title?, cast? (an object: name, title, foe, level, role, want, voice, attitude, faction, trap, place, reveal, creature (vision), item (an object the first prop of the frame holds, found with search), choices), hours? (vision: game hours it waits, 1-'+STAGE.VISION_MAX_H+'); with preview "true" only kind, near and reason are needed';
 function refuse(why,a,usage){const err='Refused: '+why+(usage?'. '+STAGE_USAGE:'');if(a&&a.preview)return {ok:false,error:err}; // a preview stages nothing, so it leaves no trace
   const G=stagedState();G.stats.refused++;
   LOG('agent',['Staged scene refused: '+why+(a&&a.kind?' ('+clean(a.kind,12)+')':'')+'.'],{staged:null,kind:a&&a.kind?clean(a.kind,12):null,reason:clean(a&&a.reason,STAGE.REASON_MAX),result:'rejected: '+why});
@@ -231,7 +234,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     if(tw.town){if(F.fac!=null&&tw.town.fac!=null&&tw.town.fac!==F.fac)return refuse(tw.town.name+' is an enemy town: the Fellowship would not be met there; pick one of their own ('+CITY.filter(c=>c.fac===F.fac).map(c=>c.name).join(', ')+')',a);
       town=tw.town;named=!!tw.spot;if(!setId){setId=fitSetting(kind,{spot:tw.spot,title:a.title,frame,want:cast.want,role:cast.role});picked=true}spot=tw.spot||(setId==='tavern'?'inn':setId==='chapel'?'chapel':'square')}}
   else if(given(a.setting)||given(a.at))notes.push('setting and at are for meeting and social scenes; '+(/^[aeiou]/.test(kind)?'an ':'a ')+kind+' plays on the ground where it happens, so '+(given(a.setting)&&given(a.at)?'both were':given(a.setting)?'setting was':'at was')+' ignored');
-  const W=town?{at:{x:town.spots[spot].x,y:town.spots[spot].y},label:(named?'at the '+spot+' in ':'in ')+town.name}:whereOf(a.near);
+  const W=town?{at:{x:town.spots[spot].x,y:town.spots[spot].y},label:(named?'at the '+spot+' in ':'in ')+town.name}:(kind==='vision'&&visionWho(a.near))||whereOf(a.near); // a vision finds a member wherever they rest, in town too (#639)
   if(W.err)return refuse(W.err+(INDOOR_STAGE[kind]&&/in town|not inside/.test(W.err)?' (or, for a '+kind+' in town, pass at: the town or a building in it, such as "the inn in '+(focus()&&focus().town?focus().town.name:CITY[0].name)+'")':''),a,/^unknown place/.test(W.err));
   // the company this scene is for (#451): the one the hero belongs to, else whose member or hall it is set at; none = a world scene
   let cmp=W.company||(W.hero?companyOf(W.hero):null);
@@ -239,8 +242,10 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
   const scope=cmp||(F&&!F.slots&&!slotted()?F:null),SM=scope?memOfCo(scope):slotHeroes(slotted()),P=partyLvl(SM.length?SM:everyone());
   let at=W.at,label=W.label;
   // a cast walks in from out of sight; a trap or a strange place lies just ahead, where they pass
-  if(W.hero){at=STATIC[kind]?spotNear(W.hero,STAGE.AHEAD_MIN,STAGE.AHEAD_MAX,W.hero.dest||null):spotNear(W.hero,STAGE.SPOT_MIN,STAGE.SPOT_MAX,W.hero.dest||null);if(!at)return refuse('no open ground near '+W.hero.name,a);label='near '+W.hero.name}
-  const z=town?zoneAt(town.gate.x,town.gate.y):zoneAt(at.x,at.y);if(z==null||z<0)return refuse('that spot is outside every region',a);
+  if(W.hero&&kind==='vision'){at={x:Math.round(W.hero.x*10)/10,y:Math.round(W.hero.y*10)/10};label='near '+W.hero.name}
+  else if(W.hero){at=STATIC[kind]?spotNear(W.hero,STAGE.AHEAD_MIN,STAGE.AHEAD_MAX,W.hero.dest||null):spotNear(W.hero,STAGE.SPOT_MIN,STAGE.SPOT_MAX,W.hero.dest||null);if(!at)return refuse('no open ground near '+W.hero.name,a);label='near '+W.hero.name}
+  let z=town?zoneAt(town.gate.x,town.gate.y):zoneAt(at.x,at.y);if(kind==='vision'&&(z==null||z<0)){const c=CITY.find(t=>inTown(t,at));if(c)z=zoneAt(c.gate.x,c.gate.y)} // a member resting in a town
+  if(z==null||z<0)return refuse('that spot is outside every region',a);
   if(!cmp){const f=focuses().find(f=>nearMember(f,at));if(f)cmp=f.company}
   const nco=Math.max(1,companies().length),forThem=nearAny(at)||!!cmp||!!(town&&focuses().some(f=>f.town===town));
   if(!pv&&!forThem&&(today().nw||0)>=STAGE.PER_DAY-STAGE.RESERVE*nco)return refuse('the last staged scene of the day is kept for '+(nco>1?'the companies’':'the Fellowship’s')+' own road; set this one near a member (near: "fellowship")',a);
@@ -297,13 +302,17 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     const w=res.ret;w.staged=rid;if(C.want)w.want=C.want;C.npc=w.id;C.name=w.name;C.role=w.title;C.attitude=att}
   else if(kind==='trap'){const t=TRAPS.find(x=>x.id===String(cast.trap||'').toLowerCase())||pickR(TRAPS.filter(x=>x.dmg>0));
     C.trap={id:t.id,name:t.name,dmg:t.dmg};C.dc=8+Math.ceil(P.avg/2)+1;if(!C.name)C.name=cap(t.name)}
+  else if(kind==='vision'){ // no cast to place: what it may show (#639)
+    if(cast.place!=null&&cast.place!==''){const pn=placeName(cast.place);if(!pn)return refuse('cast.place must name a place the vision shows: a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+'), a region, a town or one of your marked places',a);C.place=pn}
+    if(cast.creature!=null&&cast.creature!==''){const cn=creatureName(cast.creature);if(!cn)return refuse('cast.creature must name a creature of the bestiary (such as '+[...new Set(Object.values(MOBS).map(m=>m.name))].slice(0,6).join(', ')+')',a);C.creature=cn}
+    const h=a.hours!=null&&a.hours!==''?Number(a.hours):STAGE.VISION_H;if(!Number.isFinite(h))return refuse('hours must be a number of game hours (1-'+STAGE.VISION_MAX_H+')',a);C.hours=Math.max(1,Math.min(STAGE.VISION_MAX_H,Math.round(h)));if(!C.name)C.name='A vision'}
   else if(kind==='mystery'){const k=['shrine','cairn_door','ruin'].includes(String(cast.place||'').toLowerCase())?String(cast.place).toLowerCase():'shrine';
     const res=pull('mark_place',{kind:k,at,...(C.name?{name:C.name}:{}),hours:24},{by:'dm-agent',reason:'staged mystery: '+reason});
     if(res.ok){C.place=res.ret.id;C.name=res.ret.name}else if(!C.name)C.name='Something strange';
     C.dc=9+Math.ceil(P.avg/2)}
   G.seq=rid;today().n++;if(!nearAny(at))today().nw=(today().nw||0)+1;if(cmp){const c=today().c||(today().c={});c[cmp.id]=(c[cmp.id]||0)+1}G.stats.staged++;
   const title=clean(a.title,STAGE.TITLE_MAX)||defaultTitle(kind,C);
-  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},...(cmp&&!cmp.slots?{company:cmp.id}:{}),at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN)),phase:'waiting',scene:null,result:null,
+  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},...(cmp&&!cmp.slots?{company:cmp.id}:{}),at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(kind==='vision'?C.hours*60:town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN)),phase:'waiting',...(kind==='vision'?{trig:W.hero?'rest':'place'}:{}),scene:null,result:null,
     ...(setId?{setting:setId}:{}),...(town?{town:town.name,spot}:{})};
   const where=whereLine(label,z,town,setId);if(ignored.length)notes.push('choices must map to the legal actions: '+STAGE_ACTS[kind].join(', '));
   G.cur=rec;
@@ -311,7 +320,7 @@ export function stageScene(a){a=a&&typeof a==='object'?a:{};const G=stagedState(
     {staged:rid,kind,title,frame,reason,cast:castLine(rec),at:rec.at,region:ZONES[z],lvl,party:P.avg,...(setId?{setting:setId,picked}:{}),...(town?{town:town.name,spot}:{}),...(Object.keys(labels).length?{labels}:{}),...(ignored.length?{ignored}:{})});
   return {ok:true,staged:rid,kind,title,where,at:rec.at,cast:castLine(rec),...(setId?{setting:setId,setting_name:SETTINGS[setId].name,...(picked?{setting_picked:'you named no setting; the game picked one that fits'}:{})}:{}),...(lvl!=null?{level:lvl,party_level:P.avg}:{}),
     choices:STAGE_ACTS[kind].map(k=>k+(labels[k]?' = '+labels[k]:'')),...(ignored.length?{ignored_choices:ignored}:{}),...(notes.length?{note:cap(notes.join('; '))+'.'}:{}),
-    waits_until_h:Math.round((rec.until-rec.born)/60),scenes_today:today().n+'/'+STAGE.PER_DAY}}
+    ...(kind==='vision'?{opens:rec.trig==='rest'?'when '+(cmp?coName(cmp):'they')+' next rest (a camp, or a rest at an inn)':'when one of them stands '+label}:{}),waits_until_h:Math.round((rec.until-rec.born)/60),scenes_today:today().n+'/'+STAGE.PER_DAY}}
 // "A tavern back room in Highgate", "at the inn in Highgate", "near Kerin in Thornvale", "A house near Kerin in Thornvale".
 function whereLine(label,z,town,setId){return town?(setId?SETTINGS[setId].name+' in '+town.name:label):(setId?SETTINGS[setId].name+' ':'')+label+' in '+ZONES[z]}
 // ---- does the frame fit the cast? (issue #211) ----
@@ -336,14 +345,34 @@ function frameMisfit(frame,plan,castName,kind){const f=' '+frame.toLowerCase().r
   return 'the frame does not fit the cast. '+own+(ppl?', not people: no "'+ppl[1]+'" in this scene':'')+'. Write the frame for '+(plan.length>1?'them':'it')+' (name the creature, or say '+famWords(plan).slice(0,3).join(', ')+') and try again, or call stage_scene with preview:true to see the cast first';
 }
 function place(m,p){m.x=p.x;m.y=p.y;m.home={x:p.x,y:p.y};m.spawn={x:p.x,y:p.y};m.dest=null;m.target=null;m.hpl=m.hp}
-function defaultTitle(kind,C){return kind==='ambush'?'Ambush: '+C.name:kind==='trap'?'A trap on the road':kind==='mystery'?C.name:C.name||cap(kind)}
+function defaultTitle(kind,C){return kind==='vision'?C.name||'A vision':kind==='ambush'?'Ambush: '+C.name:kind==='trap'?'A trap on the road':kind==='mystery'?C.name:C.name||cap(kind)}
 function castLine(rec){const C=rec.cast,out=[];
   for(const id of C.mobs){const m=mobOf(id);if(m)out.push((m.name||MOBS[m.type].name)+(m.title?', '+m.title:'')+' (L'+m.lvl+' '+MOBS[m.type].name+')'+(liveMob(m)?'':' - down'))}
   if(C.npc!=null){const w=npcOf(C.npc);out.push(C.name+(w?'':' (gone)'))}
   if(rec.kind==='trap')out.push(C.trap.name+' (DC '+C.dc+')');
   if(rec.kind==='mystery')out.push(C.name+' (DC '+C.dc+')');
+  if(rec.kind==='vision')out.push('a vision '+(rec.trig==='rest'?'when they next rest':rec.near.label)+(C.place?', showing '+C.place:'')+(C.creature?', '+C.creature:''));
   return out}
 const anchorOf=rec=>{for(const id of rec.cast.mobs){const m=mobOf(id);if(liveMob(m))return m}if(rec.cast.npc!=null){const w=npcOf(rec.cast.npc);if(w)return w}return rec.at};
+
+// ---- a vision (#639): who it finds, and when its moment comes (its scene kind: sim/vision.js) ----
+// A creature a vision may show (cast.creature): a bestiary key or name, any region. Its name, or null.
+function creatureName(v){const s=clean(v,40).toLowerCase().replace(/^(an?|the)\s+/,'');if(!s)return null;
+  const k=Object.keys(MOBS).find(x=>x.toLowerCase()===s)||Object.keys(MOBS).find(x=>MOBS[x].name.toLowerCase()===s||MOBS[x].name.toLowerCase()+'s'===s);
+  return k?MOBS[k].name:null}
+// near a member, a company or the Fellowship: the hero it finds wherever they are (a rest in town counts), or null (whereOf reads it).
+function visionWho(near){const nt=nearText(near);if(nt.err)return null;const s=clean(nt.s,60),lo=s.toLowerCase(),ok=b=>living(b)&&!b.hidden,lead=(L,ld)=>ld&&L.includes(ld)?ld:L[0]||null;
+  const cm=/^company\s*[:#]?\s*(\d+)$/.exec(lo),CO=cm?companies().find(c=>c.id===Number(cm[1])):companies().find(c=>!c.slots&&c.name&&c.name.toLowerCase()===lo);
+  if(CO){const h=lead(memOfCo(CO).filter(ok),fiveCo(CO)?leaderOfF():companyLead(CO));return h?{hero:h,company:CO}:null}
+  if(!s||lo==='fellowship'||lo==='party'||lo==='the fellowship'){if(!slotted())return null;const h=lead(slotHeroes(slotted()).filter(ok),leaderOfF());return h?{hero:h}:null}
+  const h=everyone().find(b=>String(b.id)===s||b.name.toLowerCase()===lo);return h&&ok(h)?{hero:h}:null}
+const VBUSY=new Set(['fight','duel','assist','raid','dungeon']);
+const resting=b=>b.state==='camp'||b.state==='town'&&Array.isArray(b.pq)&&!!b.pq[0]&&b.pq[0].kind==='rest';
+// The member a vision takes now, or null: never while one of them fights, raids or is in the Crypt; staged near a member, when one
+// rests (a camp, a rest at an inn); staged at a place, when one stands there.
+function visionMet(rec){const L=recMem(rec).filter(b=>living(b)&&!b.hidden);if(!L.length)return null;
+  if(L.some(b=>VBUSY.has(b.state)||b.raid||(CRYPT.group&&CRYPT.group.mem.includes(b))))return null;
+  return rec.trig==='rest'?L.find(resting)||null:L.find(b=>dist(b,rec.at)<=STAGE.MEET_R)||null}
 
 // ---- once per step, before the Table triggers (sim/table.js tableTick): walk, meet, expire ----
 function tick(){const G=S.staged;if(!G||!G.cur)return false;const rec=G.cur;
@@ -352,6 +381,7 @@ function tick(){const G=S.staged;if(!G||!G.cur)return false;const rec=G.cur;
   for(const id of rec.cast.mobs){const m=mobOf(id);if(m&&!m.alive&&!m.gone){m.gone=true;m.target=null}}
   const fight=rec.kind==='elite'||rec.kind==='ambush';
   if(S.gameMin>=rec.until||!recMem(rec).length||fight&&!rec.cast.mobs.some(id=>liveMob(mobOf(id)))||rec.cast.npc!=null&&!npcOf(rec.cast.npc)){expire(rec);return false}
+  if(rec.kind==='vision'){const met=visionMet(rec);if(!met||S.table||openProps().length)return false;return meet(rec,met)} // a vision waits for its moment, not for a meeting (#639)
   const T=rec.town?townOf(rec.town):null,A=anchorOf(rec),L=T?recMem(rec).filter(b=>living(b)&&!b.hidden&&inTown(T,b)):recMem(rec).filter(b=>!b.hidden&&b.state!=='town'); // set in a town (#431): whoever of them is in it
   // a staged fight or trap holds back while a member out in the field is badly hurt (the pile-on rule, at the meeting too)
   if(FIGHTING[rec.kind]&&L.some(b=>b.hp<maxHp(b)*STAGE.PILE_HP)){for(const id of rec.cast.mobs){const m=mobOf(id);if(liveMob(m)&&!m.target)m.dest=null}return false}
@@ -378,7 +408,7 @@ function meet(rec,a){const G=S.staged,F=slotted(),fight=rec.kind==='elite'||rec.
   if(!tableOn()){finish(rec,null,'played out in the world (Table mode is off)');return false}
   rec.phase='open';
   const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{}),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),dcUp:0,tally:{}};
-  const pre={ids:recMem(rec).map(b=>b.id)};say(pre,rec.frame,NARRATOR); // the frame reaches the members as narration (#123), before any line of the scene
+  const pre={ids:(rec.kind==='vision'?recMem(rec).filter(b=>living(b)&&!b.hidden&&(b===a||inRange(a,b))):recMem(rec)).map(b=>b.id)};say(pre,rec.frame,NARRATOR); // a vision: only those it takes see it (#639) // the frame reaches the members as narration (#123), before any line of the scene
   ctx.anchor=a.id; // an everyone-at-once scene takes the members within shouting range of the one they met (#182)
   {const K=kindHooks(rec.kind);if(K&&K.stagedCtx)Object.assign(ctx,K.stagedCtx(rec,recMem(rec).filter(living)),{staged:rec.id})} // an interrogation's truth, lie and resolve (sim/interrogate.js, #431 slice 3)
   const sc=openScene(rec.kind,rec.title,[rec.frame],ctx);
