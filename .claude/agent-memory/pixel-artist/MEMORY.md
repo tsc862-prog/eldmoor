@@ -10,3 +10,4 @@
 - [Site dungeon view](sitesview.md) — #642 themed site interiors, per-dungeon keys, staging a site crawl shot
 - [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes
 - [Art batch review](artreview.md) — reviewing a generated batch: scratch pipeline, reprocess --dir, why pixel-xl fails autotiles/sheets/ground
+- [Building recipe](buildingrecipe.md) — #763 flat palette + style gate for buildings, art:preview required before accept, ume-flux switch

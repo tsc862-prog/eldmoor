@@ -205,3 +205,16 @@ export const LANDMARK={
   crypt:['#78748a','#5a5668','#4a4652','#2e2a34','#0a0810','#7ad0a0','#c8ffd8','#e8e4d8','#5a8a44'],
   lair:['#5a2a1c','#3a1c16','#655c58','#4a423e','#2a2422','#c8401a','#f07a22','#ffd04a','#e8e0c8','#a8a090'],
 };
+
+// Flat building palettes (#763): what a generated building or standing landmark may use, taken from the procedural house
+// (render/townart.js: three roof tones, two wall tones, one dark line, a door), per town style and for the crypt mouth and
+// the lair. The manifest's building recipe quantises to exactly these (post.flat, scripts/art/post-flat.mjs, no widening,
+// no dither) and its style gate measures a model image's distance from them; the fixtures draw with them too. Roles:
+// roof = the top surface light to dark (light from the top left), wall = the short front strip light and shade, line = the
+// outline, door = the one accent (door, glow, gold).
+export const FLAT={
+  stone:{roof:TOWN.stone.roof,wall:TOWN.stone.wall.slice(0,2),line:MARK.outline,door:TOWN.stone.door[0]},
+  timber:{roof:TOWN.timber.roof,wall:TOWN.timber.wall.slice(0,2),line:MARK.outline,door:TOWN.timber.door[0]},
+  crypt:{roof:['#78748a','#5a5668','#4a4652'],wall:['#2e2a34','#e8e4d8'],line:'#0a0810',door:'#7ad0a0'},
+  lair:{roof:['#655c58','#4a423e','#2a2422'],wall:['#c8401a','#f07a22'],line:'#100c16',door:'#ffd04a'},
+};

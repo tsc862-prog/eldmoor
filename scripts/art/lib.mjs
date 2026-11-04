@@ -13,7 +13,13 @@ export const ASSETS=join(ROOT,'assets');
 export const KINDS=['tile','autotile','building','landmark','sprite','portrait','prop','icon'];
 const ID=/^([a-z]+):([a-z0-9][a-z0-9-]*)$/;
 
-export const loadManifest=(p=MANIFEST)=>JSON.parse(readFileSync(p,'utf8'));
+export const loadManifest=(p=MANIFEST)=>withKindModel(JSON.parse(readFileSync(p,'utf8')));
+// The trial switch (#763, manifest kindModel {on, model, kinds}): with on, every entry of those kinds that names no model of
+// its own is made with that model. Off (or absent) leaves the manifest as written.
+export function withKindModel(man){const km=man&&man.kindModel;if(!km||!km.on||!km.model)return man;
+  for(const e of man.assets||[])if((km.kinds||[]).includes(e.kind)&&e.model===undefined)e.model=km.model;return man}
+// Kinds that art:accept takes only after an in-game look (#763): an art:preview shot at 1x beside procedural neighbours.
+export const PREVIEW_KINDS=['building','landmark'];
 // Tiers (#177, src/render/tile.js): the renderer draws the assets of its TILE size; every asset is made per tier from the
 // same manifest entry (sizes per tier, same prompt and seed) with the tier's generation settings (manifest tiers).
 export {TILE,TIERS};
@@ -47,6 +53,8 @@ export function validateManifest(man,PAL,resolvePalette){
   if(!(man.candidates||[]).length)errs.push('candidates: list the models to try, best first');
   for(const t of TIERS){const c=man.tiers&&man.tiers[t];if(!c)errs.push(`tiers.${t}: generation settings missing`);else if(!(c.grid>0))errs.push(`tiers.${t}: grid must be a number`)}
   if(man.pinnedModel&&!(man.models||{})[man.pinnedModel])errs.push(`pinnedModel: unknown model ${man.pinnedModel}`);
+  if(man.kindModel){const km=man.kindModel;if(!(man.models||{})[km.model])errs.push(`kindModel: unknown model ${km.model}`);
+    for(const k of km.kinds||[])if(!KINDS.includes(k))errs.push(`kindModel: unknown kind ${k}`);if(typeof km.on!=='boolean')errs.push('kindModel.on must be true or false')}
   for(const e of man.assets){const m=ID.exec(e.id||'');
     if(!m){errs.push(`bad id ${e.id}`);continue}
     if(seen.has(e.id))errs.push(`duplicate id ${e.id}`);seen.add(e.id);

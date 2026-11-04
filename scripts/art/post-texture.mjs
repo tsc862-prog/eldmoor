@@ -10,6 +10,7 @@
 //   4. optional 1px outline; 5. refuse an output with fewer than post.minColors colours (4 for tiles) as flat.
 // Pure functions over {w, h, data: Uint8Array RGBA}; no I/O, no randomness.
 import {hexToRgb,rgbToHex,quantiser,clearBackground,downscale,outline} from './post.mjs';
+import {postFlat} from './post-flat.mjs';
 
 const luma=(d,o)=>d[o]*.299+d[o+1]*.587+d[o+2]*.114;
 // Edge energy per column (axis 'x') or row ('y'): how much the image changes across that line.
@@ -71,7 +72,8 @@ export class FlatError extends Error{constructor(n,min,notes){super(`flat: ${n} 
 // opts: hint (the model's pixel grid at this tier), tier (picks entry.sizes[tier]; an entry with a plain size [w,h] is
 // taken as is), minPalette and factors (the tier's palette widening; post.minPalette wins).
 export function postProcess(img,entry,pal,outlineColor,{hint=8,tier=32,minPalette=6,factors}={}){
-  const p=entry.post||{},[W,H]=(entry.sizes&&entry.sizes[tier])||entry.size,tile=entry.kind==='tile'||entry.kind==='autotile';
+  const p=entry.post||{};if(p.flat)return postFlat(img,entry,pal,{hint,tier}); // buildings and standing landmarks (#763): post-flat.mjs
+  const [W,H]=(entry.sizes&&entry.sizes[tier])||entry.size,tile=entry.kind==='tile'||entry.kind==='autotile';
   const g=detectGrid(img,p.grid||hint);let native=sampleCells(img,g),im;
   const notes={grid:g.found?`${g.x.s}x${g.y.s}`:`none (used ${g.x.s})`,native:`${native.w}x${native.h}`};
   if(tile&&(p.fit||'crop')==='crop'){const c=seamlessCrop(native,W,H);im=c;notes.crop=c.at;notes.seam=Math.round(c.seam)}

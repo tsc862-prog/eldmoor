@@ -70,6 +70,11 @@ const boxHits=(b,x0,y0,x1,y1)=>hits(b[0],b[1],b[0]+b[2],b[1]+b[3],x0,y0,x1,y1);
 function put(ctx,img,[bx,by,bw,bh],rot){const x=bx*U,y=by*U,w=bw*U,h=bh*U;
   if(!rot){ctx.drawImage(img,x,y,w,h);return}
   const dw=rot&1?h:w,dh=rot&1?w:h;ctx.save();ctx.translate(x+w/2,y+h/2);ctx.rotate(rot*Math.PI/2);ctx.drawImage(img,-dw/2,-dh/2,dw,dh);ctx.restore()}
+// The base strip under a generated building (#763): the procedural house stands on a darker ground strip, so a generated
+// one does too, over the bottom BASE world units of its box (the building recipe leaves those art rows clear, post.base),
+// where the eye reads it as the footing instead of a sticker on the plaza. Inside the box, so the chunk tests hold.
+const BASE=2;
+function base(ctx,[bx,by,bw,bh]){const x=bx*U,y=(by+bh)*U;ctx.fillStyle='#0006';ctx.fillRect(x+1,y-BASE,bw*U-2,BASE);ctx.fillStyle='#0003';ctx.fillRect(x,y-BASE,1,BASE);ctx.fillRect(x+bw*U-1,y-BASE,1,BASE)}
 // Whether a piece of town c draws from its asset (for the procedural fallbacks below).
 const drawn=(c,piece)=>!!pieceImage(pieceId(townStyle(c),piece));
 
@@ -81,7 +86,7 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
   for(const c of CITY){
     if(!hits(Math.min(c.x0-2,c.x0-1),c.y0-2,Math.max(c.x0+13,c.x1+2),Math.max(c.y0+9,c.y1+2),x0,y0,x1,y1))continue;
     // generated pieces first (walls, gate, buildings), each where its asset is loaded
-    for(const p of townPlan(c)){if(!boxHits(p.box,x0,y0,x1,y1))continue;const img=pieceImage(p.id);if(img)put(ctx,img,p.box,p.rot)}
+    for(const p of townPlan(c)){if(!boxHits(p.box,x0,y0,x1,y1))continue;const img=pieceImage(p.id);if(!img)continue;if(p.piece)base(ctx,p.box);put(ctx,img,p.box,p.rot)}
     // procedural: auction house (faction roof, gold sign) and the hall where no asset drew them, then the gate banners
     // and graveyard stones; drawn relative to the town's top-left corner exactly as before slice 3
     const f=FAC[c.fac],ox=(c.x0-2)*T,dy=(c.y0-2)*T;

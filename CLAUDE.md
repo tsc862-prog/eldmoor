@@ -183,7 +183,7 @@ other. The rules:
   post-processing, and `npm run art:reprocess -- <date>|all [keys]` re-runs post-processing on them with no call. State in
   `assets/queue.json` (gitignored), one line a run in `logs/art.log` (the launcher's `s` shows it); refused models fall
   through to the next candidate and the one that answers is pinned. `npm run art:accept -- <ids>|all` (`--reject`,
-  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. Index and queue keys are
+  `--list`) moves reviewed images into `assets/` and the index, committed through a PR. Buildings and landmarks (#763) use the building recipe (`post.flat`, `scripts/art/post-flat.mjs`: the flat palette `palette.js` `FLAT`, posterised with no dither, the outline re-drawn, a style gate on colours (8), speckle, edges and palette distance; the renderer draws a base strip under them), and art:accept takes one only after `npm run art:preview -- <key>|all` (the candidate in a town at 3440x1440, zoom 1, beside the procedural houses; the shot is saved beside the inbox image and recorded as `check` in the index). The manifest's `kindModel` (off) switches them to ume-flux once the Space can run it. Index and queue keys are
   `<id>@<tier>` (files `assets/<kind>/<tier>/<name>.png`, entries carry `tier`; keys from before tiers read as 32). `scripts\art\schedule.cmd [HH:MM]`
   registers the daily Windows task. `npm run art:gen` generates straight into `assets/`, `npm run art:sheet` writes
   the contact sheet. Post-processing (`post-texture.mjs` on the building blocks of `post.mjs`, zero-dependency PNG codec
