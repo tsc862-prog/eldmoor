@@ -16,7 +16,7 @@ import {cryptPull,goalEvent} from './goals.js';
 import {record,timeline,first} from './history.js';
 import {livingGuilds} from './guilds.js';
 import {brainOk} from './brain.js';
-import {unitDraft,cryptHold,cryptReserved} from './council.js';
+import {unitDraft,cryptHold,cryptReserved,inMuster} from './council.js';
 import {companyOf} from './company.js';
 import {notify} from './notify.js';
 import {rivalDeed} from './rivals.js';
@@ -48,9 +48,9 @@ export function payClear(g,perRoom){
 function pickW(list,w){let tot=0;for(const x of list)tot+=w(x);let r=rnd()*tot;for(const x of list){r-=w(x);if(r<0)return x}return list[list.length-1]}
 export function dungeonCheck(dt){const agents=S.agents;
   const g=CRYPT.group;
-  if(!g){if(cryptHold())return; // the Fellowship's call holds the Crypt (reserved, or waiting with the cooldown waived)
+  if(!g){if(cryptHold())return; // a company's own vote holds the Crypt (reserved, or waiting with the cooldown waived)
     CRYPT.cd-=dt;if(CRYPT.cd>0)return;CRYPT.cd=20+rnd()*25;
-    const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&(a.lvl>=CRYPT_LVL||companyOf(a))&&!a.raid&&(a.player||!wounded(a))&&['hunt','travel','town','return'].includes(a.state)&&brainOk(a,'crypt'));
+    const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&(a.lvl>=CRYPT_LVL||companyOf(a))&&!a.raid&&(a.player||!wounded(a))&&['hunt','travel','town','return'].includes(a.state)&&inMuster(a,'crypt')&&brainOk(a,'crypt'));
     const cands=livingGuilds().filter(x=>x.fac===f&&pool.filter(a=>a.guild===x).length>=3),gu=cands.length?pickW(cands,cryptWeight):null; // none: the unguilded mixed pool below; a Delve guild (sim/guildfocus.js) weighs more
     let mem=pool.filter(a=>gu&&a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
     if(mem.length<5)mem=mem.concat(pool.filter(a=>!mem.includes(a)).sort((x,y)=>cryptPull(y)-cryptPull(x)).slice(0,5-mem.length));
