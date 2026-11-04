@@ -55,6 +55,7 @@
 // scene open is not looked at, and C.tableQ is left only for a merge's paired vote (#500) while that company's own scene is
 // open. With one company nothing of this is ever used. A scene that runs on the live clock (stopsWorld false) holds its
 // members and foes in place (engaged, ENG in sim/scenes.js) until it resolves; boss and Crypt scenes hold no one.
+import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
@@ -407,7 +408,7 @@ function apply(sc,a,act){if(act.k==='attempt')return ATT?ATT.apply(sc,a,act):'no
     {const h=f.hp;strike(a,f);return 'hit for '+Math.max(0,Math.round(h-f.hp))}
   case 'guard':if(!f)return 'nothing to guard against';if(f.kind==='mob'){f.target=a;if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}return 'drew it on'}
     if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&a.fac!==f.fac){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
-  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
+  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
   case 'stabilize':{const t=bleedingOf(downIn(sc),a);if(!t)return 'nobody is bleeding';return stabilizeAt(a,t).text} // #654
   case 'potion':{const lo=lowest(sc),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});useNote(sc,a,id,lo,r);return r.ok?'+'+r.healed+' to '+lo.name+' ('+id+')':r.error}
   case 'parley':if(!rounds(sc)||!canParley(f))return 'no one there will listen';return parley(sc,a,foesOf(sc),fighters(sc)); // a say-check against the foe's temper (#296)

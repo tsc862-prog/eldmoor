@@ -15,6 +15,8 @@
 //      (claim tag, session file, "| run $" turn lines, the budget stopping the run, no key / unknown
 //      model refusals) and a one-turn Fellowship of OpenAI members.
 // Usage: npm run openaicheck
+import {fitTools, TOOL_DESC_MAX} from './providers/openai.mjs';
+import {dmMindCases} from './dm-mind-cases.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync} from 'node:fs';
@@ -96,6 +98,11 @@ console.log('openai adapter (mock server)');
   ok(cq.tools.length === ollamaTools().length && cq.tools[0].type === 'function' && cq.reasoning_effort === 'none', 'chat: the tools are sent as function tools, reasoning_effort none (Chat Completions needs it for tool calls)');
   const t = toOpenAI([{role: 'user', content: 'a'}, {role: 'assistant', content: '', tool_calls: [{function: {name: 'look', arguments: {}}}, {function: {name: 'wait', arguments: {minutes: 5}}}]}, {role: 'tool', tool_name: 'look', content: '{}'}, {role: 'user', content: 'next'}, {role: 'tool', tool_name: 'x', content: 'orphan'}]);
   ok(t[1].tool_calls.length === 2 && t[1].tool_calls[1].function.arguments === '{"minutes":5}' && t[2].tool_call_id === t[1].tool_calls[0].id && t[3].tool_call_id === t[1].tool_calls[1].id && t[3].content === '(not run)' && t[4].role === 'user' && t[5].role === 'user' && /orphan/.test(t[5].content), 'message translation: ids, JSON-string arguments, unanswered calls filled, orphan tool results become text');
+  // a function description past the API's limit (#824): cut at a sentence, the rest in the system message, the shorter ones untouched
+  {const long = 'First rule here. '.repeat(100).trim(), f = fitTools([{type: 'function', function: {name: 'big', description: long}}, {type: 'function', function: {name: 'small', description: 'short'}}], [{role: 'system', content: 'Orders.'}, {role: 'user', content: 'go'}]);
+   const d = f.tools[0].function.description, more = f.messages[0].content.split('big: ')[1];
+   ok(d.length <= TOOL_DESC_MAX && /\. \(more in your orders\)$/.test(d) && d.replace(' (more in your orders)', '').length + more.length + 1 === long.length && f.tools[1].function.description === 'short' && f.messages[0].content.startsWith('Orders.'), 'fitTools: nothing is lost and the description fits (' + d.length + ')');
+   const same = [{type: 'function', function: {name: 's', description: 'short'}}], m0 = [{role: 'user', content: 'x'}], g = fitTools(same, m0); ok(g.tools === same && g.messages === m0, 'fitTools leaves a request that fits alone')}
   // chat retries a 429 by itself (an agent turn has seconds to spare), up to its wait budget
   mock.set('rate', 1); const t0 = Date.now(); const rr = await ad.chat({model: 'gpt-6-luna', messages: [{role: 'user', content: 'x'}], tools: ollamaTools()});
   ok(rr.message && Date.now() - t0 >= 900 && Date.now() - t0 < 5000, 'chat: a 429 waits retry-after and tries again (' + (Date.now() - t0) + ' ms)');
@@ -225,6 +232,9 @@ console.log('npm run fellowship -- --provider openai (headless Fellowship, mock 
   ok(j.url === FB && j.spent > 0 && j.members.every(m => m.provider === 'openai' && m.tokensIn > 0 && m.cost > 0), 'the run record lists the members with tokens and real cost');
   fw.p.kill();
 }
+
+// the DM on OpenAI (#824): gpt-6-astra costs $0.011 a call here, so a turn of three stays under $0.04 and one voice call passes it
+await dmMindCases({provider: 'openai', model: 'gpt-6-luna', env: cleanEnv, ok, port: port + 3, seen: mock.seen, pricey: {model: 'gpt-6-astra', budget: .04}});
 
 for (const k of kids) try {k.kill()} catch {}
 mock.close();

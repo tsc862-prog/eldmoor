@@ -229,8 +229,9 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     async chat({model, messages, tools, format, strict = false, maxTokens = 600, signal}) {
       const mdl = model || defaultModel;
       if (!mdl) throw fail(name + ': no model chosen (use --model, or set the default model in .env)');
-      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), [tokensField]: tokens(mdl, maxTokens), messages: toOpenAI(messages),
-        ...(tools ? {tools} : {}), ...(format ? {response_format: strict ? {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema: format}} : {type: 'json_object'}} : {})};
+      const fit = fitTools(tools, toOpenAI(messages));
+      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), [tokensField]: tokens(mdl, maxTokens), messages: fit.messages,
+        ...(tools ? {tools: fit.tools} : {}), ...(format ? {response_format: strict ? {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema: format}} : {type: 'json_object'}} : {})};
       const j = await withSchema(body, format, {signal, waitMs: 30000, retries: 4});
       const out = finish(j, mdl, t0, false);
       const m = out.raw, calls = Array.isArray(m.tool_calls) ? m.tool_calls.filter(c => c && c.function).map(c => {
@@ -263,6 +264,24 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
 // The agent loop's messages as OpenAI chat messages: tool_calls get ids and JSON-string arguments, and
 // each following tool message answers the next unanswered id (a tool message with no call to answer
 // becomes plain user text, so a trimmed history never sends an orphan).
+// Chat Completions answers 400 to a function description past 1024 characters (developers' reports; the docs do not print it), and the
+// game's longest tools run past that (the DM's stage_scene is over 3000, #824). Cut at a sentence and send the rest in the system
+// message, so nothing is lost and the prompt is the same size. -> {tools, messages}
+export const TOOL_DESC_MAX = 1024;
+export function fitTools(tools, messages, max = TOOL_DESC_MAX) {
+  if (!Array.isArray(tools)) return {tools, messages};
+  const MORE = ' (more in your orders)', room = max - MORE.length, rest = [];
+  const out = tools.map(t => {const f = t && t.function, d = f && f.description;
+    if (typeof d !== 'string' || d.length <= max) return t;
+    const dot = d.lastIndexOf('. ', room - 1), at = dot > room / 2 ? dot + 1 : room;
+    rest.push(`${f.name}: ${d.slice(at).trim()}`);
+    return {...t, function: {...f, description: d.slice(0, at).trim() + MORE}}});
+  if (!rest.length) return {tools, messages};
+  const note = 'More on your tools:\n' + rest.join('\n'), L = messages.slice(), i = L.findIndex(m => m.role === 'system');
+  if (i >= 0) L[i] = {...L[i], content: L[i].content + '\n\n' + note}; else L.unshift({role: 'system', content: note});
+  return {tools: out, messages: L};
+}
+
 export function toOpenAI(messages) {
   const out = [], pending = []; let n = 0;
   const flush = () => {while (pending.length) out.push({role: 'tool', tool_call_id: pending.shift(), content: '(not run)'})}; // calls cut short (the hero died mid-reply)

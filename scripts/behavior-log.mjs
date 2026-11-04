@@ -145,7 +145,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     const t = now(); decides.push(t); while (decides.length && t - decides[0] > 60e3) decides.shift();
     if (decides.length > BD.DECIDE_PER_MIN) anomaly({kind: 'request-flood', seat: 'relay', text: `${decides.length} brain-relay requests in the last minute`, evidence: {perMin: decides.length}});
     write('decision', {src: 'relay', kind: d.kind, hero: d.hero || null, provider: d.provider || null, model: d.model || null, ok: !!d.ok, status: d.status || (d.ok ? 200 : null), ms: d.ms ?? null,
-      ...(d.choice != null ? {choice: cut(d.choice, 40)} : {}), ...(d.error ? {error: cut(d.error, 160)} : {})});
+      ...(Number.isFinite(d.cost) ? {cost: d.cost, tokensIn: d.tokensIn ?? null, tokensOut: d.tokensOut ?? null} : {}), ...(d.choice != null ? {choice: cut(d.choice, 40)} : {}), ...(d.error ? {error: cut(d.error, 160)} : {})});
     sawModel(d.provider, d.model, 'minds');
     if (!d.ok && (d.status === 429 || d.status === 504 || d.status >= 500 || /timeout|rate/i.test(d.error || ''))) relayFail(d.status === 429 ? '429 rate limited' : cut(d.error || d.status, 60), d.provider);
   }
