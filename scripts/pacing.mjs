@@ -265,6 +265,26 @@ export async function takeClaudeSlot(base, log = () => {}, {key = process.env.EL
 }
 export async function withClaudeSlot(base, fn, log, opts) {const release = await takeClaudeSlot(base, log, opts); try {return await fn()} finally {release()}}
 
+// #687 (follow-up): a Claude member whose own Table scene has been due for SCENE_GRAB_MS with no scene_act is mid-turn in a model
+// call that no tool result can interrupt. sceneGrab polls due() every `every` ms; once it has held for `ms` it calls abort() once
+// (the runner aborts the Agent SDK query; the session stays resumable) and onGrab(). stop() ends the poll when the turn does;
+// grabbed() says whether it fired. due() is the runner's own view of /play/health (the member's scene waits on it).
+export const SCENE_GRAB_MS = 15000;
+export function sceneGrab({due, abort, onGrab = null, ms = SCENE_GRAB_MS, every = 1000}) {
+  let since = null, fired = false, busy = false;
+  const t = setInterval(async () => {
+    if (fired || busy) return; busy = true; let d = false;
+    try {d = !!(await due())} catch {} busy = false;
+    if (fired) return;
+    if (!d) {since = null; return}
+    if (since == null) since = Date.now();
+    if (Date.now() - since >= ms) {fired = true; clearInterval(t); try {if (onGrab) onGrab()} catch {} try {abort()} catch {}}
+  }, every);
+  if (t.unref) t.unref();
+  return {stop: () => clearInterval(t), grabbed: () => fired};
+}
+export const GRAB_RESUME = 'Your turn was paused so the Table scene could be answered, and it has been (see the state header). Carry on from what you were doing; do not repeat what you already did.';
+
 // ---- reflection moments (issue #179) ----
 // The game names a moment to write memories in the state header (brief.reflect = {id, kind, why}, src/sim/reflect.js):
 // making camp, the end of a scene, a companion's death, an oath kept, a big trade, a conversation, or the end of the day.
@@ -278,14 +298,18 @@ export const INTENT_ASK = 'What are you trying to do next? If your aim changed o
 export const BECOME_FIELDS = ['voice', 'wants', 'fears', 'quirk', 'never_says', 'beliefs', 'traits', 'stance'];
 // Reflections are on unless AGENT_REFLECT=0 or --no-reflect (--reflect turns them on again); checks that count exact turns turn them off.
 export const REFLECT_ON = process.argv.includes('--reflect') || !(process.env.AGENT_REFLECT === '0' || process.argv.includes('--no-reflect'));
+// Downed (#658): the hero lies at zero health and cannot act; its turn is this reflection, with no acting tools.
+export const DOWNED_ASK = 'You lie in the dark, bleeding at zero health: you cannot move, fight or speak, and your acting tools are refused until someone brings you back or you rise. What do you hear? What do you think of, lying there?';
 export function reflectPrompt(r, {tools = true} = {}) {
   const why = r && r.why ? ` (now: ${String(r.why).slice(0, 200)})` : '';
-  return `Before you rest${why}: what is worth remembering from today? ` + (tools
+  const lead = r && r.kind === 'downed' ? `${DOWNED_ASK}${why} What is worth remembering? ` : `Before you rest${why}: what is worth remembering from today? `;
+  return lead + (tools
     ? `Write 1-${REFLECT_MAX} memories with remember (title, text, tags; about is optional), in your own words, or answer "none" if nothing is. Anything you want to keep: a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion. Prefer remember to journal_write for this. ${BECOME_ASK} If it has, change that one part with become (field, text, why). ${INTENT_ASK} (intent {goal, why, until}).`
     : `Write 0-${REFLECT_MAX} memories in your own words: anything you want to keep (a promise, a debt, a friend or enemy, a place, a lesson, how you feel about a companion). ${BECOME_ASK} ${INTENT_ASK} Answer only with the JSON object {"notes": [{"title": "...", "text": "...", "tags": ["..."], "about": "who or what it concerns, or empty"}], "become": {"field": "none", "text": "", "why": "", "about": ""}, "intent": {"goal": "", "why": "", "until": ""}}; an empty list if nothing is worth keeping, and field "none" unless you changed (else one of ${BECOME_FIELDS.join(', ')}, with your new words in text, why it changed, and for a stance who it is about); intent goal empty to keep your aim as it is (else what you will do next, why, and until: game hours or a condition).`);
 }
 // Should this turn be a reflection? A due moment, no scene open, and nothing that cannot wait.
-export const reflectNow = (b, w) => !!(REFLECT_ON && b && b.reflect && b.reflect.id && !b.scene && !(w && (w.wake === 'now' || w.must || w.table)));
+// A downed hero (#658): its turn is the reflection whatever woke it (its acting tools are refused anyway), unless a scene is open.
+export const reflectNow = (b, w) => !!(REFLECT_ON && b && b.reflect && b.reflect.id && !b.scene && ((b.state === 'downed' && b.reflect.kind === 'downed') || !(w && (w.wake === 'now' || w.must || w.table))));
 // Close the moment at the game (POST /play/pace {reflected, wrote}). Never throws; an older relay just ignores it.
 export async function closeReflection(base, hero, runner, id, wrote, fetchImpl = fetch) {
   try {const r = await fetchImpl(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero, runner, reflected: id, wrote}), signal: AbortSignal.timeout(8000)});
@@ -317,7 +341,7 @@ export function watchWorld({base, known, onNew, every = 3000, fetchImpl = fetch}
   t.unref();
   return () => {done = true; clearInterval(t)};
 }
-export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}) so the runner starts again for the current members; the old sessions are set aside in logs/agents/old/.`;
+export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} was ${c.was}, now ${c.now}`).join('; ')}. Releasing the heroes and exiting (code ${NEW_WORLD_EXIT}); nothing starts this runner again by itself (#691), the new world's setup or a resume starts the ones it wants, and the old sessions are set aside in logs/agents/old/.`;
 
 // Claude turns (issue #401): the same fresh state header the local turns get (briefText: state, HP, place, foe, news,
 // memories, what was said lately), without its generic last line, plus the turn order. A Claude turn used to open with

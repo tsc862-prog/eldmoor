@@ -17,7 +17,10 @@
 // it had (logs/runners/active.json, --resume-runners) once the page names the same heroes again. When Vite reloads the
 // page for a src change, the page reconnects the same way.
 //
-// Options: --relay-port N (8787, or RELAY_PORT), --vite-port N (5173), --no-open, --repo DIR (the git checkout `u`
+// A third child runs the art loop (#661, scripts/art/daily.mjs --loop: generates until the day's share or the provider's limit, waits,
+// checks again by itself; `s` shows its next check and spend; --no-art or ART_LOOP=0 skips it; it stops with the rest on q, restarts on u).
+//
+// Options: --relay-port N (8787, or RELAY_PORT), --vite-port N (5173), --no-open, --no-art, --repo DIR (the git checkout `u`
 // pulls; default: this one). Children are started with node and an argument array, never a shell. The old way
 // (npm run relay -- --runners and npm run dev in two terminals) still works.
 import {spawn} from 'node:child_process';
@@ -32,15 +35,15 @@ const WIN = process.platform === 'win32';
 const argv = process.argv.slice(2);
 const opt = (name, dflt) => {const i = argv.indexOf(name); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : dflt};
 const RELAY_PORT = Number(opt('--relay-port', process.env.RELAY_PORT || 8787)), VITE_PORT = Number(opt('--vite-port', 5173));
-const REPO = opt('--repo', ROOT), NO_OPEN = argv.includes('--no-open');
+const REPO = opt('--repo', ROOT), NO_OPEN = argv.includes('--no-open'), NO_ART = argv.includes('--no-art') || process.env.ART_LOOP === '0';
 const NO_COLOR = !!process.env.NO_COLOR || !process.stdout.isTTY || argv.includes('--no-color');
 const GRACE_MS = Number(process.env.UP_GRACE_MS) || 12000; // how long the relay gets to stop its runners before the tree is killed
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- output ----
-const COLORS = {up: '1;33', relay: '36', vite: '35', git: '32', npm: '32', notes: '1;32'};
+const COLORS = {up: '1;33', relay: '36', vite: '35', git: '32', npm: '32', art: '34', notes: '1;32'};
 const tagOf = name => (NO_COLOR ? `[${name}]` : `\x1b[${COLORS[name] || '37'}m[${name}]\x1b[0m`).padEnd(NO_COLOR ? 8 : 20);
-const say = (name, text) => {for (const l of String(text).split(/\r?\n/)) if (l.trim()) process.stdout.write(tagOf(name) + ' ' + l + '\n')};
+const say = (name, text) => {for (const l of String(text).split(/\r?\n/)) if (l.trim()) process.stdout.write(tagOf(name) + ' ' + (name === 'art' ? l.replace(/^\[art\] /, '') : l) + '\n')};
 const up = t => say('up', t);
 
 // ---- processes ----
@@ -78,7 +81,7 @@ const portBusy = async port => (await listening(port, '127.0.0.1')) || (await li
 async function waitPortFree(port, ms = 8000) {const t0 = Date.now(); while (Date.now() - t0 < ms) {if (!(await portBusy(port))) return true; await sleep(200)} return false}
 
 // ---- state ----
-let relay = null, vite = null, busy = '', quitting = false, codeChanged = false, quietUntil = 0, opened = false;
+let relay = null, vite = null, art = null, busy = '', quitting = false, codeChanged = false, quietUntil = 0, opened = false;
 const RELAY_ARGS = ['scripts/relay.mjs', '--runners', '--resume-runners', '--launcher'];
 const relayEnv = () => ({RELAY_PORT: String(RELAY_PORT), RELAY_ORIGIN: `http://localhost:${VITE_PORT}`, ELDMOOR_LAUNCHER: '1'});
 
@@ -98,6 +101,14 @@ function startVite() {
   mine.done.then(() => {if (!mine.expected && !quitting) up(`vite exited on its own (code ${mine.code ?? mine.sig}). Press u or r after fixing it, or q and start again.`)});
   return vite;
 }
+function startArt() { // the art loop: never touches the relay or Vite, and a failure here is only a message
+  if (NO_ART) return;
+  art = launch('art', ['scripts/art/daily.mjs', '--loop']);
+  up(`art loop started (pid ${art.pid}); s shows its next check`);
+  const mine = art;
+  mine.done.then(() => {if (!mine.expected && !quitting) up(`art loop exited on its own (code ${mine.code ?? mine.sig}). Press u to start it again.`)});
+}
+async function stopArt() {if (art) await stopProc(art, {soft: true, graceMs: Math.min(GRACE_MS, 5000)}); art = null}
 async function restartRelay() {
   if (relay) await stopProc(relay, {soft: true});
   if (!(await waitPortFree(RELAY_PORT))) up(`warning: port ${RELAY_PORT} is still held after the relay stopped`);
@@ -155,6 +166,7 @@ async function update() {
   if (before === after) return up('already up to date. (Press r to restart the relay anyway.)');
   const files = (await git('diff', '--name-only', before, after)).out.split('\n').map(s => s.trim()).filter(Boolean);
   up(`updated ${before.slice(0, 7)} -> ${after.slice(0, 7)}: ${files.length} file(s) changed`);
+  if (!NO_ART) {await stopArt(); startArt()} // the loop runs the new scripts/art
   showUnseen();
   const lock = files.includes('package-lock.json'), viteChanged = lock || files.includes('package.json') || files.includes('vite.config.js');
   if (lock) { // dependencies changed: nothing may hold node_modules while npm works
@@ -215,6 +227,10 @@ async function status() {
   try { // the last daily art run (#177: scripts/art/daily.mjs appends one line a run to logs/art.log)
     const lines = readFileSync(join(REPO, 'logs', 'art.log'), 'utf8').trim().split(/\r?\n/); up(`art: ${lines[lines.length - 1].slice(0, 160)}`);
   } catch {up('art: no daily run yet (npm run art:daily -- --now)')}
+  try { // the art loop's own state (scripts/art/daily.mjs --loop writes it)
+    const j = JSON.parse(readFileSync(process.env.ART_STATE || join(ROOT, 'logs', 'art-loop.json'), 'utf8')), l = j.last || {};
+    up(`art loop: ${NO_ART ? 'off' : j.state === 'waiting' ? `waiting until ${j.nextAt || j.next} (${j.why})` : j.state}${l.at ? `; last pass made ${l.made || 0} (${String(l.stop || '').slice(0, 50)})` : ''}${l.monthly ? `; today $${(l.spentToday || 0).toFixed(3)} of a daily share of $${(l.budget || 0).toFixed(3)} (${l.budgetFrom || 'the month share'}; ART_DAILY_BUDGET changes it), month $${(l.spentMonth || 0).toFixed(3)} of $${l.monthly.toFixed(2)}` : ''}${l.provider === 'space' ? `; ${l.images || 0} images today, ${(l.gpuMin || 0).toFixed(1)} GPU min of ${l.quotaMin || 40} (stops at ${l.capMin || 36})` : ''}`);
+  } catch {up(`art loop: ${NO_ART ? 'off (--no-art or ART_LOOP=0)' : 'no state yet'}`)}
   if (codeChanged) up('relay code changed since it started: press u (or r) to apply');
 }
 
@@ -241,7 +257,7 @@ async function shutdown(why, code = 0) {
   up(`stopping (${why}): runners, then the relay, then Vite`);
   up('runners will resume next start (delete logs/runners/active.json to start clean)');
   const fast = /hangup|close/.test(why); // a closing window gives only a few seconds
-  try {if (relay) await stopProc(relay, {soft: true, graceMs: fast ? 3000 : GRACE_MS}); if (vite) await stopProc(vite)} catch {}
+  try {await stopArt(); if (relay) await stopProc(relay, {soft: true, graceMs: fast ? 3000 : GRACE_MS}); if (vite) await stopProc(vite)} catch {}
   for (const p of [...live]) await killTree(p.pid);
   up('stopped. Ports ' + RELAY_PORT + ' and ' + VITE_PORT + ' are free.');
   if (process.stdin.isTTY && process.stdin.setRawMode) try {process.stdin.setRawMode(false)} catch {}
@@ -272,7 +288,7 @@ async function main() {
   if (process.stdout.isTTY) process.stdout.write('\x1b]0;Eldmoor\x07');
   up('Eldmoor launcher. Keys: u update, r restart relay, s status, n patch notes, h help, q quit.');
   showUnseen();
-  startRelay(); startVite();
+  startRelay(); startVite(); startArt();
   if (!NO_OPEN) setTimeout(openGame, 20000).unref(); // if Vite's ready line is missed
   watchCode();
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK']) process.on(sig, () => shutdown(sig));

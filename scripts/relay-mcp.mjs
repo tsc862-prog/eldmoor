@@ -78,6 +78,7 @@ export const DM_WAIT_MAX = 25000; // the longest long poll of table_call / npc_c
 // models read as something they must do). offline:true marks it for the runners (not the model's mistake, scripts/local-agent.mjs).
 export const PAUSED = 'The world is paused or reloading; wait and try again (your runner picks up when it is back).';
 const paused = why => ({ok: false, error: PAUSED, offline: true, why});
+export const OFFLINE_WAIT_MS = 10000; // how long an offline call waits for the page to list the hero before it answers offline (#691)
 export const CLAIM_MS = 45000, LINK_MS = 20000; // a runner claim lives this long unrefreshed; a call keeps the link 'connected' this long
 export const HERO_HEADER = 'x-eldmoor-hero', ROLE_HEADER = 'x-eldmoor-role', RUNNER_HEADER = 'x-eldmoor-runner', DM_KEY = 'dm'; // DM_KEY: the DM seat's key in the claim and link maps
 // A runner id from a header, query or body value (what /play/claim was given), or null.
@@ -99,7 +100,7 @@ export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes
 
 // ---- the browser backend: one page at a time over a WebSocket, serving all its agent heroes ----
 export function browserBackend({log = () => {}, onBehavior = null, onWorld = null, onMirror = null, onHello = null} = {}) {
-  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false, dmPrep = null;
+  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false, dmPrep = null, worldId = null;
   const waiting = new Map();
   const send = o => {if (sock && sock.readyState === 1) sock.send(JSON.stringify(o))};
   return {
@@ -116,16 +117,17 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
           heroes = next; lastLinks = '';
           const seat = m.dm === true || !!(m.dm && m.dm.seat); if (seat !== dmSeat) log(`[play] DM seat ${seat ? 'open' : 'closed'}`); dmSeat = seat;
           dmPrep = m.dm && m.dm.prep && typeof m.dm.prep === 'object' ? {state: String(m.dm.prep.state || '').slice(0, 12), kind: String(m.dm.prep.kind || '').slice(0, 12), calls: Number(m.dm.prep.calls) || 0, max_calls: Number(m.dm.prep.max_calls) || 0, ...(m.dm.prep.why ? {why: String(m.dm.prep.why).slice(0, 12)} : {})} : null; // the DM's prep (#437)
+          worldId = typeof m.worldId === 'string' ? m.worldId : null; // the instance id of the world the page plays (#691)
           if (onWorld && typeof m.world === 'string') onWorld(m.world, typeof m.worldId === 'string' ? m.worldId : null); // the behavior logs' folder (issue #129)
           if (onHello) try {onHello()} catch {} // the links at once: a page that (re)connected never shows 'no runner' while it waits for the next tick (#563)
         } else if (m.type === 'behavior' && onBehavior && typeof m.kind === 'string') {try {onBehavior(m.kind, m.rec)} catch (e) {log('[play] behavior log: ' + e.message)}}
         else if (m.type === 'mirror' && onMirror && Array.isArray(m.seats)) {try {onMirror(m.seats)} catch (e) {log('[play] memory mirror: ' + e.message)}} // agent memories as Markdown (#155); written, never read back
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
       });
-      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; dmPrep = null; log('[play] game page disconnected');
+      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; dmPrep = null; worldId = null; log('[play] game page disconnected');
         for (const [id, w] of waiting) {clearTimeout(w.t); w.res(paused('page went away')); waiting.delete(id)}});
     },
-    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat, ...(dmPrep ? {dmPrep} : {})}),
+    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat, ...(worldId ? {worldId} : {}), ...(dmPrep ? {dmPrep} : {})}),
     // A DM tool call (issue #66), answered by the page through src/sim/dmagent.js.
     dmCall(tool, args) {
       if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
@@ -202,12 +204,14 @@ const readBody = req => new Promise((res, rej) => {
 // embed: a scripts/embed.mjs semanticRecall (issue #553): recall and journal_search of a hero (and the DM's recall) get the meaning scores the game folds into its keyword ranking; without it, or when it has nothing, the tool answers as before.
 // mirror: a scripts/memory-mirror.mjs writer (issue #155) for the page's {type:'mirror', seats} messages.
 // behavior: a scripts/behavior-log.mjs writer (issue #129); without it the host keeps no behavior logs.
-export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null, embed = null} = {}) {
+export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null, embed = null, offlineWaitMs = OFFLINE_WAIT_MS} = {}) {
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
-  const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, rec, {links: links(), runners: runners()}) : false;
+  // A wish (#663) is stamped with the model that holds its seat; nothing of it ever goes back out.
+  const wishRunner = seat => {try {const s = String(seat || ''), r = s === 'dm' ? runnerOf(DM_KEY) : runnerOf(Number.isFinite(+s.slice(5)) ? +s.slice(5) : s.slice(5)); return r ? {provider: r.provider || null, model: r.model || null} : {}} catch (e) {return {}}};
+  const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, kind === 'wish' && rec && rec.type === 'wish' ? {...wishRunner(rec.seat), ...rec} : rec, {links: links(), runners: runners()}) : false;
   const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror || embed ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id); if (embed) embed.setWorld(w, id)} : null,
     onMirror: mirror ? seats => mirror.write(seats) : null, onHello: () => pushLinks()}); // mirror: scripts/memory-mirror.mjs (issue #155)
-  const stats = {calls: 0, errors: 0};
+  const stats = {calls: 0, errors: 0, offlineWaits: 0};
   const claims = new Map(), act = new Map(); // hero id -> {runner, at} / {last, inflight}
   const vlog = rec => {if (!verbose) return; try {mkdirSync(dirname(verbose), {recursive: true}); appendFileSync(verbose, JSON.stringify(rec) + '\n')} catch (e) {log(`[play] verbose log failed: ${e.message}`)}};
   const claimOf = id => {const c = claims.get(id); return c && now() - c.at < CLAIM_MS ? c : null};
@@ -247,6 +251,11 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       return rk && rk.hits ? {args: {...args, _sem: rk.sem}, note: ` [meaning ${rk.hits}/${rk.total}${rk.cold ? ', cold' : ''}, ${rk.ms} ms]`} : {args};
     } catch (e) {return {args}}
   }
+  // Offline answers are bounded by a health check (#691): a call that finds the page gone, or the hero not listed, waits up
+  // to offlineWaitMs for the page to list it (polling be.info(), the relay's own view) and tries once more; if it is still
+  // away the runner gets the offline answer after that wait, so it can retry at most once per wait, not in a tight loop.
+  const listed = () => {const i = be.info() || {}; return !!i.connected && (i.heroes || []).length > 0}; // the page is there and has listed its agent heroes
+  async function listedWithin(ms) {const t0 = Date.now(); while (!listed()) {if (Date.now() - t0 >= ms) return false; await new Promise(r => setTimeout(r, 200))} return true}
   async function call(hero, tool, args, rid = null) {
     const t0 = now(), id = resolve(hero); stats.calls++;
     const holder = heldBy(id, rid); if (holder) {stats.errors++; log(`[play] #${id} ${tool} refused: held by ${holder}, asked by ${rid || 'no runner'}`); return refusedSeat(id, holder)}
@@ -258,6 +267,9 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       let send = args;
       if (id != null && embed && SEARCH.has(tool)) {const h = (be.info().heroes || []).find(x => x.id === id); if (h && h.alive !== false) {const m = await meaning(tool, args, {kind: 'hero', id, name: h.name}, () => be.call(id, tool, {_pool: true})); send = m.args; note = m.note || ''}}
       r = id == null ? paused('no agent hero') : await be.call(id, tool, send);
+      if (r && r.offline && !listed()) { // the page is away or has not listed the hero (a reload, a new world): one health check, not a retry loop (#691)
+        stats.offlineWaits++;
+        if (await listedWithin(offlineWaitMs)) {const id2 = resolve(hero); if (id2 != null) r = await be.call(id2, tool, send)}}
     } catch (e) {r = {ok: false, error: String(e.message || e)}}
     if (a) {a.inflight--; a.last = now(); pushLinks()}
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};

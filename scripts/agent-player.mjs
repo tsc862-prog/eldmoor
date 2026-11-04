@@ -60,7 +60,7 @@ import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -93,6 +93,7 @@ export function systemPrompt(st) {
     MEMORY_ORDERS,
     JOURNAL_ORDERS,
     SELF_ORDERS,
+    WISH_ORDERS,
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
@@ -112,9 +113,11 @@ export const withTownOrders = sys => {const s = String(sys || ''); return s.incl
 export const MEMORY_ORDERS = '- Keep memories: write anything you want to keep with remember, in your own words, whenever it makes sense to you: for example a promise, a debt, a grudge or a friend, a name, a place, a plan, a hunch, a lesson. Title, text and tags are yours to choose; about (who or what it concerns) is optional. Before a decision that touches people or places you know, recall them. Fix them with update_memory, drop them with forget, pin the few that must never fade. Each turn names the memories that may matter now. They are yours alone and die with you.';
 // Tiered memory (issue #153): landmarks, chapters and journal_search; withMemoryOrders adds this line to an older prompt too.
 export const JOURNAL_ORDERS = '- Your past stays with you: your landmarks (deaths, vows, levels, the Fellowship, and entries you write with landmark yes) are never lost, and old journal entries and notes fold into chapters. journal_read with no arguments shows them with your latest entries: read it when you pick up again. Before a big decision, journal_search for the people or places involved.';
-export const withMemoryOrders = sys => {let s = String(sys || ''); if (!/- Keep memories: /.test(s)) s += '\n' + MEMORY_ORDERS; if (!/- Your past stays with you: /.test(s)) s += '\n' + JOURNAL_ORDERS; if (!/- Who you are is yours to grow: /.test(s)) s += '\n' + SELF_ORDERS; return s};
+export const withMemoryOrders = sys => {let s = String(sys || ''); if (!/- Keep memories: /.test(s)) s += '\n' + MEMORY_ORDERS; if (!/- Your past stays with you: /.test(s)) s += '\n' + JOURNAL_ORDERS; if (!/- Who you are is yours to grow: /.test(s)) s += '\n' + SELF_ORDERS; if (!/- wish \{tool, what, why, moment\}/.test(s)) s += '\n' + WISH_ORDERS; return s};
 // Who you are (issue #409): the persona is the hero's own to grow; every turn header carries one line of it.
 export const SELF_ORDERS = '- Who you are is yours to grow: self shows your persona (voice, wants, fears, quirk, a line you would never say, beliefs, traits, how you see others) and how you have changed. When your story truly changes you (a loss, a debt paid, a fear faced, a friend won or lost), change that one part with become (field, text, why), in your own words; most days nothing changes. Play from who you are now.';
+// A note for the people who build the game (#663): the one line both seats carry (the DM's is in scripts/dm-agent.mjs).
+export const WISH_ORDERS = '- wish {tool, what, why, moment} is for the people who build the game: say which tool you wished you had to tell your story, in English, at most 3 a game day. It is read later, never answered in play; nothing changes this session.';
 // The first turn of a run that resumes a hero (issue #153): re-ground on the journal overview first.
 export const resumeNote = (first, turns) => first && turns > 0 ? ' You are picking up after a pause: start with journal_read (no arguments) to recall who you have been.' : '';
 
@@ -297,15 +300,16 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   await warmUp({base, seat: {hero: heroId}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
-  let spent = 0, ended = null;
+  let spent = 0, ended = null, resume = false; // resume: the last turn was cut for its scene (#687), so the next carries on at once
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
-    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    const again = resume; resume = false;
+    if (turn > 1 && !again) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
     let b0 = await pacer.brief(); const tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, // under the app supervisor: one of the Claude slots for this turn
@@ -324,6 +328,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
         saveSess(); fails.ok(true); continue}}
     turnAbort = new AbortController();
+    // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the next turn carries on
+    const grab = sceneGrab({due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, abort: () => turnAbort.abort(),
+      onGrab: () => console.log(`  [scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
     const q = query({prompt, options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
@@ -348,9 +355,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       } else if (m.type === 'result') result = m;
     }} catch (e) {
       // Running out of tool turns (--tool-turns) only ends this turn; the next one resumes the session.
-      if (result && result.subtype === 'error_max_turns') console.log(`[agent] turn hit the ${toolTurns} model-call cap; continuing next turn`);
+      if (grab.grabbed()) {} // our own abort, not a failure
+      else if (result && result.subtype === 'error_max_turns') console.log(`[agent] turn hit the ${toolTurns} model-call cap; continuing next turn`);
       else {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`); failed = true}}
-    freeSlot(); pacer.turnDone(); sess.turns++;
+    grab.stop(); freeSlot(); pacer.turnDone(); sess.turns++;
     let turnCost = null, tin = null, tout = null, cread = null, cwrite = null;
     if (result) {
       // total_cost_usd is cumulative for the session when resumed; take the part this turn added.
@@ -370,8 +378,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
     if (refl) {const wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; await closeReflection(base, heroId, RUNNER, refl.id, wrote); console.log(`  [reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
-    saveSess();
+      flags: [...(grab.grabbed() ? ['scene-grab'] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+    saveSess(); if (grab.grabbed() && !failed && !stopReq) resume = true;
     if (fails.ok(!failed && (tools > 0 || !!refl)) && !ended) ended = fails.why();
   }
   clearInterval(beat); await release();

@@ -9,8 +9,10 @@
 // onto yourself, hold the line, the class's special, heal, give a potion, fall back); a strike is a d20
 // plus skill against the foe's number, a 20 lands twice, a 1 leaves you open. Then the foes that still
 // stand strike back, each one blow at a target by d20 against armour, the front-holder drawing most.
-// Damage is real hit points; a hero at zero is dead for good (hardcore): deaths come from these dice at
-// the table, not from a hidden wipe roll. A majority falling back withdraws the party (a rearguard blow
+// Damage is real hit points; a hero at zero is downed (#654, sim/downed.js): they lie in the room and roll a death
+// save on their turn each round, the others may heal, give a potion or stabilize them, and the foes strike only those
+// standing. Nobody left standing is the wipe, and the downed die with it. Deaths come from these dice at the table,
+// not from a hidden wipe roll. A party that leaves with someone down carries them up the stair, still bleeding. A majority falling back withdraws the party (a rearguard blow
 // as they go); a room not won in `rounds` drives them back. Clearing the last room pays what the abstract
 // run pays. Plain data on CRYPT.group.crawl (numbers and ids only), so a save mid-crawl resumes.
 import {rnd,ri,pickA} from '../core/rng.js';
@@ -26,7 +28,9 @@ import {bestUse,useItem} from './inv.js';
 import {notify} from './notify.js';
 import {setCrawlHook,payClear,clearXp} from './dungeon.js';
 import {tableOn,openScene,setSceneKind,sceneFor} from './table.js';
+import {moment,setReflectHold} from './reflect.js'; // no reflection while a crawl runs; one moment when it ends (#687)
 import {companyOf,companyById,roleOf,slotKeyOf,slotted} from './company.js';
+import {isDown,crawlDown,leftBehind,toWorld,bleedOut,bleedingOf,stabText,stabilizeAt,reviveBonus} from './downed.js'; // the downed below ground (#654)
 
 export const CRAWL={
   GAP:4,          // seconds (world time) between one room and the next
@@ -81,11 +85,11 @@ function buildFoes(room,lvl,cr,D){const out=[],fl=room.alvl!=null?room.alvl+((D&
   return out}
 // A foe above the party hits harder in a site room (its level is its own); the Crypt's rooms keep their written hit.
 const hitOf=(room,f,cr)=>{if(room.alvl==null)return room.hit;const d=f.lvl-cr.lvl;return room.hit*Math.max(.12,Math.min(1.8,d>=0?1+.08*d:1+.1*d))};
-const woundedWord=a=>a.hp<maxHp(a)*.35?' (badly hurt)':a.hp<maxHp(a)*.65?' (hurt)':'';
+const woundedWord=a=>isDown(a)?(a.down.stable?' (down, stable)':' (down, bleeding)'):a.hp<maxHp(a)*.35?' (badly hurt)':a.hp<maxHp(a)*.65?' (hurt)':'';
 function frameOf(g,room){const cr=g.crawl,rem=liveFoes(cr),by={};for(const f of rem)by[f.name]=(by[f.name]||0)+1;
   const list=Object.keys(by).map(n=>by[n]>1?by[n]+' '+(species((rem.find(f=>f.name===n)||{}).type)||{}).pl||n+'s':n).join(' and ');
   const fresh=cr.rd===0,hurt=members(g).filter(a=>a.hp<maxHp(a)*.65).map(a=>a.name+woundedWord(a));
-  return [fresh?room.frame+' ':'The fight goes on. ',gd(list)+(fresh?' bar the way.':' still stand.'),hurt.length?' Hurt: '+hurt.join(', ')+'.':'',
+  return [fresh?room.frame+' ':'The fight goes on. ',gd(list),rem.length===1?(fresh?' bars the way.':' still stands.'):(fresh?' bar the way.':' still stand.'),hurt.length?' Hurt: '+hurt.join(', ')+'.':'',
     ' Room '+(cr.i+1)+' of '+roomsOf(g).length+', round '+(cr.rd+1)+'.']}
 
 function openRound(g){const cr=g.crawl,room=roomsOf(g)[cr.i];
@@ -103,18 +107,23 @@ const grp=sc=>{const id=sc&&sc.ctx&&sc.ctx.site;if(id!=null){const D=siteById(id
 // take blows or count for the foes. A crawl saved before companies (no cr.co) treats the whole group as the crew.
 const crewOf=g=>{const C=g.crawl&&g.crawl.co!=null?companyById(g.crawl.co):null;return C?g.mem.filter(a=>C.ids.includes(a.id)):g.mem};
 const members=g=>crewOf(g).filter(living);
-const lowest=g=>{let lo=null;for(const b of members(g))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
+const standing=g=>members(g).filter(a=>!isDown(a)); // the crew on their feet (#654)
+const healerCls=b=>!!(CLS[b.cls]&&CLS[b.cls].heal);
+const hpOf=a=>isDown(a)?'down':pct(a)+'%';
 const pct=a=>Math.round(a.hp/maxHp(a)*100);
+const lowest=g=>{let lo=null;for(const b of members(g))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
 function options(sc,a){const g=grp(sc);if(!g)return [];const cr=g.crawl,f=liveFoes(cr)[0],lo=lowest(g),o=[];
   o.push({k:'strike',text:'Strike '+(f?f.name:'the foe')});
   o.push({k:'guard',text:'Draw the foes onto yourself'});
   const s=SPECIAL[a.cls];if(s)o.push({k:s[0],text:s[1]});
-  if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
-  const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+pct(lo)+'%)'});
+  if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+hpOf(lo)+')'});
+  const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+hpOf(lo)+')'});
+  {const bt=bleedingOf(members(g),a);if(bt)o.push({k:'stabilize',text:stabText(a,bt)})} // a companion lies bleeding (#654)
   o.push({k:'retreat',text:'Fall back toward the stair (if most do, the party withdraws)'});return o}
 function reflex(sc,a){const g=grp(sc);if(!g)return 'strike';const cr=g.crawl,lo=lowest(g),mh=maxHp(a),healer=CLS[a.cls]&&CLS[a.cls].heal;
   if(lo&&lo.hp<maxHp(lo)*.35&&bestUse(a,'potion'))return 'potion';
   if(healer&&lo&&lo.hp<maxHp(lo)*.6)return 'heal';
+  if(!healer&&bleedingOf(members(g),a)&&!standing(g).some(b=>b!==a&&healerCls(b)))return 'stabilize'; // no healer stands: bind them (#654)
   if(a.hp<mh*.2)return 'retreat';
   if(roleOf(a.cls)==='tank'&&!cr.guard.length)return 'guard';
   if(cr.rd===0&&SPECIAL[a.cls]&&slotKeyOf(a)!=='tank'&&liveFoes(cr).reduce((t,f)=>t+f.hp,0)>=CRAWL.SCOUT_MIN)return SPECIAL[a.cls][0];
@@ -131,15 +140,16 @@ function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=ac
     const n=d===20?2:1;f.hp-=n;return f.hp<=0?'struck down '+f.name:d===20?'a crushing blow':'hit '+f.name}
   case 'guard':cr.guard.push(a.id);return 'drew the foes';
   case 'hold':cr.shield++;cr.guard.push(a.id);return 'held the line';
-  case 'ward':{let n=0;for(const b of members(g))n+=heal(b,maxHp(b)*.08);cr.edge+=1;return n?'mended the group':'steadied the group'}
+  case 'ward':{let n=0;for(const b of standing(g))n+=heal(b,maxHp(b)*.08);cr.edge+=1;return n?'mended the group':'steadied the group'}
   case 'scout':case 'read':cr.edge+=2;return k==='scout'?'found a gap':'turned the wards';
-  case 'heal':{const lo=lowest(g);if(!lo)return 'nobody to heal';return '+'+heal(lo,maxHp(lo)*.25)+' to '+lo.name}
+  case 'heal':{const lo=lowest(g);if(!lo)return 'nobody to heal';return '+'+heal(lo,maxHp(lo)*.25+reviveBonus(lo))+' to '+lo.name}
+  case 'stabilize':{const t=bleedingOf(members(g),a);if(!t)return 'nobody is bleeding';return stabilizeAt(a,t).text}
   case 'potion':{const lo=lowest(g),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});return r.ok?'+'+r.healed+' to '+lo.name:r.error}
   case 'retreat':cr.back.push(a.id);return 'fell back'}
   return null}
 
 // The foes' turn, and what the round settles. Returns the sentence the scene ends on.
-function foeBlow(g,f,room,cr,rearguard){const L=members(g);if(!L.length)return null;
+function foeBlow(g,f,room,cr,rearguard){const L=standing(g);if(!L.length)return null; // the foes strike those standing; with nobody left it is the wipe
   const front=cr.guard.map(byId).filter(x=>living(x)&&L.includes(x)),open=(cr.open||[]).map(byId).filter(x=>living(x)&&L.includes(x));
   const rear=L.filter(x=>!cr.back.includes(x.id)),pool=rear.length?rear:L;
   let t=front.length&&rnd()<CRAWL.GUARD_DRAW?pickA(front):pickA(open.length&&rnd()<.5?open:pool),drawn=front.includes(t);
@@ -149,26 +159,31 @@ function foeBlow(g,f,room,cr,rearguard){const L=members(g);if(!L.length)return n
   if(drawn)dmg*=CRAWL.GUARD_CUT;else dmg*=1-Math.min(.5,cr.shield*CRAWL.HOLD_CUT);
   dmg=Math.max(1,Math.round(dmg));t.hp-=dmg;
   if(t.hp<=0){return {t,dmg,down:true}}return {t,dmg}}
-function strikeBack(g,room,cr,rearguard){const out=[],foes=rearguard?[pickA(liveFoes(cr))]:liveFoes(cr),fell=[];
+// A crew member at zero: downed below ground (#654); a blow past full health is the end at once.
+function strikeBack(g,room,cr,rearguard){const out=[],foes=rearguard?[pickA(liveFoes(cr))]:liveFoes(cr),fell=[],dn=[];
   for(const f of foes){if(!f)continue;const r=foeBlow(g,f,room,cr,rearguard);if(!r)break;
-    if(r.down&&!fell.includes(r.t)){fell.push(r.t);const cause='felled by '+f.name+' in '+dunOf(g).name;
-      record(r.t,'Fell in ',gd(dunOf(g).name),', slain by '+f.name+'.');fall(r.t,cause);log(r.t,' fell in ',gd(room.name),' to '+f.name+'.')}
+    if(r.down&&!fell.includes(r.t)&&!dn.includes(r.t)){const cause='felled by '+f.name+' in '+dunOf(g).name,rec='Fell in '+dunOf(g).name+', slain by '+f.name+'.';
+      if(crawlDown(r.t,f,cause,rec)){dn.push(r.t);cr.stats.downs=(cr.stats.downs||0)+1;log(r.t,' went down in ',gd(room.name),' to '+f.name+'.')}
+      else{fell.push(r.t);record(r.t,'Fell in ',gd(dunOf(g).name),', slain by '+f.name+'.');fall(r.t,cause);log(r.t,' fell in ',gd(room.name),' to '+f.name+'.')}}
     out.push(r)}
-  return {fell,hits:out.filter(x=>!x.miss).length,misses:out.filter(x=>x.miss).length}}
+  return {fell,dn,hits:out.filter(x=>!x.miss).length,misses:out.filter(x=>x.miss).length}}
+const goneDown=r=>r.dn.length?' '+r.dn.map(x=>x.name).join(' and ')+(r.dn.length>1?' go':' goes')+' down.':'';
 function outcome(sc){const g=grp(sc);if(!g)return '';const cr=g.crawl,room=roomsOf(g)[cr.i];cr.stats.rounds++;let tail;
   const foes=liveFoes(cr);
-  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP/roomsOf(g).length))}
+  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){if(!isDown(b))heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP/roomsOf(g).length))} // the downed lie where they fell: only a heal brings them up
     if(sc.beats.some(b=>b.k==='retreat'))tail+=' Those who fell back come forward again.';
     if(cr.i+1>=roomsOf(g).length){cr.end='clear';cr.foes=null}
     else{cr.i++;cr.foes=null;cr.rd=0;cr.gap=CRAWL.GAP;tail+=' The way on is open.'}
     return tail}
-  const live=members(g);
+  const live=standing(g);
+  if(!live.length){cr.end='wiped';return foes.length+' of them stand over the fallen. Nobody is left on their feet.'} // the last one standing fell to a save or the poison
   if(cr.back.filter(id=>live.some(x=>x.id===id)).length*2>=live.length){const r=strikeBack(g,room,cr,true);cr.end='retreat';
-    tail='Most of the party falls back and the rest follow, up the stair'+(r.fell.length?'; the rearguard pays for it ('+r.fell.map(x=>x.name).join(', ')+' falls)':'')+'.';
-    if(!members(g).length)cr.end='wiped';return tail}
+    tail='Most of the party falls back and the rest follow, up the stair'+(r.fell.length?'; the rearguard pays for it ('+r.fell.map(x=>x.name).join(', ')+' falls)':'')+(r.dn.length?'; '+r.dn.map(x=>x.name).join(' and ')+' must be carried':'')+'.';
+    if(members(g).some(isDown)&&standing(g).length)tail+=' They carry the downed with them.';
+    if(!standing(g).length)cr.end='wiped';return tail}
   const r=strikeBack(g,room,cr,false);
-  tail=foes.length+' of them stand'+(foes.length===1?'s':'')+'. '+(r.hits+r.misses?r.hits+(r.hits===1?' blow lands, ':' blows land, ')+r.misses+(r.misses===1?' misses.':' miss.'):'')+(r.fell.length?' '+r.fell.map(x=>x.name).join(' and ')+' falls.':'');
-  if(!members(g).length){cr.end='wiped';return tail}
+  tail=foes.length+' of them stand'+(foes.length===1?'s':'')+'. '+(r.hits+r.misses?r.hits+(r.hits===1?' blow lands, ':' blows land, ')+r.misses+(r.misses===1?' misses.':' miss.'):'')+(r.fell.length?' '+r.fell.map(x=>x.name).join(' and ')+' falls.':'')+goneDown(r);
+  if(!standing(g).length){cr.end='wiped';return tail}
   cr.rd++;if(cr.rd>=(room.alvl!=null&&cr.cap?cr.cap:room.rounds||CRAWL.ROUNDS)){cr.end='retreat';cr.driven=true;tail+=' They cannot win this room; the party is driven back up the stair.'}
   return tail}
 
@@ -179,31 +194,36 @@ function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;a.x=D.x+
 const endGroup=g=>{if(g.site!=null){const D=siteById(g.site);if(D)D.group=null}else CRYPT.group=null};
 const whoOf=g=>{const C=g.crawl&&companyById(g.crawl.co);return {t:g.name||(C?C.name:'The company'),c:'f'+g.fac}};
 function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats;leave(g);
-  if(g.site!=null){if(SITE_END)SITE_END(g,cr.end==='clear'?'clear':cr.driven?'driven':'withdrawn');tally(cr.end==='clear'?'clears':cr.driven?'driven':'withdrawn',g,cr);endGroup(g);return st}
+  if(cr.end!=='clear')for(const a of crewOf(g))if(leftBehind(a))log(a,' could not be carried up the stair and died below.'); // driven back or withdrawing: the bleeding may be left (DOWN.CRAWL_LEFT, #269)
+  if(g.site!=null){if(SITE_END)SITE_END(g,cr.end==='clear'?'clear':cr.driven?'driven':'withdrawn');for(const a of g.mem)toWorld(a);tally(cr.end==='clear'?'clears':cr.driven?'driven':'withdrawn',g,cr);endGroup(g);return st}
   if(cr.end==='clear'){log(who,' cleared ',gd(CRYPT.name),' room by room and destroyed ',gd(CRYPT.boss),'!');
     if(first('crypt:f'+g.fac))timeline('crypt',who,' cleared ',gd(CRYPT.name),' for the first time.');
     payClear(g,CRAWL.CLEAR_BONUS)}
   else{const names=g.mem.filter(living); // the fill-ins too
     log(who,cr.driven?' were driven back from ':' withdrew from ',gd(CRYPT.name),' with the ',gd(roomsOf(g)[cr.i].name),' unbeaten.');
     for(const a of names){record(a,cr.driven?'Driven back from ':'Withdrew from ',gd(CRYPT.name),'.');goHome(a)}}
+  for(const a of g.mem)toWorld(a); // the downed come up the stair carried, still bleeding: the world's helpers take over (#654)
   tally(cr.end==='clear'?'clears':cr.driven?'driven':'withdrawn',g,cr);
   CRYPT.group=null;return st}
 // Called when the group has no one left (everyone fell): the wipe, at the table's dice.
 export function crawlLost(g){const who=whoOf(g),D=dunOf(g);
+  for(const a of crewOf(g))bleedOut(a); // nobody stands to carry them: the downed die where they lie (#654)
   for(const a of g.mem)if(living(a)){a.hidden=false;a.x=D.x+(rnd()-.5)*1.5;a.y=D.y+.5+rnd()*.6;record(a,'Came up the stair alone from ',gd(D.name),'.');goHome(a)} // fill-ins who rode along with a crew that fell
   log(who,' was lost in ',gd(D.name),'. No one came back up the stair.');timeline('death',who,' was lost in ',gd(D.name),' to the last man.');
   if(g.site!=null&&SITE_END)SITE_END(g,'wiped');
   tally('wipes',g,g.crawl)}
 // The Fellowship's crawl record (slotted().crawl: runs, clears, driven back, withdrawn, wipes, deaths, rooms won), for the sim summary and the checks.
-function tally(k,g,cr){const F=companyById(cr.co)||slotted();if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
-  C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.rooms+=cr.end==='clear'?roomsOf(g).length:cr.i;C.deaths+=(cr.crew!=null?cr.crew:g.mem0)-members(g).length}
+// A hero of a company with a crawl running holds its reflection moments; the end of the run raises one combined moment per survivor.
+setReflectHold(a=>{const gs=[CRYPT.group,...((S.sites&&S.sites.list)||[]).map(s=>s.group)];return gs.some(g=>g&&g.crawl&&g.mem&&g.mem.includes(a))});
+function tally(k,g,cr){for(const a of crewOf(g))if(living(a))moment(a,'crawl',k==='clears'?'cleared':k==='driven'?'driven back':'withdrew');const F=companyById(cr.co)||slotted();if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
+  C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.downs=(C.downs||0)+(cr.stats.downs||0); /* downings below ground (#654) */C.rooms+=cr.end==='clear'?roomsOf(g).length:cr.i;C.deaths+=(cr.crew!=null?cr.crew:g.mem0)-members(g).length}
 export function crawlTick(g,dt){const cr=g.crawl;
   if(g.site!=null?sceneFor(companyById(cr.co)):S.table)return; // a scene (the stair, or a room) is open: the table runs it (a site: its company's scene)
   if(!g.tSite)return;                                 // the stair scene (sim/table.js tableTick) comes first
   if(cr.end==='wiped'){crawlLost(g);endGroup(g);return}
   if(cr.end){finish(g);return}
   if(cr.gap>0){cr.gap-=dt;return}
-  if(!members(g).length){crawlLost(g);endGroup(g);return}
+  if(!standing(g).length){crawlLost(g);endGroup(g);return}
   const sc=openRound(g);if(!sc)return;
 }
 setCrawlHook({start:startCrawl,tick:crawlTick,lost:crawlLost});

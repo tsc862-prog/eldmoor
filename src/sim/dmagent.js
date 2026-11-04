@@ -32,6 +32,7 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
+import {fileWish} from './wish.js'; // #663
 import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS,validate as leverValidate} from './levers.js';
 import {log as chronLog} from './chronicle.js';
 import {setWhen,setWatch,cancel as whenCancel,whensView,whenStatus,whenTick,setWhenHooks} from './dmwhen.js'; // deferred actions and chosen wakes (#635)
@@ -450,7 +451,7 @@ export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_p
   retire_person:'retire_npc',withdraw_hook:'withdraw_hook',set_attitude:'set_attitude',set_condition:'set_condition',price_shock:'price_shock',mark_danger:'mark_dangerous',start_event:'start_event',nudge_relation:'nudge_relation',custom_foe:'custom_foe',create_site:'create_site'}; // #636: every remaining lever as a flat tool
 const NEAR_FORMS='"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region';
 const FLAT_USAGE={
-  post_hook:'post_hook takes: town (a town: '+CITY.map(c=>c.name).join('|')+', or "fellowship", a member or a region for the nearest board), tpl (rescue|escort|investigate|clear|relic|negotiate|hunt|deliver), giver? (captain|innkeeper|smith|quartermaster|priest|bard), reward? (small|fair|generous), region? (where the job leads), place? (a place or person by name or id), for? (a hero by name or id), reason',
+  post_hook:'post_hook takes: town (a town: '+CITY.map(c=>c.name).join('|')+', or "fellowship", a member or a region for the nearest board), tpl (rescue|escort|investigate|clear|relic|negotiate|hunt|deliver, or a goods job that asks for crafted or gathered goods: draughts|tonics|blade|cowl|meals|scrolls|herbs|ore|sinew|perch|rimebloom), giver? (captain|innkeeper|smith|quartermaster|priest|bard), reward? (small|fair|generous), region? (where the job leads), place? (a place or person by name or id), for? (a hero by name or id), reason',
   place_person:'place_person takes: role (peddler|hermit|drover|sellsword|minstrel|stranger), near ('+NEAR_FORMS+'), name?, faction? (concord|warband|neutral), want?, attitude? (hostile|wary|neutral|friendly), hours? (6-168), spot? (in a town: inn|smith|quartermaster|chapel|square|gate), reason',
   give_item:'give_item takes: hero (a hero by name or id), item (a quest item or token, a consumable, or a gear slot head|chest|hands|feet|main|off|trinket), by? (a person in earshot, by name or id), ilvl? (gear only, never above the hero’s level), reason',
   take_item:'take_item takes: hero (a hero by name or id), item (a quest item or token), by? (a person in earshot, by name or id), reason',
@@ -514,6 +515,8 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};if(MORE_FLAT[tool])retu
   const e=r.effect||{};
   return {...r,tool,...(tool==='mark_place'?{place:e.name,at:params.at}:{}),...(tool==='create_site'?{site:e.name,at:e.at,band:e.band,rooms:e.rooms,boss:e.boss}:{}),...(tool==='place_person'?{person:e.name,npc:e.npc,at:e.at,where:e.where}:{}),...(want?{want}:{})}}
 
+// A note for the people who build the game (#663): the watcher and the builders only, never a hero, never answered in play.
+function dmWish(args){return fileWish(dmState(),{seat:'dm',name:'DM',place:null,summary:'DM seat, day '+dayNo()+' '+clockStr()},args)}
 // ---- the remaining levers as flat tools, and taking things back (issue #636) ----
 const FAC_NAMES=()=>FAC.map(f=>f.name).join('|');
 const MORE_FLAT={retire_person:1,withdraw_hook:1,set_attitude:1,set_condition:1,price_shock:1,mark_danger:1,start_event:1,nudge_relation:1,custom_foe:1};
@@ -772,6 +775,7 @@ function run(tool,args){let r;
     case 'dismiss':r=dismissTool(args);break;
     case 'unstage':r=unstageTool(args);break;
     case 'log_intent':r=logIntent(args.text);break;
+    case 'wish':r=dmWish(args);break;
     case 'remember':case 'recall':case 'update_memory':case 'forget':case 'pin':r=dmMemory(tool,args);break;
     case 'narrate':r=narrate(args);break;
     case 'npc_say':r=npcSay(args);break;

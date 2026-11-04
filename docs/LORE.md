@@ -942,6 +942,33 @@ Samples:
 - "Lurken delivers a salt wagon at the Thornvale waymark... rolls 7+2 vs 10. Two crates short. The tallyman docks the pay and does not apologise."
 - "Mireth's party returns from Smoke Out the Mirefen Den with the job done. 40g each, and Mireth takes Fenleather Vestment."
 
+### Goods jobs (issue #720, epic #238)
+
+Not every job is a walk. Some boards ask for goods: crafted by a hero's trade or dug, cut and
+caught with their own hands. No scenes and no party; a hero takes the posting, brings the goods
+to the town that posted it, and is paid at the counter (templates `SUPPLY` in
+`src/data/adventures.js`). The Chronicler files them under "errands" and is dry about it.
+
+| Job | Asks for | Given by | The giver adds |
+| --- | --- | --- | --- |
+| Draughts for the chapel | Redroot Draughts (alchemy) | priest, innkeeper | "The chapel's shelves are bare after the last fever." |
+| Tonics for the sick-room | Marrowmend Tonics (alchemy) | priest | "Bad cuts, and nothing left to knit them." |
+| A blade for the gate | a Tinforged Weapon (smithing) | gate captain, quartermaster | "The watch's steel is notched past mending." |
+| A cowl for the gate | a Wolfhide Cowl (leatherworking) | gate captain | "The winter watch wants something warm for the post on the wall." |
+| Suppers for the road | Spit-Roast Perch (cooking) | innkeeper, quartermaster | "A drover train is in, hungry and not particular." |
+| Wards for the chapel | Scrolls of Hearthward (scribing) | priest, bard | "The chapel hands them to travellers who ask." |
+| Redroot for the herbwives | Redroot Leaf (herbalism) | priest, innkeeper | "The herbwives cannot keep up with the cut." |
+| Ore for the forge | Tin Ore (mining) | smith, quartermaster | "The forge is cold until someone brings it ore." |
+| Sinew for the saddlers | Wolf Sinew (skinning) | quartermaster, smith | "Harness, stitching, and not a strand to be had." |
+| Perch for the inn | River Perch (fishing) | innkeeper | "The kitchen wants them whole and cold." |
+| A Rimebloom patch | Rimebloom (herbalism, band 3) | priest | "A drover saw a patch of it above the tarn, blue in the snow." |
+
+Crafted-goods jobs sometimes pay in the raw stuff the next batch wants (Hearthbloom, Fen Moss, Tin
+Ore, Wolf Sinew, River Perch, Rushpulp); gathering jobs pay gold only. The Rimebloom hook's "the
+tarn" is one of Hoarfell's frozen tarns (see Zones), where Tarn Wights climb out of the ice; the
+priest does not mention that. Titles read like "Three Redroot Draughts for the chapel" or
+"Five Redroot Leaf, fresh".
+
 ## The DM's hand
 The Dungeon Master does not reach into the world freely. It has a short list of levers
 (`src/sim/levers.js`), each with hard limits, a cooldown and a written reason, and every pull,

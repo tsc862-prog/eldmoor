@@ -6,7 +6,7 @@
 //     mark    {id, k, w, day, gm, text, key}: a landmark, kept outside every rolling cap. k: death (a companion fell),
 //             friend (a friend lost), fellowship (sworn in, joined, left), level (every LVL_BAND levels), crypt
 //             (Sunken Crypt cleared), boss (a world boss slain), elite (a named elite slain), vow (a nemesis taken),
-//             nemesis (a blood debt paid),
+//             nemesis (a blood debt paid), mercy (spared a downed enemy, was spared, repaid a life), finish (finished one),
 //             own (an entry the agent marked with journal_write {landmark:true}). w: weight; past TIER.MARKS the
 //             lightest (then oldest) folds into the chapter that covers its day.
 //     chapter {n, d0, d1, title, text, kw:[words], src:'scripted'|'model'|'migrated', items, stamp}: what fell off the
@@ -50,7 +50,7 @@ export const TIER={
   OV_ENTRY:300,   // characters of an entry in the overview (journal_read {n} gives them whole)
 };
 // Weights: the heaviest are kept longest.
-const W={death:5,boss:5,fellowship:5,nemesis:4,own:4,title:4,friend:3,crypt:3,level:3,vow:3,elite:2};
+const W={death:5,boss:5,fellowship:5,nemesis:4,own:4,title:4,mercy:4,friend:3,crypt:3,level:3,vow:3,finish:3,elite:2};
 
 const DAY=1440;
 const dayNo=gm=>Math.floor((gm==null?S.gameMin:gm)/DAY)+1;
@@ -92,6 +92,8 @@ const RX=[
   [/^Slew .+, .+, in /,()=>'elite'],
   [/^(Paid the blood debt|Avenged )/,()=>'nemesis'],
   [/^Named .+ by .+\.$/,()=>'title'], // a name given for a deed (sim/epithet.js, #638)
+  [/^(Spared |Was spared by |Repaid the life owed)/,()=>'mercy'], // a life spared, owed or repaid (sim/mercy.js, #657)
+  [/^Finished .+ where they lay\.$/,()=>'finish'],
   [/^Lost a close friend/,()=>'friend'],
   [/^Lost a friend/,()=>'friend'],
   [/^Left (.+)\.$/,(m)=>slotted()&&m[1]===slotted().name?'fellowship':null],
