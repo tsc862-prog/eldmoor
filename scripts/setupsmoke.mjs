@@ -260,6 +260,13 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   const sel=f=>all(R(),'select').find(s=>s.dataset.f===f);
   ok(pressed('smode','mode','together')&&!pressed('smode','mode','apart'),'switch: Together is on by default');
   ok(!all(R(),'button').some(b=>b.dataset.a==='count')&&!sel('start:0'),'together: no hero count, no start towns');
+  // the hall picker (#771): only where the faction has a choice of towns; a pick lasts until another faction or map
+  {const change=(f,v)=>{const s=sel(f);s.value=v;s.dispatch('change',{target:s})},w0=sel('world').value,f0=sel('fac').value;
+   change('world','eldmoor');ok(!sel('hall'),'hall: no picker with one town to choose');
+   change('world','stepping');const o=sel('hall').childNodes.map(x=>x.value);ok(o[0]===''&&o.length===3,'hall: the default and the two towns of the faction: '+o);
+   change('hall',o[2]);ok(sel('hall').value===o[2],'hall: the pick stands');
+   change('fac',f0==='0'?'1':'0');ok(sel('hall').value==='','hall: another faction goes back to the default');
+   change('fac',f0);change('world',w0)}
   click(R(),b=>b.dataset.a==='smode'&&b.dataset.mode==='apart');
   ok(pressed('smode','mode','apart')&&all(R(),'.scard').length===5,'Apart keeps the five heroes as cards');
   ok(all(R(),'button').filter(b=>b.dataset.a==='count').length===10&&pressed('count','n','5'),'Apart: hero count 1-10 (6-10 need local minds), five chosen');

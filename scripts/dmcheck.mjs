@@ -92,6 +92,7 @@ if (process.argv[2] === '--opening') {
   init({fellowship: false}); run(10);
   SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); setDmSeat(true); sim.setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
   if (!closed) {const D = S.dmAgent; D.notes.plans.push({id: 9001, title: 'The Lanterns', text: 'PREMISE-PLANTED the road lights are failing.', tags: ['premise'], pin: true}, {id: 9002, title: 'Opening beats', text: 'Day 1: a dark shrine.', tags: ['openings']})}
+  {const L = F_.slotHeroes(SLT.slotted()); for (const a of L) {a.x = L[0].x; a.y = L[0].y}} // founded mid-world: session zero waits for members out of range (#771)
   A.planOpening(); step(1 / 60); const sc = S.table;
   let call = null, k = 0; while (S.table && S.table.phase === 'frame' && k++ < 600) {if (!closed) dmAct('table_call'); step(1 / 60)}
   if (!closed) {const t = dmAct('table_call'); call = t.call; if (call) dmAct('table_answer', {call: call.id, text: 'The hall smells of wet wool and lamp oil.'})}

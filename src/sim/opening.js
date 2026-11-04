@@ -14,7 +14,8 @@
 // The old start (28 level-1 heroes in town, no Fellowship) is kept for balance comparisons:
 // ELDMOOR_FELLOWSHIP=0 in Node, ?fellowship=0 in the browser, or init({fellowship:false}).
 import {rnd,ri} from '../core/rng.js';
-import {ZONES,zoneFor,zonePoint} from '../world/map.js';
+import {ZONES,zoneFor,zonePoint,tileAt} from '../world/map.js';
+import {WALKABLE} from '../world/tiles.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {SLOTS} from '../data/items.js';
@@ -23,8 +24,8 @@ import {log,fac} from './chronicle.js';
 import {xpNeed,maxHp,seedLevel,makeHero} from './heroes.js';
 import {makeItem,syncGear} from './gear.js';
 import {record,first} from './history.js';
-import {pickSetup,pickApart,applyMinds,cleanSetup,groupsOf,startOf,resolveArchetype,CLASSIC} from './setup.js';
-import {foundCompany,campaign,foundSlots,autoPick} from './company.js';
+import {pickSetup,pickApart,applyMinds,cleanSetup,groupsOf,startOf,resolveArchetype,hallOf,CLASSIC} from './setup.js';
+import {foundCompany,campaign,foundSlots,autoPick,spreadAt} from './company.js';
 import {markPlayer} from './player.js';
 import {disableBrain} from './brain.js';
 import {seedProfs} from './professions.js';
@@ -80,8 +81,8 @@ export function opening(o={}){
   if(setup&&setup.mode==='apart')return openApart(setup);
   const ff=setup?setup.fac:o.fac!=null?o.fac:rnd()<.5?0:1,pick=setup?pickSetup(setup):autoPick(noOthers()?classicFive(ff):ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
   seasonOthers(ids);
-  const r=foundSlots(pick,{fac:ff,ai:false,name:setup&&setup.name}); // the five set out at level 1 from their hall, agent-played from the first tick (#148)
-  if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(profs&&Object.keys(profs).length?{profs}:{})}}}
+  const r=foundSlots(pick,{fac:ff,ai:false,name:setup&&setup.name,hall:hallOf(setup),gather:!!setup}); // the five set out at level 1 from their hall (the setup's town, every member standing in it, #771), agent-played from the first tick (#148)
+  if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(hallOf(setup)?{hall:setup.hall}:{}),...(profs&&Object.keys(profs).length?{profs}:{})}}}
   return r.ok?r.fellowship:null}
 
 // Everyone not chosen starts part-way through a career (START_BANDS), then the line about the worn roads.
@@ -105,9 +106,12 @@ function openApart(setup){
   seasonOthers(new Set(ids));
   const made=[];
   for(const g of groupsOf(setup)){const lead=hs[g[0]],st=startOf(lead,setup.heroes[g[0]]),town=st.town,group=g.map(i=>hs[i]);
-    for(const a of group){a.town=town.name;a.x=town.x0+2+rnd()*7;a.y=town.y0+4+rnd()*3;a.state='town';a.dest=null}
-    if(st.lvl>1)for(const a of group){season(a,st.lvl);
-      if(st.zone!=null&&a.zone!==st.zone){const p=zonePoint(st.zone,null,town.gate);a.zone=st.zone;a.x=p.x;a.y=p.y}}
+    for(const a of group){const was=homeOf(a).name;if(was!==town.name)a.born=was; // their people's town stays in their origin text (#771)
+      a.town=town.name;a.x=town.x0+2+rnd()*7;a.y=town.y0+4+rnd()*3;a.state='town';a.dest=null}
+    if(st.lvl>1){for(const a of group){season(a,st.lvl);
+        if(st.zone!=null&&a.zone!==st.zone){const p=zonePoint(st.zone,null,town.gate);a.zone=st.zone;a.x=p.x;a.y=p.y}}
+      const p={x:group[0].x,y:group[0].y}; // a group out hunting stands together too (#771): season() drew each a point of its own
+      if(group.length>1)group.forEach((a,i)=>{const q=spreadAt(p,i,group.length);Object.assign(a,WALKABLE.includes(tileAt(q.x,q.y))?q:p)})}
     else for(const a of group)record(a,'Set out from '+town.name+(group.length>1?' with '+group.filter(b=>b!==a).map(b=>b.name).join(' and '):' alone')+'.');
     const r=foundCompany(group,{hall:town.name,name:group.length>1?group.map(b=>b.name).join(' and '):group[0].name});
     if(!r.ok)continue;made.push(r.company);
