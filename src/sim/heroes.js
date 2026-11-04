@@ -42,6 +42,7 @@ import {townZone,partyZone,brainJob,brainFight} from './brain.js'; // brain hook
 import {killDone,killAbandoned,debtDone} from './questlog.js'; // the quest log: finished quests (no dice)
 import {dmDepart,dmTravel,dmHunt,BOUNTY,bountyFor,takeBounty,fellowBounty} from './dm.js'; // adventures (sim/dm.js): a hero with a.adv goes where the scene is
 import {scriptedBuy,scriptedList} from './market.js'; // hero-to-hero trades (#14)
+import {supplyVisit} from './supply.js'; // goods jobs on the home board (#720): filled from the pack before the sale
 import {townCraft,keepFor,townSmith} from './craft.js'; // crafting (#258): a scripted crafter makes what it wants in town before the sale
 import {gatherTick} from './gather.js'; // gathering (#257): a scripted hunter works a node of its trade now and then
 import {inSlots} from './company.js'; // the slotted company (#588)
@@ -185,7 +186,7 @@ export function healOne(a,low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'hea
 export function goHome(a){a.state='return';a.target=null;a.dest=null}
 
 // Town: craft (#258), wear a better spare, pass spares to a party member they suit, sell goods and the rest, buy gear, then stock the pack.
-export function sellAndShop(a){const c=homeOf(a);townCraft(a);scriptedBuy(a,keepFor(a));autoEquip(a);passSpares(a);scriptedList(a);const sold=sellLoot(a,keepFor(a)),tot=sold.gold,n=sold.goods;a.gold+=tot; // craft first (#258): it uses the materials the sale would take
+export function sellAndShop(a){const c=homeOf(a);supplyVisit(a);townCraft(a);scriptedBuy(a,keepFor(a));autoEquip(a);passSpares(a);scriptedList(a);const sold=sellLoot(a,keepFor(a)),tot=sold.gold,n=sold.goods;a.gold+=tot; // craft first (#258): it uses the materials the sale would take
   if(n>=6&&rnd()<.35)log(a,' sold ',String(n),' goods at the ',c.name,' auction house for ',gold(tot+'g'),'.');
   if(shopUpgrade(a))a.hp=maxHp(a);
   restock(a);townSmith(a)}
