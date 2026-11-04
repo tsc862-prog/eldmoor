@@ -177,7 +177,7 @@ ok(rv && !rv.heroes.includes(done.id) && rv.left && rv.left[0].id === done.id &&
   ok(ctl.held && /^DM: /.test(gate()[0] || ''), 'the override held only until the next change: the DM runner goes again and the world pauses again');
   // a member of a Fellowship runner that ended on its budget: its own Start says the price too (#807)
   {const k = k3; k.stdout.emit('data', Buffer.from(`[07:40:00] [${mem[0].name}] done (budget reached): 1 turns, 0 at the table, $0.10
-`)); k.emit('exit', 0); T += 1000; await view(); await sleep(5); await view();
+`)); k.emit('exit', 0); await sleep(5); T += 6000; await view(); await sleep(5); T += 6000; await view();
     ok(/Start runner · another \$1\.00/.test(RN.runnerControl(mem[0]).textContent), 'the Start on the hero card names the price: ' + RN.runnerControl(mem[0]).textContent);
     const st5 = await post('/play/runner/start', {kind: 'fellowship', provider: 'anthropic', model: 'claude-haiku-5-5'}, 'http://localhost:5173'); ok(st5.status === 200, 'the page can still start it')}
   // Restart is one click (#807): it waits for the old child to go; the relay refuses a start while it is stopping

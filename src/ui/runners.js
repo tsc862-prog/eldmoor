@@ -119,10 +119,10 @@ export async function startRunner(kind,hero,pickKey,by='owner'){const k=keyOf(ki
   const r=await send('/start',{kind,by,...(hero!=null?(kind==='company'?{company:hero}:{hero}):{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k,lk),...(fresh[pickKey||k]||fresh[k]?{fresh:true}:{})});if(!r.ok)note[k]=r.error;else{delete fresh[k];if(pickKey)delete fresh[pickKey]}poll(true,true);return r}
 export async function stopRunner(kind,hero){const k=keyOf(kind,hero);note[k]='';userStop[k]=Date.now();
   const r=await send('/stop',{key:k});if(!r.ok)note[k]=r.error;poll(true,true);return r}
-// Restart is one click (#807): the relay refuses a start while the old child is stopping, so wait for it to go (it is killed after 6 s).
-export async function restartRunner(kind,hero){const k=keyOf(kind,hero);await stopRunner(kind,hero);
-  for(let i=0;i<32;i++){const r=runnerByKey(k);if(!r||DONE[r.state])break;await new Promise(w=>setTimeout(w,250));poll(true,true)}
-  return startRunner(kind,hero)}
+// Restart is one click (#807): the relay refuses a start while the old child is stopping, so ask again until it has gone (it is killed after 6 s).
+export async function restartRunner(kind,hero){await stopRunner(kind,hero);let r;
+  for(let i=0;i<32;i++){r=await startRunner(kind,hero);if(r.ok||!/already/.test(r.error||''))break;await new Promise(w=>setTimeout(w,250))}
+  return r}
 // A company that is not the five-place Fellowship (#457, #460): Start <company> starts one company runner for a company
 // of two or more agent-played members when none of them has a runner yet (one process plays them all, each with its own
 // session), else a hero runner for each member that has none (a solo, or a company whose members already run apart);
