@@ -14,5 +14,5 @@ metadata:
 - a.summoned leaves no recruit in any world: the DM's cap of 8 and the roster would both drift otherwise.
 - Vote text in unitDraft says "nobody else will go" in a none world; "the faction musters" read false.
 
-**How to apply:** a new system that assumes a roster must survive S.agents of length 0 and a faction with no heroes (`init({others:'none',fellowship:false})` is the empty case). Measured 2026-11-03: 760-hour together runs L18-20, about 40 Crypt runs, 0-3 deaths, Kragmaw killed 5 times by the five alone; no NaN, no crash.
+**How to apply:** a new system that assumes a roster must survive S.agents of length 0 and a faction with no heroes (`init({others:'none',fellowship:false})` is the empty case). Measured 2026-11-03: a 776-hour together run reached L18-20 with 40 Crypt runs and 1 death; a 764-hour run killed Kragmaw 5 times with the five alone; no NaN, no crash.
 Fixture trap: an init({setup}) world with links set queues session zero first; clear S.opening.queue before testing an arrival. Slot deaths are noticed by slotsTick, so step before asserting.
