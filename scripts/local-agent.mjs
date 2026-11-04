@@ -512,7 +512,8 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     const c = cleanArgs(name, rawArgs, list); stat.tools++;
     on('tool', name, c.args || rawArgs);
     let r; if (c.error) {stat.rejected++; r = {ok: false, error: 'Not done: ' + c.error}} else {try {r = await call(name, c.args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
-      const meta = byName(list).get(name); if (meta && meta.act && r && r.ok !== false && r.act !== false) {stat.acts++; (stat.acted || (stat.acted = [])).push({name, args: c.args})}} // act:false: the game says it changed nothing (#801)
+      const meta = byName(list).get(name); if (meta && meta.act && r && r.ok !== false && r.act !== false) stat.acts++}
+    if (!c.error && !(r && r.offline)) (stat.tried || (stat.tried = [])).push({name, args: c.args}); // every call the game answered, refused or not; act:false changes nothing (#801)
     const text = typeof r === 'string' ? r : JSON.stringify(r);
     on('result', text);
     stat.calls.push(r && typeof r === 'object' && r.ok === false ? {name, ok: false, error: String(r.error || 'error').slice(0, 140), ...(r.refused ? {refused: true} : {})} : {name, ok: true}); // the behavior log's turn line (issue #129)
@@ -602,7 +603,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   // a narration close to the last one is a repeat; with no world-changing call it makes an empty turn (scripts/pacing.mjs localWorked)
   if (stat.narration && L.lastNarr && similar(stat.narration, L.lastNarr) >= REPEAT_SIM) stat.repeat = true;
   if (stat.narration) L.lastNarr = stat.narration.slice(0, 400);
-  const sig = actSig(stat.acted); stat.repeatAct = !!(sig && sig === L.lastAct); L.lastAct = sig; // the same expressive call as last turn's only act (#801)
+  const sig = actSig(stat.tried); stat.repeatAct = !!(sig && sig === L.lastAct); L.lastAct = sig; // the same expressive call as last turn's only act (#801)
   if (stat.looped) L.emptyRun = Math.max(L.emptyRun || 0, o.freshAfter); else if (stat.sceneJump && !stat.tools) {} else // a turn given up for the scene answer is not an empty one
   L.emptyRun = !stat.tools || stat.rejected >= stat.tools || (stat.repeat && !stat.acts) || stat.repeatAct || stat.foreign ? (L.emptyRun || 0) + 1 : 0;
   L.dropped += trimHistory(L.history, o.historyChars);
@@ -624,10 +625,10 @@ export function joinTurns(a, b) {
   return o;
 }
 
-// Repeated acts (#801): a model that found one accepted call repeats it every turn. Only expressive calls whose identical
+// Repeated acts (#801): a model that found one accepted call repeats it every turn, accepted or refused by the game (a refused repeat is no progress either). Only expressive calls whose identical
 // repeat is never a plan count; wait, hunt, move_to, follow, rest, scene_act, use_ability, buy/sell, take_quest and the like
-// are consistent play and are never flagged, nor are reads (act:false) or a turn with two or more acts. The key is the
-// turn's only world-changing call, name and arguments; null when there is none or it may legitimately repeat.
+// are consistent play and are never flagged, nor are reads (act:false) or a turn with two or more calls. The key is the
+// turn's only call, name and arguments; null when there is none or it may legitimately repeat.
 export const REPEAT_ACTS = new Set(['emote', 'say', 'party_say', 'whisper']);
 export function actSig(acted) {
   if (!Array.isArray(acted) || acted.length !== 1 || !REPEAT_ACTS.has(acted[0].name)) return null;
@@ -635,7 +636,7 @@ export function actSig(acted) {
 }
 
 // Marks on a turn line (issue #126): the model was told to act, or only repeated itself.
-const turnFlags = st => (st.sceneJump ? ' | its scene opened mid-turn: answered it first' : '') + (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.broke ? ' | ended early: ' + st.broke.n + ' refusals of ' + st.broke.tool + (st.broke.inRow > st.broke.n ? ' (' + st.broke.inRow + ' in a row)' : '') : '') + (st.throttled ? ' | ended early: the per-minute call cap' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : st.repeatAct ? ' | empty turn (repeat-act: the same ' + st.acted[0].name + ' as last turn)' : '');
+const turnFlags = st => (st.sceneJump ? ' | its scene opened mid-turn: answered it first' : '') + (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.broke ? ' | ended early: ' + st.broke.n + ' refusals of ' + st.broke.tool + (st.broke.inRow > st.broke.n ? ' (' + st.broke.inRow + ' in a row)' : '') : '') + (st.throttled ? ' | ended early: the per-minute call cap' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : st.repeatAct ? ' | empty turn (repeat-act: the same ' + st.tried[0].name + ' as last turn)' : '');
 // The cost line for a local turn: tokens and seconds, cost 0.
 export const localLine = (st, model) => `${model} (local) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | $0 (local)${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 
