@@ -156,7 +156,8 @@ ok((S.timeline || []).some(e => JSON.stringify(e.parts).includes(ms.name)), 'the
 
 // ---- slice 2 (#642): raid sites, the lockout, background parties, the scripted DM's sites ----
 const DM = await import('../src/sim/dm.js');
-const free = (n, fac, o = {}) => S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.company && !a.player && (fac == null || a.fac === fac) && !(o.not || []).includes(a)).slice(0, n);
+const PA = await import('../src/sim/party.js');
+const free = (n, fac, o = {}) => S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !a.company && !a.player && (o.party || !a.party) && (fac == null || a.fac === fac) && !(o.not || []).includes(a)).slice(0, n);
 const park = (L, s, lvl) => {for (const a of L) {a.lvl = lvl; a.gear = Math.max(a.gear, 12); a.hp = maxHp(a); a.state = 'hunt'; a.target = null; a.dest = null; a.adv = null; a.raid = false; a.x = s.x + 3; a.y = s.y + 2}};
 const settle = (s, secs) => {for (let f = 0; f < secs * 60 && s.group; f++) step(1 / 60)};
 
@@ -207,7 +208,7 @@ console.log('sitecheck: two companies go down a raid site together');
 init({fellowship: false}); run(10); T.TABLE.mode = 'off'; S.mobs.length = 0;
 ok(L.pull('create_site', {theme: 'den', region: zr, raid: true, rooms: 3}, by).ok, 'a raid den');
 const rd = S.sites.list[0];
-const six = free(6, 0); six.forEach(a => P.markPlayer(a, true));
+const six = free(6, 0, {party: true}); six.forEach(a => P.markPlayer(a, true));
 CO.mergeCompanies(CO.companyOf(six[0]), CO.companyOf(six[1])); CO.mergeCompanies(CO.companyOf(six[0]), CO.companyOf(six[2]));
 CO.mergeCompanies(CO.companyOf(six[3]), CO.companyOf(six[4])); CO.mergeCompanies(CO.companyOf(six[3]), CO.companyOf(six[5]));
 const K1 = CO.companyOf(six[0]), K2 = CO.companyOf(six[3]);
@@ -226,9 +227,9 @@ console.log('sitecheck: a company short of a raid calls its side');
 init({fellowship: false}); run(10); T.TABLE.mode = 'off'; S.mobs.length = 0;
 ok(L.pull('create_site', {theme: 'mine', region: zr, raid: true, rooms: 3}, by).ok, 'a raid mine');
 const rm = S.sites.list[0];
-const two = free(2, 1); two.forEach(a => P.markPlayer(a, true)); CO.mergeCompanies(CO.companyOf(two[0]), CO.companyOf(two[1]));
+const two = free(2, 1, {party: true}); two.forEach(a => P.markPlayer(a, true)); CO.mergeCompanies(CO.companyOf(two[0]), CO.companyOf(two[1]));
 const K3 = CO.companyOf(two[0]); park(two, rm, 18);
-const helpers = free(4, 1, {not: two}); park(helpers, rm, 18); for (const a of helpers) {a.x = rm.x + 8; a.y = rm.y + 3}
+const helpers = free(4, 1, {not: two, party: true}); park(helpers, rm, 18); for (const a of helpers) {a.x = rm.x + 8; a.y = rm.y + 3}
 run(3);
 const e3 = P.playerAct(two[0].id, 'enter_site', {site: rm.name});
 for (const id of K3.ids) {const Pr = C_.propById(e3.proposal); if (Pr && Pr.status === 'open' && !Pr.votes[id]) C_.castVote(S.agents.find(x => x.id === id), e3.proposal, 'yes', 'test')}
@@ -240,7 +241,7 @@ console.log('sitecheck: a background party goes down an ordinary site');
 init({fellowship: false}); run(10); T.TABLE.mode = 'auto'; S.mobs.length = 0; ST.SITE.BG_P = 1;
 ok(L.pull('create_site', {theme: 'ruin', region: 0, rooms: 3}, {by: 'scripted', reason: 'a test'}).ok, 'a ruin the scripted DM raised');
 const bs = S.sites.list[0]; bs.state = 'discovered';
-const party = free(4); park(party, bs, Math.min(bs.band[1] + 2, 9)); S.sites.mt = 0;
+const party = free(4, 0, {party: true}); for (const a of party) PA.leaveParty(a); park(party, bs, Math.min(bs.band[1] + 2, 9)); S.sites.mt = 0;
 for (let f = 0; f < 6 * 60 && !bs.group; f++) step(1 / 60);
 ok(bs.group && bs.group.bg && bs.group.mem.length >= 3, 'background heroes form a party for it (' + (bs.group && bs.group.name) + ')');
 for (let f = 0; f < 120 * 60 && bs.group; f++) step(1 / 60);
