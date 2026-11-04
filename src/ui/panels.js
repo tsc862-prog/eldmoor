@@ -47,6 +47,7 @@ import {setPurpose,isOpen} from './purposeview.js'; // the purpose line in the h
 import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short card is for heroes outside every company (#546)
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
+import {downView,downText,downTitle,flashOf,pips,downKind,DOWN_BADGE} from './downview.js'; // the downed (#659)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -68,6 +69,8 @@ const zoneIdx=z=>typeof z==='number'?z:ZONES.indexOf(z);
 
 // One line describing what a hero is doing right now.
 export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
+  if(a.state==='downed')return downText(a); // the body does nothing while down, whatever its last order was (#659)
+  if(a.state==='aid'){const t=S.agents.find(x=>x.id===a.aid);return t?'Tending '+t.name+', who lies dying':'Tending the fallen'}
   if(a.player&&a.playDoing&&a.state!=='dead')return a.playDoing; // agent-played (sim/player.js)
   switch(a.state){
     case 'town':return a.townStep===0?`Selling loot at the ${c} auction house`:a.townStep===1?`Checking in with the ${c} quest giver`:`Leaving ${c} for ${ZONES[a.party?a.party.zone:zoneFor(a.lvl,homeOf(a).gate)]}`;
@@ -172,7 +175,13 @@ function tabStats(b,a){identity(b,a);if(a.abil)scoresRow(b,a);combatBlock(b,a);a
 
 function tabLog(b,a){const h=(a.history||[]).slice().reverse();
   if(!h.length){b.append(el('div','dm','Nothing worth recording yet.'));return}
-  const ul=el('ul','log hist');byDay(ul,h,e=>{const li=el('li');li.append(el('time',null,stampOf(e)));const s=srcTag(e);if(s)li.append(s,' ');parts(li,e.parts||[e.text]);return li});b.append(ul)}
+  const ul=el('ul','log hist');byDay(ul,h,e=>{const li=el('li');li.append(el('time',null,stampOf(e)));const s=srcTag(e);if(s)li.append(s,' ');
+    const dk=downKind(e.text);if(dk){li.className='dk-'+dk;li.append(el('span','badge b-'+dk,DOWN_BADGE[dk]))} // downed, stabilized, up again (#659)
+    parts(li,e.parts||[e.text]);return li});b.append(ul)}
+// The dossier header's downed row (#659): the same words as the party frame's, built fresh for the header's patch.
+function downRow(a){const v=downView(a),fl=flashOf(a);if(!v)return null;const d=el('div','pfdown hdown'+(v.stable?' stable':''));d.title=downTitle(v);d.setAttribute('aria-label',downText(a));
+  const s=el('span','pips ok',pips(v.s,v.of3)),f=el('span','pips bad',pips(v.f,v.of));s.title=v.s+' of '+v.of3+' death saves made';f.title=v.f+' of '+v.of+' failures';
+  d.append(el('span','pfdl',v.stable?'STABLE':'DOWNED'),s,f,el('span','pfdt dm',v.timer),el('span','pfdx'+(fl?' t-'+fl.tone:''),fl?fl.word:''));return d}
 
 // ---- item tooltip and pinned detail (issue #52) ----
 // One tooltip div is reused for every hover; it lives on <body>, so the 0.3s tab rebuilds never
@@ -404,7 +413,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   patch(k.hd,h=>{h.append(heroName(a));
     h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
     const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=a.siteIn!=null?'site:'+a.siteIn:CRYPT.name;b.title='Open the dungeon view';dg.append(' ',b)}if(a.state==='raid'&&a.raid&&LAIR){const b=el('button','dglink','View the raid ▸');b.type='button';b.dataset.dungeon=LAIR.name;b.title='Open the raid arena';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
-    h.append(el('div','dm','HP'),meter('hp',a.hp/mh));
+    h.append(el('div','dm','HP'),meter('hp',a.hp/mh));{const dr=downRow(a);if(dr)h.append(dr)} // DOWNED, the tally and the timer (#659)
     h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
     if(short){const b=el('button','mini fullsheet','Full sheet ▸');b.type='button';b.dataset.fullsheet=a.id;b.title='Open '+a.name+'’s full sheet: stats, gear, story and mind';h.append(b)}});
   // the dock (#546): a hero outside every company shows this short card until its full sheet is asked for
@@ -470,7 +479,8 @@ export function renderClock(){$('clock').textContent=`Day ${Math.floor(S.gameMin
 
 // Chronicle: render what the sim already logged, then follow new entries.
 function initChronicle(){const el_=$('log');
-  const add=e=>{if(!chronicleShows(e))return;const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';li.append(el('time',null,e.t));parts(li,e.parts);
+  const add=e=>{if(!chronicleShows(e))return;const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';
+    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} // the downed, a rescue, a mercy, a finish (#659)li.append(el('time',null,e.t));parts(li,e.parts);
     keepView(el_,()=>{el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()})}; // a new line on top keeps the line being read in view (#145)
   const all=()=>{el_.replaceChildren();for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i])};all();
   setChronicleRefresh(all); // the Fellowship only filter toggles re-render from S.chronicle
