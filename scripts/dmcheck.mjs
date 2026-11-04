@@ -930,6 +930,25 @@ console.log('NPC conversations');
   if (cap2.hostile) ok(cap2.mood === 'hostile', 'a hostile person stays hostile after a reload');
   away(); clear()}
 
+// ---------------------------------------------------------------- 1b. the prep clock (issue #733)
+console.log('the prep clock starts at the DM\'s first call');
+{const PR = await import('../src/sim/prep.js'); let clk = 0; PR.setPrepClock(() => clk); PR.resetPrep();
+  PR.beginPrep('opening'); let v = PR.prepView();
+  ok(v.state === 'running' && v.started === false && v.seconds === 0 && v.seconds_left === PR.PREP.MS / 1000, 'at the gate the prep waits for its DM: no clock yet (' + JSON.stringify(v) + ')');
+  clk = 60000; PR.prepTick(); dmAct('dm_status', {_poll: true}); dmAct('table_call');
+  v = PR.prepView(); ok(PR.prepActive() && v.started === false && v.calls === 0 && v.waited === 60, 'the runner reaches the game 60 s after the gate: its wait (dm_status _poll) and idle polls neither count nor start the clock');
+  dmAct('dm_status'); v = PR.prepView();
+  ok(v.started === true && v.calls === 1 && v.seconds === 0 && v.seconds_left === PR.PREP.MS / 1000, 'its first call starts the clock: the full ' + PR.PREP.MS / 1000 + ' s are still ahead');
+  clk = 60000 + PR.PREP.MS - 1000; PR.prepTick(); ok(PR.prepActive() && PR.prepView().seconds === PR.PREP.MS / 1000 - 1, 'at 149 s from the gate (89 s of its own) the prep still runs');
+  clk = 60000 + PR.PREP.MS; PR.prepTick(); v = PR.prepView();
+  ok(!PR.prepActive() && v.why === 'time' && v.seconds === PR.PREP.MS / 1000 && v.waited === 60, 'the prep whose runner came 60 s late still got its ' + PR.PREP.MS / 1000 + ' s, then the time cap ended it (' + JSON.stringify(v) + ')');
+  clk = 0; PR.beginPrep('opening'); clk = PR.PREP.HARD_MS - 1; PR.prepTick(); ok(PR.prepActive(), 'a DM that never begins: the world is still held just before the hard cap');
+  clk = PR.PREP.HARD_MS; PR.prepTick(); v = PR.prepView(); ok(!PR.prepActive() && v.why === 'hard' && v.calls === 0, 'the hard cap (' + PR.PREP.HARD_MS / 1000 + ' s from the gate) ends a prep whose DM never called');
+  clk = 0; PR.beginPrep('opening'); clk = 150000; dmAct('dm_status'); clk = PR.PREP.HARD_MS; PR.prepTick(); v = PR.prepView();
+  ok(!PR.prepActive() && v.why === 'hard', 'a DM that starts 150 s late is ended by the hard cap at 180 s, not given 90 s more');
+  clk = 0; PR.beginPrep('opening'); clk = 150000; dmAct('dm_status'); v = PR.prepView(); ok(v.seconds_left === (PR.PREP.HARD_MS - 150000) / 1000, 'seconds_left counts the hard cap when it comes first (' + v.seconds_left + ' s)');
+  PR.endPrep('done'); PR.resetPrep(); PR.setPrepClock(null)}
+
 // ---------------------------------------------------------------- 2. save and restore
 console.log('save and restore');
 const before = JSON.stringify(S.dmAgent.notes), day0 = S.dmAgent.day.pulls;
