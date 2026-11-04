@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "about": "Every image asset Eldmoor wants (#177). npm run art:daily (scripts/art/daily.mjs) generates the missing ones in priority order through Hugging Face Inference Providers until the day's share of the monthly credits is used, into assets/incoming/<date>/ for review; npm run art:accept moves reviewed ones into assets/ and assets/index.json. Each asset has a procedural fallback (its hook); a missing file never breaks a world. Data only: no game code reads prompts.",
+  "about": "Every image asset Eldmoor wants (#177). npm run art:daily (scripts/art/daily.mjs) generates the missing ones in priority order on the owner's private ZeroGPU Space (#703: provider space, daily GPU quota, $0; --provider router uses Hugging Face Inference Providers, billed, up to the day's share of the monthly credits) until the GPU quota is used, into assets/incoming/<date>/ for review; npm run art:accept moves reviewed ones into assets/ and assets/index.json. Each asset has a procedural fallback (its hook); a missing file never breaks a world. Data only: no game code reads prompts.",
   "schema": {
     "id": "'<kind>:<name>', unique; name is lower-case letters, digits and '-'. The file is assets/<kind>/<name>.png.",
     "kind": "tile | autotile | building | landmark | sprite | portrait | prop | icon (must equal the id's prefix)",
@@ -25,7 +25,8 @@
     {"n": 6, "name": "props and icons (slice 7)"}
   ],
   "alternatesWhenComplete": 2,
-  "allowance": {"monthlyUsd": 2.0, "carry": true, "source": "https://huggingface.co/docs/inference-providers/pricing (read 2026-11-03): free accounts get no Inference Providers credits, PRO $2.00 a month, extra use is pay-as-you-go. daily.mjs spends at most monthlyUsd / days-in-month a day and stops for the month at monthlyUsd. carry: a day that made nothing adds its share to the next days of the month (the loop, art:loop)."},
+  "allowance": {"monthlyUsd": 2.0, "carry": true, "source": "https://huggingface.co/docs/inference-providers/pricing (read 2026-11-03): free accounts get no Inference Providers credits, PRO $2.00 a month, extra use is pay-as-you-go. daily.mjs spends at most monthlyUsd / days-in-month a day and stops for the month at monthlyUsd. carry: a day that made nothing adds its share to the next days of the month (the loop, art:loop). These apply to --provider router only (#703).",
+    "zeroGpu": {"dailyMinutes": 40, "stopAtMinutes": 36, "source": "https://huggingface.co/docs/hub/spaces-zerogpu (read 2026-11-03): PRO accounts get 40 minutes of ZeroGPU a day, reset 24 hours after the first use; past it, use is billed to pre-paid credits ($1 per 10 minutes) when the token allows it. The default provider (#703, the owner's private Space) counts GPU seconds in that window (assets/queue.json gpu) and stops at stopAtMinutes (ART_GPU_MINUTES overrides) or at the Space's quota refusal, so it never runs into overage."}},
   "pinnedModel": null,
   "candidates": ["pixel-xl", "pixel-redmond", "ume-flux", "z-turbo", "flux-schnell"],
   "tiers": {
@@ -44,7 +45,10 @@
       "repo": "nerijs/pixel-art-xl",
       "why": "Most-liked pixel-art model on the Hub (666 likes), an SDXL LoRA live on fal-ai through Inference Providers; its card advises downscaling by 8, which post-processing does.",
       "license": "creativeml-openrail-m",
-      "provider": "fal-ai",
+      "provider": "space",
+      "space": "tsc862/eldmoor-art",
+      "routerProvider": "fal-ai",
+      "weights": "pixel-art-xl.safetensors",
       "mappingSeen": "2026-11-02: fal-ai fal-ai/fast-sdxl, lora pixel-art-xl.safetensors",
       "trigger": "pixel art",
       "width": 1024, "height": 1024, "steps": 25, "guidance": 7, "loraScale": 1, "grid": 8,
@@ -55,7 +59,10 @@
       "repo": "artificialguybr/PixelArtRedmond",
       "why": "Second SDXL pixel-art LoRA on the same fal-ai route; a different look if the first is refused.",
       "license": "creativeml-openrail-m",
-      "provider": "fal-ai",
+      "provider": "space",
+      "space": "tsc862/eldmoor-art",
+      "routerProvider": "fal-ai",
+      "weights": "PixelArtRedmond-Lite64.safetensors",
       "mappingSeen": "2026-11-02: fal-ai fal-ai/fast-sdxl, lora PixelArtRedmond-Lite64.safetensors",
       "trigger": "Pixel Art, PIXARFK",
       "width": 1024, "height": 1024, "steps": 25, "guidance": 7, "loraScale": 1,
