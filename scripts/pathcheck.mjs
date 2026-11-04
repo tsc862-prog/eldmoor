@@ -131,7 +131,7 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
 // ---- a long run ----
 {const run=seed=>{seedRng(seed);init();const P=[];let bad=new Map(),stuck=0;const last=new Map();
     for(let i=0;i<20*3600;i++){step(1/60);if(i%30)continue;
-      for(const L of [S.agents,S.mobs,S.npcs||[],S.wanderers||[]])for(const e of L){if(e.state==='dead'||e.hidden||e.alive===false||e.gone)continue;
+      for(const L of [S.agents,S.mobs,S.npcs||[],S.wanderers||[],S.traffic&&S.traffic.list||[],S.traffic&&S.traffic.guards||[]])for(const e of L){if(e.state==='dead'||e.hidden||e.alive===false||e.gone)continue;
         if(solidAt(e.x,e.y)){const k=(e.kind||'person')+':'+(e.state||'')+':'+solidWhy(e.x,e.y);bad.set(k,(bad.get(k)||0)+1)}}
       if(i%600)continue;
       for(const a of S.agents){if(a.state!=='travel'&&a.state!=='return'){last.delete(a);continue}const p=last.get(a);if(p&&p.st===a.state&&Math.hypot(p.x-a.x,p.y-a.y)<.01)stuck++;last.set(a,{x:a.x,y:a.y,st:a.state})}}
