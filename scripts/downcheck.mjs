@@ -385,6 +385,77 @@ world(); {const [a, k] = foes(); markPlayer(k, true); setRunnerLinks(x => x === 
   setRunnerLinks(null);}
 }
 
+// 10. Watch mode and the DM's downed call (#655).
+{const T = await import('../src/sim/table.js'), DC = await import('../src/sim/downcall.js'), DR = await import('../src/sim/dmreflex.js');
+ const {dmAct, setDmSeat} = await import('../src/sim/index.js');
+ const agent = a => {markPlayer(a, true); a.playEvSeen = a.playEvN || 0; return a};
+ const fresh = a => (a.playEv || []).filter(e => e.n > (a.playEvSeen || 0));
+ const wtick = (n = 1) => {for (let i = 0; i < n; i++) {rebuild(); S.gameMin += DOWN.WATCH_TICK; for (const x of busy()) downedStep(x, DOWN.WATCH_TICK / 6)}};
+ console.log('\nWatch mode and the DM\'s downed call (#655)');
+ const mode = T.TABLE.mode;
+
+ // the clock: Table Off, an agent hero and a host with links -> WATCH_TICK; any of them missing -> TICK
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(), b = agent(hero(1, 'Warrior')); mates(a, b); b.state = 'town'; b.x = a.x + 6;
+  T.TABLE.mode = 'off'; setRunnerLinks(() => 'connected');
+  down(a, m);
+  ok(a.down.next - a.down.at === DOWN.WATCH_TICK && /every 20 game minutes/.test(fresh(a).map(e => e.text).join(' ')), 'Watch mode: a downed agent hero saves every ' + DOWN.WATCH_TICK + ' game minutes');
+  b.playEvSeen = b.playEvN || 0;
+  d20(12); S.gameMin += DOWN.TICK; rebuild(); downedStep(a, 1);
+  ok(a.down.s === 0, 'no save at ' + DOWN.TICK + ' minutes');
+  S.gameMin += DOWN.WATCH_TICK - DOWN.TICK; rebuild(); downedStep(a, 1);
+  ok(a.down.s === 1 && a.down.next - a.down.at === 2 * DOWN.WATCH_TICK, 'the save comes at ' + DOWN.WATCH_TICK + ', the next ' + DOWN.WATCH_TICK + ' later');
+  const e = fresh(b).find(x => /still lies bleeding/.test(x.text));
+  ok(e && e.w === 2 && /1 of 3 saves made/.test(e.text) && /stabilize \{who:/.test(e.text), 'the companion in reach gets an urgent wake at the save: ' + (e && e.text.slice(0, 80)));
+  T.TABLE.mode = mode; setRunnerLinks(null);}
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(); T.TABLE.mode = 'off'; // no host: the old clock
+  down(a, m); ok(a.down.next - a.down.at === DOWN.TICK, 'Watch mode with no runner host keeps the ' + DOWN.TICK + '-minute clock');
+  T.TABLE.mode = mode;}
+ world(); {const a = hero(0, 'Warrior'), m = mob(); T.TABLE.mode = 'off'; setRunnerLinks(() => 'connected');
+  down(a, m); ok(a.down.next - a.down.at === DOWN.TICK, 'a scripted hero keeps the ' + DOWN.TICK + '-minute clock in Watch mode');
+  T.TABLE.mode = 'auto'; const c = agent(hero(1, 'Warrior')); down(c, m);
+  ok(c.down.next - c.down.at === DOWN.TICK, 'and so does an agent hero with the Table on');
+  T.TABLE.mode = mode; setRunnerLinks(null);}
+
+ // the DM's call: answered by the DM agent while it listens
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(), b = agent(hero(1, 'Warrior')); mates(a, b); b.state = 'town'; b.x = a.x + 6;
+  T.TABLE.mode = 'off'; setRunnerLinks(() => 'connected'); setDmSeat(true); DR.heard('table');
+  down(a, m);
+  const t = dmAct('table_call');
+  ok(t.ok && t.call && t.call.kind === 'downed' && t.call.id > DC.DCALL.ID_BASE && new RegExp(a.name).test(t.call.about) && t.call.seconds_left > 0 && t.scene && t.scene.kind === 'downed', 'table_call hands the DM the downing: ' + (t.call && t.call.about.slice(0, 70)));
+  const st = dmAct('dm_status');
+  ok(/never decide whether they live/.test(t.call.about) && st.downed && st.downed.waiting === 1, 'the call asks for words only; dm_status names it');
+  const r = dmAct('table_answer', {call: t.call.id, text: 'The blade slips and the warrior drops into the bracken, breath hitching.'});
+  ok(r.ok && r.kind === 'downed', 'table_answer voices it');
+  ok((b.chat || []).some(l => /drops into the bracken/.test(l.text) && l.from.kind === 'dm') && (a.chat || []).some(l => /bracken/.test(l.text)), 'the companion who saw it and the downed hear the line');
+  const L = S.dmLog.find(x => x.detail && x.detail.call === 'downed');
+  ok(L && L.detail.by === 'dm-agent' && !L.detail.fill && a.hp === 0 && a.state === 'downed', 'the DM log has it as the DM agent\'s; HP untouched');
+  ok(!dmAct('table_answer', {call: t.call.id, text: 'again'}).ok, 'a second answer to the same call is refused');
+  d20(12); wtick(); const s = dmAct('table_call');
+  ok(s.call && s.call.kind === 'downed' && /death save: success/.test(s.call.about) && /d20 12/.test(s.call.about), 'a save is a call too, with its dice');
+  d20(15, 18); wtick(2); // fills the save call (pending) and the stable end
+  const C = DC.downCallsOf(a.id);
+  ok(a.down && a.down.stable && C.some(c => c.kind === 'end' && /stable/.test(c.about)) && C.length <= DC.DCALL.PER_DOWN, 'the end (stable) is voiced, ' + C.length + ' calls for the downing (cap ' + DC.DCALL.PER_DOWN + ')');
+  setDmSeat(false); T.TABLE.mode = mode; setRunnerLinks(null);}
+
+ // the reflex fill: the DM silent past its budget, or gone
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(), b = agent(hero(1, 'Warrior')); mates(a, b); b.state = 'town'; b.x = a.x + 6;
+  T.TABLE.mode = 'off'; setRunnerLinks(() => 'connected'); setDmSeat(true); DR.heard('table');
+  down(a, m);
+  const c = S.downCalls.cur[0]; ok(c && c.state === 'wait', 'the call waits while the DM listens');
+  c.real -= 60000; DC.downCallTick();
+  const L = S.dmLog.find(x => x.detail && x.detail.call === 'downed');
+  ok(!S.downCalls.cur.length && L && L.detail.fill && L.detail.why === 'slow' && L.detail.by === 'scripted', 'past its budget the scripted DM fills it (fill, slow)');
+  ok((b.chat || []).some(l => /goes down/.test(l.text)), 'and the companion hears the scripted line: ' + ((b.chat || []).slice(-1)[0] || {}).text);
+  DR.gone();
+  const e = agent(hero(2, 'Warrior')); mates(a, b, e); down(e, m);
+  const G = S.dmLog.find(x => x.detail && x.detail.call === 'downed' && x.detail.hero === e.id);
+  ok(G && G.detail.fill && G.detail.why === 'gone' && !S.downCalls.cur.length, 'nobody listening: filled at once (fill, gone)');
+  setDmSeat(false); T.TABLE.mode = mode; setRunnerLinks(null);}
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(); T.TABLE.mode = 'off'; setDmSeat(true);
+  down(a, m); ok(!S.downCalls, 'no host with runner links: no call at all (seeded worlds unchanged)');
+  setDmSeat(false); T.TABLE.mode = mode;}
+}
+
 // 8. Determinism: two runs from the same seed give the same downings and deaths.
 const run = () => {seed = 0x1234; forced.length = 0; init({fellowship: false}); for (let i = 0; i < 2400; i++) step(.5);
   const D = downStats(); return JSON.stringify([D, S.facStats, S.agents.map(a => [a.id, a.state, a.lvl, Math.round(a.hp)])])};
