@@ -21,7 +21,7 @@
 // every DOWN.WATCH_TICK game minutes instead of DOWN.TICK, and its kin in reach get an urgent wake at each save, so their
 // runners have a turn before the next one (table.js registers the test, onWatch). The DM voices each downing, save and end
 // through its table_call (sim/downcall.js, onDownNews): words only, the dice here decide.
-// Not yet: wounds (#656), UI (#659).
+// Every downing leaves a wound (#656, sim/tend.js takeWound); a death ends it with the hero. Not yet: UI (#659).
 import {ri,rnd} from '../core/rng.js';
 import {dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
@@ -42,6 +42,7 @@ import {nearDeath} from './lore.js';
 import {held,sceneOf} from './scenes.js';
 import {maxHp,moveTo,healOne,slay,fall} from './heroes.js';
 import {pvpDowned} from './mercy.js'; // finish or spare (#657)
+import {takeWound} from './tend.js'; // the lasting cost of a downing (#656)
 
 export const DOWN={
   TICK:10,          // game minutes between death saves away from a table
@@ -106,6 +107,7 @@ export function goDown(a,killer){
   ev(a,'You are down: you lie bleeding at zero health. Death saves every '+tickOf(a)+' game minutes (each round at a Table scene); three failures and you die.',2);
   if(a.player){const L=a.downs||(a.downs=[]);L.push(Math.round(now()));if(L.length>R.DOWNS)L.shift();
     moment(a,'downed','struck down by '+(killer.kind==='boss'?'Kragmaw':killer.kind==='hero'?killer.name:'a '+mobName(killer)))} // the downed agent's next turn: a reflection, no acting tools (#658)
+  takeWound(a,killer.kind==='boss'?'Kragmaw':killer.kind==='hero'?killer.name:'a '+mobName(killer),killer);
   for(const b of nearKin(a,R.REACH))if(!b.player)ev(b,a.name+' is down and dying nearby!',2);
   tellNear(a,'down');
   if(!sceneOf(a))callHelp(a); // at a scene the table's rounds are the rescue (#654)
@@ -309,6 +311,7 @@ export function crawlDown(a,foe,cause,rec){if(!a||a.kind!=='hero'||isDown(a))ret
   lay(a,{kind:'mob',id:null,type:null,name:foe&&foe.name||null});a.down.crawl=true;a.down.cause=cause;a.down.rec=rec;
   record(a,'Went down at level '+a.lvl+' below ground, to '+(foe&&foe.name||'a foe')+'.');
   ev(a,'You are down: you lie bleeding at zero health. A death save each round; three failures and you die.',2);
+  takeWound(a,foe&&foe.name||'a foe',foe);
   news(a,'down');
   return true}
 // The crawl is over and they come up the stair still down (carried out): the world's clock and helpers take over.

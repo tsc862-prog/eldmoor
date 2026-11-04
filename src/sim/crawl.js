@@ -42,6 +42,7 @@ import {siteInterior} from '../world/siteinterior.js';
 import {roomGrid,placeRoom,resolveMove,aimTile,roomWords,moveNames,spotFor,spotAt,spotWord,goSpot,goBeside} from './roomgrid.js'; // who stands where in the room (#744)
 import {DOWN,isDown,crawlDown,downHit,leftBehind,toWorld,bleedOut,bleedingOf,stabText,stabilizeAt,reviveBonus} from './downed.js'; // the downed below ground (#654)
 import {GEO,adj,within,shoots,foeShoots,targetOf,guardOf,inCover,leaving,wardOf,blastAt,bestBlast,blowsFrom,foeTile,tileFor,canBeside,atStair,consequences} from './geometry.js'; // the rules of the tiles (#745)
+import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
 
 export const CRAWL={
   GAP:4,          // seconds (world time) between one room and the next
@@ -204,7 +205,7 @@ function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=ac
   case 'scout':case 'read':{if(F&&k==='read'&&blaster(a))return blast(g,F,a);if(F&&k==='scout'&&inCover(F,a.id)&&F.G.coverWord==='reeds')(cr.hid||(cr.hid=[])).push(a.id); // the reeds hide a scout from the round's first blow
     cr.edge+=2;return k==='scout'?'found a gap':'turned the wards'}
   case 'heal':{const lo=lowest(g);if(!lo)return 'nobody to heal';if(F&&!within(cr.pos[a.id],cr.pos[lo.id],DOWN.HEAL_RANGE)){if(isDown(lo))cr.stats.tendWalks=(cr.stats.tendWalks||0)+1;return lo.name+' is out of range: walked toward them'}
-    return '+'+heal(lo,maxHp(lo)*.25+reviveBonus(lo))+' to '+lo.name}
+    const h=heal(lo,maxHp(lo)*.25+reviveBonus(lo));tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
   case 'stabilize':{const t=bleedingOf(members(g),a);if(!t)return 'nobody is bleeding';if(F&&!adj(cr.pos[a.id],cr.pos[t.id])){cr.stats.tendWalks=(cr.stats.tendWalks||0)+1;return t.name+' is out of reach: walked toward them, tending must wait for next round'}return stabilizeAt(a,t).text}
   case 'potion':{const lo=lowest(g),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';if(F&&lo!==a&&!adj(cr.pos[a.id],cr.pos[lo.id])){if(isDown(lo))cr.stats.tendWalks=(cr.stats.tendWalks||0)+1;return lo.name+' is out of reach: walked toward them, the potion must wait'}
     const r=useItem(a,id,lo,{table:true});return r.ok?'+'+r.healed+' to '+lo.name:r.error}
