@@ -5,6 +5,8 @@
 //     acts), and a seeded run repeats exactly (child runs)
 //   - a retreat (most fall back), a driven-back party and a wipe at the table's dice are handled; the dead
 //     are dead (hardcore), the table never sticks, the Crypt is free again
+//   - a hero at zero in a room is downed (#654): a death save on its turn, companions tend it, the crawl record counts
+//     it, a party leaving carries it up; a wipe (nobody standing) ends the downed too
 //   - a save taken mid-crawl resumes it; 8x resolves without stalling
 //   - without a Fellowship the abstract roll runs and a seeded background world repeats exactly
 //     (CRAWL_BASELINE_HASH=<hash from main> also asserts it equals main's)
@@ -184,6 +186,35 @@ console.log('a wipe at the table');
     ok(M.every(a => /felled by/.test(a.cause || '')), 'each death names the foe that did it');
     ok(!CRYPT.group && !S.table, 'the group and the table are cleared');
   } finally {CRYPT.rooms[0] = JSON.parse(orig)}
+}
+
+console.log('a downing below ground (#654)');
+{
+  // Everyone strikes (nobody tends): the downed bleed and roll a death save on each of their turns.
+  const room = (M, act) => {const saved = CRYPT.rooms[0], orig = JSON.stringify(saved), d0 = (SLT.slotted().crawl || {}).downs || 0, scs = [];
+    CRYPT.rooms[0] = {...saved, foes: [{type: 'tombskit', n: 2, hits: 60}], hit: 1, rounds: 5}; // five rounds: a downing early has turns left to save in
+    try {crawl(M, {maxS: 300, act, onScene: sc => scs.push(sc)})} finally {CRYPT.rooms[0] = JSON.parse(orig)}
+    return {beats: scs.flatMap(sc => sc.beats), downs: ((SLT.slotted().crawl || {}).downs || 0) - d0, scs}};
+  const {DOWN} = await import('../src/sim/downed.js'), LEFT0 = DOWN.CRAWL_LEFT;
+  DOWN.CRAWL_LEFT = 0; // first the carrying: nobody is lost on the stair
+  let M = descend(), r = room(M, () => 'strike');
+  ok(r.downs > 0, `a hero at zero in a room is downed, not dead: the crawl record counts it (${r.downs} downed, ${M.filter(a => a.state === 'dead').length} dead)`);
+  const sv = r.beats.filter(b => b.k === 'save');
+  ok(sv.length && sv.every(b => b.check && b.check.kind === 'death'), `the downed roll a death save on their turn in the room (${sv.length}: ${sv.slice(0, 3).map(b => b.name + ' ' + b.res.replace(/^death save /, '')).join(' | ')})`);
+  ok(r.scs.every(sc => new Set(sc.beats.filter(b => b.k === 'save').map(b => b.id)).size === sc.beats.filter(b => b.k === 'save').length), 'one save a downed member a round');
+  ok(!CRYPT.group && !S.table, 'the crawl ended');
+  ok(M.every(a => a.state === 'dead' || !a.down || !a.down.crawl) && M.every(a => !a.hidden), "nobody is left below ground: the downed came up carried (the world's clock and helpers take over) or died");
+  ok(M.filter(a => a.state === 'downed').every(a => a.down && a.down.next > S.gameMin - 1), 'the carried keep their tally and go on with the world clock');
+  // Left on the stair (DOWN.CRAWL_LEFT, the owner's #269 target): driven back with someone still bleeding, they may die below.
+  DOWN.CRAWL_LEFT = 1; M = descend(); const f0 = M.filter(a => a.state === 'dead').length; r = room(M, () => 'strike');
+  const lost = M.filter(a => a.state === 'dead');
+  ok(r.downs > 0 && lost.length > f0 && lost.every(a => /felled by/.test(a.cause || '')) && M.every(a => a.state !== 'downed' || a.down.stable === true),
+    `with CRAWL_LEFT 1 a downed hero not yet stable is lost when the party is driven back (${lost.length} dead of ${r.downs} downed; cause "${lost[0] && lost[0].cause}")`);
+  DOWN.CRAWL_LEFT = LEFT0;
+  ok(DOWN.CRAWL_LEFT > 0 && DOWN.CRAWL_LEFT < 1, 'the default is a chance (' + DOWN.CRAWL_LEFT + '), tuned to the owner 0.6 crawl deaths a run target');
+  // Reflexes: companions tend the downed as their act.
+  DOWN.CRAWL_LEFT = 0; M = descend(); r = room(M); DOWN.CRAWL_LEFT = LEFT0;
+  ok(r.downs === 0 || r.beats.some(b => ['stabilize', 'heal', 'potion'].includes(b.k)), `companions tend the downed as their act (${r.beats.filter(b => ['stabilize', 'heal', 'potion'].includes(b.k)).map(b => b.name + ' ' + b.k + ': ' + b.res).slice(0, 2).join(' | ')})`);
 }
 
 console.log('driven back');
