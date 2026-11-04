@@ -65,10 +65,14 @@ export function ollamaTools(list = PLAYER_TOOLS) {
 
 // A model's arguments checked against the tool table: {args} or {error}. Numbers given as strings are
 // coerced, unknown keys dropped, enums and required arguments enforced. The game validates again.
+// The wish invitation (#829) on a runner-side unknown tool: at most once an hour of real time per runner process (the game side
+// keeps the once-a-game-day count for its own refusals); one sentence, no extra call.
+let inviteAt = 0;
+const wishInviteOnce = () => {const n = Date.now(); if (n - inviteAt < 3600e3) return ''; inviteAt = n; return '. If you wished you had this, say so with wish {tool, what, why, moment} (read later by the builders; nothing changes now).'};
 export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
   const M = byName(list), t = M.get(name);
   // a DM calling a world lever by name (post_hook, mark_place: issue #401) is pointed at pull_lever
-  if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '')};
+  if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '') + (M.has('wish') ? wishInviteOnce() : '')};
   let a = raw; if (typeof a === 'string') {try {a = a.trim() ? JSON.parse(a) : {}} catch {return {error: 'arguments are not valid JSON'}}}
   if (a == null) a = {}; if (typeof a !== 'object' || Array.isArray(a)) return {error: 'arguments must be an object'};
   // a tool with one object argument (pull_lever's params): keys the tool does not take are that object's, not dropped
@@ -253,10 +257,13 @@ export function cutForeign(text) {return String(text || '').replace(FOREIGN_RUN,
 // written as text; after one more miss the turn ends and the table's reflex acts later, as before.
 export const SCENE_LINE_MAX = 600; // the game's TABLE.LINE_MAX (#571): a longer line is refused there, never cut
 // strict: OpenAI's strict json_schema (no maxLength there; the line is cut to SCENE_LINE_MAX here).
-export function sceneSchema(keys, {strict = false} = {}) {
-  return {type: 'object', additionalProperties: false, required: ['option', 'line'], properties: {
+// moves: the spots a crawl room names (#744): the answer may carry a move. Strict schemas (OpenAI) require every field, so it is empty to stay.
+export function sceneSchema(keys, {strict = false, moves = null, swear = false} = {}) {
+  const mv = moves && moves.length ? {move: {type: 'string', description: `Where you go as you act, or empty to stay: ${moves.join(', ')}; or beside or behind a companion, toward or away from a foe, or steps such as 2 ahead`}} : null;
+  const sw = swear ? {swear: {type: 'string', description: 'An oath of your own, sworn aloud as you act: your words, or yes to take up what your past holds, or no to set it aside, or empty to swear nothing'}} : null; // the first table (#800)
+  return {type: 'object', additionalProperties: false, required: ['option', 'line', ...(strict && mv ? ['move'] : []), ...(strict && sw ? ['swear'] : [])], properties: {
     option: {type: 'string', enum: keys.slice(), description: 'The key of the option you choose'},
-    line: {type: 'string', description: 'What you say aloud as you act, in your own voice and about yourself (a sentence or two; a story of your past may be longer)', ...(strict ? {} : {maxLength: SCENE_LINE_MAX})}}};
+    line: {type: 'string', description: 'What you say aloud as you act, in your own voice and about yourself (a sentence or two; a story of your past may be longer)', ...(strict ? {} : {maxLength: SCENE_LINE_MAX})}, ...(mv || {}), ...(sw || {})}};
 }
 // The open scene as the brief (/play/pace {brief:true}, field scene) or a status/look reply (field table) gives it
 // -> {title, kind, frame, keys, options, your_turn, so_far}, or null when there is nothing to answer.
@@ -268,7 +275,7 @@ export function sceneFrom(t) {
   const options = Array.isArray(t.options) ? t.options : [], keys = Array.isArray(t.keys) && t.keys.length ? t.keys : options.map(o => String(o).split(' = ')[0].trim()).filter(Boolean);
   if (!keys.length) return null;
   return {key: sceneKey(t), title: t.title || t.scene || 'a scene', kind: t.kind || null, frame: t.frame || '', keys, options: options.length ? options : keys, your_turn: !!t.your_turn, so_far: t.so_far || [],
-    ...(t.you ? {you: t.you} : {}), ...(t.topic ? {topic: t.topic} : {}), ...(t.asked_you ? {asked_you: t.asked_you} : {})}; // who answers (#571)
+    ...(t.you ? {you: t.you} : {}), ...(t.room ? {room: t.room} : {}), ...(t.moves ? {moves: t.moves} : {}), ...(t.swear ? {swear: t.swear} : {}), ...(t.your_past ? {your_past: t.your_past} : {}), ...(t.topic ? {topic: t.topic} : {}), ...(t.asked_you ? {asked_you: t.asked_you} : {})}; // who answers (#571)
 }
 // The scene a turn has to answer: from the brief, or (a page or relay from before #163 sends no brief.scene) from
 // status when the brief or the wake says a scene is open. call(tool, args) -> the game's reply.
@@ -284,13 +291,13 @@ export function sceneDue(t, sess = null) {
   return sc && a && a.key === sc.key && Date.now() - a.at < ANSWERED_MS ? null : sc;
 }
 // The answering hero itself (#571: two members once gave the frame's job back as their own quest, names swapped).
-const youText = y => y && y.name ? `You are ${y.name}${y.cls ? ', a ' + String(y.cls).toLowerCase() : ''}.` + (y.persona ? ' Who you are: ' + String(y.persona).slice(0, 300) + '.' : '') + (y.oath ? ' Your own oath: ' + String(y.oath).slice(0, 160) + '.' : '') + (y.told ? ' ' + String(y.told).slice(0, 400) : '') : '';
+const youText = y => y && y.name ? `You are ${y.name}${y.cls ? ', a ' + String(y.cls).toLowerCase() : ''}.` + (y.persona ? ' Who you are: ' + String(y.persona).slice(0, 300) + '.' : '') + (y.oath ? ' Your own oath: ' + String(y.oath).slice(0, 160) + '.' : '') + (y.past ? ' From your past, not sworn: ' + String(y.past).slice(0, 200) : '') + (y.told ? ' ' + String(y.told).slice(0, 400) : '') : '';
 export function scenePrompt(sc) {
   return [`A scene at the table: ${sc.title}${sc.kind ? ' (' + sc.kind + ')' : ''}. The world is paused and the party waits for you${sc.your_turn ? ': it is your turn now' : ''}.`,
-    sc.frame ? 'The DM: ' + sc.frame : '', sc.topic ? 'The talk: ' + sc.topic : '', sc.so_far && sc.so_far.length ? 'So far: ' + sc.so_far.join(' / ') : '',
-    sc.asked_you ? 'You were asked: ' + sc.asked_you : '', youText(sc.you),
+    sc.frame ? 'The DM: ' + sc.frame : '', sc.topic ? 'The talk: ' + sc.topic : '', sc.so_far && sc.so_far.length ? 'So far: ' + sc.so_far.join(' / ') : '', sc.room ? 'The room: ' + sc.room : '',
+    sc.asked_you ? 'You were asked: ' + sc.asked_you : '', youText(sc.you), !(sc.you && sc.you.past) && sc.your_past ? 'From your past, not sworn: ' + sc.your_past : '', sc.swear || '',
     'Your options:', ...sc.options.map(o => '- ' + o),
-    `Choose ONE option by its key (${sc.keys.join(', ')}) and say your line in your own voice, in English, about yourself: your own name, your own oath and past, never the DM's words or a companion's line as your own. Answer only with the JSON object {"option": key, "line": what you say}.`].filter(Boolean).join('\n');
+    `Choose ONE option by its key (${sc.keys.join(', ')}) and say your line in your own voice, in English, about yourself: your own name, your own oath and past, never the DM's words or a companion's line as your own. Answer only with the JSON object {"option": key, "line": what you say${sc.moves && sc.moves.length ? ', "move": a spot or a relation such as beside a companion or toward the stair, or empty to stay' : ''}${sc.swear ? ', "swear": your oath in your own words, or yes, or no, or empty to swear nothing' : ''}}.`].filter(Boolean).join('\n');
 }
 // ask(system, user, schema) over the loop's chat(): Ollama `format`, OpenAI strict json_schema (chat({strict:true})).
 // timeoutMs: past the table's wait (TABLE.liveMs 120 s) the reflex has acted, so a busy Ollama is not waited on longer.
@@ -311,7 +318,7 @@ export const adapterAsk = (adapter, model, effort = 'low') => async (system, use
 // (mode 'scene', forced: true, misses: answers that were not a legal option). keep: write it into sess.local.history.
 export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep = true, strict = false}) {
   const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'scene', forced: true, calls: [], misses: 0};
-  const schema = sceneSchema(sc.keys, {strict}), user = scenePrompt(sc);
+  const schema = sceneSchema(sc.keys, {strict, moves: sc.moves, swear: !!sc.swear}), user = scenePrompt(sc);
   let pick = null, note = '';
   for (let k = 0; k < 2 && !pick; k++) {
     const r = await ask(sess.system || '', user + note, schema), u = r.usage || {};
@@ -319,13 +326,14 @@ export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep
     let j = null; try {j = JSON.parse(r.text)} catch {}
     if (!j || typeof j !== 'object') {const c = parseTextCalls(r.text).find(x => x.function.name === 'scene_act'); if (c) j = c.function.arguments} // the call written as text still counts
     const opt = j && String(j.option || '').trim().toLowerCase();
-    if (opt && sc.keys.includes(opt)) pick = {option: opt, line: cleanNarration(String(j.line || ''), PLAYER_TOOLS, []).replace(/\s+/g, ' ').slice(0, SCENE_LINE_MAX)};
+    if (opt && sc.keys.includes(opt)) pick = {option: opt, line: cleanNarration(String(j.line || ''), PLAYER_TOOLS, []).replace(/\s+/g, ' ').slice(0, SCENE_LINE_MAX), move: sc.moves && typeof j.move === 'string' ? j.move.trim().slice(0, 80) : '', swear: sc.swear && typeof j.swear === 'string' ? j.swear.trim().slice(0, 200) : ''};
     else {stat.misses++; note = `\n\nThat was not one of the options. Answer with {"option": one of ${sc.keys.join(', ')}, "line": "..."}.`}
   }
   if (!pick) {stat.ms = Date.now() - t0; return stat}
-  const args = pick.line ? pick : {option: pick.option};
+  const args = {option: pick.option, ...(pick.line ? {line: pick.line} : {}), ...(pick.move ? {move: pick.move} : {}), ...(pick.swear ? {swear: pick.swear} : {})};
   on('tool', 'scene_act', args); stat.tools++;
   let r; try {r = await call('scene_act', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+  if (r && r.ok === false && (args.move || args.swear)) {delete args.move; delete args.swear; try {r = await call('scene_act', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}} // a move or an oath the game could not take: the act still stands (#744, #800)
   const text = typeof r === 'string' ? r : JSON.stringify(r); on('result', text);
   if (r && r.ok !== false) {stat.acts++; if (sess && sc.key) sess.answeredScene = {key: sc.key, at: Date.now()}; stat.calls.push({name: 'scene_act', ok: true}); stat.narration = pick.line ? `${pick.line} (${pick.option})` : `Chose ${pick.option} at the table.`;
     if (r && Number.isFinite(r.waited_s)) stat.sceneS = [r.waited_s]} // how long the table had waited (issue #515)
@@ -347,9 +355,9 @@ export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep
 // free-form notes, which the runner submits with remember. Notes stay the agent's own: any title, text and tags.
 export const REFLECT_NOTES = 3;
 // strict: OpenAI's strict json_schema (every property required, no maxItems/maxLength; cut here instead).
-export function reflectSchema({strict = false} = {}) {
+export function reflectSchema({strict = false, swear = false, wish = false} = {}) {
   const s = (d, n) => ({type: 'string', description: d, ...(strict ? {} : {maxLength: n})});
-  return {type: 'object', additionalProperties: false, required: strict ? ['notes', 'become', 'intent'] : ['notes'], properties: {notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
+  return {type: 'object', additionalProperties: false, required: strict ? ['notes', 'become', 'intent', ...(swear ? ['swear'] : []), ...(wish ? ['wish'] : [])] : ['notes'], properties: {...(wish ? {wish: {type: 'object', additionalProperties: false, required: ['tool', 'what', 'why', 'moment'], description: 'A thing you wanted to do today that no tool allowed, for the people who build the game; leave the fields empty if none (#829)', properties: {tool: s('The name you would give the tool, or empty', 32), what: s('What it would have done, or empty', 300), why: s('Why this moment needed it, or empty', 200), moment: s('The moment itself, a sentence, or empty', 200)}}} : {}), ...(swear ? {swear: s('Your oath in your own words, or yes to take what your past holds as it stands, or no to set it aside, or empty to leave it', 200)} : {}), notes: {type: 'array', ...(strict ? {} : {maxItems: REFLECT_NOTES}),
     description: 'The memories you want to keep (0-3); empty if nothing is worth it',
     items: {type: 'object', additionalProperties: false, required: strict ? ['title', 'text', 'tags', 'about'] : ['title', 'text', 'tags'], properties: {
       title: s('A short title of your choosing', 80), text: s('The memory in your own words', 600),
@@ -381,6 +389,12 @@ export function reflectIntent(text) {
   const why = String(b.why || '').trim(), until = String(b.until || '').trim();
   return {goal: goal.slice(0, 160), ...(why ? {why: why.slice(0, 200)} : {}), ...(until && !/^(none|-)$/i.test(until) ? {until: until.slice(0, 60)} : {})};
 }
+// The answer to the thread a first dusk asks about (issue #800), as swear_oath arguments, or null (left alone).
+export function reflectSwear(text) {
+  let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
+  const w = j && typeof j === 'object' && !Array.isArray(j) ? String(j.swear || '').trim() : ''; if (!w || /^(none|-)$/i.test(w)) return null;
+  const l = w.toLowerCase().replace(/[.!]+$/, ''); return l === 'yes' || l === 'no' ? {thread: l} : {text: w.slice(0, 200)};
+}
 // What the member did lately, from its own compact conversation (sess.local.history), for the reflection prompt.
 export function recentOf(sess, chars = 2400) {
   const h = (sess && sess.local && sess.local.history) || [], out = [];
@@ -390,6 +404,13 @@ export function recentOf(sess, chars = 2400) {
   return out.join('\n').slice(-chars);
 }
 // The notes of a structured answer, cleaned (0-3, text required, tags strings). -> [{title, text, tags, about?}] or null (not the JSON)
+// The optional wish of a dusk reflection answer (#829) -> {tool, what, why, moment} or null (not given, or any field empty).
+export function reflectWish(text) {
+  let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
+  const w = j && typeof j === 'object' && j.wish && typeof j.wish === 'object' ? j.wish : null; if (!w) return null;
+  const f = {tool: String(w.tool || '').trim().slice(0, 32), what: String(w.what || '').trim().slice(0, 300), why: String(w.why || '').trim().slice(0, 200), moment: String(w.moment || '').trim().slice(0, 200)};
+  return f.tool && f.what && f.why && f.moment ? f : null;
+}
 export function reflectNotes(text) {
   let j = null; try {j = JSON.parse(String(text || '').trim().replace(/^```(?:json)?\s*|\s*```$/g, ''))} catch {return null}
   const L = Array.isArray(j) ? j : j && Array.isArray(j.notes) ? j.notes : j && typeof j === 'object' && /^none$/i.test(String(j.notes || '')) ? [] : null;
@@ -402,11 +423,11 @@ export function reflectNotes(text) {
 export async function reflectTurn({ask, call, sess, moment, prompt, context = '', on = () => {}, keep = true, strict = false}) {
   const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'reflect', forced: true, calls: [], misses: 0, notes: [], moment: moment && moment.id};
   const recent = recentOf(sess), user = [recent ? 'What you did and heard lately (your own turns):\n' + recent : '', context ? context.trim() : '', prompt].filter(Boolean).join('\n\n');
-  let notes = null, note = '', bec = null, aim = null;
+  let notes = null, note = '', bec = null, aim = null, oath = null, wsh = null;
   for (let k = 0; k < 2 && !notes; k++) {
-    const r = await ask(sess.system || '', user + note, reflectSchema({strict})), u = r.usage || {};
+    const r = await ask(sess.system || '', user + note, reflectSchema({strict, swear: !!(moment && moment.thread), wish: !!(moment && moment.kind === 'dusk')})), u = r.usage || {};
     stat.modelCalls++; stat.in += u.in || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
-    notes = reflectNotes(r.text); bec = reflectBecome(r.text); aim = reflectIntent(r.text);
+    notes = reflectNotes(r.text); bec = reflectBecome(r.text); aim = reflectIntent(r.text); oath = moment && moment.thread ? reflectSwear(r.text) : null; wsh = moment && moment.kind === 'dusk' ? reflectWish(r.text) : null;
     if (!notes) {const w = parseTextCalls(r.text).filter(c => c.function.name === 'remember').map(c => c.function.arguments).filter(a => a && a.text); if (w.length) notes = w.slice(0, REFLECT_NOTES)} // remember written as text still counts
     if (!notes) {stat.misses++; note = '\n\nThat was not the JSON object. Answer only with {"notes": [...]} (an empty list for none).'}
   }
@@ -428,6 +449,18 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
     let r; try {r = await call('intent', aim)} catch (e) {r = {ok: false, error: String(e.message || e)}}
     on('result', typeof r === 'string' ? r : JSON.stringify(r));
     if (r && r.ok !== false) {stat.calls.push({name: 'intent', ok: true}); stat.aimed = aim.goal} else {stat.rejected++; stat.calls.push({name: 'intent', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
+  }
+  if (oath && !stat.dead) { // what the hero makes of its past (#800): one swear_oath, refused or not
+    on('tool', 'swear_oath', oath); stat.tools++;
+    let r; try {r = await call('swear_oath', oath)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    on('result', typeof r === 'string' ? r : JSON.stringify(r));
+    if (r && r.ok !== false) {stat.calls.push({name: 'swear_oath', ok: true}); stat.swore = oath.text || oath.thread} else {stat.rejected++; stat.calls.push({name: 'swear_oath', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
+  }
+  if (wsh && !stat.dead) { // a thing wanted today that no tool allowed (#829): one wish to the builders' log, refused or not
+    on('tool', 'wish', wsh); stat.tools++;
+    let r; try {r = await call('wish', wsh)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    on('result', typeof r === 'string' ? r : JSON.stringify(r));
+    if (r && r.ok !== false) {stat.calls.push({name: 'wish', ok: true}); stat.wished = wsh.tool} else {stat.rejected++; stat.calls.push({name: 'wish', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
   }
   stat.answered = !!notes; stat.wrote = stat.notes.length;
   stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) + (stat.became ? ` Something in them has changed (${stat.became}).` : '') + (stat.aimed ? ` Next: ${stat.aimed}.` : '') : '';
@@ -504,6 +537,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     if (/"dead":true/.test(text)) stat.dead = true;
     if (name === 'scene_act' && r && r.ok !== false && Number.isFinite(r.waited_s)) (stat.sceneS = stat.sceneS || []).push(r.waited_s); // the table's wait when it answered (issue #515)
     else if (r && typeof r === 'object' && r.table_waits && !stat.sceneJump) {stat.sceneJump = true; on('jump', 'table_waits')} // its own scene opened mid-turn: answer that first (issue #515)
+    else if (r && typeof r === 'object' && r.turn_over) stat.tableRest = true; // the wait has nothing to wait for at the table (#868): the turn ends with no closing call, pacing wakes it
     // the breaker (#467): a refusal (not the page being away) counts per tool and in a row; enough ends the turn
     const refused = r && typeof r === 'object' && r.ok === false && !(r.offline || /did not answer in time|page went away|game is not connected|paused or reloading/i.test(String(r.error || '')));
     if (refused) {refusedBy.set(name, (refusedBy.get(name) || 0) + 1); inRow++;
@@ -516,7 +550,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
   const capHit = () => {const now = Date.now(); while (times.length && now - times[0] > 60000) times.shift();
     if (times.length < o.callsPerMin) {times.push(now); return false}
     if (!stat.throttled) {stat.throttled = true; on('throttle', times.length)} return true};
-  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled || !!stat.sceneJump;
+  const stopNow = () => stat.dead || !!stat.broke || !!stat.throttled || !!stat.sceneJump || !!stat.tableRest;
   try {
   for (let i = 0; i < toolTurns && !stat.dead; i++) {
     let res;

@@ -1,8 +1,10 @@
 // The Sunken Crypt: group formation, the gather-and-run phases and the
 // success roll. Tuning: entry level 7, groups of 4-5, success chance
 // clamp((pw-8)/8, .15, .92) where pw = avg(level + gear*.3) + Priest 2.5 + Warrior 1.5 + n*.6.
+import {wounded} from './wounds.js'; // a wounded background hero stays out of the Crypt (#656)
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {CRYPT,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
 import {DG_EPICS} from '../data/items.js';
@@ -48,7 +50,7 @@ export function dungeonCheck(dt){const agents=S.agents;
   const g=CRYPT.group;
   if(!g){if(cryptHold())return; // the Fellowship's call holds the Crypt (reserved, or waiting with the cooldown waived)
     CRYPT.cd-=dt;if(CRYPT.cd>0)return;CRYPT.cd=20+rnd()*25;
-    const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&(a.lvl>=CRYPT_LVL||companyOf(a))&&!a.raid&&['hunt','travel','town','return'].includes(a.state)&&brainOk(a,'crypt'));
+    const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&(a.lvl>=CRYPT_LVL||companyOf(a))&&!a.raid&&(a.player||!wounded(a))&&['hunt','travel','town','return'].includes(a.state)&&brainOk(a,'crypt'));
     const cands=livingGuilds().filter(x=>x.fac===f&&pool.filter(a=>a.guild===x).length>=3),gu=cands.length?pickW(cands,cryptWeight):null; // none: the unguilded mixed pool below; a Delve guild (sim/guildfocus.js) weighs more
     let mem=pool.filter(a=>gu&&a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
     if(mem.length<5)mem=mem.concat(pool.filter(a=>!mem.includes(a)).sort((x,y)=>cryptPull(y)-cryptPull(x)).slice(0,5-mem.length));
@@ -57,7 +59,7 @@ export function dungeonCheck(dt){const agents=S.agents;
     if(CRYPT.group||cryptReserved()||mem.length<need)return; // the Fellowship may have just taken or reserved the Crypt
     if(gu&&cryptWeight(gu)>1&&mem.filter(a=>a.guild===gu).length>=3)focusCount('crypt');
     musterCrypt(mem,f,gu&&mem.filter(a=>a.guild===gu).length>=3?gu:null,co?co.name:null);return}
-  g.mem=g.mem.filter(a=>a.state==='dungeon');
+  g.mem=g.mem.filter(a=>a.state==='dungeon'||(a.down&&a.down.crawl&&a.state==='downed')); // the downed below ground stay with the crawl (#654)
   if(!g.mem.length){if(g.crawl&&CRAWL)CRAWL.lost(g);CRYPT.group=null;return} // a crawl whose last hero fell at the table
   g.t-=dt;
   if(g.phase==='gather'){const here=g.mem.filter(a=>dist(a,CRYPT)<2.4);
@@ -69,7 +71,7 @@ export function dungeonCheck(dt){const agents=S.agents;
   const n=g.mem.length,avg=g.mem.reduce((t,a)=>t+a.lvl+a.gear*.3,0)/n;
   const pw=avg+(g.mem.some(a=>CLS[a.cls]&&CLS[a.cls].heal)?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+n*.6+(g.bonus||0)+Math.min(1.5,cryptDraughts(g.mem)/n*.6); // g.bonus: the Fellowship's choices at the table (sim/table.js); the draughts the party drinks below (sim/inv.js)
   const ok=rnd()<clamp((pw-8)/8,.15,.92),who=tagOf(g.guild,g.fac,g.name);
-  for(const a of g.mem){a.hidden=false;a.x=CRYPT.x+(rnd()-.5)*1.5;a.y=CRYPT.y+.5+rnd()*.6}
+  for(const a of g.mem){a.hidden=false;Object.assign(a,standAt(CRYPT.x+(rnd()-.5)*1.5,CRYPT.y+.5+rnd()*.6))}
   if(ok){if(g.guild){g.guild.clears++;rivalDeed('crypt',g.guild)} // a clear close behind an enemy guild's stokes a rivalry (sim/rivals.js)
     log(who,' cleared ',{t:CRYPT.name,c:'gd'},' and destroyed ',{t:CRYPT.boss,c:'gd'},'!');
     if(first('crypt:'+(g.guild?g.guild.tag:'f'+g.fac)))timeline('crypt',who,' cleared ',{t:CRYPT.name,c:'gd'},' for the first time.');

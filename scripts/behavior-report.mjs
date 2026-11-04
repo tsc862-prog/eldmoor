@@ -2,7 +2,8 @@
 // scripts/behavior-log.mjs) into Markdown at logs/behavior/<world>/report.md, for the watcher and the
 // playtest-reviewer agent: top anomalies with counts and examples, per-seat health, a model comparison
 // (empty-turn rate, latency, tokens and cost per provider/model), a mind comparison per Fellowship member and
-// provider/model (scripts/mind-compare.mjs, issue #280), the world digests and the decisions.
+// provider/model (scripts/mind-compare.mjs, issue #280), the cost (scripts/cost-report.mjs, issue #799), the world digests
+// and the decisions.
 //
 //   npm run behavior-report                    the world whose logs changed last
 //   npm run behavior-report -- --world eldmoor-headless
@@ -11,10 +12,11 @@
 //   last N real hours), --stdout (print the report too)
 // Plain Node, no dependency. Reads rotated files too (turns.jsonl.3 .. turns.jsonl).
 import {readFileSync, writeFileSync, existsSync, readdirSync, statSync} from 'node:fs';
-import {join} from 'node:path';
+import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {behaviorRoot, FILES, ROTATE, scrub, legacyTokens} from './behavior-log.mjs';
-import {mindSection, pctile} from './mind-compare.mjs';
+import {mindSection, ctxSection, pctile} from './mind-compare.mjs';
+import {costSection, worldVoices} from './cost-report.mjs';
 
 const SEV = {bad: 3, warn: 2, info: 1};
 const ABOUT = {
@@ -35,6 +37,7 @@ const ABOUT = {
   'no-memories': 'an agent-played Fellowship member wrote no memory for two game days',
   'no-flee-rule': 'an agent hero ran with gambits that hold no flee rule (flee_home or retreat_to), its own call (#617)',
   'no-aim': 'an agent hero had no stated aim (intent) for two game hours outside camp and town rest (#535)',
+  'town-idle': 'an agent hero earned nothing in town for twelve game hours (no XP, kill, buy, sell, job or talk); it was woken with the board and autopilot hunts (#790)',
   'dm-scripted': 'the DM agent answered under half of the answerable calls (talk, table voice, slots) over two game hours while its seat was held; the scripted DM filled the rest (#541)',
   'hold-expired': 'a gambit hold stopped the world and the agent did not act within its limit (#630)',
   'scene-missed': 'a live member did not answer its Table scene in time: the table waited, then its reflex acted (#515)',
@@ -61,7 +64,7 @@ const f1 = v => v == null ? '-' : (Math.round(v * 10) / 10).toString();
 const money = v => v == null ? '-' : '$' + v.toFixed(4);
 const cell = s => String(s == null ? '' : s).replace(/\|/g, '/').replace(/\s+/g, ' ').trim();
 const q = (s, n = 140) => {s = cell(s); return s.length > n ? s.slice(0, n) + '…' : s};
-const table = (head, rows) => rows.length ? ['| ' + head.join(' | ') + ' |', '|' + head.map(() => ' --- ').join('|') + '|', ...rows.map(r => '| ' + r.map(cell).join(' | ') + ' |')].join('\n') : '_none_';
+export const table = (head, rows) => rows.length ? ['| ' + head.join(' | ') + ' |', '|' + head.map(() => ' --- ').join('|') + '|', ...rows.map(r => '| ' + r.map(cell).join(' | ') + ' |')].join('\n') : '_none_';
 const day = gm => gm == null ? '?' : `day ${Math.floor(gm / 1440) + 1} ${String(Math.floor(gm % 1440 / 60)).padStart(2, '0')}:${String(Math.floor(gm % 60)).padStart(2, '0')}`;
 const mind = r => (r.provider || '?') + '/' + (r.model || (r.src === 'game' ? 'relay default' : '?')); // a Mind entry without a model asked the relay's default
 
@@ -145,7 +148,7 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   const sa = sceneAnswers(T, A); L.push(...sa.lines);
 
   // ---- minds per member (issue #280) ----
-  const mc = mindSection(T, D, W, table); L.push(...mc.lines);
+  const mc = mindSection(T, D, W, table); L.push(...mc.lines); L.push(...ctxSection(T, table));
 
 
   // ---- DM agent share (issue #541) ----
@@ -187,9 +190,9 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
     L.push(aim.size ? table(['hero', ...dl.map(d => 'day ' + d), 'total'], [...aim.entries()].map(([k, m]) => [k, ...dl.map(d => m.get(d) || 0), [...m.values()].reduce((t, v) => t + v, 0)])) : '_none stated_', '');
     // gambits (issue #617): rule-driven acts and edits per hero, and who ran without a flee rule
     const gb = new Map();
-    for (const w of W) for (const [k, v] of Object.entries(w.gambits || {})) {const m = gb.get(k) || {acts: 0, edits: 0, noFlee: false, own: false}; m.acts += v.acts || 0; m.edits += v.edits || 0; m.noFlee = !!v.noFlee; m.own = m.own || !!v.own; gb.set(k, m)}
-    L.push('', 'Gambits (rule-driven acts between turns, edits, flee rule):', '');
-    L.push(gb.size ? table(['hero', 'acts by rule', 'edits', 'list', 'no-flee-rule'], [...gb.entries()].map(([k, m]) => [k, m.acts, m.edits, m.own ? 'own' : 'class preset', m.noFlee ? 'YES' : '-'])) : '_no rule fired_', '');
+    for (const w of W) for (const [k, v] of Object.entries(w.gambits || {})) {const m = gb.get(k) || {acts: 0, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}; m.acts += v.acts || 0; m.edits += v.edits || 0; m.wrote = Math.max(m.wrote, v.wrote || 0); m.wroteAb = Math.max(m.wroteAb, v.wroteAb || 0); m.noFlee = !!v.noFlee; m.own = m.own || !!v.own; gb.set(k, m)}
+    L.push('', 'Gambits (rule-driven acts between turns, edits, rules the hero wrote itself and how many name use_ability, flee rule):', '');
+    L.push(gb.size ? table(['hero', 'acts by rule', 'edits', 'rules written / with abilities', 'list', 'no-flee-rule'], [...gb.entries()].map(([k, m]) => [k, m.acts, m.edits, m.wrote + ' / ' + m.wroteAb, m.own ? 'own' : 'class preset', m.noFlee ? 'YES' : '-'])) : '_no rule fired_', '');
     const deaths = W.flatMap(w => (w.deaths || []).map(d => ({...d, gm: w.gameMin})));
     L.push(`- Deaths: ${deaths.length}${deaths.length ? ' (watched heroes: ' + (deaths.filter(d => d.watched || d.fellow || d.agent).map(d => d.name + ', ' + d.cause).join('; ') || 'none') + ')' : ''}.`);
     const causes = {}; for (const d of deaths) {const c = String(d.cause || '?').replace(/^(slain|killed) by /i, '').slice(0, 40); causes[c] = (causes[c] || 0) + 1}
@@ -200,12 +203,16 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   // ---- companies (issue #460) ----
   const co = companySection(W, T, table); L.push(...co.lines);
 
+  // ---- cost (issue #799) ----
+  const cs = costSection(T, W, D, table, {voices: world ? worldVoices(dirname(dir), world, sinceMs) : {}}); L.push(...cs.lines);
+
   // ---- decisions ----
   L.push('## Decisions by kind', '');
   const dk = new Map();
   for (const d of D) {const k = (d.src || '?') + ' ' + (d.kind || '?'); let x = dk.get(k); if (!x) dk.set(k, x = {k, n: 0, res: {}}); x.n++; const r = d.src === 'relay' ? (d.ok ? 'answered' : 'failed ' + (d.status || '')) : d.outcome || '?'; x.res[r] = (x.res[r] || 0) + 1}
   L.push(table(['source and kind', 'count', 'results'], [...dk.values()].map(x => [x.k, x.n, Object.entries(x.res).map(([k, v]) => `${k.trim()} ${v}`).join(', ')])), '');
-  return {md: scrub(L.join('\n') + '\n'), minds: mc.data, companies: co.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
+  const wsh = wishSection(readJsonl(dir, FILES.wish, sinceMs), T, table); L.push(...wsh.lines);
+  return {md: scrub(L.join('\n') + '\n'), wishes: wsh.data, minds: mc.data, cost: cs.data, companies: co.data, scenes: sa.data, counts: {turns: T.length, decisions: D.length, world: W.length, anomalies: A.length}, kinds: Object.fromEntries(kinds.map(k => [k.kind, k.n]))};
 }
 
 
@@ -267,6 +274,53 @@ function dmShareSection(W, T, A, table) {
   return L;
 }
 
+// ---- wishes (issue #663) ----
+// What the agents asked the builders for (type 'wish') grouped by the asked-for tool name, and two kinds of evidence they never put into
+// words: tools they tried that do not exist (their "Unknown tool" refusals in the turn lines) and the free actions the DM ruled on most
+// (type 'attempt', grouped by skill and by the first verb). Several worlds may be passed (wishes-all.md): counts then span worlds.
+export const wishKey = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || '?';
+const words = s => (String(s || '').match(/\S+/g) || []).length;
+const firstVerb = s => (String(s || '').toLowerCase().match(/[a-z']+/) || ['?'])[0];
+export function wishData(rows, turns) {
+  const wishes = rows.filter(r => r.type === 'wish'), attempts = rows.filter(r => r.type === 'attempt');
+  const by = new Map();
+  for (const w of wishes) {const k = wishKey(w.tool); let x = by.get(k); if (!x) by.set(k, x = {tool: k, n: 0, seats: new Set(), worlds: new Set(), best: null, names: new Map()});
+    x.n++; x.seats.add(w.seat === 'dm' ? 'DM' : (w.name || w.seat)); if (w.world) x.worlds.add(w.world); x.names.set(w.tool, (x.names.get(w.tool) || 0) + 1);
+    if (!x.best || words(w.what) + words(w.why) + words(w.moment) > words(x.best.what) + words(x.best.why) + words(x.best.moment)) x.best = w}
+  const unknown = new Map();
+  for (const t of turns || []) for (const c of t.tools || []) {if (c.ok) continue; const m = /^Unknown (?:DM )?tool\s+"?([^".:\s]+)/i.exec(c.error || ''); if (!m) continue;
+    const k = wishKey(m[1]); let x = unknown.get(k); if (!x) unknown.set(k, x = {tool: k, n: 0, seats: new Set()}); x.n++; x.seats.add(t.seat === 'dm' ? 'DM' : (t.hero && t.hero.name) || t.seat)}
+  const sk = new Map(), vb = new Map();
+  for (const a of attempts) {const s = a.skill || 'unknown'; let x = sk.get(s); if (!x) sk.set(s, x = {k: s, n: 0, pass: 0, ex: a.what}); x.n++; if (a.pass) x.pass++;
+    const v = firstVerb(a.what); let y = vb.get(v); if (!y) vb.set(v, y = {k: v, n: 0, ex: a.what}); y.n++}
+  const top = m => [...m.values()].sort((a, b) => b.n - a.n || String(a.k || a.tool).localeCompare(String(b.k || b.tool)));
+  return {wishes: wishes.length, groups: top(by).map(x => ({tool: x.tool, n: x.n, seats: [...x.seats], worlds: [...x.worlds], asked: [...x.names.keys()], best: x.best})),
+    unknown: top(unknown).map(x => ({tool: x.tool, n: x.n, seats: [...x.seats]})), attempts: attempts.length, bySkill: top(sk), byVerb: top(vb)};
+}
+export function wishSection(rows, turns, table) {
+  const d = wishData(rows, turns), L = ['## Wishes', '', 'Notes the DM and the heroes left for the people who build the game (private to the builders, never answered in play). Three or more asks for one tool make an issue.', ''];
+  if (!d.groups.length) L.push('No wishes yet.', '');
+  else {
+    L.push(table(['asked-for tool', 'asks', 'seats', 'worlds'], d.groups.map(g => [g.tool, g.n, g.seats.slice(0, 8).join(', '), g.worlds.length || '-'])), '');
+    for (const g of d.groups) {const b = g.best; L.push(`- **${g.tool}** (${g.n}): ${b.what} Why: ${b.why} Moment: ${b.moment} (${b.seat === 'dm' ? 'the DM' : b.name || b.seat}, day ${b.day ?? '?'}${b.place ? ', ' + b.place : ''}${b.model ? ', ' + (b.provider || '?') + '/' + b.model : ''})`)}
+    L.push('');
+  }
+  { // wishes per seat per game day (#829): who is asking at all, beside the memories table
+    const w = rows.filter(r => r.type === 'wish'), seats = new Map();
+    for (const r of w) {const k = r.seat === 'dm' ? 'DM' : r.name || r.seat || '?'; let x = seats.get(k); if (!x) seats.set(k, x = {n: 0, days: new Set()}); x.n++; if (r.day != null) x.days.add(r.day)}
+    const span = new Set(w.map(r => r.day).filter(x => x != null)), nd = Math.max(1, span.size ? Math.max(...span) - Math.min(...span) + 1 : 1);
+    L.push('### Wishes per seat per game day', '', seats.size ? table(['seat', 'wishes', 'game days with one', 'per game day'], [...seats].sort((p, q) => q[1].n - p[1].n).map(([k, x]) => [k, x.n, x.days.size, (x.n / nd).toFixed(2)])) : 'No seat has written a wish yet.', '');
+  }
+  L.push('### Tools tried that do not exist', '');
+  L.push(d.unknown.length ? table(['name tried', 'times', 'seats'], d.unknown.slice(0, 15).map(u => [u.tool, u.n, u.seats.slice(0, 6).join(', ')])) : 'None in the turn lines.', '');
+  L.push('### Free actions the DM ruled on most', '');
+  if (!d.attempts) L.push('No attempts ruled on.', '');
+  else {
+    L.push(table(['skill', 'attempts', 'passed', 'example'], d.bySkill.slice(0, 10).map(s => [s.k, s.n, s.pass, String(s.ex || '').slice(0, 80)])), '');
+    L.push(table(['first verb', 'attempts', 'example'], d.byVerb.slice(0, 10).map(s => [s.k, s.n, String(s.ex || '').slice(0, 80)])), '');
+  }
+  return {lines: L, data: d};
+}
 export function worlds(root) {return existsSync(root) ? readdirSync(root).filter(d => {try {return statSync(join(root, d)).isDirectory()} catch {return false}}) : []}
 export function lastWorld(root) {
   let best = null, t = -1;
@@ -286,5 +340,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const r = writeReport(root, w, {sinceMs});
     console.log(`[behavior-report] ${w}: ${r.counts.turns} turns, ${r.counts.decisions} decisions, ${r.counts.world} digests, ${r.counts.anomalies} anomalies -> ${r.file}`);
     if (argv.includes('--stdout')) console.log(r.md);
+  }
+  if (list.length > 1) { // wishes across worlds (#663)
+    const rows = [], turns = []; for (const w of list) {const dir = join(root, w); rows.push(...readJsonl(dir, FILES.wish, sinceMs).map(r => ({...r, world: w}))); turns.push(...readJsonl(dir, FILES.turn, sinceMs))}
+    writeFileSync(join(root, 'wishes-all.md'), scrub(['# Wishes across worlds: ' + list.join(', '), '', ...wishSection(rows, turns, table).lines].join('\n') + '\n'));
+    console.log(`[behavior-report] wishes across ${list.length} worlds -> ${join(root, 'wishes-all.md')}`);
   }
 }

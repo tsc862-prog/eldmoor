@@ -2,7 +2,7 @@
 // banner (ui/table.js) and the scene view's bar (render/sceneview.js). The full title still shows as body text.
 // Pure text, no DOM, no sim state.
 const KIND={decision:'Vote',check:'Check',choice:'Choice',ambush:'Ambush',elite:'Elite',boss:'Boss',rescue:'Rescue',site:'Crypt',room:'Crypt',crawl:'Crypt',
-  meeting:'Meeting',social:'Talk',trap:'Trap',mystery:'Mystery'};
+  meeting:'Meeting',social:'Talk',trap:'Trap',mystery:'Mystery',vision:'Vision'};
 const HEAD_MAX=24; // characters of the scene's own words in the pixel-font title
 // {head, cut, full}: head = "Vote · make camp here…" (shown upper case), cut = the words did not all fit, full = the title without its kind prefix.
 export function sceneHead(kind,title){const full=String(title||'').replace(/^(put to the party|ambush|vote)\s*:\s*/i,'').trim();

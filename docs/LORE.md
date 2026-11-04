@@ -115,6 +115,10 @@ that."), and the hero card lists them.
 | Boastful | Picks fights for the story, and loots for the audience. | 20% more likely to duel; hunts a little longer before selling. |
 
 ## Origins and goals
+A hero who plays by its own mind is given the past and chooses the oath (#800): the origin stays, and the rolled goal is only an
+offered thread, told as the past ("Brunok's family once held the Magma-Tempered Gauntlets. It was lost, and they never stopped
+speaking of it."). Nobody calls it an oath until the hero swears, aloud, in its own words. What follows is the background heroes' way.
+
 Every recruit arrives with a one-sentence backstory (`src/data/origins.js`, filled from the
 living world by `src/sim/goals.js`) and swears an oath: a personal goal they pursue and the
 Chronicle announces when kept ("Pellora has kept the oath: Hollowfang is dead. A new oath:
@@ -311,6 +315,9 @@ and is hunted on sight ("spots X, who killed their friend Y, and charges"). The 
 friend swears the death will be paid for. Whoever finally kills the killer has paid the
 blood debt, and the dead hero's friends warm to them. A grudge ends only with the killer.
 
+## Wounds and the chapel (issue #656)
+A hero brought down and brought back carries a lasting wound for days: less health, a slower step and a slower arm. Healers and the fire shorten it. In town the Priest (the Shaman, in Warband towns) dresses wounds at the chapel for a few coins; no one there raises the dead, and no one ever will.
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |
@@ -349,6 +356,19 @@ Sample lines:
 - "Zugmar pries at a strongbox on the Mirefen road... rolls 20 vs 12. Gold: 35g."
 - "Vexzar brings the pilgrim safe to the gate of Grimhold... rolls 20. +3 honor and a gift of 19g."
 - "Pellora and party are ambushed by 2 Rookscar bandits on the Mirefen road... rolls 12+3 vs 14. The bandits break and run; 20g in their purses."
+
+## Road traffic
+
+The people between the towns (issue #796). Nobody here fights or has a name of their own: they are presence, seen in passing.
+Carters belong to neither faction and take their loads to any gate; the road is the one place the Concord and the Warband
+buy from each other without a word said.
+
+- **Carts** go by their load: a salt cart, a grain cart, an ale cart, a timber cart, a wool cart, a hide cart, a pelt cart, a silk
+  cart, a moss cart. The last five carry what the auction house trades (Hoar Wool, Thick Hide, Wolf Pelt, Silk Bundle, Fen Moss).
+- **Travellers** on foot: a pedlar, a pilgrim, a tinker, a drover, a road courier, a wandering minstrel. They also walk to the
+  outposts and the dungeon mouths at the ends of the roads, and back. Nobody takes the road to a wyrm's lair for choice.
+- **Guards**: a guard of the town on its gate road, day and night; a watchman of the nearest town on each bridge, by day.
+- A cart that never arrives reads in the Chronicle as "A salt cart never came off the road in Mirefen."
 
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
@@ -945,6 +965,33 @@ Samples:
 - "Halfhorn, terror of the Mirefen drovers, comes out last... rolls 18+3 vs 11. Mireth is ready for it."
 - "Lurken delivers a salt wagon at the Thornvale waymark... rolls 7+2 vs 10. Two crates short. The tallyman docks the pay and does not apologise."
 - "Mireth's party returns from Smoke Out the Mirefen Den with the job done. 40g each, and Mireth takes Fenleather Vestment."
+
+### Goods jobs (issue #720, epic #238)
+
+Not every job is a walk. Some boards ask for goods: crafted by a hero's trade or dug, cut and
+caught with their own hands. No scenes and no party; a hero takes the posting, brings the goods
+to the town that posted it, and is paid at the counter (templates `SUPPLY` in
+`src/data/adventures.js`). The Chronicler files them under "errands" and is dry about it.
+
+| Job | Asks for | Given by | The giver adds |
+| --- | --- | --- | --- |
+| Draughts for the chapel | Redroot Draughts (alchemy) | priest, innkeeper | "The chapel's shelves are bare after the last fever." |
+| Tonics for the sick-room | Marrowmend Tonics (alchemy) | priest | "Bad cuts, and nothing left to knit them." |
+| A blade for the gate | a Tinforged Weapon (smithing) | gate captain, quartermaster | "The watch's steel is notched past mending." |
+| A cowl for the gate | a Wolfhide Cowl (leatherworking) | gate captain | "The winter watch wants something warm for the post on the wall." |
+| Suppers for the road | Spit-Roast Perch (cooking) | innkeeper, quartermaster | "A drover train is in, hungry and not particular." |
+| Wards for the chapel | Scrolls of Hearthward (scribing) | priest, bard | "The chapel hands them to travellers who ask." |
+| Redroot for the herbwives | Redroot Leaf (herbalism) | priest, innkeeper | "The herbwives cannot keep up with the cut." |
+| Ore for the forge | Tin Ore (mining) | smith, quartermaster | "The forge is cold until someone brings it ore." |
+| Sinew for the saddlers | Wolf Sinew (skinning) | quartermaster, smith | "Harness, stitching, and not a strand to be had." |
+| Perch for the inn | River Perch (fishing) | innkeeper | "The kitchen wants them whole and cold." |
+| A Rimebloom patch | Rimebloom (herbalism, band 3) | priest | "A drover saw a patch of it above the tarn, blue in the snow." |
+
+Crafted-goods jobs sometimes pay in the raw stuff the next batch wants (Hearthbloom, Fen Moss, Tin
+Ore, Wolf Sinew, River Perch, Rushpulp); gathering jobs pay gold only. The Rimebloom hook's "the
+tarn" is one of Hoarfell's frozen tarns (see Zones), where Tarn Wights climb out of the ice; the
+priest does not mention that. Titles read like "Three Redroot Draughts for the chapel" or
+"Five Redroot Leaf, fresh".
 
 ## The DM's hand
 The Dungeon Master does not reach into the world freely. It has a short list of levers

@@ -16,6 +16,7 @@ const READY_TEXT={claimed:'claimed',warming:'warming up',ready:'ready',failed:'w
 import {dmRunnerControl,dmRunnerSig,runnerByKey,DONE_STATE} from './runners.js';
 import {openDmPanel} from './dmpanel.js';
 import {gateMissing,whyMissing} from './rungate.js'; // the DM runner-stop alert (#560)
+import {pageBusy,busyText} from './pagewatch.js'; // the page watchdog (#736)
 
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const setText=(n,v)=>{v=v==null?'':String(v);if(n._v!==v){n._v=v;n.textContent=v}};
@@ -35,8 +36,8 @@ export function dmFrameData(){const open=dmSeatOn(),r=runnerByKey('dm'),on=!!(r&
   if(!open&&!on)return {open:false,text:'DM: no seat yet'};
   const v=dmAgentView()||{day:{}},d=v.day||{},today=d.d===Math.floor(S.gameMin/1440)?d:{},sv=stagedView(),fs=focusStats(),D=S.dmAgent;
   const notes=D&&D.notes?Object.values(D.notes).reduce((n,a)=>n+(a?a.length:0),0):0;
-  const link=dmLink();
-  return {open:true,link,linkText:LINK[link]||LINK_TEXT[link]||link,mind:(dmRunnerTag()||'')+(prepView().state==='running'?(dmRunnerTag()?' · ':'')+'preparing':dmReadyWord()?(dmRunnerTag()?' · ':'')+READY_TEXT[dmReadyWord()]:''),ready:dmReadyWord(),prep:prepView().state==='running',now:nowLine(r),last:r&&r.lastTurnAgo!=null&&!DONE_STATE[r.state]?r.lastTurnAgo:null,
+  const link=dmLink(),pb=link!=='off'&&link!=='offline'?pageBusy():null; // #736: a page that froze reads page busy
+  return {open:true,link:pb?'pagebusy':link,linkText:pb?busyText(pb):LINK[link]||LINK_TEXT[link]||link,mind:(dmRunnerTag()||'')+(prepView().state==='running'?(dmRunnerTag()?' · ':'')+'preparing':dmReadyWord()?(dmRunnerTag()?' · ':'')+READY_TEXT[dmReadyWord()]:''),ready:dmReadyWord(),prep:prepView().state==='running',now:nowLine(r),last:r&&r.lastTurnAgo!=null&&!DONE_STATE[r.state]?r.lastTurnAgo:null,
     turns:r?r.turns:0,cost:r?r.cost:0,
     narr:(today.narr||0)+'/'+DMA.NARRATE_PER_DAY,levers:(today.pulls||0)+'/'+DMA.PULLS_PER_DAY,scenes:sv.today,
     staged:sv.cur?sv.cur.title+' · '+sv.cur.kind+(sv.cur.hours_left!=null?' · '+sv.cur.hours_left+' h left':''):'',

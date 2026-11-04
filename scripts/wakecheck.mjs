@@ -7,6 +7,7 @@
 //   hash     `node scripts/wakecheck.mjs --hash` prints a state hash of a seeded scripted run (with and without a
 //            Fellowship, nobody agent-played); the hash must equal main's (checked by hand in the PR)
 //   beat     the runner's default heartbeat is 120 game minutes, and a quiet hero's pace check wakes by then
+//   news     unread news survives a flood of minor lines: kept in the list, still wakes, told by the next tool result
 // Usage: npm run wakecheck
 let seed = 0x3a4e5 ^ (Number(process.env.WAKECHECK_SEED) || 11);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
@@ -17,7 +18,7 @@ const HE = await import('../src/sim/heroes.js');
 const PC = await import('../src/sim/pace.js');
 const W = await import('../src/sim/wakes.js').catch(() => null);
 const {PACE_DEFAULTS} = await import('./pacing.mjs');
-const {wakeLevel} = await import('../src/sim/notify.js');
+const {wakeLevel, ev, EV_MAX} = await import('../src/sim/notify.js');
 const {MOVES} = await import('../src/data/moves.js');
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
@@ -97,6 +98,30 @@ const t0 = S.gameMin; a.playEvSeen = 1e9;
 ok(PC.paceCheck(a.id, {since: t0, minutes: 120}) === null, 'a quiet hero is not woken early');
 ok(PC.paceCheck(a.id, {since: t0 - 125, minutes: 120}).wake === 'heartbeat', 'a quiet hero takes a turn within the heartbeat');
 ok(PACE_DEFAULTS.heartbeat === 120, 'default heartbeat is 120 game minutes');
+
+// news survives chatter (localcheck section B's flake, a live bug): more minor lines than the list holds, or than a tool result shows,
+// must neither push unread news out of the list (its turn would never start) nor hide it and mark it seen
+const chatter = n => {for (let i = 0; i < n; i++) ev(a, 'Chatter line ' + i + '.')};
+const shown = r => (r.events || []).join(' | ');
+fresh(); a.playEvSeen = a.playEvN || 0; ev(a, 'A traveller hails you.', true); chatter(3 * EV_MAX);
+ok(a.playEv.length === EV_MAX && a.playEv.some(e => /traveller/.test(e.text)), `unread news stays in the list past ${3 * EV_MAX} minor lines (list ${a.playEv.length}, cap ${EV_MAX})`);
+let pn = PC.paceCheck(a.id, {since: S.gameMin - 2000, minutes: 120});
+ok(pn && pn.wake === 'soft' && /traveller/.test(pn.why), `so it still starts its turn, ahead of the heartbeat (${pn && pn.wake})`);
+ok(PC.paceBrief(a.id).brief.news.some(x => /traveller/.test(x)), 'the turn header names it, past the newest eight lines');
+let rd = P.playerAct(a.id, 'status', {});
+ok(/traveller/.test(shown(rd)) && /older minor events not shown/.test(shown(rd)) && rd.events.length === 16, `the next tool result tells it and cuts only minor lines (${(rd.events || []).length} lines, first "${rd.events && rd.events[0]}")`);
+ok(a.playEvSeen === a.playEvN && PC.paceCheck(a.id, {since: S.gameMin, minutes: 120}) === null, 'once told it is read: no wake for it');
+fresh(); a.playEvSeen = a.playEvN || 0; ev(a, 'A choice waits for you.', 3); for (let i = 0; i < 3 * EV_MAX; i++) ev(a, 'Soft news ' + i + '.', true);
+pn = PC.paceCheck(a.id, {since: S.gameMin, minutes: 120, wake: 'must'});
+ok(pn && pn.must && /choice/.test(pn.why), 'a full list of soft news gives way before a choice that must be answered');
+ok(/Soft news 119./.test(a.playEv[a.playEv.length - 1].text), 'and the newest line always gets in');
+fresh(); a.playEvSeen = a.playEvN || 0; ev(a, 'Old read news.', true); a.playEvSeen = a.playEvN; ev(a, 'Unread minor line.'); chatter(EV_MAX - 2); ev(a, 'One more.');
+ok(a.playEv.length === EV_MAX && !a.playEv.some(e => /Old read/.test(e.text)) && a.playEv.some(e => /Unread minor/.test(e.text)), 'what was read gives way before what was not');
+fresh(); a.playEvSeen = a.playEvN || 0; for (let i = 0; i < 20; i++) ev(a, 'News ' + i + '.', true);
+rd = P.playerAct(a.id, 'status', {});
+ok((rd.events || []).length === 20 && !/not shown/.test(shown(rd)), `news is never cut from a tool result, however much (${(rd.events || []).length} of 20)`);
+fresh(); a.playEvSeen = a.playEvN || 0; chatter(20); rd = P.playerAct(a.id, 'status', {});
+ok(/5 older minor events not shown/.test(shown(rd)) && /Chatter line 19/.test(shown(rd)) && !/Chatter line 4./.test(shown(rd)), 'minor lines alone: the newest fifteen, and it says how many are left out');
 
 console.log(fail ? `\n${fail} FAILED` : '\nall ok');
 process.exit(fail ? 1 : 0);

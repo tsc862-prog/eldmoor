@@ -112,3 +112,21 @@ pixel tables, plus the terrain ramps the minimap is derived from.
 ## Before and after
 Each PR body carries its before/after notes; previews are rendered from the dev server
 with the same camera positions so they compare one to one.
+
+## Where the images are made (#703)
+
+Default: the owner's private ZeroGPU Space `tsc862/eldmoor-art` (source in `scripts/art/space/`, pushed with
+`npm run art:space -- --push`). SDXL with the pixel-xl and pixel-redmond LoRAs, the manifest's prompts and seeds, the
+same post-processing. Each image costs $0 and a few seconds of the PRO account's 40 daily ZeroGPU minutes; the daily run
+stops at 36 counted minutes or at the Space's quota refusal and the loop resumes at the quota's reset time. The
+Inference Providers router (fal-ai, billed against the $2.00 monthly credit) is the paid exception: only with
+`--provider router`, never as a fallback. Images regenerated on the Space are not pixel-identical to the router's, so a
+regenerated set goes through review (`npm run art:accept`) as a new set with provider `space` in the index.
+
+## Review cadence (#712)
+
+Generation runs every day, so review is a routine, not a pile. Once a day run `npm run art:review` (or press `a` in the launcher): it
+prints, per slice (terrain, towns, sprites, portraits, scene, props), what is accepted, waiting and missing, the newest contact
+sheet of each day and the `art:accept` line for that day's waiting items. Buildings, landmarks and sprites are judged in the game with
+an in-game preview, never on the contact sheet, so they are kept out of that line. Once a week, accept what passed in one PR
+(`npm run art:accept -- <ids>`, commit `assets/`); reject the rest with `--reject`, which redraws them with a new seed.

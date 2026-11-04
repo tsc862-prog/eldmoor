@@ -42,3 +42,20 @@ export const CAMP_LINES={
     'Keep your boots out of my side of the fire.']};
 export const QUARREL_REPLY=['Fine. Fine. Go to sleep.','Say that again in daylight.','Enough. We are all tired.','Aye, aye. I heard you the first time.'];
 export const NTH=['first','second','third','fourth','fifth'];
+// A scripted companion of an agent company (issue #764): what a camp line needs to have happened today, by 'topic:row'
+// (rows not listed need nothing). fight: the company fought today; camp: it camped before this one. Rows stay in place.
+export const CAMP_NEEDS={'memory:2':'fight','memory:3':'camp','worry:3':'fight','quarrel:3':'fight'};
+// A scripted companion answering a hero who spoke to it (#764), when the DM's voice is slow or away. {other} the hero.
+export const COMP_REPLY=[
+  'Aye, {other}. I hear you.',
+  'Hm. Let me think on that a while.',
+  'If you say so. I will keep my eyes open.',
+  'Ask me again when we have eaten.',
+  'I have seen worse roads than this one.',
+  'You lead, {other}. I follow.',
+  'Fair words. Let us see what the day makes of them.',
+  'I was paid to keep up, not to argue. But I am listening.',
+  'Not now. Something out there is too quiet.',
+  'True enough. I would not say it twice, though.',
+  'Well. That is one way to look at it.',
+  'Keep talking, {other}. It passes the miles.'];

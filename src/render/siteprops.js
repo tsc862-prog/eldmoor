@@ -17,7 +17,10 @@ const stone=th=>({H:hex(th.wallFace[0].map(v=>v*1.15+8)),L:hex(th.wallFace[0]),M
 const rail=v=>()=>{const out=[];for(let y=0;y<16;y++){let r='';for(let x=0;x<16;x++){const a=v?y:x,b=v?x:y,tie=(a&3)===1;
   r+=b===4||b===10?'I':b===5||b===11?'i':tie&&b>=3&&b<=12?(b===3?'L':b===12?'S':'M'):'.'}out.push(r)}return out};
 
+// a temple's pillar (#678): the Sunken Crypt's pillar shape in the site's own stone, so it follows the theme's wall palette
+const PILLAR=['HHHHHHHHHH','SLLLLLLLLS','.LLMMMMMS.',...Array(10).fill('.LMMMMMMS.'),'HLLLLLLLLS','SSSSSSSSSS'];
 export const SITEP={
+  sitepillar:{rows:PILLAR,map:th=>{const m=stone(th);return {H:m.H,L:m.L,M:m.M,S:m.S}},ox:3,oy:-2},
   // ---- fortress ----
   banner:{rows:[
     'KKKKKKKKKKKK',
