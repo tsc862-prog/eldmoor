@@ -6,6 +6,8 @@
 //   POST /play/runner/start   {kind?:'hero'|'fellowship'|'dm', hero?, provider?, model?, maxTurns?, budget?}
 //                             -> {ok, runner} | 4xx {error}
 //   POST /play/runner/stop    {kind?, hero?} (or {key}) -> {ok, runner}
+//   POST /play/runner/fresh   {key?} -> {ok, asked:[key]} (issue #787): that live runner, or all of them, set their conversations
+//                             aside at the next safe moment (a "fresh" line on stdin; scripts/session-roll.mjs). {fresh: true} on a start is --new.
 //   POST /play/runner/limits  {sessionBudget?: number|null} and/or {key, maxTurns?, budget?} -> {ok, session, runner?, applies?}
 //                             (issue #145: limits set in the game). The session budget caps what all paid runners
 //                             started by this supervisor spend together: the spend so far is in GET's `session`, a paid
@@ -42,6 +44,7 @@ import {hostname} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {LOGS, RUNNER_PROVIDERS, sessionPath} from './agent-sessions.mjs';
 import {numCtxFrom} from './providers/ollama.mjs';
+import {askFresh} from './session-roll.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Claude slots: concurrent Claude turns the app's runners may run (env RUNNER_CLAUDE_MAX, at least 1). A
@@ -121,6 +124,7 @@ export function checkStart(b, heroes, {running = [], max = MAX_RUNNERS} = {}) {
   const mt = num(b.maxTurns), bu = num(b.budget);
   if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
   if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};
+  if (b.fresh === true) req.fresh = true; // this start only: never saved to the active list, so a resume does not wipe a session (#787)
   req.maxTurns = mt; // null: until stopped (a paid mind until its budget is spent, #563)
   req.budget = local ? null : bu ?? K.defaults.budget; // a local model costs nothing: turns are its only cap
   const known = (heroes || []);
@@ -166,6 +170,7 @@ export function runnerArgs(req, base) {
   if (req.provider) a.push('--provider', req.provider);
   if (req.model) a.push('--model', req.model);
   if (req.claudeConcurrency) a.push('--claude-concurrency', String(req.claudeConcurrency));
+  if (req.fresh) a.push('--new');
   return a;
 }
 
@@ -231,9 +236,11 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' + (multiRunner(r) ? ' each' : '') : 'until stopped',
       // issue #221: the context size every local call asks (children inherit OLLAMA_NUM_CTX), and the runner's warning when Ollama holds the model at another
       ...(((mind && mind.provider) || r.provider) === 'ollama' ? {numCtx: numCtxFrom(env), ctxWarn: (r.lines.filter(l => /runners ask \d+, so it reloads/.test(l)).pop() || '').replace(/^.*?note: /, '') || null} : {}),
-      ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
+      ...ctxView(r), ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
       log: relative(ROOT, r.logFile).replace(/\\/g, '/')};
   }
+  // issue #787: the biggest session it plays, thousands of tokens, from the `ctx 83k` of its turn lines (a multi-hero runner has one per member)
+  const ctxView = r => {const v = Object.values(r.ctxBy || {}); return {ctx: v.length ? Math.max(...v) : null, rolls: r.rolls || 0}};
   // turns per minute over the last TPM_WINDOW (or the uptime when shorter) and the last turn's time
   function turnRate(r) {const t = now(), since = Math.max(r.started, t - TPM_WINDOW), n = (r.turnTimes || []).filter(x => x >= since).length, mins = Math.max(1 / 6, ((r.ended || t) - since) / 60000);
     const last = r.turnTimes && r.turnTimes.length ? r.turnTimes[r.turnTimes.length - 1] : null;
@@ -267,6 +274,8 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
         write(line); r.lines.push(line.slice(0, 300)); if (r.lines.length > KEEP_LINES) r.lines.shift();
         if (/\[turn \d+/.test(line)) {r.turns++; (r.turnTimes || (r.turnTimes = [])).push(now()); if (r.turnTimes.length > 200) r.turnTimes.shift()}
         const pc = line.match(/\[pace\] (.*)$/); if (pc) r.pace = pc[1].slice(0, 160);
+        const cx = line.match(/\| ctx (\d+)k\b/); if (cx) (r.ctxBy || (r.ctxBy = {}))[multiRunner(r) ? (line.match(/^(?:\[[\d:]+\] )?\[([^\]]{1,40})\] /) || [])[1] || '?' : 'seat'] = Number(cx[1]);
+        if (/\[session rolled/.test(line)) r.rolls = (r.rolls || 0) + 1;
         const md = line.match(/^(?:\[[\d:]+\] )?\[([^\]]{1,40})\] done \(([^)]{1,80})\)/); if (md) (r.memberDone || (r.memberDone = {}))[md[1]] = md[2]; // a Fellowship member finished (#563)
         const c = line.match(/\| run \$(\d+\.\d+)/); if (c) {const v = Number(c[1]); if (v > r.cost) session.spent += v - r.cost; r.cost = v}
         if (err || /failed|error|not ready|refused|No ANTHROPIC|is not|cannot|could not/i.test(line)) r.lastErr = line.slice(0, 300);
@@ -337,6 +346,14 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     return {runner: view(r)};
   }
   function stopAll() {for (const r of running()) stop(r.key)}
+  // Ask live runners to start fresh sessions (#787). The runner rolls at its next safe moment, so nothing here can touch a scene.
+  function fresh(key) {
+    const rs = key == null ? running().filter(r => !r.stopping) : running().filter(r => r.key === key && !r.stopping);
+    if (key != null && !rs.length) return {error: 'no such live runner', code: 404};
+    for (const r of rs) {try {r.child.stdin && r.child.stdin.write('fresh\n')} catch {}}
+    log(`[runners] fresh session asked of ${rs.map(r => r.key).join(', ') || 'nobody'}`);
+    return {asked: rs.map(r => r.key)};
+  }
   // A world reset (#691: New world, Load, Import, any start that is not Continue): stop every runner with one call, wait
   // (up to waitMs) until they are gone so the new world's starts are not refused as "already running", and leave the
   // active list empty so --resume-runners brings nothing back. -> {stopped: N, keys, left}
@@ -499,6 +516,10 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       const l = limits(b); if (l.error) return send(l.code, {ok: false, error: l.error});
       return send(200, {ok: true, ...l});
     }
+    if (path === '/play/runner/fresh') {
+      const f = fresh(typeof b.key === 'string' ? b.key : null); if (f.error) return send(f.code, {ok: false, error: f.error});
+      return send(200, {ok: true, ...f});
+    }
     if (path === '/play/runner/stop') {
       let key = typeof b.key === 'string' ? b.key : null;
       if (!key) {const K = RUNNER_KINDS[b.kind == null ? 'hero' : b.kind]; if (!K) return send(400, {ok: false, error: 'unknown runner kind'}); key = K.key({hero: Number(b.hero), company: Number(b.company)})}
@@ -507,7 +528,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     }
     send(404, {error: 'not found'});
   });
-  return {list, start, stop, stopAll, resetAll, shutdown, killAll, table, limits, resume, adopt, session: sessionView, activeFile};
+  return {list, start, stop, fresh, stopAll, resetAll, shutdown, killAll, table, limits, resume, adopt, session: sessionView, activeFile};
 }
 
 // A supervised runner (ELDMOOR_SUPERVISED=1) calls this once: fn runs on a "stop" line on stdin, or
@@ -516,7 +537,7 @@ export function onSupervisorStop(fn) {
   if (process.env.ELDMOOR_SUPERVISED !== '1' || !process.stdin) return false;
   let fired = false; const go = why => {if (fired) return; fired = true; fn(why)};
   process.stdin.setEncoding('utf8');
-  process.stdin.on('data', d => {if (/\bstop\b/.test(d)) go('stopped from the game')});
+  process.stdin.on('data', d => {if (/\bstop\b/.test(d)) go('stopped from the game'); if (/\bfresh\b/.test(d)) askFresh()}); // fresh: the page's Fresh session (#787)
   process.stdin.on('end', () => go('the supervisor went away'));
   process.stdin.on('error', () => go('the supervisor went away'));
   process.stdin.resume();
