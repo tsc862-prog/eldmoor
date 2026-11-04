@@ -358,14 +358,17 @@ is silent, and scene choices time out to the scripted branch, so the world never
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
   /play/runner/slot`, released after the turn, freed when the child exits) and waits for one when all are
   taken, so starting is never refused for slots (a company runner also queues its members with
-  `--claude-concurrency`). Without `--runners` the buttons say how to turn it on.
+  `--claude-concurrency`). The DM seat has slots of its own outside that count (`RUNNER_DM_SLOTS`, default 1; 0 = it queues in
+  the hero pool as before; #733): its turns and its prep lease one first and never queue behind hero turns ("waiting for the
+  DM slot" only when its own are held). While the DM's prep holds the world, hero runners lease no slot: their request waits
+  for the prep to end ("the DM prepares the table" in their pace line). Without `--runners` the buttons say how to turn it on.
 - Budget stops (#807): a runner that spent its budget is never started again or replaced by anything but the owner. The supervisor marks it (`r.budgetOut`; the view's `budgetSpent`, `spentWhy`) on the runner's own line (`[Name] done (budget reached)`, `stopped after N turns (budget reached)`) or a cap or session-budget stop; a Fellowship or company runner is out from its first member's line, while other members finish. `adopt` hands its heroes no runner (a heir, a member who leaves; both logged as `no-restart`) and `resume` skips it, the open DM seat included: it leaves the active list for that file's `spent`, and comes back on the page as a stopped runner after a relay restart. A crash, a heir of a runner that ended any other way, and a member leaving on a live budget go on as before; there is no automatic crash restart (none since #691). The world pauses at the gate as for any stopped runner, the bar says what was spent ("budget spent: $2.05 of $2.00"), and the buttons what they will spend ("Restart · another $2.00", "Start all · another $3.00"; a local pick is free). Restart is one click (it waits for the old child, `restartRunner`). No default session budget (owner's call): where it is unset the gate, the Agents panel and the runner pickers say so. Every start and end goes to `logs/runners/events.jsonl` (`start` with `by`: owner, page, setup, resume, adopt, local; `end` with `why`, `by`, cost, budget, exit; `budget`; `no-restart`), and the runner log's `===` lines carry `| by owner` and `| why budget reached, $2.05 of $2.00`. Only the page's origin can say owner or setup.
 - Relay concurrency: the owner's API org caps concurrent requests across all models. The relay keeps at most
   `RELAY_ANTHROPIC_CONCURRENCY` (default 2) Anthropic calls in flight (`scripts/providers/limiter.mjs`):
   decisions queue ahead of writing kinds and are dropped when their deadline passes in the queue (the sim
   plays them scripted); a 429 pauses the queue (retry-after, else backoff) and only writing kinds retry.
   `/health` shows `queues.anthropic` (depth, in flight, 429s, dropped). Keep `RELAY_ANTHROPIC_CONCURRENCY +
-  RUNNER_CLAUDE_MAX` within the org's limit; with a very low limit, play runners with local models.
+  RUNNER_CLAUDE_MAX + RUNNER_DM_SLOTS` within the org's limit (default 2 + 3 + 1 = 6); with a very low limit, play runners with local models.
 - Learn the world (#188, `src/sim/lore.js`): an agent hero knows only what it saw, heard or was told (`a.lore`, saved with
   the hero). `look` describes a creature it does not know ("a lean, quick wolf-like beast") with its own threat read in words
   (a d20 Lore/Perception read at first sight, from a hash, no RNG); never a level or HP number (events, the state header,
@@ -532,7 +535,9 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   `play-headless --session-zero`) plans one opening per company (`S.opening.queue`, the followed company first). Once the start
   gate is ready the DM **prepares** while the world stays held: one bounded turn (`PREP.MS` 90 s, `PREP.CALLS` 20 tool calls,
   counted in `dmagent.js`; idle table polls and `prep_done` do not count; half of both on Continue or for a DM runner started
-  again), ended by `prep_done`, a cap, Start anyway or the seat going away. The banner reads "THE DM PREPARES THE TABLE · 12 S ·
+  again; the time cap counts from the DM's first counted call, not from the gate, so a runner slow to reach its first model call
+  still gets its time, and `PREP.HARD_MS` 180 s (half on Continue) from the gate ends a prep whose DM never begins or runs late,
+  why `hard`; #733), ended by `prep_done`, a cap, Start anyway or the seat going away. The banner reads "THE DM PREPARES THE TABLE · 12 S ·
   3/20 CALLS" with Start anyway, the DM frame "preparing", `/play/health` `dm.prep`, `dm_status` `prep` (`host`, `opening_due`).
   No prep without a ready DM runner, or with no host holding the world (play-headless without
   `--wait-ready`); a DM runner waits for the prep only when `prep.host` says one will come. Then the opening scene opens
