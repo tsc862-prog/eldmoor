@@ -10,7 +10,7 @@ import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
 // FNV-1a of the zone and tile arrays of the Eldmoor map as of the spec rewrite.
 const SNAPSHOT = {zone: '7d08ac18', tiles: 'bda9e97b'};
 // Same for the Stepping Lands (160x100). Update when the STEPPING spec or the generator changes on purpose.
-const SNAPSHOT_STEPPING = {zone: '1089eab4', tiles: 'cfab7241'};
+const SNAPSHOT_STEPPING = {zone: '1089eab4', tiles: '2763d8b2'};
 const TILE_NAMES = ['grass','tree','swamp','mud','rock','peak','lava','road','floor','wall','river','bridge','sgrass','flower','snow','ice'];
 
 function fnv(a) {let h = 0x811c9dc5; for (let i = 0; i < a.length; i++) {h ^= a[i]; h = Math.imul(h, 16777619) >>> 0} return h.toString(16).padStart(8, '0')}

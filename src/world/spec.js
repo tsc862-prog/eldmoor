@@ -201,6 +201,9 @@ export const STEPPING={
     {name:'Grimhold',fac:1,x0:2,y0:87,w:11,h:9,gate:'E',race:'ashfolk',spots:TOWN_SPOTS},
     {name:'Cairnmoot',fac:0,x0:28,y0:30,w:11,h:9,gate:'E',race:'tarrow',spots:TOWN_SPOTS},
     {name:'Murkstead',fac:1,x0:28,y0:62,w:11,h:9,gate:'E',race:'mirekin',spots:TOWN_SPOTS},
+    // #715: homes for the Skerrin (Concord) and the Thornhide (Warband), appended.
+    {name:'Brinereach',fac:0,x0:30,y0:46,w:11,h:9,gate:'E',race:'skerrin',spots:TOWN_SPOTS},
+    {name:'Thornteeth',fac:1,x0:52,y0:74,w:11,h:9,gate:'E',race:'thornhide',spots:TOWN_SPOTS},
   ],
   landmarks:[
     {kind:'crypt',name:'The Sunken Crypt',boss:'Mere-Warden Hask',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25,rooms:STEPPING_CRYPT_ROOMS,
@@ -215,6 +218,9 @@ export const STEPPING={
     {from:'Cairnmoot',to:'hubW'},
     {from:'Grimhold',to:'Murkstead'},
     {from:'Murkstead',to:'hubW'},
+    {from:'Brinereach',to:'hubW'},
+    {from:'Thornteeth',to:'Murkstead'},
+    {from:'Thornteeth',to:'The Sunken Crypt'},
     {from:'hubW',to:'The Sunken Crypt'},
     {from:'hubW',to:'The Hollow Cairn'},
     {from:'hubW',to:'hubE'},
