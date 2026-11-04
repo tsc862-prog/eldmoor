@@ -8,6 +8,10 @@
 //            (six trials, each its own dice; at least 3 must level, the wary autopilot being about a coin flip per day)
 //   edge     a walk (move_to "explore <dir>", hunt {where}) into a region 5+ levels above the hero stops at its edge once,
 //            with the danger in words; the same call again (or force: "yes") goes on; leaving a party leader says so
+//   errand   (#727) an arrival in town on the agent's own order is a now wake and holds autopilot in town 120 game minutes;
+//            an errand aim (ask, buy, rest, ...) waits in town until its until, then autopilot hunts as before; running it
+//            (list_jobs) is progress; intent and move_to naming the town it stands in answer "already here"; a forced aim
+//            copying a finished one word for word is dropped
 //   world    background heroes are never touched (their seeded hash: node scripts/professioncheck.mjs --hash)
 // Usage: npm run townpilotcheck
 const baseSeed = Number(process.env.TOWNPILOT_SEED) || 3;
@@ -31,7 +35,7 @@ const act = (a, tool, args) => P.playerAct(a.id, tool, args || {});
 const band = z => REGIONS[z] && REGIONS[z].band;
 const inTownRect = a => CITY.some(c => a.x >= c.x0 - .5 && a.x <= c.x1 + 1.5 && a.y >= c.y0 - .5 && a.y <= c.y1 + 1.5);
 
-console.log('\nEldmoor townpilotcheck: autopilot in town (#466), danger edges (#465)\n');
+console.log('\nEldmoor townpilotcheck: autopilot in town (#466), danger edges (#465), town errands (#727)\n');
 init({fellowship: false}); run(5);
 const heroes = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead');
 let A = heroes.find(a => a.fac === 0); let B = heroes.find(a => a.fac === 0 && a !== A);
@@ -161,6 +165,75 @@ ok(r.ok && A.target && A.target.type === 'spider', 'the agent\'s own hunt order 
 A.target = null; A.pq = []; A.state = 'hunt';
 for (const m of S.mobs) if (m.placed) {m.placed = false; m.scan = 0; m.wait = 0}
 for (const m of cleared) {m.alive = true; m.gone = false; m.target = null; m.hp = m.maxhp} rebuild(); // the field as it was
+
+// ---------------------------------------------------------------- errand (#727)
+console.log('errand');
+const IN = await import('../src/sim/intent.js');
+const ARRIVE_HOLD = 120; // TP.ARRIVE_HOLD in sim/player.js
+const outside = () => {for (const d of [6, 8, 10]) for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {const p = {x: c.gate.x + dx * d, y: c.gate.y + dy * d};
+  if (p.x > 1 && p.y > 1 && p.x < 78 && p.y < 48 && !inTownRect(p) && ZONES[zoneAt(p.x, p.y)]) return p} return null};
+const away = outside();
+const atField = () => {fresh(A); A.playArrive = null; A.intent = null; A.intentPast = null; A.x = away.x; A.y = away.y; A.state = 'hunt'};
+const walkIn = (max = 400) => {for (let i = 0; i < max && (A.pq || []).length && A.pq[0].kind !== 'rest'; i++) run(.1)};
+const kinds = () => (A.pq || []).map(x => x.kind).join(',');
+ok(!!away, `a spot outside ${c.name} (${away && away.x},${away && away.y})`);
+// 1. an arrival on the agent's own move_to, the idle clock long past PK.IDLE: a now wake, and autopilot stays in town
+atField(); r = act(A, 'move_to', {target: c.name}); A.playTurn = null; A.playActAt = S.gameMin - 500;
+const ev0 = A.playEvN || 0; walkIn();
+const arr = (A.playEv || []).find(e => e.n > ev0 && /^Arrived/.test(e.text));
+ok(r.ok && arr && arr.w === 2, `arriving in ${c.name} on its own order is a now wake (${arr ? arr.text + ' w=' + arr.w : 'no arrival event'})`);
+ok(A.playArrive != null && Math.abs(A.playArrive - S.gameMin) < 30, 'the arrival is noted for the hold');
+run(.2);
+ok(A.playIdle && (A.pq || [])[0] && A.pq[0].kind === 'rest' && /staying in/.test(A.pq[0].auto || ''), `autopilot runs but stays in town ("${A.playDoing}")`);
+{const t0 = A.playArrive; let left = false; while (S.gameMin < t0 + ARRIVE_HOLD - 8) {run(.5); if (!inTownRect(A)) left = true}
+  ok(!left && A.state === 'town', `still in ${c.name} ${Math.round(S.gameMin - t0)} game minutes after arriving`);
+  while (S.gameMin < t0 + ARRIVE_HOLD + 6 && !/^move/.test(kinds())) run(.2);
+  ok(/^move,hunt$/.test(kinds()), `after the hold, autopilot heads out to hunt as before (${kinds()})`)}
+// 2. an errand aim in town: a wait-kind order until its until (4 h by default), then autopilot hunts as before
+fresh(A); A.playArrive = null; A.intent = null;
+r = act(A, 'intent', {goal: 'Ask the innkeeper for news of the Sunken Crypt', why: 'I need the way down'}); A.playTurn = null;
+ok(r.ok && /waiting in/.test(r.carries_on || '') && A.intent.order && A.intent.order.kind === 'wait' && A.intent.order.errand === 'ask', `an errand aim in town waits there: ${r.carries_on}`);
+ok(/talk|list_jobs/.test(r.next || '') && /earshot/.test(r.next || ''), `and names the next step: ${r.next}`);
+ok(A.intent.untilAt != null && Math.abs(A.intent.untilAt - S.gameMin - IN.INTENT.ERRAND) < 2, 'with no hours given it holds 4 game hours');
+ok(/Your aim says ask: talk to someone here/.test(IN.aimBrief(A).errand || ''), `the turn header names it: ${IN.aimBrief(A).errand}`);
+{idle(A); run(.1);
+  ok((A.pq || [])[0] && A.pq[0].kind === 'rest' && A.pq[0].hold && /waiting in/.test(A.pq[0].auto || ''), `autopilot keeps to the errand ("${A.pq[0] && A.pq[0].auto}")`);
+  const until = A.intent.untilAt; let left = false; while (S.gameMin < until - 10) {run(.5); if (!inTownRect(A)) left = true}
+  ok(!left && IN.aimState(A) === 'set', `in town ${Math.round((S.gameMin - until + IN.INTENT.ERRAND) / 60 * 10) / 10} game hours on, the aim not stale (${left ? 'left town' : IN.aimState(A)})`);
+  while (S.gameMin < until + 6 && !/^move/.test(kinds())) run(.2);
+  ok(A.intent.done && /^move,hunt$/.test(kinds()), `the errand's time up: autopilot hunts as before (${kinds()})`)}
+// 3. running the errand is progress, and acting on it
+fresh(A); A.playArrive = null; A.intent = null;
+act(A, 'intent', {goal: 'Find out where the Sunken Crypt lies', why: 'the job'}); r = act(A, 'list_jobs', {}); A.playTurn = null;
+ok(r.ok !== false && A.intent.acted === true && !IN.aimBrief(A).errand, 'list_jobs runs the errand: acted, and the header no longer asks it');
+// 4. already here: intent and move_to naming the town it stands in
+fresh(A); A.playArrive = null; A.intent = null;
+r = act(A, 'intent', {goal: 'Return to ' + c.name + ' and recover fully', why: 'hurt'});
+ok(r.ok && r.here === 'You are already in ' + c.name + '.' && /earshot/.test(r.next || ''), `intent naming ${c.name} inside it: "${r.here}" ${r.people ? '(' + r.people.slice(0, 2).join('; ') + ')' : ''}`);
+A.pq = []; r = act(A, 'move_to', {target: c.name});
+ok(r.ok && r.already_here && /already in/.test(r.here) && !(A.pq || []).length, 'move_to the town it stands in: already here, no walk');
+r = act(A, 'move_to', {target: 'the inn'});
+ok(r.ok && !r.already_here && (A.pq || []).length, 'move_to a spot in town still walks');
+A.pq = []; A.playTurn = null;
+// 5. an errand aim set out in the field: the aim's walk arrives (a now wake) and becomes the wait in town
+atField(); r = act(A, 'intent', {goal: 'Return to ' + c.name + ' and ask about the Crypt', why: 'rumours'}); A.playTurn = null;
+ok(r.ok && A.intent.order && A.intent.order.kind === 'move', `in the field it is a walk first (${r.carries_on})`);
+idle(A); const ev1 = A.playEvN || 0; for (let i = 0; i < 400 && A.intent.order.kind !== 'wait'; i++) run(.1);
+for (let i = 0; i < 40 && (A.pq || []).length && A.pq[0].kind === 'move'; i++) run(.1);
+const arr2 = (A.playEv || []).find(e => e.n > ev1 && /^Arrived/.test(e.text));
+ok(A.intent.order.kind === 'wait' && !A.intent.done && A.intent.order.town && inTownRect(A), `on arrival the errand holds it in town (${IN.orderText(A.intent.order)})`);
+ok(arr2 && arr2.w === 2, `the aim's own walk arriving is a now wake too (${arr2 ? arr2.text : 'none'})`);
+// 6. a forced answer that copies a finished aim word for word is dropped; said again by the agent itself it is set
+fresh(A); A.playArrive = null; A.intent = null; A.intentPast = null;
+const g6 = 'Break off from the Webspinner and get back to the road'; act(A, 'intent', {goal: g6, why: 'x'}); act(A, 'intent', {done: 'yes'});
+r = act(A, 'intent', {goal: g6, why: 'x', forced: 'yes'});
+ok(r.ok && r.dropped === 'stale aim dropped' && A.intent.done && IN.aimBrief(A).ask, 'a forced aim copied from a finished one is dropped and the header asks again');
+act(A, 'intent', {goal: 'Hunt boars in the fields', why: 'coin'});
+r = act(A, 'intent', {goal: g6, why: 'x', forced: 'yes'});
+ok(r.dropped, 'an older finished aim copied word for word is dropped too');
+r = act(A, 'intent', {goal: g6, why: 'x'});
+ok(r.ok && !r.dropped && A.intent.goal === g6, 'the agent restating it in a free turn sets it');
+A.pq = []; A.playTurn = null; A.intent = null;
 
 void xpNeed; void last;
 

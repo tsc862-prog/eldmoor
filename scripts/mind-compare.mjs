@@ -16,6 +16,8 @@
 //                    them it ran on autopilot or the scripted rules (no runner) instead of its agent
 //   deaths survived  Fellowship deaths (from the digests) while the member lived; close calls = digests at 25% HP or less
 //   lifetime         game hours from the first to the last digest (or the death); "died" with its cause
+//   no-aim, errand   aim anomalies (anomalies.jsonl, issue #727): no-aim and errand-unacted lines for the hero, each put on the
+//                    mind of the seat's last turn line before it (weak models that restate aims instead of acting show here)
 // A member with no data for a column shows "-", never 0. Names, model ids, counts and death causes only: no
 // narration, prompts or another seat's text.
 import {WRITE_KINDS} from '../src/data/prompts.js';
@@ -33,7 +35,7 @@ const money = v => v == null ? '-' : '$' + v.toFixed(4);
 const seatId = s => {const m = /^hero:(\d+)$/.exec(s || ''); return m ? Number(m[1]) : null};
 
 // Compare the minds. T, D, W: the parsed turn, decision and world lines. Returns {rows, overall, table, deaths}.
-export function compareMinds(T = [], D = [], W = []) {
+export function compareMinds(T = [], D = [], W = [], A = []) {
   // who the watched heroes are, from the digests: id+name -> {role, fellow, fellowship}
   const heroes = new Map(), byId = new Map(); // byId: id -> [{ts, name}] for naming turn lines without a name
   const hk = (id, name) => id + ':' + name;
@@ -55,14 +57,15 @@ export function compareMinds(T = [], D = [], W = []) {
   const rows = new Map();
   const row = (h, mind) => {const k = h.key + '|' + mind; let r = rows.get(k);
     if (!r) rows.set(k, r = {hero: h, mind, turns: 0, empty: 0, failed: 0, table: 0, sceneTurns: 0, secs: [], tin: 0, tout: 0, tokN: 0, cr: 0, crN: 0, legacy: 0, cost: 0, costN: 0,
-      dec: 0, rejected: 0, fallback: 0, decMs: [], relayDec: 0, relayDecFail: 0, relayMs: [], writing: 0, writingFail: 0, hours: 0, autopilot: 0, scripted: 0, close: 0, died: null}); return r};
+      dec: 0, rejected: 0, fallback: 0, decMs: [], relayDec: 0, relayDecFail: 0, relayMs: [], writing: 0, writingFail: 0, hours: 0, autopilot: 0, scripted: 0, close: 0, noAim: 0, errand: 0, died: null}); return r};
 
   // agent turns
-  let lastNamed = new Map();
+  let lastNamed = new Map(); const seatMinds = new Map(); // seat id -> [{ts, h, mind}] in time order, for the aim anomalies (#727)
   for (const t of T.slice().sort((a, b) => tsOf(a) - tsOf(b))) {
     const id = seatId(t.seat); if (id == null) continue; // the DM seat is not a member
     const name = t.hero && t.hero.name || nameAt(id, tsOf(t)) || lastNamed.get(id) || null; if (name) lastNamed.set(id, name);
     const r = row(heroOf(id, name), mindKey(t.provider, t.model)), f = new Set(t.flags || []);
+    {let L = seatMinds.get(id); if (!L) seatMinds.set(id, L = []); L.push({ts: tsOf(t), h: r.hero, mind: r.mind})}
     r.turns++; if (f.has('empty')) r.empty++;
     else if (t.error || f.has('failed') || f.has('refused')) r.failed++;
     if (f.has('scene') || f.has('forced-scene')) r.sceneTurns++;
@@ -94,6 +97,12 @@ export function compareMinds(T = [], D = [], W = []) {
       if (Number.isFinite(s.hp) && s.hp <= MC.CLOSE) r.close++; h.lastMind = mind;
     }
   }
+  // aim anomalies (#727): on the mind of the seat's last turn line before the anomaly (else its first), else the hero's digest mind
+  for (const x of A) {if (x.kind !== 'no-aim' && x.kind !== 'errand-unacted') continue; const id = x.hero && x.hero.id != null ? x.hero.id : seatId(x.seat); if (id == null) continue;
+    const L = seatMinds.get(id), ts = tsOf(x), n = 1 + (x.heldBack || 0); let at = null;
+    if (L && L.length) {at = L[0]; for (const e of L) if (e.ts <= ts) at = e}
+    const h = at ? at.h : heroes.get(hk(id, x.hero && x.hero.name)); if (!h) continue;
+    const r = row(h, at ? at.mind : h.lastMind || 'no runner'); if (x.kind === 'no-aim') r.noAim += n; else r.errand += n}
   // deaths: a watched hero's death (by name) ends its life; other members survive it if they were alive then
   const deaths = [];
   for (const w of Ws) for (const x of w.deaths || []) {const h = byName.get(x.name); if (h) deaths.push({h, gm: w.gameMin, cause: x.cause || '?', fs: h.fs})}
@@ -113,8 +122,8 @@ export function compareMinds(T = [], D = [], W = []) {
   }
   // overall per mind
   const overall = new Map();
-  for (const r of [...rows.values()].flatMap(r => [r, ...(r.folded || [])])) {let o = overall.get(r.mind); if (!o) overall.set(r.mind, o = {mind: r.mind, heroes: new Set(), turns: 0, empty: 0, failed: 0, table: 0, secs: [], tin: 0, tout: 0, tokN: 0, cr: 0, crN: 0, legacy: 0, cost: 0, costN: 0, dec: 0, rejected: 0, fallback: 0, decMs: [], writing: 0, writingFail: 0, hours: 0, autopilot: 0, scripted: 0, close: 0, deaths: 0});
-    o.heroes.add(r.hero.key); for (const k of ['turns', 'empty', 'failed', 'table', 'tin', 'tout', 'tokN', 'cr', 'crN', 'legacy', 'cost', 'costN', 'dec', 'rejected', 'fallback', 'writing', 'writingFail', 'hours', 'autopilot', 'scripted', 'close']) o[k] += r[k];
+  for (const r of [...rows.values()].flatMap(r => [r, ...(r.folded || [])])) {let o = overall.get(r.mind); if (!o) overall.set(r.mind, o = {mind: r.mind, heroes: new Set(), noAim: 0, errand: 0, turns: 0, empty: 0, failed: 0, table: 0, secs: [], tin: 0, tout: 0, tokN: 0, cr: 0, crN: 0, legacy: 0, cost: 0, costN: 0, dec: 0, rejected: 0, fallback: 0, decMs: [], writing: 0, writingFail: 0, hours: 0, autopilot: 0, scripted: 0, close: 0, deaths: 0});
+    o.heroes.add(r.hero.key); for (const k of ['turns', 'empty', 'failed', 'table', 'tin', 'tout', 'tokN', 'cr', 'crN', 'legacy', 'cost', 'costN', 'dec', 'rejected', 'fallback', 'writing', 'writingFail', 'hours', 'autopilot', 'scripted', 'close', 'noAim', 'errand']) o[k] += r[k];
     o.secs.push(...r.secs); o.decMs.push(...(r.dec ? r.decMs : r.relayMs)); if (r.died) o.deaths++}
   const table = {opened: 0, agentTurns: 0, reflexTurns: 0}, votes = {agent: 0, reflex: 0};
   for (const w of W) {if (w.table) {table.opened += w.table.opened || 0; table.agentTurns += w.table.agentTurns || 0; table.reflexTurns += w.table.reflexTurns || 0} if (w.votes) {votes.agent += w.votes.agent || 0; votes.reflex += w.votes.reflex || 0}}
@@ -124,26 +133,26 @@ export function compareMinds(T = [], D = [], W = []) {
 }
 
 // The section, as Markdown lines. tableFn: the report's Markdown table builder.
-export function mindSection(T, D, W, tableFn) {
-  const c = compareMinds(T, D, W), L = [];
+export function mindSection(T, D, W, tableFn, A = []) {
+  const c = compareMinds(T, D, W, A), L = [];
   L.push('## Mind comparison', '');
   if (!c.rows.length) {L.push('_No member or agent-hero activity logged yet._', ''); return {lines: L, data: c}}
   L.push('Per Fellowship member (then other agent-played heroes) and the mind (provider/model) that played it. "-" means no data of that kind for that member and mind. Decisions are settled Mind entries; fallbacks are the ones the scripted rules played (rejected, late, offline); sheets written are the relay writing the member\'s persona, backstory, memory and chapters (often another model). Hours come from the hourly world digests (autopilot or scripted hours of those in brackets); close calls are digests at ' + MC.CLOSE + '% HP or less; deaths survived are companions who fell while seen beside the member.', '');
   const writes = r => {const parts = Object.entries(r.writers || {}).map(([m, n]) => n + ' by ' + m); if (r.writing) parts.unshift(r.writing + ' by this mind');
     return parts.length ? parts.join(', ') + (r.writingFail ? ' (' + r.writingFail + ' failed)' : '') : '-'};
   const lat = (xs, unit) => {const a = pctile(xs, 50), b = pctile(xs, 90); return a == null ? '-' : `${r1(a)} / ${r1(b)}${unit}`};
-  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'lifetime (game h)'],
+  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'lifetime (game h)', 'no-aim', 'errand unacted'],
     c.rows.map(r => {const h = r.hero, t = r.turns > 0, d = r.dec > 0, life = h.lifeH == null ? '-' : r1(h.lifeH) + (h.died ? ' (died' + (r.died ? ': ' + r.died : '') + ')' : ' (alive)');
       return [h.name + (h.named === false ? ' (unnamed)' : ''), h.role || (h.fellow ? 'member' : 'agent hero'), r.mind, dash(r.turns, t), dash(r.empty, t), dash(r.failed, t), t || r.table ? r.table : '-', dash(r.dec, d), dash(r.rejected, d), dash(r.fallback, d),
         writes(r), lat(r.secs, ' s'), lat(d ? r.decMs : r.relayMs, ' ms'), r.tokN ? `${r.tin} / ${r.tout}` : '-', r.crN ? r.cr : '-', r.costN ? money(r.cost) : '-',
-        r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, life]})), '');
+        r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, life, t || r.noAim || r.errand ? r.noAim : '-', t || r.noAim || r.errand ? r.errand : '-']})), '');
   L.push('Overall per mind:', '');
-  L.push(tableFn(['mind', 'heroes', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'fallbacks', 'sheets written (failed)', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out per turn', 'cache read per turn', 'cost per turn', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths'],
+  L.push(tableFn(['mind', 'heroes', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'fallbacks', 'sheets written (failed)', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out per turn', 'cache read per turn', 'cost per turn', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths', 'no-aim', 'errand unacted'],
     c.overall.map(o => {const t = o.turns > 0;
       return [o.mind, o.heroes.size, dash(o.turns, t), t ? `${o.empty} (${Math.round(o.empty / o.turns * 100)}%)` : '-', t ? `${o.failed} (${Math.round(o.failed / o.turns * 100)}%)` : '-', t || o.table ? o.table : '-',
         dash(o.dec, o.dec > 0), o.dec ? o.fallback : '-', o.writing ? `${o.writing} (${o.writingFail})` : '-', lat(o.secs, ' s'), lat(o.decMs, ' ms'),
         o.tokN ? `${Math.round(o.tin / o.tokN)} / ${Math.round(o.tout / o.tokN)}` : '-', o.crN ? Math.round(o.cr / o.crN) : '-', o.costN ? money(o.cost / o.costN) : '-', o.costN ? money(o.cost) : '-',
-        o.hours ? `${o.hours} (${o.autopilot}, ${o.scripted})` : '-', o.hours ? o.close : '-', o.hours ? o.deaths : '-']})), '');
+        o.hours ? `${o.hours} (${o.autopilot}, ${o.scripted})` : '-', o.hours ? o.close : '-', o.hours ? o.deaths : '-', t || o.noAim || o.errand ? o.noAim : '-', t || o.noAim || o.errand ? o.errand : '-']})), '');
   const legacyN = c.overall.reduce((t, o) => t + o.legacy, 0);
   if (legacyN) L.push(`${legacyN} Claude turn line${legacyN === 1 ? '' : 's'} from before the per-turn token fix (#282) are left out of the token columns (they logged the SDK's cumulative total).`, '');
   const tt = c.table.agentTurns + c.table.reflexTurns, vv = c.votes.agent + c.votes.reflex;

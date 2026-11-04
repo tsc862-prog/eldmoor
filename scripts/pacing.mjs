@@ -173,7 +173,8 @@ export function aimNote(b) {
   const m = b && b.aim; if (!m || typeof m !== 'object') return '';
   const lead = m.leader ? `\nYour leader's aim: ${String(m.leader).slice(0, 260)}.` : '';
   const line = m.line ? String(m.line).slice(0, 260) : '';
-  if (!m.ask || b.scene || b.table) return (line && !m.ask ? `\nYour aim: ${line} (intent changes it, or sets it down when done).` : line ? `\nYour aim: ${line}.` : '') + lead;
+  const errand = m.errand && !b.scene && !b.table ? `\n${String(m.errand).slice(0, 200)}` : ''; // in town on an errand: the next step, named (#727)
+  if (!m.ask || b.scene || b.table) return (line && !m.ask ? `\nYour aim: ${line} (intent changes it, or sets it down when done).` : line ? `\nYour aim: ${line}.` : '') + errand + lead;
   const why = String(m.why || '').slice(0, 120);
   return `\n${AIM_ASK} ${line ? 'Your aim was: ' + line + '; ' + why : why.charAt(0).toUpperCase() + why.slice(1)}. Say it first with intent {goal, why, until} (one call), then act on it.${m.wait_limit ? ' Until you do, ' + String(m.wait_limit).replace(/^with no aim, /, '') + '.' : ''}` + lead;
 }

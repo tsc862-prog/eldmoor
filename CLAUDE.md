@@ -265,7 +265,14 @@ is silent, and scene choices time out to the scripted branch, so the world never
 - Danger edges (#465): a move_to or hunt {where} whose road enters a region whose lowest level is 5+ above the hero's
   stops at its edge the first time, with the danger in words (the land's feel, the hero's lore, the townsfolk's warning);
   the same call again within 12 game hours, or `force: "yes"`, walks on (never a hard block). Walking out of shouting
-  range of a party leader who will not follow says so (`apart`). `npm run townpilotcheck` covers both.
+  range of a party leader who will not follow says so (`apart`). Town errands (#727): an arrival in a town on the agent's own
+  order (a move_to or the aim's walk) is a now wake and holds autopilot's leave-town steps for `TP.ARRIVE_HOLD` 120 game minutes
+  (rest, sell, buy still run); an aim with errand words (ask, information, directions, buy, sell, trainer, board, rest; `errandOf`
+  in `intent.js`) is a wait-kind order in that town until its until (`INTENT.ERRAND` 4 h by default), and talk, list_jobs, buy,
+  sell, earshot, learn_profession and rest count as its progress; `intent` or `move_to` naming the town the hero stands in answers
+  "You are already in <town>" with who is about and the tools (no walk); a forced reflection's aim copying a finished one word for
+  word is dropped (`stale-aim-dropped` turn flag); the `errand-unacted` anomaly (an errand held in town let go with none of
+  talk, list_jobs, buy, sell, earshot) is counted per mind beside `no-aim` in the report's Mind comparison. `npm run townpilotcheck` covers it all.
 - One mind per hero: an agent-played hero has no relay brain (Fellowship Minds: agents turns the members'
   brains off; the relay still writes their sheets) and voices no scripted line (no barks, banter, camp lines,
   quarrel replies or table lines; a silent agent's table reflex acts without a word). Its own lines (say,

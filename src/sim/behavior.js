@@ -27,6 +27,8 @@
 //             no-flee-rule: an agent hero whose gambits hold no flee rule (issue #617), again every BW.NO_FLEE_MIN
 //             no-aim: an agent hero with no stated aim (issue #535, sim/intent.js) for BW.NO_AIM_MIN outside camp and town
 //             rest (the digest counts aims stated per hero, by name).
+//             errand-unacted (issue #727): an aim with town-errand words (ask, information, buy, sell, a trainer, the board) that
+//             was held in town and ended (done, stale or replaced) with no talk, list_jobs, buy, sell or earshot in between.
 //   decision  each hero's Mind entry (sim/brain.js) once it settles: kind, provider, model, options,
 //             choice, outcome (applied, late, rejected, offline, superseded, overruled), latency, error.
 // Read only: it never writes S or a hero, rolls no random number and is not part of step(), so a world
@@ -38,7 +40,7 @@ import {maxHp} from './heroes.js';
 import {companies,minds,inSlots,slotKeyOf,slotMembers,slotted} from './company.js'; // per-company digest (#460)
 import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
-import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
+import {INTENT,aimHeld,aimState} from './intent.js'; // the stated aim (#535)
 import {gambitRec,noFlee} from './gambits.js';
 import {takeWishes} from './wish.js'; // wishes for the builders (#663)
 import {drainHolds} from './gambithold.js'; // finished gambit holds (#630) // the hero's own rules (#617)
@@ -104,7 +106,7 @@ export function makeWatch(opts={}){
 
   function track(out,a,dt){let t=T.get(a.id);const now=S.gameMin;
     if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:seq0.has(a.id)?seq0.get(a.id):a.memories?a.memories.seq||0:0,noteAt:now,iseq:iseq0.has(a.id)?iseq0.get(a.id):a.intentSeq||0,aimAt:now};T.set(a.id,t)}
-    notes(out,a,t,now);aims(out,a,t,now);rules(out,a,t,now);
+    notes(out,a,t,now);aims(out,a,t,now);errands(out,a,t,now);rules(out,a,t,now);
     H.share[mindOf(a)]+=dt;
     if(a.player&&a.playActAt!==t.act){t.act=a.playActAt;H.acts++}
     // idle in one place (outside camp)
@@ -129,6 +131,13 @@ export function makeWatch(opts={}){
     if(!a.player||aimHeld(a)||a.state==='camp'||a.state==='dead'||a.state==='ghost'||resting){t.aimAt=now;return}
     if(now-t.aimAt>=BW.NO_AIM_MIN){const I=a.intent;anomaly(out,'no-aim',a,a.name+' has had no stated aim for '+Math.round((now-t.aimAt)/60*10)/10+' game hours ('+(I?'the last one is '+(I.done?'done':'stale'):'never stated')+')',
       {minutes:Math.round(now-t.aimAt),state:a.state,place:place(a),mind:mindOf(a),last:I?(I.done?'done':'stale'):'none',aims:a.intentSeq||0});t.aimAt=now}}
+  // town errands (issue #727): an errand aim (not a rest) that was held in town is watched until it ends; ended with none of the
+  // errand's tools used -> errand-unacted (once per aim). Only the errand word leaves the hero, never the aim's text.
+  function errands(out,a,t,now){if(!a.player)return;const I=a.intent,W=t.errI;
+    if(W&&(W!==I||W.done||aimState(a)==='stale')){t.errI=null;t.errN=W.n;
+      if(W.inTown&&!W.acted)anomaly(out,'errand-unacted',a,a.name+' held an aim to '+W.errand+' in town and let it go ('+(W!==I?'replaced':W.done?'done: '+W.done.why:'stale')+') without talk, list_jobs, buy, sell or earshot',
+        {errand:W.errand,ended:W!==I?'replaced':W.done?'done':'stale',minutes:Math.round(now-W.set),place:place(a),mind:mindOf(a)})}
+    if(I&&!I.done&&I.errand&&I.errand!=='rest'&&t.errI!==I&&t.errN!==I.n&&aimState(a)!=='stale')t.errI=I}
   // gambits (issue #617): rule-driven acts and edits per hero each digest; an agent hero whose list has no flee rule is
   // flagged no-flee-rule (once, and again every BW.NO_FLEE_MIN while it lasts)
   function rules(out,a,t,now){if(!a.player)return;const g=gambitRec(a),n=g?g.n:0,nf=noFlee(a);const en=a.gambitEdits||0;if(t.gn==null){t.gn=n;t.ge=en}
