@@ -54,6 +54,7 @@ import {siteTick,wireSites,siteRoom} from './sites.js'; // DM-made dungeon sites
 import {setSiteRoom} from './dm.js';
 wireSites();setSiteRoom(siteRoom); // the scripted DM raises sites too (#642)
 import {sessionTick,planOpening} from './arrival.js';
+import './vision.js'; // a vision the DM stages: its Table scene kind (#639)
 import {iqTick} from './interrogate.js'; // a yielded foe questioned at the table (#431 slice 3)
 import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
 import {legendsTick} from './legends.js';

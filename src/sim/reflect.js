@@ -32,7 +32,7 @@ export const REFLECT={
   TALK:4,       // lines an agent hero says to others (say, party_say, talk_to) within TALK_MIN that make a conversation
   TALK_MIN:180, // game minutes a conversation's lines must fall within
 };
-export const KINDS={fireside:'a night round the fire',camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day',lesson:'a hard lesson',title:'a name given you'}; // lesson: a near death or a fall witnessed (sim/lore.js, #188)
+export const KINDS={fireside:'a night round the fire',camp:'making camp',scene:'the end of a scene at the table',death:'a companion\'s death',oath:'an oath kept',trade:'a big trade',talk:'a conversation',dusk:'the end of the day',lesson:'a hard lesson',title:'a name given you',downed:'lying in the dark',vision:'a vision'}; // downed (#658): the downed agent's own turn, no acting tools // lesson: a near death or a fall witnessed (sim/lore.js, #188)
 
 const DAY=1440;
 const dayNo=gm=>Math.floor(gm/DAY)+1;
@@ -45,7 +45,7 @@ function stateOf(a){const R=a.reflect||(a.reflect={seq:0,cur:null,d:0,n:0,dusk:0
 // as talk for the fire (#571).
 const heard=[];export const onMoment=f=>{if(typeof f==='function')heard.push(f)};
 export function moment(a,kind,detail){if(!live(a))return;for(const f of heard){try{f(a,kind,detail)}catch(e){}}const R=stateOf(a),gm=Math.round(S.gameMin),why=clean((KINDS[kind]||kind)+(detail?': '+detail:''),140);
-  if(R.cur&&gm-R.cur.gm<=REFLECT.TTL){if(!R.cur.why.includes(why))R.cur.why.push(why);if(R.cur.why.length>REFLECT.WHY)R.cur.why.shift();R.cur.kind=R.cur.kind||kind;return}
+  if(R.cur&&gm-R.cur.gm<=REFLECT.TTL){if(!R.cur.why.includes(why))R.cur.why.push(why);if(R.cur.why.length>REFLECT.WHY)R.cur.why.shift();R.cur.kind=kind==='downed'?kind:R.cur.kind||kind;if(kind==='downed')R.cur.gm=gm;return}
   R.cur={id:'m'+(++R.seq),kind,why:[why],gm}}
 
 // A line the agent hero said or asked (say, party_say, talk_to). TALK lines to others within TALK_MIN make a
@@ -57,12 +57,16 @@ export function talked(a,names){if(!live(a))return;const R=stateOf(a),gm=Math.ro
 
 // The moment due now for this hero, or null. Pure read: nothing changes.
 export function reflectDue(a){if(!live(a)||!a.reflect&&!duskDue(a,null))return null;const R=a.reflect||{n:0,d:0,last:-1e9,cur:null,dusk:0,ev:0},gm=S.gameMin,d=dayNo(gm);
+  if(a.state==='downed'&&R.cur&&R.cur.kind==='downed'&&gm-R.cur.gm<=REFLECT.TTL)return {id:R.cur.id,kind:'downed',why:R.cur.why.join('; ')}; // lying in the dark (#658): past the day's count and gap
   const n=R.d===d?R.n:0;if(n>=REFLECT.PER_DAY||gm-R.last<REFLECT.GAP)return null;
   if(R.cur&&gm-R.cur.gm<=REFLECT.TTL)return {id:R.cur.id,kind:R.cur.kind,why:R.cur.why.join('; ')};
   if(duskDue(a,R))return {id:'d'+d,kind:'dusk',why:KINDS.dusk+' (day '+d+')'};
   return null}
 function duskDue(a,R){const gm=S.gameMin,d=dayNo(gm);if(gm%DAY<REFLECT.DUSK)return false;if(!R)return (a.playEvN||0)>=REFLECT.EV_MIN; // a new mind that never reflected: its first evening
   if(R.dusk>=d)return false;return (a.playEvN||0)-(R.ev||0)>=REFLECT.EV_MIN||(a.playActAt!=null&&a.playActAt>R.last)}
+
+// The hero is up again (sim/downed.js rise, #658): a downed moment not yet played becomes a hard lesson, asked as usual.
+export function downedOver(a){const R=a&&a.reflect;if(R&&R.cur&&R.cur.kind==='downed')R.cur.kind='lesson'}
 
 // The runner (or a note written while due) closes the moment. -> {ok, ...} for the pace answer.
 export function reflectDone(a,id,wrote){if(!a||a.kind!=='hero')return {ok:false,error:'No such hero.'};const R=stateOf(a),gm=Math.round(S.gameMin),k=Math.max(0,Math.min(20,Math.round(Number(wrote)||0)));

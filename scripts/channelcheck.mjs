@@ -322,6 +322,37 @@ S.table = null; T.TABLE.mode = 'off';
   ok(!(B.chat || []).some(e => e.text.includes('QZXdream')) && !JSON.stringify(act(B, 'chat_read', {n: 20})).includes('QZXdream') && !S.dmLog.some(e => e.detail && e.detail.voice === 'dream' && 'text' in e.detail), 'nobody else and not the DM log has the dream');
   {const bg = S.agents.find(h => !h.player && h.state !== 'dead'); ok(!bg || !DMA.dmAct('dream', {hero: bg.name, text: 'x'}).ok, 'a dream is for agent heroes only')}
 }
+// a vision (#639): the DM's frame, its answers and what it reveals reach only those it takes (A and the companion beside A), never B far away
+{if (S.staged && S.staged.cur) S.staged.cur.phase = 'done'; if (S.staged) S.staged.day.n = 0;
+  const vfr = 'A white stag stands in the smoke and speaks a name: ' + secret('vision') + '.', vrv = 'The stag names the hidden ford ' + secret('visionReveal') + '.';
+  r = DMA.dmAct('stage_scene', {kind: 'vision', near: A.name, frame: vfr, cast: {reveal: vrv}, hours: 4, reason: 'Vision ' + plant('visionReason')});
+  ok(r.ok && r.kind === 'vision' && /rest/.test(r.opens || ''), 'a vision staged near A, to open when A rests' + (r.ok ? '' : ': ' + r.error));
+  T.TABLE.mode = 'auto'; T.TABLE.speed = 8; for (const x of M) if (['fight', 'duel', 'assist', 'raid', 'dungeon'].includes(x.state)) x.state = 'hunt';
+  rest[0].x = A.x + 1; rest[0].y = A.y; const sA = A.state; A.state = 'camp'; T.tableTick(); A.state = sA === 'camp' ? 'hunt' : sA;
+  const done = S.staged.cur && S.staged.cur.kind === 'vision' && S.staged.cur.phase === 'done' && S.staged.cur.scene != null;
+  ok(done, 'the vision opened as A rested and played out (' + (S.staged.cur && S.staged.cur.result) + ')');
+  ok((A.chat || []).some(e => e.text.includes('QZXvision')) && (rest[0].chat || []).some(e => e.text.includes('QZXvision')), 'A and the companion beside A saw the frame');
+  ok((A.memories && A.memories.notes || []).some(n => (n.tags || []).includes('vision') && n.text.includes('QZXvisionReveal')), 'A keeps a note tagged vision, with what it showed');
+  for (const x of [B, rest[2]]) ok(!(x.chat || []).some(e => /QZXvision/.test(e.text)) && !JSON.stringify([act(x, 'chat_read', {n: 30}), act(x, 'look'), act(x, 'status'), act(x, 'recall', {query: 'vision stag ford', n: 20})]).includes('QZXvision') && !(x.memories && x.memories.notes || []).some(n => (n.tags || []).includes('vision')), x.name + ', far away: no vision in chat, look, status, recall or notes');
+  keep('A status after the vision', act(A, 'status')); keep('A recall after the vision', act(A, 'recall', {query: 'vision', n: 10}));
+  T.TABLE.mode = 'off'; T.TABLE.speed = 1}
+
+// the downed (#658): B goes down beside A. A hears that B is down and where, and nothing of B's own: no journal, memory,
+// persona, mind or reflection, and not the save tally. B's reflection moment is B's alone.
+{const {rebuild} = await import('../src/sim/spatial.js'), RF = await import('../src/sim/reflect.js');
+  const keepB = {x: B.x, y: B.y, state: B.state, hp: B.hp}, keepA = {x: A.x, y: A.y, state: A.state};
+  const m = S.mobs.find(q => q.alive && !q.gone && !q.elite && !q.named) || S.mobs[0];
+  A.state = 'hunt'; A.x = B.x + 2; A.y = B.y; B.state = 'hunt'; A.playEvSeen = A.playEvN || 0; rebuild();
+  B.hp = -3; HE.agentDie(B, m);
+  ok(B.state === 'downed', 'B is down beside A');
+  const evA = keep('A events after B went down', (A.playEv || []).filter(e => e.n > (A.playEvSeen || 0)).map(e => e.text).join(' | '));
+  ok(new RegExp(B.name + ' is down and dying').test(evA) && !/death save|failure|success|lying in the dark/i.test(evA), 'A hears that B is down and where, never B\'s saves or B\'s reflection');
+  keep('A look at downed B', act(A, 'look')); keep('A brief with B down', PC.paceBrief(A.id));
+  ok(RF.reflectDue(B) && RF.reflectDue(B).kind === 'downed' && !(RF.reflectDue(A) && RF.reflectDue(A).kind === 'downed'), 'the reflection in the dark is B\'s, not A\'s');
+  keep('A tend B', act(A, 'tend', {who: B.name}));
+  ok(!leaks().length, 'nothing private leaks through a downing' + (leaks().length ? ': ' + leaks().join(', ') : ''));
+  for (const h of S.agents) if (h.aid === B.id) {h.aid = null; h.aidHow = null; h.state = 'hunt'}
+  B.down = null; Object.assign(B, keepB, {hp: maxHp(B), state: keepB.state === 'downed' ? 'hunt' : keepB.state}); Object.assign(A, keepA); if (B.reflect) B.reflect.cur = null; rebuild()}
 
 // ---------------------------------------------------------------- 5. the relay: seats stay apart
 console.log('relay and MCP');

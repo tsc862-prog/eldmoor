@@ -147,6 +147,7 @@ export const PLAY={elite:'turns',ambush:'turns',boss:'turns',rescue:'turns',site
   decision:'all',check:'all',choice:'all',meeting:'all',social:'all',trap:'all',mystery:'all',talk:'all', // talk: a conversation turned decision (#407, sim/talkscene.js)
   interrogation:'turns', // a yielded foe or a suspect questioned, question by question (#431 slice 3, sim/interrogate.js)
   arrival:'all',opening:'all', // a fallen member's recruit arrives (#452); session zero (#437): sim/arrival.js
+  vision:'all', // a vision the DM staged: everyone present sees it at once (#639, sim/vision.js)
   fireside:'turns',debrief:'all'}; // talk round the fire, in turns over 3-6 rounds, and a one-round debrief after a hard scene (#571, sim/fireside.js)
 const together=sc=>!!sc&&sc.all===true;
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
@@ -248,7 +249,7 @@ export function stepNext(){const sc=S.table;if(!holding(sc))return false;sc.sh.g
 // The order as names, the foe at its place (agents' notices and tableView).
 const orderNames=sc=>{const L=sc.ids.map(byId).filter(Boolean).map(a=>a.name),f=foeOf(sc);if(rounds(sc)&&f)L.splice(Math.min(sc.foeAt,L.length),0,foeName(f)+' (foe)');return L};
 export function optionsFor(sc,a){const o0=baseOptions(sc,a),L=sc&&sc.ctx&&sc.ctx.labels,o=L?o0.map(x=>L[x.k]?{k:x.k,text:L[x.k]}:x):o0;
-  if(ATT&&a&&a.player&&sc&&sc.kind!=='decision'&&o.length)o.push({k:'attempt',text:ATT.label});return o} // the DM's own labels for a staged scene's actions
+  if(ATT&&a&&a.player&&sc&&sc.kind!=='decision'&&!(EXTRA[sc.kind]&&EXTRA[sc.kind].noAttempt)&&o.length)o.push({k:'attempt',text:ATT.label});return o} // the DM's own labels for a staged scene's actions
 function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])return EXTRA[k].options(sc,a);
   if(COMBAT[k]){const f=foeOf(sc),fn=f?(f.kind==='hero'?f.name:mobName(f)):'the foe',lo=lowest(sc),o=[{k:'strike',text:'Strike '+fn}];
     if(f&&f.kind!=='boss')o.push({k:'guard',text:'Draw '+fn+' onto yourself'});
