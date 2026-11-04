@@ -14,7 +14,7 @@
 // companion's act may heal, give a potion or stabilize (stabilizeAt); the world's clock leaves them be (savesAtTable).
 // In the Crypt crawl a hero at zero is downed too (crawlDown): the room's dice roll the saves, a wipe ends them all.
 // Not yet: Watch-mode clock (#655), wounds (#656), PvP spare (#657), agent tools and gambits (#658), UI (#659).
-import {ri} from '../core/rng.js';
+import {ri,rnd} from '../core/rng.js';
 import {dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
 import {MOBS} from '../data/mobs.js';
@@ -45,6 +45,10 @@ export const DOWN={
   REACH:12,         // tiles: who counts as near enough to help (the shout range, #182)
   AID_FROM:['hunt','travel','follow','return','regroup'], // what a helper may drop to come
   AID_MAX:120,      // game minutes a helper keeps at it before giving up
+  // Below ground the Crypt stays deadly (owner, #269: about 0.6 Fellowship deaths per 120-minute run in the crawl; #654 with
+  // the rules above alone gave 0.0, since a healer lifts the downed the next round). Crawl-only, world and Table rescues untouched.
+  // A harder save or blows on the downed barely moved it (measured); the deaths come from the room the party loses.
+  CRAWL_LEFT:.6,     // driven back or withdrawing, the chance a downed hero not yet stable is lost on the stair (dies there)
 };
 
 const R=DOWN;
@@ -194,14 +198,14 @@ const sg=n=>(n<0?'':'+')+n;
 // is dying alone); o.healer: a healer of theirs stands there (four failures). Returns {die, dc, out, s, f, of} or null.
 // out: 'success' | 'failure' | 'two failures' | 'stable' | 'rose' | 'dead'.
 export function tableSave(a,o={}){const d=a.down;if(!isDown(a)||!d||d.stable)return null;
-  const r=ri(1,20),of=o.healer?R.HEALER_FAILS:R.SAVES;let out;
-  if(r===20){a.hp=1;rise(a,'rose');return {die:r,dc:R.DC,out:'rose',s:d.s,f:d.f,of}}
-  if(r===1)d.f+=2;else if(r>=R.DC)d.s++;else d.f++;
+  const r=ri(1,20),of=o.healer?R.HEALER_FAILS:R.SAVES,dc=R.DC;let out;
+  if(r===20){a.hp=1;rise(a,'rose');return {die:r,dc,out:'rose',s:d.s,f:d.f,of}}
+  if(r===1)d.f+=2;else if(r>=dc)d.s++;else d.f++;
   const s=d.s,f=d.f;
   if(f>=of){die(a,'fails');out='dead'}
   else if(s>=R.SAVES){if(!o.kin){die(a,'alone');out='dead'}else{stable(a,'their own will');out='stable'}}
-  else out=r===1?'two failures':r>=R.DC?'success':'failure';
-  return {die:r,dc:R.DC,out,s,f,of}}
+  else out=r===1?'two failures':r>=dc?'success':'failure';
+  return {die:r,dc,out,s,f,of}}
 // A companion's stabilize at the table: a Linen Bandage binds it, else d20 + Healing against DOWN.STAB_DC. Returns {ok, text}.
 export function stabilizeAt(b,t){if(!bleeds(t))return {ok:false,text:t.name+' is not bleeding'};
   if(count(b,'Linen Bandage')>0){take(b,'use','Linen Bandage',1);stats().stabilized++;stable(t,b.name);return {ok:true,text:'bound the wounds of '+t.name+' with a Linen Bandage: stable'}}
@@ -221,5 +225,7 @@ export function crawlDown(a,foe,cause,rec){if(!a||a.kind!=='hero'||isDown(a))ret
 // The crawl is over and they come up the stair still down (carried out): the world's clock and helpers take over.
 export function toWorld(a){if(!a||!a.down||a.state==='dead')return;const d=a.down;/* a goHome on the way out may have changed the state */d.crawl=false;d.next=now()+R.TICK;
   a.state='downed';a.hidden=false;a.target=null;a.dest=null;a.moving=false;callHelp(a)}
+// Left on the stair (DOWN.CRAWL_LEFT): a party driven back or withdrawing cannot carry one still bleeding.
+export function leftBehind(a){if(!isDown(a)||!a.down.crawl||a.down.stable||rnd()>=R.CRAWL_LEFT)return false;a.down.rec=(a.down.rec||'')+' Left behind as the party fell back.';die(a,'fails');return true}
 // Nobody stands to carry them: the end (the crawl's wipe).
 export function bleedOut(a){if(isDown(a))die(a,'alone')}

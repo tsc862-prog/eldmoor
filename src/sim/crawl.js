@@ -29,7 +29,7 @@ import {notify} from './notify.js';
 import {setCrawlHook,payClear,clearXp} from './dungeon.js';
 import {tableOn,openScene,setSceneKind,sceneFor} from './table.js';
 import {companyOf,companyById,roleOf,slotKeyOf,slotted} from './company.js';
-import {isDown,crawlDown,toWorld,bleedOut,bleedingOf,stabText,stabilizeAt,reviveBonus} from './downed.js'; // the downed below ground (#654)
+import {isDown,crawlDown,leftBehind,toWorld,bleedOut,bleedingOf,stabText,stabilizeAt,reviveBonus} from './downed.js'; // the downed below ground (#654)
 
 export const CRAWL={
   GAP:4,          // seconds (world time) between one room and the next
@@ -193,6 +193,7 @@ function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;a.x=D.x+
 const endGroup=g=>{if(g.site!=null){const D=siteById(g.site);if(D)D.group=null}else CRYPT.group=null};
 const whoOf=g=>{const C=g.crawl&&companyById(g.crawl.co);return {t:g.name||(C?C.name:'The company'),c:'f'+g.fac}};
 function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats;leave(g);
+  if(cr.end!=='clear')for(const a of crewOf(g))if(leftBehind(a))log(a,' could not be carried up the stair and died below.'); // driven back or withdrawing: the bleeding may be left (DOWN.CRAWL_LEFT, #269)
   if(g.site!=null){if(SITE_END)SITE_END(g,cr.end==='clear'?'clear':cr.driven?'driven':'withdrawn');for(const a of g.mem)toWorld(a);tally(cr.end==='clear'?'clears':cr.driven?'driven':'withdrawn',g,cr);endGroup(g);return st}
   if(cr.end==='clear'){log(who,' cleared ',gd(CRYPT.name),' room by room and destroyed ',gd(CRYPT.boss),'!');
     if(first('crypt:f'+g.fac))timeline('crypt',who,' cleared ',gd(CRYPT.name),' for the first time.');
