@@ -1,6 +1,250 @@
 {
   "version": 1,
   "assets": {
+    "autotile:bank-water-corner@32": {
+      "id": "autotile:bank-water-corner",
+      "kind": "autotile",
+      "file": "autotile/32/bank-water-corner.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "b369dac233a31deece4c37d6ad367ffc72875078654ed46f2b8ab32e28c84178",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:bank-water-inner@32": {
+      "id": "autotile:bank-water-inner",
+      "kind": "autotile",
+      "file": "autotile/32/bank-water-inner.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "c2efa83c7d8f23cf6d738dbb9df28c88216adf0dc3fa7b794d9737daffa0c72a",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:bank-water@32": {
+      "id": "autotile:bank-water",
+      "kind": "autotile",
+      "file": "autotile/32/bank-water.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "dac49b6377ca5996edd1a7c355af4a5f05b54ef3f8bfd50724be78b4a4fd03ac",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:grass-road-corner@32": {
+      "id": "autotile:grass-road-corner",
+      "kind": "autotile",
+      "file": "autotile/32/grass-road-corner.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "c6b01d6bea8c53b58917053359ff5c5c5d37ce845301e9fc421dd008e7257f32",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:grass-road-inner@32": {
+      "id": "autotile:grass-road-inner",
+      "kind": "autotile",
+      "file": "autotile/32/grass-road-inner.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "6064f80ce2ab03918c31d088364ca5c76bb96756527904e94c16a46a74b96eaa",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "autotile:grass-road@32": {
+      "id": "autotile:grass-road",
+      "kind": "autotile",
+      "file": "autotile/32/grass-road.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "eedeebf28f59b8c256580001491e8546bb21dc80da8301642b5c8f5160b42af8",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-hunter@32": {
+      "id": "sprite:hero-hunter",
+      "kind": "sprite",
+      "file": "sprite/32/hero-hunter.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "89381127618d5874e68b8f6e297e3b936f3ca4a604900f624ee4048383222158",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "quiver",
+        "torso/clothes/shortsleeve/shortsleeve/male",
+        "weapon/ranged/bow/normal"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-mage@32": {
+      "id": "sprite:hero-mage",
+      "kind": "sprite",
+      "file": "sprite/32/hero-mage.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "0a9f06e40198be236b4754086efe4bddac4d679275ab499d0f28cba291658744",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-priest@32": {
+      "id": "sprite:hero-priest",
+      "kind": "sprite",
+      "file": "sprite/32/hero-priest.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "8b2b64d609208e5f89d73014325e1a35099d8602918d381526a52516afdbe751",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/longsleeve/longsleeve/female",
+        "weapon/blunt/mace"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-rogue@32": {
+      "id": "sprite:hero-rogue",
+      "kind": "sprite",
+      "file": "sprite/32/hero-rogue.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "a282cc1a6bb298194ed7ba7d3bf62a374d71cd4b6a2430ec79c34275fb7474bb",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/vest",
+        "weapon/sword/dagger"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-skald@32": {
+      "id": "sprite:hero-skald",
+      "kind": "sprite",
+      "file": "sprite/32/hero-skald.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "7c071157cfd48a5219fa82614ed7bfc75b4e0284dba8fda58f3267ff1d28c410",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/long",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/rapier"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-warrior@32": {
+      "id": "sprite:hero-warrior",
+      "kind": "sprite",
+      "file": "sprite/32/hero-warrior.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "6235b28b4c3e9a6bb9c5cc855186c9378ad13f2542c1f564c514fd2fc3af6447",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/kettle",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/sword/arming"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:hero-wildspeaker@32": {
+      "id": "sprite:hero-wildspeaker",
+      "kind": "sprite",
+      "file": "sprite/32/hero-wildspeaker.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "0b471eb8caae95038079ad9c888dcd880d97f5bc791b5effbd5199555d56e032",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-hero-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/tunic",
+        "weapon/magic/simple"
+      ],
+      "accepted": "2026-11-04"
+    },
     "tile:fen-grass@32": {
       "id": "tile:fen-grass",
       "kind": "tile",
@@ -24,16 +268,15 @@
       "file": "tile/32/grass.png",
       "w": 32,
       "h": 32,
-      "colors": 13,
-      "grid": "8x8",
-      "sha256": "3f68ca1660f7d3266583f1ae949b0606fb111628f8a98cea44d868e2701e1d5f",
-      "model": "pixel-xl",
-      "repo": "nerijs/pixel-art-xl",
-      "provider": "fal-ai",
-      "seed": 9690,
-      "at": "2026-11-03T15:56:58.142Z",
+      "sha256": "d1cdc617dd5e6fca2b8aa584ffcf83748747d524d0af069c19d52b1b6032408b",
       "tier": 32,
-      "accepted": "2026-11-03T20:47:51.993Z"
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04",
+      "replaces": "pixel-xl"
     },
     "tile:meadow@32": {
       "id": "tile:meadow",
@@ -51,6 +294,36 @@
       "at": "2026-11-03T15:57:05.812Z",
       "tier": 32,
       "accepted": "2026-11-03T20:47:51.994Z"
+    },
+    "tile:road@32": {
+      "id": "tile:road",
+      "kind": "tile",
+      "file": "tile/32/road.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "39ee353baa1b8b0efff1386ecbf1fdf872759e863f332ceb4b74bff9461cdb01",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "tile:water@32": {
+      "id": "tile:water",
+      "kind": "tile",
+      "file": "tile/32/water.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "aaa9300e11a99829475970cfc250464c3eccd42f6387c0ac829202f1487bbd07",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
     }
   }
 }

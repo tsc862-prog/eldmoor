@@ -47,7 +47,7 @@ import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,uti
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {deflateSync} from 'node:zlib';
-import {ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf,sizeOf,tierKey,normKey,splitKey,keyFile,loadQueue,tierCfg,TILE,TIERS,nextCheck} from './art/lib.mjs';
+import {sha256,ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf,sizeOf,tierKey,normKey,splitKey,keyFile,loadQueue,tierCfg,TILE,TIERS,nextCheck} from './art/lib.mjs';
 import {runLoop} from './art/daily.mjs';
 import {decodePng,encodePng,pngSize} from './art/png.mjs';
 import {resolvePalette,hexToRgb,downscale} from './art/post.mjs';
@@ -318,6 +318,28 @@ try{
     writeFileSync(join(out,'tile','stray.png'),encodePng(synth(16,16)));
     writeFileSync(join(out,fileOf(man.assets[0].id)),encodePng(synth(8,8)));
     const {errs}=checkIndex(man,out);ok(errs.some(x=>/stray\.png is not in/.test(x))&&errs.some(x=>/8x8, manifest says/.test(x))&&errs.some(x=>/sha256 differs/.test(x)),'stray file, wrong size and changed file are caught')}
+
+  // --- free sets (#789): the index takes source and license, the cutter builds our dual-grid pieces, a pack-covered id is not generated
+  {const {pieces}=await import('./art/packcut.mjs'),{licenceOk}=await import('./art/lpc-heroes.mjs'),{jobsFor}=await import('./art/daily.mjs'),{PACKS,SETS}=await import('./art/packs.mjs');
+    const solid=(c,w=32,h=32)=>{const d=new Uint8Array(w*h*4);for(let i=0;i<w*h;i++){d[i*4]=c[0];d[i*4+1]=c[1];d[i*4+2]=c[2];d[i*4+3]=255}return {w,h,data:d}};
+    // an island like LPC's: 3x3 tiles, opaque from 8 px in, transparent around; a hole sheet: 2x2 tiles, a transparent 16 px hole
+    const island=(()=>{const im=solid([200,0,0],96,96);for(let y=0;y<96;y++)for(let x=0;x<96;x++)if(x<8||y<8||x>=88||y>=88)im.data[(y*96+x)*4+3]=0;return im})();
+    const hole=(()=>{const im=solid([200,0,0],64,64);for(let y=24;y<40;y++)for(let x=24;x<40;x++)im.data[(y*64+x)*4+3]=0;return im})();
+    const ps=pieces(solid([0,200,0]),island,{im:hole,b:solid([0,200,0])}),at=(im,x,y)=>im.data[(y*im.w+x)*4];
+    ok(Object.values(ps).every(p=>p.w===32&&p.h===32),'the cutter makes 32x32 edge, corner and inner pieces');
+    ok(at(ps.edge,16,2)===0&&at(ps.edge,16,29)===200,'edge: the ground on top and the island below (boundary through the middle)');
+    ok(at(ps.corner,2,2)===0&&at(ps.corner,29,29)===200,'corner: the island only in the bottom-right quarter');
+    ok(licenceOk('CC-BY-SA 3.0, GPL 3.0')&&licenceOk('OGA-BY 3.0')&&licenceOk('OGA-BY 3.0+, GPL 3.0, CC-BY 4.0')&&licenceOk('CC0')&&!licenceOk('GPL 3.0')&&!licenceOk('CC-BY-NC 4.0')&&!licenceOk(''),'the hero cutter takes a layer only when CC-BY-SA 3.0, OGA-BY 3.0 or CC0 is offered');
+    const dir=join(tmp,'pack-assets');mkdirSync(join(dir,'tile','32'),{recursive:true});const g=man.assets.find(e=>e.id==='tile:grass'),png=encodePng(synth(...sizeOf(g)));writeFileSync(join(dir,'tile','32','grass.png'),png);
+    const entry={id:'tile:grass',kind:'tile',file:'tile/32/grass.png',w:sizeOf(g)[0],h:sizeOf(g)[1],sha256:sha256(png),tier:32,source:'lpc-base',license:'CC-BY-SA 3.0'};
+    writeFileSync(join(dir,'index.json'),JSON.stringify({version:1,assets:{'tile:grass@32':entry}}));
+    mkdirSync(join(dir,'packs','lpc-base'),{recursive:true});writeFileSync(join(dir,'packs','lpc-base','stray.png'),png); // the packs folder is never an asset
+    ok(!checkIndex(man,dir).errs.length,'an index entry with source and license passes, and assets/packs is not walked for strays');
+    writeFileSync(join(dir,'index.json'),JSON.stringify({version:1,assets:{'tile:grass@32':{...entry,license:undefined}}}));
+    ok(checkIndex(man,dir).errs.some(x=>/names no license/.test(x)),'an entry from a set with no license is refused');
+    writeFileSync(join(dir,'index.json'),JSON.stringify({version:1,assets:{'tile:grass@32':entry}}));
+    ok(!jobsFor(man,loadIndex(dir),loadQueue(dir)).some(j=>j.e.id==='tile:grass'),'an id a pack covers is skipped by the generator');
+    ok(Object.values(SETS).every(x=>x.licence&&x.link&&x.author)&&PACKS.endsWith('packs'),'every set names its licence, author and link');}
 
   // --- daily.mjs: quota-driven, resumable, into incoming/<date>/ for review
   {const dir=join(tmp,'assets'),logP=join(tmp,'art.log'),days=['2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07','2026-11-08','2026-11-09','2026-11-10'];let d=0;

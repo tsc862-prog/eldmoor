@@ -106,10 +106,11 @@ export function checkIndex(man,dir=ASSETS){
     if(!sz){errs.push(`${a.file}: not a PNG`);continue}
     if(!want||sz.w!==want[0]||sz.h!==want[1])errs.push(`${a.file}: ${sz.w}x${sz.h}, manifest says ${want?want.join('x'):'nothing'} at tier ${tier}`);
     if(a.w!==sz.w||a.h!==sz.h)errs.push(`index: ${key} size ${a.w}x${a.h} differs from the file ${sz.w}x${sz.h}`);
+    if(a.source&&!a.license)errs.push(`index: ${key} comes from ${a.source} but names no license (third-party art needs its licence on the entry, docs/CREDITS.md has the credit)`);
     if(a.sha256!==sha256(b))errs.push(`index: ${key} sha256 differs from ${a.file} (regenerate the index)`)}
   // stray PNGs nobody indexed (assets/<kind>/<tier>/*.png, or a <kind>/*.png from before tiers)
   const walk=(sub,rel)=>{for(const f of readdirSync(sub)){const p=join(sub,f),r=rel?`${rel}/${f}`:f;
-    if(statSync(p).isDirectory()){if(r!=='incoming')walk(p,r)}else if(f.endsWith('.png')&&rel&&!listed.has(r))errs.push(`assets/${r} is not in assets/index.json`)}}; // incoming/<date>/ awaits review
+    if(statSync(p).isDirectory()){if(r!=='incoming'&&r!=='packs')walk(p,r)}else if(f.endsWith('.png')&&rel&&!listed.has(r))errs.push(`assets/${r} is not in assets/index.json`)}}; // incoming/<date>/ awaits review
   if(existsSync(dir))walk(dir,'');
   return {errs,count:Object.keys(idx.assets).length}}
 
