@@ -16,7 +16,7 @@ export function asSrc(src,fn){const o=forced;forced=src;try{return fn()}finally{
 export const srcOf=a=>forced||(a.player?(a.playIdle?'autopilot':'agent'):a.brain?'ai':'scripted');
 // Outcomes (issue #785): what happened to a hero, not something its driver chose, carries no source, so the Log tab
 // shows no tag on them. Decisions (an order, a job, a sale, a fight begun) keep srcOf(a). Matched on the line's start.
-export const OUTCOME=/^(Reached level|Slew |Looted |Lost a |Lost forever|Became |Now counts|Swore into|Fell |Went down|Bled out|Died |Was brought back|Rose from|Woke from|Was stabilized|Was spared|Repaid the life|Kept the vow|The vow failed|The term of the vow|Broke the vow|Avenged |Finished |Killed |Paid the blood debt|Completed |Cleared |Named |Received |Was paid |Was given |Was surprised|Was caught|Robbed by|Fought .* to a standstill|Won an honour duel|Lost an honour duel|The group wiped)/;
+export const OUTCOME=/^(Reached level|Slew |Looted |Lost a |Lost forever|Became |Now counts|Swore into|Fell |Went down|Bled out|Died |Was brought back|Rose from|Woke from|Was stabilized|Was spared|Repaid the life|Kept the vow|The vow failed|The term of the vow|Broke the vow|Kept the oath|The oath failed|Broke the oath|Avenged |Finished |Killed |Paid the blood debt|Completed |Cleared |Named |Received |Was paid |Was given |Was surprised|Was caught|Robbed by|Fought .* to a standstill|Won an honour duel|Lost an honour duel|The group wiped)/;
 export function record(a,...parts){if(!a)return;
   const text=parts.map(p=>typeof p==='string'?p:p.kind==='hero'?p.name:p.t).join('');
   const e={t:clockStr(),d:dayNo(),src:OUTCOME.test(text)?undefined:srcOf(a),parts,text};if(!e.src)delete e.src;
