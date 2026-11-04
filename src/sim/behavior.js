@@ -64,6 +64,7 @@ export const BW={
   DM_MIN_CALLS:4,    // ... and at least this many answerable calls in it
   NO_NOTES_MIN:2*1440, // game minutes an agent-played Fellowship member goes without writing a memory -> no-memories (#179)
   NO_FLEE_MIN:720, // game minutes between two no-flee-rule lines for one hero (#617)
+  TOWN_IDLE_MIN:720, // game minutes an agent hero earns nothing in town -> town-idle (#790; the same 12 hours as TP.IDLE_TOWN in sim/player.js)
   NO_AIM_MIN:INTENT.NO_AIM, // game minutes an agent hero goes with no stated aim outside camp and town rest -> no-aim (#535)
 };
 
@@ -105,7 +106,7 @@ export function makeWatch(opts={}){
 
   function track(out,a,dt){let t=T.get(a.id);const now=S.gameMin;
     if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:seq0.has(a.id)?seq0.get(a.id):a.memories?a.memories.seq||0:0,noteAt:now,iseq:iseq0.has(a.id)?iseq0.get(a.id):a.intentSeq||0,aimAt:now};T.set(a.id,t)}
-    notes(out,a,t,now);aims(out,a,t,now);rules(out,a,t,now);
+    notes(out,a,t,now);aims(out,a,t,now);townIdle(out,a,t,now);rules(out,a,t,now);
     H.share[mindOf(a)]+=dt;
     if(a.player&&a.playActAt!==t.act){t.act=a.playActAt;H.acts++}
     // idle in one place (outside camp)
@@ -130,6 +131,9 @@ export function makeWatch(opts={}){
     if(!a.player||aimHeld(a)||a.state==='camp'||a.state==='dead'||a.state==='ghost'||resting){t.aimAt=now;return}
     if(now-t.aimAt>=BW.NO_AIM_MIN){const I=a.intent;anomaly(out,'no-aim',a,a.name+' has had no stated aim for '+Math.round((now-t.aimAt)/60*10)/10+' game hours ('+(I?'the last one is '+(I.done?'done':'stale'):'never stated')+')',
       {minutes:Math.round(now-t.aimAt),state:a.state,place:place(a),mind:mindOf(a),last:I?(I.done?'done':'stale'):'none',aims:a.intentSeq||0});t.aimAt=now}}
+  // town-idle (issue #790): an agent hero in town with nothing earned for BW.TOWN_IDLE_MIN game minutes (sim/player.js townGuard woke it); again every BW.TOWN_IDLE_MIN
+  function townIdle(out,a,t,now){const T=a.player&&a.state==='town'?a.townIdle:null;if(!T||now-T.at<BW.TOWN_IDLE_MIN){t.tiAt=null;return}
+    if(t.tiAt==null||now-t.tiAt>=BW.TOWN_IDLE_MIN){t.tiAt=now;anomaly(out,'town-idle',a,a.name+' has earned nothing in town for '+Math.round((now-T.at)/60*10)/10+' game hours',{hours:Math.round((now-T.at)/60*10)/10,place:place(a),mind:mindOf(a),aim:a.intent&&!a.intent.done?a.intent.goal:null,level:a.lvl})}}
   // gambits (issue #617): rule-driven acts and edits per hero each digest; an agent hero whose list has no flee rule is
   // flagged no-flee-rule (once, and again every BW.NO_FLEE_MIN while it lasts)
   function rules(out,a,t,now){if(!a.player)return;const g=gambitRec(a),n=g?g.n:0,nf=noFlee(a);const en=a.gambitEdits||0;if(t.gn==null){t.gn=n;t.ge=en}
