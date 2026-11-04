@@ -19,7 +19,7 @@ function derive(a){const active=[];
   if(a.quest){const M=MOBS[a.quest.type]||{};
     active.push({id:'board-'+a.quest.type,kind:'board',title:M.q||'A hunt',giver:'Town board',where:zname(M.z),
       objective:'Slay '+a.quest.need+' '+(M.pl||'creatures'),progress:{have:a.quest.have||0,need:a.quest.need},reward:'Gold and experience',status:'active',focus:false,started:null,ends:null,from:'scripted'})}
-  if(a.goal&&!a.goal.done)active.push({id:'oath-'+a.goal.type,kind:'oath',title:a.goal.text,giver:'Own oath',where:'',objective:'',
+  if(a.goal&&!a.goal.done&&!a.goal.offered)active.push({id:'oath-'+a.goal.type,kind:'oath',title:a.goal.text,giver:'Own oath',where:'',objective:'',
     progress:a.goal.need?{have:a.goal.progress||0,need:a.goal.need}:null,reward:'',status:'active',focus:false,started:null,ends:null,from:'self'});
   const adv=a.adv!=null&&S.adventures?S.adventures.find(h=>h.id===a.adv&&h.phase==='active'):null;
   if(adv){const T=ADVENTURES[adv.tpl]||{};

@@ -29,6 +29,7 @@ import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
 import {drawCamp,drawCampLight} from './camp.js';
+import {trafficEnts,isTraffic,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
 import {getChunk,CH,CHUNKS_X,CHUNKS_Y,chunkGen} from './terrain.js';
@@ -130,6 +131,7 @@ export function createRenderer(cv,screenEl){
         drawText(L.t,L.x,y,L.col,L.css);break}}}
   // A radial light of colour c=[r,g,b] and strength a at world (x,y), radius r (lighter pass).
   function glow(x,y,r,c,a){const g=ctx.createRadialGradient(x,y,0,x,y,r),k=c[0]+','+c[1]+','+c[2];g.addColorStop(0,'rgba('+k+','+a+')');g.addColorStop(1,'rgba('+k+',0)');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
+  function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()} // a traffic walker's shadow, filled at once (#856)
 
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
   // pixels so neighbouring chunks never show a seam at fractional scales.
@@ -204,6 +206,7 @@ export function createRenderer(cv,screenEl){
     for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
     for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
     if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
+    if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS); // road traffic, skipped at whole-map zoom (#856)
     ENTS.sort(byY);
     // Pass 1 (#716): each entity's sprite (or generated sheet frame), size and x, and the shadows in one path a frame (the
     // living at full alpha, ghosts in a second path at theirs) instead of one fill per entity. Shadows now all sit under
@@ -211,6 +214,7 @@ export function createRenderer(cv,screenEl){
     const nE=ENTS.length;
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
     for(let i=0;i<nE;i++){const e=ENTS[i],ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',fr=e.moving?Math.floor(blink*6+e.id)%2:0;
+      if(isTraffic(e)){ESPR[i]=null;continue} // drawn whole in pass 2, with its own shadow
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
       else if(e.kind==='npc')s=npcSprite(e,e.moving?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
@@ -231,6 +235,7 @@ export function createRenderer(cv,screenEl){
     // save/translate/scale/restore.
     const tf=ctx.getTransform();
     for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=Math.round(e.y*T),live=e.state!=='dead';
+      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
       if(close&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
       if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);

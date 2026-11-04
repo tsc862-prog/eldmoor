@@ -192,7 +192,7 @@ console.log('DM-marked places');
   const hb = A.lore.p['the Hidden Barrow'];
   ok(hb && hb.how === 'told' && hb.warned, 'a DM place named in earshot is heard of, with the warning: ' + (hb && hb.warned));
   st = actA('status'); ok(st.places.some(p => p.startsWith('the Hidden Barrow')), 'status.places lists it: ' + st.places.filter(p => /Barrow|Cairn/.test(p)).join(', '));
-  r = actA('move_to', {target: 'Hidden Barrow'}); ok(r.ok && /Hidden Barrow/.test(r.going) && /warned/.test(r.warning || ''), 'move_to takes it once heard of ("the" optional), with the warning: ' + (r.going || r.error));
+  r = actA('move_to', {target: 'Hidden Barrow', force: 'yes'}); ok(r.ok && /Hidden Barrow/.test(r.going) && /warned/.test(r.warning || ''), 'move_to takes it once heard of ("the" optional), with the warning: ' + (r.going || r.error));
   A.pq = []; A.state = 'hunt';
   r = actA('hunt', {where: 'the Hidden Barrow'}); ok(r.ok, 'hunt {where} takes it too: ' + (r.hunting || r.going || r.error)); A.pq = []; A.state = 'hunt';
   ok(actA('lore', {about: 'Barrow'}).places.some(p => p.place === 'the Hidden Barrow' && p.how === 'you have heard of it'), 'the lore tool lists it');
