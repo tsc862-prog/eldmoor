@@ -20,12 +20,13 @@
 // in 30 s) gets a DM turn now and then, not back to back. Any DM runs until stopped (a paid one until its
 // --budget is spent; #563) unless --max-turns is given; any DM stops after --max-fails N (default 5) failed or empty turns in a row.
 // Session: logs/agents/dm.json (gitignored), resumed next run for the same world; --new sets it
-// aside in logs/agents/old/. Cost line per turn.
+// aside in logs/agents/old/, and so does a run on another provider (#824: a conversation cannot cross providers; the notes, whens
+// and DM log are in the game, so the new mind reads them again). Cost line per turn.
 //
 // Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (optional; default until stopped), --min-gap S, --max-fails N, --budget USD
 // (default 1.00, this run), --cadence evening|S, --tool-turns N (model calls per turn, default 16),
-// --provider anthropic|ollama|google (or DM_PROVIDER; google = Gemini through the same tool loop as Ollama, #672), --model (or DM_MODEL; default claude-sonnet-5-5, or the
-// Ollama default), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
+// --provider anthropic|ollama|openai|huggingface|google (or DM_PROVIDER; every provider a hero has, #824: the last three play through the same tool loop as Ollama), --model (or DM_MODEL; default claude-sonnet-5-5, or the
+// Ollama default; OpenAI, Hugging Face and Gemini need one chosen), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
 // --claude-concurrency is accepted (the runner supervisor passes it) and changes nothing: always one call.
 // Table voice (issue #132): --table-model (or DM_TABLE_MODEL; default claude-haiku-5-5 with Anthropic, the seat's model with
 // Ollama) answers the at-the-table calls of the scenes the DM stages; --no-table-voice leaves them to the scripted DM.
@@ -50,9 +51,14 @@ import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
 import {paceSettings, turnCap, capText, failTracker, localWorked, takeClaudeSlot} from './pacing.mjs';
+import {isCompat, compatLabel} from './agent-chat.mjs';
+import {PROVIDERS} from '../src/data/providers.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const DM_PROVIDERS = ['anthropic', 'ollama', 'google'];
+export const DM_PROVIDERS = PROVIDERS; // the seat takes every mind a hero can have: the one list (#824)
+// The saved conversation cannot carry over to this run's provider (a Claude session id, or another model's history): true when there is one to set aside.
+export const mindSwitched = (sess, rs) => {const was = sess && sess.runner && sess.runner.provider || (sess && sess.sessionId ? DEFAULT_PROVIDER : null);
+  return !!was && was !== rs.provider && !!(sess.sessionId || sess.turns || (sess.local && sess.local.history && sess.local.history.length))};
 export const DEFAULT_DM_MODEL = 'claude-sonnet-5-5'; // claude-api skill (cached 2026-10-06): Sonnet 5.5, $2 in / $10 out per 1M tokens
 export const EVENING = 18 * 60, DAY = 1440, POLL_MS = 4000, BACKOFF = [30, 60, 120, 240, 600];
 // Fellowship-change turns (issue #165): between evenings, a turn is also due when the Fellowship's situation changed (dm_status
@@ -495,29 +501,40 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmAskOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
+  if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider ${DM_PROVIDERS.join(', ')}.`); await quit(1)}
+  // Another provider takes the seat (#824): the old conversation is set aside like --new; what the DM knows is in the game (S.dmAgent:
+  // notes, whens, the DM log), so the turn is told to read it, and what it already saw of its watches stays seen.
+  if (mindSwitched(sess, rs)) {
+    const was = (sess.runner && sess.runner.provider) || DEFAULT_PROVIDER, seen = {lastWatch: sess.lastWatch, lastFired: sess.lastFired, ev: sess.ev}; ({sess, note} = loadDmSession(st0.world, fresh, {startNew: true}));
+    for (const k in seen) if (seen[k] != null) sess[k] = seen[k];
+    sess.rolled = true; log(`[dm] the seat changes mind (${was} -> ${rs.provider}): a new conversation; the notes, whens and DM log stay with the world${note ? '; ' + note : ''}`);
+  }
+  sess.runner = rs;
+  sess.system = withDmAskOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
-  if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic, ollama or google.`); await quit(1)}
   const saveSess = () => saveDmSession(sess, {url: base});
   let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;
   const maxTurns = turnCap(turnsAsked, rs.provider, 12), fails = failTracker(pace.maxFails), gapUntil = () => lastEnd ? lastEnd + pace.minGap * 1000 : 0;
   const t00 = Date.now();
 
-  if (rs.provider === 'ollama' || rs.provider === 'google') {
+  if (rs.provider === 'ollama' || isCompat(rs.provider)) {
     // A local model sits in the seat (Mixed minds): the tool loop of scripts/local-agent.mjs over the DM tools. No key, cost 0.
-    // Gemini (#672) plays through the same loop with its own adapter (GOOGLE_API_KEY from this process's .env; free tier cost 0).
-    const gem = rs.provider === 'google';
+    // OpenAI, the Hugging Face router and Gemini (#672, #824) play through the same loop with their adapter (the key from this process's
+    // .env), the seat's model for every voice, real cost per turn and the budget; no Claude slot.
+    const gem = isCompat(rs.provider), label = compatLabel(rs.provider);
     const {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} = await import('./providers/ollama.mjs');
     const {localTurn, localLine, paidLine} = await import('./local-agent.mjs');
-    let ol = null, spentG = 0;
+    let ol = null, spentG = 0, unknown = false;
+    const over = () => gem && spentG >= budget; // a voice can spend the rest of the budget between turns
+    const noPrice = u => {if (u && u.costKnown === false && !unknown) {unknown = true; log(`[dm] ${rs.model} reports no price: its spend is counted as $0, so the budget does not limit it`)}};
     if (gem) {
       const {openaiRunner} = await import('./agent-chat.mjs'), o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
       if (o.error) {console.error('[dm] ' + o.error); await quit(1)}
       if (o.note) log('[dm] ' + o.note);
-      ol = o.adapter; sess.runner = rs; mind = {provider: 'google', model: rs.model}; await claim();
-      log(`[dm] DM seat taken | model ${rs.model} via Gemini (${ol.tier} tier) | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
+      ol = o.adapter; sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
+      log(`[dm] DM seat taken | model ${rs.model} via ${label}${ol.tier ? ' (' + ol.tier + ' tier)' : ''} | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
     } else {
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
     rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null; sess.runner = rs; mind = {provider: 'ollama', model: rs.model}; await claim();
@@ -527,7 +544,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     {const {localModelNote} = await import('./pacing.mjs'); const n = await localModelNote(ol, rs.model); if (n) log('[dm] ' + n)} // another model, or ours at another num_ctx (#221)
     log(`[dm] DM seat taken | local model ${rs.model} via Ollama, num_ctx ${ol.numCtx} | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
     }
-    const where = gem ? ' (Gemini)' : ' (local)', onCost = gem ? u => {const c = u && u.cost || 0; spentG += c; sess.costUsd = (sess.costUsd || 0) + c} : undefined;
+    const where = gem ? ` (${label})` : ' (local)', onCost = gem ? u => {const c = u && u.cost || 0; spentG += c; sess.costUsd = (sess.costUsd || 0) + c; noPrice(u)} : undefined;
     {const {warmUp} = await import('./warmup.mjs'); await warmUp({base, seat: {role: 'dm'}, runner, model: rs.model, adapter: ol, log})} // the start gate (issue #222): ready = answered
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost}); log(`[dm] table voice: ${rs.model}${where} answers the calls of staged scenes`)}
     if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || (gem ? 8 : 25)))}); log(`[dm] talk voice: ${rs.model}${where} answers the Fellowship's conversations with world characters`)}
@@ -537,28 +554,29 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
     if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
-      if (gem && spentG >= budget) {ended = 'budget reached'; break}
-      const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
+      if (over()) {ended = 'budget reached'; break}
+      const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping || over(), gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = over() ? 'budget reached' : 'the seat closed'; break}
       let r = null, err = null;
       const prepping = st === prepSt && !!prepSt, prepAt = Date.now();
       {const rd = rollDue(sess, 0, {busy: prepping}); if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}} // only when asked from the page (#787)
-      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
+      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
         // the breaker and the minute cap (issue #467): 3 refusals of one tool or 5 in a row end the turn; at most
         // DM_CALLS_PER_MIN (default 30) tool calls a real minute across turns, well under the relay's flood line (90)
         opts: {endOnWait: false, sameRefusals: 3, consecutiveRefusals: 5, callsPerMin: Math.max(5, Number(opt('calls-per-min', env.DM_CALLS_PER_MIN || 30)) || 30)},
         on: (k, a, b) => {if (k === 'text') log(`  DM: ${a}`); else if (k === 'tool') log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') log(`    < ${short(a, 220)}`);
           else if (k === 'break') log(`  [breaker] ${a.n} refusals of ${a.tool}${a.inRow > a.n ? ' (' + a.inRow + ' in a row)' : ''}: the turn ends here`); else if (k === 'throttle') log(`  [throttle] ${a} tool calls in the last minute: the turn ends here`)}})}
       catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
+      if (r && !prepping) delete sess.rolled; // told to re-read (#787)
       if (prepping) {const d = await dmTool(base, 'prep_done', {summary: 'prepared the table'}); log(`[dm] prep over: ${d.ok ? (d.prep && d.prep.why) || 'done' : short(d.error, 80)}`); prepSt = null}
       sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; lastEnd = Date.now(); sess.lastWatch = Math.max(sess.lastWatch || 0, seenMax(st.watches_fired, 'id')); sess.lastFired = Math.max(sess.lastFired || 0, seenMax(st.fired, 'seq'));
       reportTurn(base, {role: 'dm', runner, provider: rs.provider, model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
-      if (r && gem) {runIn += r.in; runOut += r.out; spentG += r.cost || 0; sess.costUsd = (sess.costUsd || 0) + (r.cost || 0); log(`[turn ${sess.turns}] ${paidLine(r, rs.model, 'google', {run: spentG, session: sess.costUsd})}`)}
+      if (r && gem) {runIn += r.in; runOut += r.out; spentG += r.cost || 0; sess.costUsd = (sess.costUsd || 0) + (r.cost || 0); noPrice(r); log(`[turn ${sess.turns}] ${paidLine(r, rs.model, rs.provider, {run: spentG, session: sess.costUsd})}`)}
       else if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
       saveSess();
       if (fails.ok(localWorked(r))) ended = fails.why();
     }
     clearInterval(beat); await release();
-    log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t00) / 1000).toFixed(0)} s, ${gem ? money(spentG) + ' (Gemini ' + ol.tier + ' tier)' : '$0 (local)'}. Session saved to ${dmSessionPath()}.`);
+    log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t00) / 1000).toFixed(0)} s, ${gem ? (unknown ? 'cost unknown for ' + rs.model + ', counted ' : '') + money(spentG) + ` (${label}${ol.tier ? ' ' + ol.tier + ' tier' : ''}) | run ${money(spentG)}` : '$0 (local)'}. Session saved to ${dmSessionPath()}.`);
     process.exit(0);
   }
 
@@ -605,7 +623,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
+    const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping || spent >= budget, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = spent >= budget ? 'budget reached' : 'the seat closed'; break}
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const rd = rollDue(sess, rollAt, {busy: st === prepSt && !!prepSt, legacy: /haiku/i.test(model)}); // between turns (waitTurn never returns with a scene or a vote open), never in the prep (#787)
     if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}
