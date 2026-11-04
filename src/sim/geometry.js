@@ -21,7 +21,7 @@ export const GEO={
   LINE_PEN:-2,   // a friend on the line of a shot
   FLANK:2,       // two on opposite sides of a foe, or three around it: on each of their strikes
   GUARD_PEN:-2,  // a foe's blow on a member beside a guard (not the guard itself)
-  GUARD_CUT:.7,  // a blow on the guard lands at this share: with the tiles it takes every blow beside it, so it cuts less than CRAWL.GUARD_CUT (tuned to #698)
+  GUARD_CUT:.7,  // a blow on the guard lands at this share: with the tiles it takes every blow beside it, so it cuts less than CRAWL.GUARD_CUT
   COVER:2,       // Defense in cover against shots, and on trap saves
   FRIENDLY:.5,   // a friend inside a blast takes this share of a foe's blow
   BLAST_R:1,     // the square a blast hits: this many tiles round its centre
