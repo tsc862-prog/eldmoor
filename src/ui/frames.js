@@ -123,7 +123,10 @@ function build(m){const a=m.hero,f=el('div','pf r-'+m.role);f.dataset.pf=m.slot;
   r.doing=el('div','pfdo purp');r.doing._base='pfdo';r.tgt=el('div','pftg');r.chips=el('div','pfchips');
   const foot=el('div','pffoot');r.pot=el('span','pfpot');r.mind=el('span','pfdot');r.mind.setAttribute('role','img');foot.append(r.pot,r.mind);
   r.rep=el('div','dm pfrep');
-  f.append(top,hp,r.dn,r.doing,r.tgt,r.chips,r.rep,foot);
+  // two fixed-height slots (#843): the target line and the downed row share one, the chips and the replacement line the other,
+  // so a fight, a downing or a potion count never changes the frame's height and the map never moves
+  const s1=el('div','pfsl pfsl1'),s2=el('div','pfsl pfsl2');s1.append(r.tgt,r.dn);s2.append(r.chips,r.rep);
+  f.append(top,hp,r.doing,s1,s2,foot);
   return {node:f,hid:a.id,r}}
 
 function update(fr,m,lead,no,total){const a=m.hero,r=fr.r;
