@@ -976,7 +976,7 @@ const T={
   unmark(a,{name}){const r=unmarkPlace(a,{name});need(!r.error,r.error);return r},
   move_to(a,{target,force}){need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
     need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
-    {const ct=townHere(a);if(ct&&placeIs(target,ct))return {ok:true,already_here:true,...alreadyHere(a,ct)}} // no walk to where you stand (#727)
+    {const ct=townHere(a);if(ct&&placeIs(target,ct))return {ok:true,going:ct.name,distance:0,already_here:true,...alreadyHere(a,ct)}} // no walk to where you stand (#727)
     const p0=plan(a,target);if(p0.error)throw new Rule(p0.error);
     const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // a region far above the hero: stop at its edge first (#465)
     if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
