@@ -33,6 +33,7 @@ import {count,take,bestUse,useItem} from './inv.js';
 import {nearDeath} from './lore.js';
 import {held,sceneOf} from './scenes.js';
 import {maxHp,moveTo,healOne,slay} from './heroes.js';
+import {pvpDowned} from './mercy.js'; // finish or spare (#657)
 
 export const DOWN={
   TICK:10,          // game minutes between death saves away from a table
@@ -71,7 +72,6 @@ export const reviveBonus=t=>isDown(t)?Math.round(maxHp(t)*R.HEALER_BONUS):0;
 export function goDown(a,killer){
   if(!a||a.kind!=='hero'||!killer)return false;
   if(isDown(a))return false;                                            // already down: a blow that reaches here finishes them
-  if(killer.kind==='hero'){stats().why.finish++;return false}           // PvP: the victor finishes them (spare comes with #657)
   if(a.hidden||a.state==='dungeon')return false;                        // below ground: the Crypt's own rules
   if(sceneOf(a))return false;                                           // at a Table scene: as before until the rescue scene (#654)
   if(-a.hp>=maxHp(a)){stats().why.massive++;return false}               // a blow from zero past full health
@@ -80,14 +80,15 @@ export function goDown(a,killer){
   a.hp=0;a.state='downed';a.target=null;a.dest=null;a.moving=false;a.raid=false;a.aid=null;
   pop(a.x,a.y-.8,'DOWN','#ff6a5a');
   if(killer.kind==='mob')nearDeath(a,killer); // lore: what nearly killed them (#188)
-  record(a,'Went down at level '+a.lvl+' to ',killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:'a '+mobName(killer),'.');
+  record(a,'Went down at level '+a.lvl+' to ',killer.kind==='boss'?{t:'Kragmaw',c:'gd'}:killer.kind==='hero'?killer:'a '+mobName(killer),'.');
   if(a.lvl>=10||a.company!=null)log(a,' is down, bleeding, in the grass.');
   ev(a,'You are down: you lie bleeding at zero health. Death saves every '+R.TICK+' game minutes; three failures and you die.',2);
   if(a.player){const L=a.downs||(a.downs=[]);L.push(Math.round(now()));if(L.length>R.DOWNS)L.shift();
-    moment(a,'downed','struck down by '+(killer.kind==='boss'?'Kragmaw':'a '+mobName(killer)))} // the downed agent's next turn: a reflection, no acting tools (#658)
+    moment(a,'downed','struck down by '+(killer.kind==='boss'?'Kragmaw':killer.kind==='hero'?killer.name:'a '+mobName(killer)))} // the downed agent's next turn: a reflection, no acting tools (#658)
   for(const b of nearKin(a,R.REACH))if(!b.player)ev(b,a.name+' is down and dying nearby!',2);
   tellNear(a,'down');
   callHelp(a);
+  if(killer.kind==='hero')pvpDowned(a,killer); // the victor finishes or spares (sim/mercy.js, #657)
   return true}
 const mobName=m=>m.kind==='mob'&&MOBS[m.type]?MOBS[m.type].name:m.name||'foe';
 
@@ -99,11 +100,11 @@ function killerOf(a){const b=a.down&&a.down.by||{};
 
 function die(a,why){const st=stats();st.died++;st.why[why]=(st.why[why]||0)+1;
   tellNear(a,'died');
-  const k=killerOf(a);
+  const k=killerOf(a),bled=a.down&&a.down.by&&a.down.by.kind==='hero';
   if(why==='alone')record(a,'Bled out with no one near.');
   for(const b of S.agents)if(b.aid===a.id){b.aid=null;if(b.aidHow)b.aidHow=null;if(b.state==='aid'){b.state='hunt';b.dest=null}}
   a.down=null;a.hp=0;
-  slay(a,k)}
+  slay(a,k,bled?{bled:true}:null)}  // left to bleed by an enemy hero: no honour to anyone (#657)
 
 function rise(a,how){const st=stats();if(how==='revived')st.revived++;else if(how==='rose')st.rose++;else st.woke++;
   a.hp=Math.max(1,a.hp);a.down=null;a.state='hunt';a.target=null;a.dest=null;a.cd=Math.max(a.cd,1);
@@ -173,11 +174,12 @@ export function aidView(b){if(!b||b.state!=='aid')return null;const t=heroById(b
 // bystander sees: never the saves, the helper's rules or the hero's own mind.
 const DIRS=['east','south-east','south','south-west','west','north-west','north','north-east'];
 const dirOf=(b,a)=>{const dx=a.x-b.x,dy=a.y-b.y,d=Math.hypot(dx,dy);return d<1.5?'right beside you':Math.round(d)+' tiles '+DIRS[((Math.round(Math.atan2(dy,dx)/(Math.PI/4))%8)+8)%8]};
-function tellNear(a,kind){for(const b of nearHeroes(a.x,a.y,R.REACH)){if(b===a||!b.player||b.state==='dead'||b.hidden||b.kind!=='hero')continue;const d=dist(a,b),k=kin(a,b);
+export function tellNear(a,kind){for(const b of nearHeroes(a.x,a.y,R.REACH)){if(b===a||!b.player||b.state==='dead'||b.hidden||b.kind!=='hero')continue;const d=dist(a,b),k=kin(a,b);
   if(d>R.REACH||!k&&d>R.SEE)continue;const where=' ('+dirOf(b,a)+')',first=a.name.split(' ')[0];
   const text=kind==='down'?(k?a.name+' is down and dying'+where+'! stabilize {who: "'+first+'"}, a potion (use_item with target) or a heal can save them; tend does all you can.':a.name+' falls and lies bleeding'+where+'.')
     :kind==='stable'?a.name+' has stopped bleeding'+where+': stable, still down.'+(k?' carry {who: "'+first+'"} can bring them to safety.':'')
     :kind==='revived'?a.name+' is brought back up'+where+'.':kind==='up'?a.name+' is back on their feet'+where+'.'
+    :kind==='finished'?a.name+' is finished where they lay'+where+'.'
     :a.name+' has died of their wounds'+where+'.';
   notify(b,text,2)}}
 

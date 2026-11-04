@@ -79,8 +79,9 @@ console.log('runner routes (fake children)');
   const be = {call: async () => ({ok: true}), dmCall: async t => t === 'table_call' ? {ok: true, call: {id: 1, kind: 'frame', seconds_left: 8}} : {ok: true}, narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat})}; // a frame call waits for the DM's voice (#682)
   const kids = [];
   const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 40000 + kids.length; k.cmd = cmd; k.args = args; k.opts = opts; k.got = '';
-    k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d}});
+    k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d; if (exitOnStop && /stop/.test(d)) setTimeout(() => k.emit('exit', 0), 5)}});
     k.kill = () => {k.killed = true; setTimeout(() => k.emit('exit', null), 5)}; kids.push(k); return k};
+  let exitOnStop = false; // a runner that releases its heroes and leaves on the stop line (the real ones do)
   const mk = async (enabled, extra = {RUNNER_CLAUDE_MAX: '10'}) => {const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
     const play = attachPlay(server, {backend: be, log: () => {}});
     const sup = attachRunners(server, {play, enabled, log: () => {}, spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', ...extra}});
@@ -139,19 +140,31 @@ console.log('runner routes (fake children)');
   ok(v.state === 'crashed' && /not reachable/.test(v.error) && v.exit === 1, 'a crash shows its last error line: ' + (v && v.error));
   const logTxt = readFileSync(join(tmp, 'runners', 'hero-2.log'), 'utf8');
   ok(/start hero H2/.test(logTxt) && /crashed \(exit 1\)/.test(logTxt) && !/sk-test/.test(logTxt), 'the log file has the start line, the output and the end, and never the key');
-  // a runner that sees a new world exits with NEW_WORLD_EXIT: the supervisor starts it again with the same request (issue #219)
-  {const k3 = kids[2], n0 = kids.length; k3.stdout.emit('data', '[world] a new world: #3 was H3, now Zed. Releasing the heroes and exiting (code 75)\n'); k3.emit('exit', NEW_WORLD_EXIT);
-    ok(await until(async () => kids.length > n0, 5000), 'a runner that exits for a new world is started again');
-    const kn = kids[n0]; v = (await req(on.base, '/play/runner')).runners.find(r => r.key === 'hero:3');
-    ok(kn && kn.args.join(' ') === k3.args.join(' ') && v && v.pid === kn.pid && !v.error, 'the same command line (same hero and mind), no error shown');
+  // a runner that sees a new world exits with NEW_WORLD_EXIT: it is NOT started again (#691: a world reset stops everything, the new world's setup or resume starts what it wants)
+  {const k3 = kids[2], n0 = kids.length; k3.stdout.emit('data', '[world] a new world: #3 was H3, now Zed. Releasing the heroes and exiting (code 75)\n'); k3.left75 = true; k3.emit('exit', NEW_WORLD_EXIT);
+    await sleep(RESTART_MS + 600); ok(kids.length === n0, 'a runner that exits for a new world is not started again');
+    v = (await req(on.base, '/play/runner')).runners.find(r => r.key === 'hero:3');
+    ok(v && v.state === 'stopped' && !v.error && /new world/.test(v.stopWhy || ''), 'it reads stopped for a new world, not crashed: ' + (v && v.state));
     const old = readFileSync(join(tmp, 'runners', 'hero-3.log'), 'utf8');
     ok(/stopped \(exit 75\)/.test(old) && !/crashed/.test(old), 'a new world is a stop in the log, not a crash');
-    const n1 = kids.length; kn.emit('exit', 0); await sleep(RESTART_MS + 400); ok(kids.length === n1, 'a normal exit is not restarted'); k3.killed = kn.killed = true}
+    for (let i = 0; i < 7; i++) {const a = await req(on.base, '/play/runner/start', {method: 'POST', body: {hero: 3, provider: 'ollama', model: 'qwen2.5:14b'}, origin: PAGE}); const kk = kids[kids.length - 1]; kk.stdout.emit('data', 'x\n'); kk.left75 = true; kk.emit('exit', NEW_WORLD_EXIT); await sleep(30)}
+    const n1 = kids.length; await sleep(RESTART_MS + 400); ok(kids.length === n1, 'seven new-world exits in a row start nothing by themselves (no restart budget to spend)');
+    // one call stops everything before the page replaces the world
+    exitOnStop = true;
+    const live = (await req(on.base, '/play/runner')).runners.filter(r => !['stopped', 'crashed'].includes(r.state)).map(r => r.key).sort();
+    const rs = await req(on.base, '/play/runner/stop-all', {method: 'POST', body: {why: 'world reset'}, origin: PAGE});
+    ok(rs.status === 200 && rs.ok && rs.stopped === live.length && live.length >= 2 && rs.keys.slice().sort().join() === live.join() && rs.left === 0, 'stop-all stops every live runner in one call and waits for them: ' + JSON.stringify({stopped: rs.stopped, live: live.length, left: rs.left}));
+    const after = (await req(on.base, '/play/runner')).runners;
+    ok(after.every(r => ['stopped', 'crashed'].includes(r.state)) && true, 'every runner reads stopped afterwards');
+    const act = JSON.parse(readFileSync(on.sup.activeFile, 'utf8')); ok(act.runners.length === 0, 'the active list is empty, so --resume-runners brings nothing back');
+    const rs2 = await req(on.base, '/play/runner/stop-all', {method: 'POST', body: {}, origin: PAGE}); ok(rs2.ok && rs2.stopped === 0, 'stop-all with nothing running says 0');
+    const bad = await req(on.base, '/play/runner/stop-all', {method: 'POST', body: {}, origin: 'http://evil.example'}); ok(bad.status === 403, 'stop-all is for the page origin only');
+    exitOnStop = false}
   // a runner that ignores stop is killed after the grace period (skipped: shortened via a direct kill)
   s = await req(on.base, '/play/runner/stop', {method: 'POST', body: {key: 'nope'}, origin: PAGE});
   ok(s.status === 404, 'stopping an unknown runner says so');
   on.sup.killAll(); await sleep(20);
-  ok(kids.slice(2).every(k => k.killed), 'the host closing kills every child');
+  ok(kids.slice(2).every(k => k.killed || k.got.includes('stop') || k.left75), 'the host closing kills every child that is still running (a reset already stopped the rest)');
   on.server.close();
 
   // limits set in the game (issue #145): a session budget across paid runners, live per-runner caps
@@ -261,6 +274,27 @@ console.log('runner routes (fake children)');
   dmSeat = true;
   RUNNER_KINDS.dm.script = realDm; dm.sup.killAll(); dm.server.close();
   rmSync(tmp, {recursive: true, force: true});
+}
+
+// ---------------------------------------------------------------- 2a. offline calls are bounded by a health check (#691)
+console.log('offline calls: one health check, not a retry loop (#691)');
+{
+  let up = false, listed = [], calls = 0;
+  const be = {call: async (id, tool) => {calls++; return up && listed.length ? {ok: true} : {ok: false, error: 'The world is paused or reloading', offline: true, why: 'no agent hero listed'}}, dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: up, heroes: listed, dm: false})};
+  const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
+  const play = attachPlay(server, {backend: be, log: () => {}, offlineWaitMs: 600});
+  // the page is away: one call answers offline only after the wait, so a runner cannot spin
+  let t0 = Date.now(), r = await play.call(1, 'status', {});
+  ok(r.offline && Date.now() - t0 >= 550 && play.stats.offlineWaits === 1 && calls === 1, 'a call with no page waits the health window, then answers offline (once): ' + (Date.now() - t0) + ' ms');
+  // twenty runner retries in a row take at least the window each, never a tight loop
+  t0 = Date.now(); const rs = await Promise.all([1, 2, 3].map(i => play.call(1, 'status', {}))); ok(Date.now() - t0 >= 550 && calls === 4, 'parallel callers each wait the window; none spins');
+  // the page comes back while a call waits: the call is tried again and succeeds
+  const p = play.call(1, 'status', {}); await sleep(250); up = true; listed = [{id: 1, name: 'H1', alive: true}];
+  r = await p; ok(r.ok === true, 'a page that lists the hero during the wait gets the call answered (retried once)');
+  // a listed page answers an offline reason at once (no wait)
+  be.call = async () => ({ok: false, error: 'no answer in time', offline: true, why: 'no answer in time'}); const w0 = play.stats.offlineWaits; t0 = Date.now(); r = await play.call(1, 'status', {});
+  ok(r.offline && Date.now() - t0 < 300 && play.stats.offlineWaits === w0, 'with the page listing its heroes an offline answer is immediate (no extra wait)');
+  server.close();
 }
 
 // ---------------------------------------------------------------- 2b. company runners (#460), fake children
