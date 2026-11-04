@@ -70,8 +70,7 @@ jobs:
             echo
             echo "[All views as an artifact](${{ steps.art.outputs.artifact-url }}) - 3440x1440 title, default, follow the Fellowship, bottom, and 1280x800."
             echo
-            node -e "const p=(JSON.parse(require('fs').readFileSync('shots/shots.json','utf8')).perf||{}).crawl;if(p)console.log('Dungeon view frame time ('+p.size+', software canvas, '+p.frames+' frames): p50 '+p.frameP50+' ms, p99 '+p.frameP99+' ms, worst '+p.frameWorst+' ms (render worst '+p.renderWorst+' ms).
-')" || true
+            node -e "const p=(JSON.parse(require('fs').readFileSync('shots/shots.json','utf8')).perf||{}).crawl;if(p)console.log('Dungeon view frame time ('+p.size+', software canvas, '+p.frames+' frames): p50 '+p.frameP50+' ms, p99 '+p.frameP99+' ms, worst '+p.frameWorst+' ms (render worst '+p.renderWorst+' ms).')" || true
             if [ "$uploaded" = yes ]; then
               echo "![default view 3440x1440]($raw/default-3440.png?v=${sha:0:7})"
               echo

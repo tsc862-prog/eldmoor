@@ -15,6 +15,7 @@
 //   hours            the hourly world digests: hours the member was seen under this mind's runner, and how many of
 //                    them it ran on autopilot or the scripted rules (no runner) instead of its agent
 //   deaths survived  Fellowship deaths (from the digests) while the member lived; close calls = digests at 25% HP or less
+//   rules written    the rules the hero wrote itself and how many name use_ability (#779): the latest running total in the digests, not a sum
 //   lifetime         game hours from the first to the last digest (or the death); "died" with its cause
 //   no-aim, errand   aim anomalies (anomalies.jsonl, issue #727): no-aim and errand-unacted lines for the hero, each put on the
 //                    mind of the seat's last turn line before it (weak models that restate aims instead of acting show here)
@@ -104,6 +105,8 @@ export function compareMinds(T = [], D = [], W = [], A = []) {
     if (L && L.length) {at = L[0]; for (const e of L) if (e.ts <= ts) at = e}
     const h = at ? at.h : heroes.get(hk(id, x.hero && x.hero.name)); if (!h) continue;
     const r = row(h, at ? at.mind : h.lastMind || 'no runner'); if (x.kind === 'no-aim') r.noAim += n; else r.errand += n}
+  // rules the hero wrote itself (#779): the digest's latest running total per hero, with how many name use_ability
+  for (const w of Ws) for (const [name, g] of Object.entries(w.gambits || {})) {const h = byName.get(name); if (h && g && Number.isFinite(g.wrote)) h.wrote = {n: g.wrote, ab: g.wroteAb || 0}}
   // deaths: a watched hero's death (by name) ends its life; other members survive it if they were alive then
   const deaths = [];
   for (const w of Ws) for (const x of w.deaths || []) {const h = byName.get(x.name); if (h) deaths.push({h, gm: w.gameMin, cause: x.cause || '?', fs: h.fs})}
@@ -154,11 +157,11 @@ export function mindSection(T, D, W, tableFn, A = []) {
   const writes = r => {const parts = Object.entries(r.writers || {}).map(([m, n]) => n + ' by ' + m); if (r.writing) parts.unshift(r.writing + ' by this mind');
     return parts.length ? parts.join(', ') + (r.writingFail ? ' (' + r.writingFail + ' failed)' : '') : '-'};
   const lat = (xs, unit) => {const a = pctile(xs, 50), b = pctile(xs, 90); return a == null ? '-' : `${r1(a)} / ${r1(b)}${unit}`};
-  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'lifetime (game h)', 'turns/min', 'ctx p50/peak', 'rolls', 'no-aim', 'errand unacted'],
+  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'rules written / with abilities', 'lifetime (game h)', 'turns/min', 'ctx p50/peak', 'rolls', 'no-aim', 'errand unacted'],
     c.rows.map(r => {const h = r.hero, t = r.turns > 0, d = r.dec > 0, life = h.lifeH == null ? '-' : r1(h.lifeH) + (h.died ? ' (died' + (r.died ? ': ' + r.died : '') + ')' : ' (alive)');
       return [h.name + (h.named === false ? ' (unnamed)' : ''), h.role || (h.fellow ? 'member' : 'agent hero'), r.mind, dash(r.turns, t), dash(r.empty, t), dash(r.failed, t), t || r.table ? r.table : '-', dash(r.dec, d), dash(r.rejected, d), dash(r.fallback, d),
         writes(r), lat(r.secs, ' s'), lat(d ? r.decMs : r.relayMs, ' ms'), r.tokN ? `${r.tin} / ${r.tout}` : '-', r.crN ? r.cr : '-', r.costN ? money(r.cost) : '-',
-        r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, life, perMin(r), r.ctx.length ? `${kTok(pctile(r.ctx, 50))} / ${kTok(Math.max(...r.ctx))}` : '-', r.ctx.length ? r.rolls : '-', t || r.noAim || r.errand ? r.noAim : '-', t || r.noAim || r.errand ? r.errand : '-']})), '');
+        r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, h.wrote ? h.wrote.n + ' / ' + h.wrote.ab : '-', life, perMin(r), r.ctx.length ? `${kTok(pctile(r.ctx, 50))} / ${kTok(Math.max(...r.ctx))}` : '-', r.ctx.length ? r.rolls : '-', t || r.noAim || r.errand ? r.noAim : '-', t || r.noAim || r.errand ? r.errand : '-']})), '');
   L.push('Overall per mind:', '');
   L.push(tableFn(['mind', 'heroes', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'fallbacks', 'sheets written (failed)', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out per turn', 'cache read per turn', 'cost per turn', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths', 'no-aim', 'errand unacted'],
     c.overall.map(o => {const t = o.turns > 0;

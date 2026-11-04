@@ -79,6 +79,7 @@
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
 - [Town errands #727](town_errands.md) — arrival now-wake + 120 min leave hold, errand aims wait in town, already-here, forced stale-aim drop, errand-unacted
+- [Gambit cap 30 #779](gambit_cap_30.md) — MAX 30, a.gambitWrote counts hero-written rules and use_ability ones for the report
 - [Watch clock and DM downed call #655](watch_clock_downcall.md) — WATCH_TICK 20 gated on Table Off+agent+hasLinks, kin wake per save, downcall.js non-blocking DM call
 - [Wounds and tending #656](wounds_tending.md) — wounds.js leaf, who tends, priest is the existing NPC, scripted rest rules, balance read
 - [Others none #780](others_none.md) — no-roster world, summon_hero lever, guild skip, GOODS floor, heir rule, fixture traps
@@ -87,3 +88,4 @@
 - [Wait is not progress #790](wait_not_progress.md) — wait cap 240, level condition -> hunt, 12 h town-idle guard, refusals list the board
 - [Errands inside #790](errand_wait.md) — #732 + #802: an errand is a capped wait, stale unless run, guard outranks it and ARRIVE_HOLD
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
+- [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
