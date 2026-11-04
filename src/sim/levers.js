@@ -51,6 +51,7 @@ import {focuses,pullTouchesAny,reserveOf,fairRefusal} from './dmfocus.js'; // th
 import {timeline,record} from './history.js';
 import {npcSay,ensureNpcs} from './npcs.js';
 import {moveTo} from './heroes.js';
+import {clearLine} from './path.js';
 import {spawnMob} from './mobs.js';
 import {postHook,withdrawHook} from './dm.js';
 import {postSupply,withdrawSupply,openAt as supplyOpenAt,SUP} from './supply.js'; // goods jobs (#720): post_hook takes their names as tpl
@@ -516,7 +517,7 @@ export function leverTick(dt){const L=ensureLevers();
 function wander(w,dt){if(w.chatCd>0)w.chatCd-=dt;if(w.bubble){w.bubble.life-=dt;if(w.bubble.life<=0)w.bubble=null}
   if(w.stroll){if(moveTo(w,w.stroll.x,w.stroll.y,dt,1)){w.stroll=null;w.wait=4+r()*8}}
   else{w.moving=false;w.wait-=dt;if(w.wait<=0){const a=r()*6.283,d=r()*1.4,q={x:w.home.x+Math.cos(a)*d,y:w.home.y+Math.sin(a)*d};
-    if(!spotErr(q,{clear:.1})||w.homeKind==='town')w.stroll=q;else w.wait=3}}
+    if((!spotErr(q,{clear:.1})||w.homeKind==='town')&&clearLine(w,q))w.stroll=q;else w.wait=3}} // a stroll stays in the open: never round a house (#794)
   if(w.chatCd>0)return;
   for(const a of S.agents){if(a.state==='dead'||a.state==='ghost'||a.hidden||dist(a,w)>2.2)continue;
     const last=w.met[a.id];if(last!=null&&S.gameMin-last<DAY)continue;w.met[a.id]=S.gameMin;

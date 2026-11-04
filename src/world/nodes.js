@@ -16,7 +16,7 @@ export const NODE_KINDS=['herb','ore','hide','fish']; // fixed order: placement 
 export const NODE_NAMES={herb:'Herb patch',ore:'Ore vein',hide:'Game trail',fish:'Fishing spot'};
 // Tiles each kind prefers (tried first); a region without enough of them falls back to any other walkable tile.
 const PREFER={herb:[FLOWER,G,SGRASS,MUD,SNOW],ore:[ROCK,PEAK],hide:[G,SGRASS,MUD,SNOW,ROCK,TREE,ICE]};
-const SPACE={herb:3,ore:3,hide:4,fish:4}; // minimum tiles between two nodes of the same kind
+const SPACE={herb:3,ore:3,hide:4,fish:3}; // minimum tiles between two nodes of the same kind (fish 3: peaks stand on part of Hoarfell's short shore, #794)
 const SPACE_ANY=2;                         // ...and between any two nodes
 
 // Skill band of a node from its region's level band: the middle of the band on a ladder of five levels a step,
