@@ -338,7 +338,7 @@ export async function afterBoot(){const setup=appliedSetup();if(!setup||bootKind
     for(const j of jobs)j.error='no runner';launch.headline=why+' The world stays paused until they connect.';clearInterval(timer);paintBar();return}
   launch.sent=true;launch.headline='Runners are starting. The world is paused until they all claim their seats.';
   for(const j of jobs){const body={kind:j.kind,provider:j.provider,model:j.model,...(j.kind==='hero'?{hero:heroOf(j).id}:j.kind==='company'?{company:coId(j)}:{})};
-    let r;for(let i=0;i<10;i++){r=await post('/play/runner/start',body);if(r.ok||r.code!==404)break;await sleep(1000)} // the page tells the relay which heroes are agent-played a moment after loading
+    let r;for(let i=0;i<10;i++){r=await post('/play/runner/start',{...body,by:'setup'});if(r.ok||r.code!==404)break;await sleep(1000)} // the page tells the relay which heroes are agent-played a moment after loading
     if(!r.ok)j.error=r.error}
   const failed=jobs.filter(j=>j.error);
   launch.headline=failed.length?failed.length+' of '+jobs.length+' runners did not start. The world stays paused: start the rest from the bar over the map.':'All runners started; the world plays on when they have claimed.';

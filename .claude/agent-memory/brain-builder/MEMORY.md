@@ -1,4 +1,5 @@
 - [Brain design](brain-design.md) — decision points, relay protocol, model choice, cost and test approach from issue #40
+- [Budget stop](budget-stop.md) — #807 cause was gate clicks; budgetOut, active.json spent, events.jsonl by/why, price on buttons
 - [Agent player](agent-player.md) — #75/#93 MCP tools, per-hero routing+claims, WS protocol, runner settings, per-hero sessions, cost per turn, playcheck
 - [Fellowship](fellowship.md) — #68 phase A shapes and hooks; phase B council, Table mode, Minds=agents, runner cost per member
 - [Mixed minds](mixed-minds.md) — #97 parts 1+2: adapters, think:false, a.brainCfg, local agent loop, claim runner tags, local latency/tokens
