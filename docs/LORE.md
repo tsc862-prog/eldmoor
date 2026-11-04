@@ -165,6 +165,8 @@ tiers), and an oath whose target dies first is void and re-sworn.
 
 Every hero carries six ability scores and ten skills (`src/data/abilities.js`, `src/sim/abilities.js`). The six scores are the only attributes in Eldmoor: items do not carry stats of their own, they add to scores (see Equipment).
 
+**Growth** (levels 5, 10, 15, 20, cap 20): a scripted hero gains +1 to its class's primary score and half the time +1 to the secondary. A hero played by an agent chooses where its one point goes (`raise_score`, with a reason that enters its story); if it says nothing within a game day, or its runner is gone, the class default is taken for it.
+
 **Scores** (3-18 at recruitment: roll 4d6, drop the lowest, six times; the best go to the class's primary then secondary, the rest fall where they fall; modifier = floor((score - 10) / 2)):
 
 | Score | Short | Means |
