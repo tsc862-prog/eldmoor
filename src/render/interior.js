@@ -177,6 +177,15 @@ function fogOf(m,reached){const key=m.seed+':'+reached;let c=fogCache.get(key);i
   for(let i=0;i<m.w*m.h;i++){const r=m.reg[i];if(r<0||r<=2*reached)continue;d[i*4]=D.void[0];d[i*4+1]=D.void[1];d[i*4+2]=D.void[2];d[i*4+3]=D.fogA}
   x.putImageData(img,0,0);fogCache.set(key,c);return c}
 
+// The outline of a chamber in progress follows its floor: an edge is drawn only where a floor tile meets cave wall or the
+// chamber's rim, so tiles a cave cut into wall are left out (#678). Sits just inside the floor, caps cover the corners.
+function roomEdge(ctx,m,r,px1){const ok=(x,y)=>x>=r.x&&x<r.x+r.w&&y>=r.y&&y<r.y+r.h&&m.tiles[y*m.w+x]!==IT.WALL&&m.tiles[y*m.w+x]!==IT.VOID,i=px1;
+  ctx.lineCap='square';ctx.beginPath();
+  for(let y=r.y;y<r.y+r.h;y++)for(let x=r.x;x<r.x+r.w;x++){if(!ok(x,y))continue;const l=x*T,t=y*T,rr=l+T,b=t+T;
+    if(!ok(x,y-1)){ctx.moveTo(l,t+i);ctx.lineTo(rr,t+i)}if(!ok(x,y+1)){ctx.moveTo(l,b-i);ctx.lineTo(rr,b-i)}
+    if(!ok(x-1,y)){ctx.moveTo(l+i,t);ctx.lineTo(l+i,b)}if(!ok(x+1,y)){ctx.moveTo(rr-i,t);ctx.lineTo(rr-i,b)}}
+  ctx.stroke()}
+
 // ---- one frame ----
 // box: {x, y, w, h} in device px. Returns the fit {sc, ox, oy} so the caller can map pointer positions later.
 export function drawInterior(ctx,box,m,st,now,dpr=1){
@@ -187,7 +196,9 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
   // flickering light from candles and braziers in rooms the party can see
   const G=glowSprite(),reached=st.fog;ctx.globalCompositeOperation='lighter';
   for(const p of m.props){const P=propOf(p.kind);if(!P||!P.light)continue;const r=m.reg[p.y*m.w+p.x];if(reached>=0&&r>2*reached)continue;
-    const f=.75+.25*Math.sin(now*7+p.x*1.7+p.y),R=P.light==='crypt'||P.light==='cold'?44:30;ctx.globalAlpha=f;ctx.drawImage(G[P.light],p.x*T+8-R,p.y*T+8-R,R*2,R*2)}
+    const f=.75+.25*Math.sin(now*7+p.x*1.7+p.y),R=P.light==='crypt'||P.light==='cold'?44:30,wall=m.tiles[p.y*m.w+p.x]===IT.WALL;ctx.globalAlpha=f;
+    if(wall){ctx.save();ctx.beginPath();ctx.rect(0,p.y*T,m.w*T,m.h*T);ctx.clip()} // a wall torch lights the room, not the dark above its wall
+    ctx.drawImage(G[P.light],p.x*T+8-R,p.y*T+8-R,R*2,R*2);if(wall)ctx.restore()}
   if(st.party&&st.party.length){const pp=partySpot(m,st);ctx.globalAlpha=.7;ctx.drawImage(G.warm,pp.x*T-52,pp.y*T-52,104,104)} // the party's torches
   ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
   if(reached>=0&&reached<m.rooms.length-1)ctx.drawImage(fogOf(m,reached),0,0,m.w*T,m.h*T);
@@ -198,7 +209,7 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
     if(st.cleared&&st.cleared[r.i]){ctx.fillStyle=MARK.edge;ctx.fillRect(r.x*T+r.w*T-11,r.y*T+2,10,9);ctx.fillStyle=D.clear; // a tick in a dark badge
       for(const [a,b] of [[1,4],[2,5],[3,6],[4,5],[5,4],[6,3],[7,2]])ctx.fillRect(r.x*T+r.w*T-11+a,r.y*T+2+b,2,1)}
     if(r.boss)skull(ctx,Math.round(r.cx*T)-4,Math.round(r.y*T-5-13*px1-12),1); // above the chamber's name, fog or not
-    if(st.cur===r.i){ctx.save();ctx.strokeStyle=D.cur;ctx.globalAlpha=pulse;ctx.lineWidth=2*px1;ctx.strokeRect(r.x*T+px1,r.y*T+px1,r.w*T-2*px1,r.h*T-2*px1);ctx.restore()}} // the outline sits inside the floor, so the wall faces never hide it
+    if(st.cur===r.i){ctx.save();ctx.strokeStyle=D.cur;ctx.globalAlpha=pulse;ctx.lineWidth=2*px1;roomEdge(ctx,m,r,px1);ctx.restore()}} // the outline sits inside the floor, so the wall faces never hide it
   drawFoes(ctx,m,st,now,dpr,sc,PS); // the live crawl's foes with their HP bars (render/dgfoes.js)
   // the hand that rests on a chamber (hover or pinned), and a cross where a hero fell on the last run
   for(const r of m.rooms){const hot=st.hover===r.i||st.pin===r.i;if(hot){ctx.save();ctx.strokeStyle=st.pin===r.i?D.cur:'#ffffff';ctx.globalAlpha=st.pin===r.i?.9:.5;ctx.lineWidth=px1;ctx.setLineDash([3,3]);ctx.strokeRect(r.x*T+3*px1,r.y*T+3*px1,r.w*T-6*px1,r.h*T-6*px1);ctx.restore()}}
