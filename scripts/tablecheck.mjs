@@ -26,6 +26,8 @@
 //   - talk round the fire (#571, a child with a fresh world): a camp opens a 3-round fireside in turns (6 after a big event), the DM
 //     frames it and may set the rounds, a silent agent is skipped, a 300-character line arrives whole (700 refused, a copy refused), a
 //     told story lands in the teller's backstory, header and the listeners' notes, the reflection, a debrief after a rescue, no host = none
+//   - a vision (#639, a child with a fresh world): staged near the Fellowship it opens when they rest, everyone at once, no dice; the DM
+//     frames it and answers a question; the reveal lands in lore and in notes tagged vision; a silent DM is filled; all turned away = nothing
 //   - without a Fellowship, two seeded runs are identical (determinism)
 // Usage: npm run tablecheck   (TABLECHECK_SEED to vary the world)
 import {spawnSync} from 'node:child_process';
@@ -393,6 +395,79 @@ if (process.argv[2] === '--interrogate') {
   sc = T.openScene('elite', 'Talk test 2', ['Another voice.'], {mob: t3.id}); if (sc) {sc.end = 'yield'; g = 0; while (S.table === sc && g++ < 600) step(1 / 60)}
   ok(!SLT.slotted().iqQ && !(S.table && S.table.kind === 'interrogation'), 'with no host (npm run sim) a yield opens no interrogation');
   console.log(fail ? 'INTERROGATE FAILED ' + fail : 'INTERROGATE OK'); process.exit(fail ? 1 : 0);
+}
+
+// ---- a vision the DM stages (#639), in a child with a fresh world: node scripts/tablecheck.mjs --vision ----
+if (process.argv[2] === '--vision') {
+  const {dmAct, setDmSeat} = SIM, FR = await import('../src/sim/fireside.js'), CM = await import('../src/sim/camp.js'), DR = await import('../src/sim/dmreflex.js');
+  const {sceneHead} = await import('../src/core/scenehead.js'), {MOBS} = await import('../src/data/mobs.js'), {LANDMARKS} = await import('../src/world/map.js');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
+  init({fellowship: false}); run(20);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); FR.FIRE.ON = false; // the fire's own talk is not under test here
+  const M = SLT.slotMembers(SLT.slotted()).map(m => m.hero), live = C.leaderOfF(), quiet = M.find(x => x !== live), away = M.find(x => x !== live && x !== quiet);
+  const LINK = {[live.id]: 'connected'}; SIM.setRunnerLinks(x => LINK[x.id] || 'none');
+  T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  const home = homeOf(M[0]), field = () => {for (const [i, x] of M.entries()) {x.state = x === away ? 'town' : 'hunt'; x.x = x === away ? home.gate.x : home.gate.x + 14 + (i % 3) * .5; x.y = x === away ? home.gate.y : home.gate.y + 2 + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.raid = false; x.hp = maxHp(x)}};
+  const calm = () => {for (const m of S.mobs) if (m.alive && dist(m, {x: home.gate.x + 14, y: home.gate.y + 2}) < 14) {m.alive = false; m.gone = true}};
+  const crypt = LANDMARKS.find(l => l.kind === 'crypt') || LANDMARKS[0], beast = Object.values(MOBS).find(m => m.z > 0) || Object.values(MOBS)[0];
+  setDmSeat(true); field(); calm();
+  // 1. refusals: a place or a creature the world does not have
+  ok(!dmAct('stage_scene', {kind: 'vision', near: 'fellowship', frame: 'The stars wheel and a door of light opens.', cast: {place: 'Nowhere Keep'}, reason: 'bad place'}).ok, 'a vision showing an unknown place is refused');
+  ok(!dmAct('stage_scene', {kind: 'vision', near: 'fellowship', frame: 'The stars wheel and a door of light opens.', cast: {creature: 'moon-eating gryphon'}, reason: 'bad creature'}).ok, 'a vision showing an unknown creature is refused');
+  // 2. near the Fellowship: it waits for their rest, never while one of them fights or raids
+  const reveal = 'A bell tolls under black water below ' + crypt.name + ', and a ' + beast.name + ' guards the stair.';
+  const r = dmAct('stage_scene', {kind: 'vision', near: 'fellowship', title: 'The Drowned Bell', frame: 'The fire sinks to a blue glow, and somewhere under the ground a bell begins to toll.', cast: {reveal, place: crypt.name, creature: beast.name, choices: {see: 'Gaze into the water'}}, hours: 6, reason: 'tablecheck vision'});
+  ok(r.ok && r.kind === 'vision' && /next rest/.test(r.opens || '') && r.waits_until_h === 6 && /1\//.test(r.scenes_today), 'stage_scene vision near the Fellowship: ' + (r.opens || r.error) + ' (' + r.scenes_today + ')');
+  run(3); ok(!S.table, 'while they hunt, no vision opens');
+  CM.leaderRest(live, 4); quiet.raid = true; let k = 0; while (k++ < 120) {away.x = home.gate.x; away.y = home.gate.y; away.state = 'town'; away.pq = []; step(1 / 60); quiet.raid = true}
+  ok(!(S.table && S.table.kind === 'vision'), 'never while one of them raids (or fights, or is down in the Crypt)');
+  const keepAway = () => {away.x = home.gate.x; away.y = home.gate.y; away.state = 'town'; away.pq = []; away.dest = null}; // the camp calls them all in; this one stays in town
+  quiet.raid = false; k = 0; while (!(S.table && S.table.kind === 'vision') && k++ < 60 * 60) {keepAway(); step(1 / 60); dmAct('table_call')} const sc = S.table;
+  ok(sc && sc.kind === 'vision' && sc.all && sc.ctx.staged === r.staged && sc.pause, 'they rest: the vision opens at the table, everyone at once, the world paused');
+  if (!sc) {console.log('VISION FAILED ' + (fail + 1)); process.exit(1)}
+  ok(!sc.ids.includes(away.id) && !(away.chat || []).some(e => /bell begins to toll/.test(e.text)) && sc.ids.map(id => S.agents.find(x => x.id === id)).every(x => (x.chat || []).some(e => /bell begins to toll/.test(e.text))), 'the frame reaches those it takes (' + sc.ids.length + '), never the member in town');
+  ok(sceneHead(sc.kind, sc.title).head.toUpperCase().startsWith('VISION · THE DROWNED BELL') && T.bannerOf(sc).kind === 'vision', 'the banner reads ' + sceneHead(sc.kind, sc.title).head.toUpperCase());
+  const opts = T.optionsFor(sc, live);
+  ok(opts.map(o => o.k).join(',') === 'see,ask,turn_away' && opts[0].text === 'Gaze into the water', 'options see (the DM\'s label), ask, turn_away; no free action, no dice: ' + opts.map(o => o.k + '=' + o.text.slice(0, 24)).join('; '));
+  k = 0; while (S.table === sc && !(sc.calls && sc.calls.length) && k++ < 600) {dmAct('table_call'); step(1 / 60)}
+  let tc = dmAct('table_call');
+  ok(tc.ok && tc.call && tc.call.kind === 'frame' && tc.scene.kind === 'vision' && tc.call.about.includes(crypt.name), 'the DM agent is asked to frame the vision (table_call), with what it may show');
+  ok(dmAct('table_answer', {call: tc.call.id, text: 'Cold water closes over them; far below, a green bell swings in the dark.'}).ok, 'the DM frames it');
+  const hp0 = M.map(x => x.hp); settle(); // the DM sets the scene first (#694): no answer before the frame lands
+  const sa = P.playerAct(live.id, 'scene_act', {option: 'ask', line: 'Who rings the bell, and for whom?'});
+  ok(sa.ok !== false && !sa.error, 'the live member asks the vision a question' + (sa.error ? ': ' + sa.error : ''));
+  const att = P.playerAct(live.id, 'scene_act', {option: 'attempt', line: 'I reach into the water.'});
+  ok(att.ok === false, 'a second act (or a free action) is refused at a vision');
+  k = 0; while (S.table === sc && k++ < 60 * 120) {const c = dmAct('table_call').call; if (c) dmAct('table_answer', {call: c.id, text: c.kind === 'answer' ? 'The bell rings for the drowned, and the drowned ring it.' : 'The water lets them go; the toll stays in their ears.'}); step(1 / 60)}
+  ok(!S.table || S.table !== sc, 'the vision ends');
+  const calls = sc.calls || [];
+  ok(calls.map(c => c.kind).join(',') === 'frame,answer,outcome' && calls.every(c => c.done && c.by === 'dm-agent'), 'the DM frames it, answers the question, closes it (' + calls.map(c => c.kind + ':' + c.by).join(', ') + '); no complication');
+  ok(sc.beats.find(b => b.id === live.id).k === 'ask' && sc.beats.filter(b => b.id !== live.id).every(b => b.k === 'see' && b.by === 'reflex'), 'members with no runner look into it by reflex, and say nothing');
+  ok(M.every((x, i) => x.hp >= hp0[i] && x.state !== 'dead') && !S.dmLog.some(e => e.kind === 'roll' && e.detail && e.detail.staged === r.staged), 'no dice and no harm');
+  ok(live.lore && live.lore.p[crypt.name] && Object.keys(live.lore.c).some(key => live.lore.c[key].told), 'what it showed is in their lore: ' + crypt.name + ' and the ' + beast.name);
+  const note = (live.memories && live.memories.notes || []).find(n => (n.tags || []).includes('vision'));
+  ok(note && /I asked: "Who rings the bell/.test(note.text) && /rings for the drowned/.test(note.text) && note.text.includes('bell tolls under black water'), 'the live member keeps a note tagged vision: its question, the answer, what it showed');
+  ok(sc.ids.map(id => S.agents.find(x => x.id === id)).filter(x => x !== live).every(x => (x.memories && x.memories.notes || []).some(n => (n.tags || []).includes('vision') && n.text.includes('asked "Who rings'))), 'every member there keeps one, with what the others asked');
+  ok(!(away.memories && away.memories.notes || []).some(n => (n.tags || []).includes('vision')), 'the member in town keeps nothing of it');
+  ok(live.reflect && live.reflect.cur && /a vision/.test(live.reflect.cur.why.join(' ')), 'a reflection moment follows (' + (live.reflect && live.reflect.cur && live.reflect.cur.why.join('; ')) + ')');
+  ok(S.staged.cur.phase === 'done' && S.staged.cur.result === sc.summary && !sc.summary.includes('black water'), 'the staging closes with the scene\'s summary, which keeps what it showed to those who saw it: ' + sc.summary);
+  // 3. at a place, a silent DM, and everyone turns away: it fades and teaches nothing; the DM's reflexes fill every call
+  CM.breakCampNow('called'); field(); calm(); S.staged.day.n = 0; for (const x of M) LINK[x.id] = 'connected'; DR.gone();
+  const unknown = ZONES.find(z => !(live.lore && live.lore.p[z]) && !M.some(x => x.lore && x.lore.p[z]));
+  const sv = dmAct('survey', {near: live.name}), spot2 = sv.legal_spots && sv.legal_spots[0], at = spot2 ? spot2.at : Math.round(live.x) + ',' + Math.round(live.y);
+  const r2 = dmAct('stage_scene', {kind: 'vision', near: at, frame: 'The air shivers like heat over stone, and a road unrolls in the sky.', cast: {reveal: 'A road runs north to a place none of you has seen.', ...(unknown ? {place: unknown} : {})}, reason: 'tablecheck vision at a place'});
+  ok(r2.ok && /stands/.test(r2.opens || ''), 'a vision staged at a spot opens when one of them stands there: ' + (r2.opens || r2.error));
+  if (spot2) {const [x, y] = spot2.at.split(',').map(Number); for (const m of M) if (m !== away) {m.x = x + (m === live ? 0 : .5); m.y = y; m.dest = null}}
+  k = 0; while (!(S.table && S.table.kind === 'vision') && k++ < 600) step(1 / 60); const s2 = S.table;
+  ok(s2 && s2.kind === 'vision' && s2.ctx.trig === 'place', 'one of them stands there: it opens');
+  if (s2) {settle(); for (const id of s2.ids) P.playerAct(id, 'scene_act', {option: 'turn_away', line: ''})}
+  k = 0; while (S.table === s2 && k++ < 60 * 120) step(1 / 60);
+  ok(s2 && /turn from it, every one/.test(s2.summary) && (s2.calls || []).every(c => c.by === 'scripted') && !(s2.calls || []).some(c => c.kind === 'answer'), 'all turned away: it fades; nobody asked, so nothing to answer: ' + (s2 && s2.summary));
+  ok(!unknown || !M.some(x => x.lore && x.lore.p[unknown]), 'turned away, they learn nothing of ' + unknown);
+  ok((S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'vision' && e.detail.fill && e.detail.why === 'gone'), 'the DM\'s reflexes fill a silent DM\'s calls, logged as fills (why: gone)');
+  console.log(fail ? 'VISION FAILED ' + fail : 'VISION OK'); process.exit(fail ? 1 : 0);
 }
 
 // ---- parley and conditions (#296), in a child with a fresh world: node scripts/tablecheck.mjs --parley ----
@@ -916,6 +991,7 @@ if (process.argv[2] === '--staged') {
     social: {role: 'sellsword', want: 'a toll for the ford', attitude: 'wary', reveal: 'The toll goes to the Rookscar crew.'}, trap: {trap: 'spikes'},
     mystery: {place: 'shrine', reveal: 'The shrine remembers a drowned king.'}, elite: {name: 'Old Greyjaw', title: 'the Hungry', choices: {strike: 'Go for the throat'}}, ambush: {}};
   for (const kind of ST.STAGE_KINDS) {
+    if (kind === 'vision') continue; // no cast to meet, its own DM voice (sim/vision.js): checked in the --vision child
     if (kind === 'interrogation') continue; // its own DM voice and calls (sim/interrogate.js): checked on its own below
     fresh(); const log0 = S.dmLogSeq, hp0 = M.map(x => x.hp);
     const r = dmAct('stage_scene', {kind, near: 'fellowship', frame: 'The road narrows between thorn banks, and something waits for them.', cast: CAST[kind], reason: 'tablecheck ' + kind});
@@ -1503,6 +1579,9 @@ ok(SLT.slotHeroes(SLT.slotted()).every(a => a.state === 'dungeon'), 'agent membe
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--interrogate'], {encoding: 'utf8', env: {...process.env}});
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
   ok(ch.status === 0 && /INTERROGATE OK/.test(ch.stdout || ''), 'interrogation (#431 slice 3): a yielded foe is held and questioned in turns, the DM voices it true to the dice, the truth teaches a place, a lie and a read, a failed threat hardens, hand over to the watch, the camp ambush carries the fire, no host = none')}
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--vision'], {encoding: 'utf8', env: {...process.env}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /VISION OK/.test(ch.stdout || ''), 'vision (#639): staged near the Fellowship it waits for their rest (never while one raids), opens everyone at once, the DM frames it and answers a question, no dice and no harm, the reveal lands in lore and notes tagged vision, a reflection; at a place a silent DM is filled, all turned away = nothing learned')}
 // ---- 6. determinism without a Fellowship ----
 const me = fileURLToPath(import.meta.url), h1 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim(), h2 = spawnSync(process.execPath, [me, '--hash'], {encoding: 'utf8'}).stdout.trim();
 ok(/^HASH -?\d+ table:0 fellowship:0$/.test(h1) && h1 === h2, `no Fellowship: two seeded 3-minute runs are identical (${h1})`);
