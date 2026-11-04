@@ -1370,7 +1370,7 @@ const T={
     const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac); // crafting (#258): a friendly town's workshops, or the camp fire
     const r=craftTool(a,{recipe,count,for:forWho},{inTown:here});need(r.ok,r.why);return r},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
-    if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&sceneOf(a).ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
+    if(tv&&!tv.acted&&tv.options&&tv.waiting_for!=='the DM'&&(tv.your_turn||(tv.phase==='frame'&&sceneOf(a).ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
     let m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
     const noAim=!aimHeld(a)&&m>INTENT.WAIT_NOAIM;if(noAim)m=INTENT.WAIT_NOAIM; // waiting needs a reason and a limit (#535)
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS,...(noAim?{limit:'You have no aim stated, so the wait is held to '+INTENT.WAIT_NOAIM+' game minutes. intent {goal, why, until} says what you wait for.'}:{})}}},
@@ -1520,10 +1520,11 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
 // The wait tool: the host polls waitOver and then calls finishWait (sim/player-host.js).
 export function waitOver(p){const a=hero(p.hero);if(!a||a.state==='dead'||!a.player)return true;if(S.gameMin>=p.until)return true;
   return (a.playEv||[]).some(e=>e.n>p.mark&&e.u)}
-export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:false,error:'No such hero.'};
+export function finishWait(p,realOut,rest=null){const a=hero(p.hero);if(!a)return {ok:false,error:'No such hero.'};
   const r={ok:true,waited_min:Math.round(S.gameMin-p.from)};r.as_of=day();
   if(a.state==='dead')Object.assign(r,{ok:false,dead:true,error:a.name+' died ('+(a.cause||'fallen')+'). Hardcore: one life.'});
-  else{r.why=S.gameMin>=p.until?'time passed':realOut&&tableView(a)?'the world is paused for a scene at the table':realOut?'the world is paused or slow; nothing much happened':'something needs you';
+  else{if(rest)r.turn_over=true; // #868: nothing to wait for here: the runner ends the turn, pacing wakes it
+    r.why=rest?rest:S.gameMin>=p.until?'time passed':realOut&&tableView(a)?'the world is paused for a scene at the table':realOut?'the world is paused or slow; nothing much happened':'something needs you';
     if(p.limit)r.limit=p.limit;r.hp=pct(a.hp,maxHp(a))+'%';r.state=a.state;r.doing=a.playDoing||null;const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv){r.table=tv;const n=tv.options?waitsNote(a,tv.options):null;if(n)r.table_waits=n}}
   const evs=takeEvents(a);if(evs.length)r.events=evs;
   const e=(a.playLog||[])[0];if(e&&e.tool==='wait'&&e.pending){e.pending=false;e.text=summarize(r)}
