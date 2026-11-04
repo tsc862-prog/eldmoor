@@ -497,8 +497,8 @@ if (process.argv[2] === '--interrogate') {
   ok(sc.calls.every(c => c.by === 'scripted') && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'interrogation' && e.detail.fill && e.detail.why === 'gone'), 'a DM that does not poll: its reflexes voice the prisoner, logged as fills (why: gone)');
   // 5. the camp: an ambush on the watch carries the camp spot; a fireside too
   CM.CAMP.AMBUSH_P = 1; const why = CM.leaderRest(live, 4); M.forEach(x => {x.state = 'hunt'}); // the scene opens on the camp's next roll
-  const field = () => {for (const [i, x] of M.entries()) {x.state = 'hunt'; x.x = home.x + 14 + (i % 3) * .5; x.y = home.y + 2 + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.hp = maxHp(x)}};
-  field(); CM.leaderRest(live, 4); g = 0; while (!(S.table && S.table.kind === 'ambush') && g++ < 60 * 300) step(1 / 60); const am = S.table;
+  const field = () => {for (const [i, x] of M.entries()) {x.state = 'hunt'; x.x = spot.x + (i % 3) * .5; x.y = spot.y + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.adv = null; x.hp = maxHp(x)} if (S.table && S.table.kind === 'choice') {S.tables = (S.tables || []).filter(t => t !== S.table); S.table = null}}; // no job under way: its choice scene waits on the live member and holds the table
+  field(); SLT.slotted().camp = null; CM.leaderRest(live, 4); g = 0; while (!(S.table && S.table.kind === 'ambush') && g++ < 60 * 300) step(1 / 60); const am = S.table;
   ok(am && am.ctx.camp && Math.abs(am.ctx.camp.x - SLT.slotted().camp.x) < .01, 'an ambush on the watch carries the camp spot (the scene plays round the fire)' + (am ? '' : ' (' + why + ')'));
   // 6. no host: a yield queues nothing
   T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto'; SIM.setRunnerLinks(null); delete SLT.slotted().iqQ;

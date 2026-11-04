@@ -306,7 +306,7 @@ console.log('roads knowledge (#539)');
     S.gameMin += 400; const later = act(Q, 'search', {what: noRes.m2.name}); ok(later.ok !== false, 'the cooldown lapses'); }
   // cache
   S.places = [mk]; Q.srch = {}; Q.pq = []; Q.gold = gold0; delete mk.cacheBy;
-  let got = false; for (let i = 0; i < 30 && !got; i++) { Q.srch = {}; Q.pq = []; S.gameMin += 400; act(Q, 'search', {what: mk.name}); got = !!mk.cacheBy }
+  let got = false; for (let i = 0; i < 30 && !got; i++) { Q.pq = []; S.gameMin += 400; act(Q, 'search', {what: mk.name}); got = !!mk.cacheBy }
   ok(got && Q.gold === gold0 + 25, 'a cache of gold is handed over once');
   Q.srch = {}; Q.pq = []; S.gameMin += 400; const B2 = act(Q, 'search', {what: mk.name}); ok(Q.gold === gold0 + 25, 'the cache is not paid twice');
   ok(Q.pq[0] && Q.pq[0].search, 'a search keeps the hero busy');

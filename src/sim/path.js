@@ -14,9 +14,11 @@ import {W,H,SPEED,BRIDGE} from '../world/tiles.js';
 import {tiles,I,solid,land,CITY} from '../world/map.js';
 import {WHY,crossing,stepOpen} from '../world/solidgrid.js';
 import {nearestOpen} from '../world/passable.js';
+import {S} from './state.js';
 
 export const PATH={
   PER_TICK:8,    // plans a tick, at most (a tick is 1/60 s at 1x: 8 a tick is far above the need, it guards the worst case)
+  TICK_NODES:16000, // nodes a tick may search before further plans wait: what keeps a tick sane as the map grows (#31)
   NEAR:10,       // tiles: a clear line this short is simply walked
   REPLAN:2,      // tiles the target may move before the path is planned again
   OFF:3,         // tiles off the path (put there, thrown there) before it is dropped
@@ -28,12 +30,12 @@ export const HOLD=0,DONE=1; // pathLeg's answers beside a point: stand this tick
 export const pathStats={plans:0,nodes:0,peak:0,held:0,none:0,us:0}; // recording only
 
 const inb=(x,y)=>x>=0&&y>=0&&x<W&&y<H;
-let COST=null,N=0,G=null,FROM=null,SEEN=null,stamp=0,HI=null,HF=null,hn=0,used=0;
+let COST=null,N=0,G=null,FROM=null,SEEN=null,stamp=0,HI=null,HF=null,hn=0,used=0,usedAt=-1,usedNodes=0;
 function ready(){if(COST)return;N=W*H;COST=new Float32Array(N);for(let i=0;i<N;i++)COST[i]=solid[i]?Infinity:1/SPEED[tiles[i]];
   G=new Float32Array(N);FROM=new Int32Array(N);SEEN=new Uint32Array(N);HI=new Int32Array(1024);HF=new Float32Array(1024)}
 
-// Once a step, before anyone moves.
-export function pathTick(){used=0}
+// A new tick: the plan budget starts over. step() calls it; a clock that moved does the same for walkers driven outside step().
+export function pathTick(){used=0;usedNodes=0;usedAt=S.gameMin}
 export const noWay=e=>!!(e.path&&e.path.none);
 
 // The time to walk the straight line between two points (tiles at pace 1), or Infinity when it touches solid ground.
@@ -72,7 +74,7 @@ function search(s,t,limit){stamp+=2;hn=0;const open=stamp,closed=stamp+1,tx=t%W,
       const j=I(nx,ny);if(SEEN[j]===closed||!stepOpen(solid,I,x,y,dx,dy))continue;
       const g=G[i]+COST[j]*(dx&&dy?1.4142:1);if(SEEN[j]===open&&g>=G[j])continue;
       G[j]=g;FROM[j]=i;SEEN[j]=open;push(g+heur(nx,ny),j)}}
-  pathStats.nodes+=nodes;if(nodes>pathStats.peak)pathStats.peak=nodes;
+  pathStats.nodes+=nodes;usedNodes+=nodes;if(nodes>pathStats.peak)pathStats.peak=nodes;
   if(!found)return null;const out=[];for(let i=t;i>=0;i=FROM[i])out.push(i);return out.reverse()}
 
 // The nearest ground on land l to (x,y), or null. Rings first; past them one pass over the map (rare: a target far inside rock).
@@ -122,7 +124,8 @@ export function pathLeg(e,x,y){ready();
     if(p.i<p.pts.length)return wp(p);
     return near&&lineCost(e.x,e.y,x,y)<Infinity?leg(x,y):DONE} // end of the path: the last step to a target that shifted, else this is as near as it gets
   if(near&&lineCost(e.x,e.y,x,y)<Infinity){e.path=null;return leg(x,y)}
-  if(used>=PATH.PER_TICK){pathStats.held++;return p&&!p.none&&p.i<p.pts.length?wp(p):HOLD}
+  if(usedAt!==S.gameMin)pathTick();
+  if(used>=PATH.PER_TICK||usedNodes>=PATH.TICK_NODES){pathStats.held++;return p&&!p.none&&p.i<p.pts.length?wp(p):HOLD}
   used++;
   const r=route(e.x,e.y,x,y,e.kind==='mob'&&!e.elite?PATH.MOB_NODES:0);
   if(!r){pathStats.none++;e.path={tx:x,ty:y,none:1,pts:[],i:0,lx:e.x,ly:e.y};return DONE}
