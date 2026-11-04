@@ -284,6 +284,40 @@ console.log('F. three Claude slots, five Claude members and the DM: every vote l
   TABLE.liveMs = liveMs0; SW.EXTRA_MS = extra0; setRunnerLinks(null); sup.killAll(); server.close();
   try {rmSync(tmpF, {recursive: true, force: true})} catch {}
 }
+// ---------------------------------------------------------------- G. a Claude member mid-turn is aborted for its scene (#687 follow-up)
+// The Agent SDK query is a model call no tool result can interrupt, so the runner watches whether the member's own scene is due
+// (sceneGrab, scripts/pacing.mjs): due for SCENE_GRAB_MS with no scene_act, the query's AbortController fires, the structured
+// scene answer is played, and the member's turn resumes. Here the "query" is a mock that runs until its signal aborts.
+console.log('G. a Claude member mid-turn is aborted at SCENE_GRAB_MS, answers in time, resumes, and nobody is missed');
+{
+  const {sceneGrab, SCENE_GRAB_MS, GRAB_RESUME} = await import('./pacing.mjs');
+  ok(SCENE_GRAB_MS === 15000 && /Carry on/.test(GRAB_RESUME), 'the grab is 15 s by default and the resume prompt tells the member to carry on');
+  // unit: answered in time -> never fires; stop() ends the poll; a flap resets the clock
+  {let d = true, n = 0; const g = sceneGrab({due: () => d, abort: () => n++, ms: 400, every: 50}); await sleep(200); d = false; await sleep(150); d = true; await sleep(250); ok(n === 0 && !g.grabbed(), 'due, then not due, then due again: the clock restarted, nothing fired'); g.stop();
+   const g2 = sceneGrab({due: () => true, abort: () => n++, ms: 200, every: 50}); g2.stop(); await sleep(400); ok(n === 0, 'a stopped grab never fires');
+   const g3 = sceneGrab({due: () => true, abort: () => n++, ms: 200, every: 50}); await sleep(500); ok(n === 1 && g3.grabbed(), 'due for the whole window: fires once')}
+  const liveMs0 = TABLE.liveMs, extra0 = SW.EXTRA_MS, gap0 = TABLE.wakeGapMs; TABLE.liveMs = 4000; SW.EXTRA_MS = 2000; TABLE.wakeGapMs = 0;
+  setRunnerLinks(() => 'connected'); S.table = null; gather();
+  const sc = openScene('check', 'A stair in the dark', ['The DM calls for a roll at the stair.'], {anchor: mem[0].id});
+  for (let i = 0; i < 600 && !(sc.wk && sc.wk.done); i++) sim.step(1 / 60);
+  const ids = sc.ids, [A, B, ...rest] = mem.filter(x => ids.includes(x.id));
+  // A is mid-turn: a mock query that only ends when aborted. The others answer at once.
+  const ac = new AbortController(); let aborted = 0, resumed = 0, failed = false, grabAt = null;
+  const t0 = Date.now(), inFlight = (async () => {try {await new Promise((res, rej) => {const t = setTimeout(res, 20000); ac.signal.addEventListener('abort', () => {clearTimeout(t); aborted++; rej(Object.assign(new Error('aborted'), {name: 'AbortError'}))}, {once: true})})} catch (e) {if (!grab.grabbed()) failed = true}})();
+  const grab = sceneGrab({due: () => sceneDue(A), abort: () => ac.abort(), onGrab: () => {grabAt = Date.now() - t0}, ms: 800, every: 100});
+  for (const x of [B, ...rest]) sim.playerAct(x.id, 'scene_act', {option: 'press', line: 'Down.'});
+  const ticker = setInterval(() => {for (let i = 0; i < 6; i++) sim.step(1 / 60)}, 100); // the table ticks real time, as the page does
+  await inFlight; grab.stop();
+  ok(aborted === 1 && !failed && grab.grabbed() && grabAt >= 700 && grabAt < 2500, `the mid-turn member's query was aborted once, ${grabAt} ms after its scene was due, and the abort was not counted as a failure`);
+  // the structured scene answer, then the turn resumes (a second query)
+  const ans = sim.playerAct(A.id, 'scene_act', {option: 'press', line: 'Coming.'}); resumed++;
+  ok(ans.ok && ans.waited_s * 1000 < TABLE.liveMs, `the structured answer lands inside the table's wait (${ans.waited_s} s of ${TABLE.liveMs / 1000} s)`);
+  ok(resumed === 1 && !sceneDue(A), 'the scene is answered, so the next turn resumes without it');
+  for (let i = 0; i < 100 && S.table === sc; i++) await sleep(100);
+  clearInterval(ticker);
+  ok(sc.resolved && !(sc.miss && sc.miss.length) && ids.every(id => sc.acts[id] && sc.acts[id].by === 'agent'), 'the scene resolved with every answer by its agent and nobody missed');
+  TABLE.liveMs = liveMs0; SW.EXTRA_MS = extra0; TABLE.wakeGapMs = gap0; setRunnerLinks(null); S.table = null;
+}
 closeOllama();
 for (const k of kids) try {k.kill()} catch {}
 try {rmSync(tmp, {recursive: true, force: true})} catch {}
