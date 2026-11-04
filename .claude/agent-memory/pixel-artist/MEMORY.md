@@ -9,5 +9,7 @@
 - [Towns and landmarks](towns.md) — #177 slice 3: townart.js pieces, faction styles in data/townart.js, wall is tile kind, Node raster check
 - [Site dungeon view](sitesview.md) — #642 themed site interiors, per-dungeon keys, staging a site crawl shot
 - [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes
+- [Page stall](pagestall.md) — #736 watchdog, relay late-answer keep; the refusals were held waits, not the dungeon view
 - [Art batch review](artreview.md) — reviewing a generated batch: scratch pipeline, reprocess --dir, why pixel-xl fails autotiles/sheets/ground
 - [Building recipe](buildingrecipe.md) — #763 flat palette + style gate for buildings, art:preview required before accept, ume-flux switch
+- [Crawl as played](crawlview.md) — #742 spots per chamber, act->spot, beats from sc.beats + HP drops, close-up framing, staging beats

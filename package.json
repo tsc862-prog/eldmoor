@@ -59,6 +59,7 @@
     "paymarkcheck": "node scripts/paymarkcheck.mjs",
     "wishcheck": "node scripts/wishcheck.mjs",
     "hirecheck": "node scripts/hirecheck.mjs",
+    "compvoicecheck": "node scripts/compvoicecheck.mjs",
     "challengecheck": "node scripts/challengecheck.mjs",
     "attemptcheck": "node scripts/attemptcheck.mjs",
     "voicecheck": "node scripts/voicecheck.mjs",
