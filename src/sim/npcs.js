@@ -19,7 +19,7 @@ import {S,clockStr,dayNo} from './state.js';
 import {pop} from './effects.js';
 import {moveTo} from './heroes.js';
 import {attitudeOf,presence} from './levers.js';
-import {within,LOD} from './spatial.js';
+import {within,LOD,snapHeroes,dropSnap,heroesAround} from './spatial.js';
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
 // Tuning. Speeds in tiles/s at 1x; GREET_R tiles from the post that count as a visit;
@@ -115,7 +115,7 @@ const nearHero=(p,rad)=>S.agents.some(a=>a.state!=='dead'&&a.state!=='ghost'&&!a
 // Greeting: the first unmet (or long unseen) living hero within GREET_R of an NPC at post.
 function greet(p,work){
   if(p.chatCd>0||!(p.state==='post'||(p.role==='bard'&&work)))return;
-  for(const a of S.agents){if(a.state==='dead'||a.state==='ghost'||a.hidden||!within(a,p,GREET_R))continue;
+  for(const a of heroesAround(p.x,p.y,GREET_R)){if(a.state==='dead'||a.state==='ghost'||a.hidden)continue; // #730: the npcsTick hero grid, same heroes in the same order
     const last=p.met[a.id];if(last!=null&&S.gameMin-last<REGREET)continue;
     // DM levers: a hostile resident turns away; a friendly one, a festival or a plague changes the odds
     p.met[a.id]=S.gameMin;const att=attitudeOf(p,[a]);if(att==='hostile'||r()>=GREET_P*presence(p.town)*(att==='friendly'?2:1))continue;
@@ -155,7 +155,9 @@ function bless(p,c){const g=CRYPT&&CRYPT.group;
     if(p.chatCd<=COOL-URGENT){p.face=a.x>p.x?1:-1;npcSay(p,'bless',{target:a.name})}}}
 
 // Once per step from sim/index.js.
-export function npcsTick(dt){ensureNpcs();newsTick();
+export function npcsTick(dt){ensureNpcs();newsTick();snapHeroes(); // #730: heroes do not move while the residents act
+  try{residents(dt)}finally{dropSnap()}}
+function residents(dt){
   for(const p of S.npcs){const c=cityOf(p),work=atWork(npcRole(p.role));
     if(p.chatCd>0)p.chatCd-=dt;
     if(p.bubble){p.bubble.life-=dt;if(p.bubble.life<=0)p.bubble=null}

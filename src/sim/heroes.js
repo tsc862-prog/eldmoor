@@ -170,7 +170,7 @@ export function strike(a,t,o){
   return d}
 
 export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){tendAlly(a,list);return}let low=null; // spell on cooldown: a potion for a member nearly down (sim/inv.js)
-  for(const b of list){if(b.state==='ghost'||dist(a,b)>(b.state==='downed'?5:4))continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
+  let lm=0;for(const b of list){if(b.state==='ghost'||dist(a,b)>(b.state==='downed'?5:4))continue;const bm=maxHp(b);if(b.hp<bm*.55*tm(a,'mercy')&&(!low||b.hp/bm<low.hp/lm)){low=b;lm=bm}} // each max HP read once (#730)
   if(low)healOne(a,low)}
 // One cast of the class heal on one hero (priestHeal's pick, or a gambit's target, #617).
 export function healOne(a,low){const h=Math.round((20+a.lvl*5)*passiveMul(a,'healMul'))+reviveBonus(low);low.hp=Math.min(maxHp(low),low.hp+h);pop(low.x,low.y-.6,'+'+h,'#7dce5a');a.healCd=3.5;actHeal(a,low,h,'Heal');if(low!==a)bondEvent(a,'heal',[low])}
@@ -195,9 +195,10 @@ export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9
 // Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered).
 // Personality traits (data/traits.js) scale these via tm(a,key): Reckless lowers retreat/flee, Cautious raises them, etc.
 export function updAgent(a,dt){
-  a.cd-=dt*combatStats(a).speed;a.healCd-=dt;if(a.potCd>0)a.potCd-=dt;if(a.wardT>0)a.wardT-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
+  const cs=combatStats(a); // one lookup for the swing timer and max HP (#730): nothing between them changes the totals
+  a.cd-=dt*cs.speed;a.healCd-=dt;if(a.potCd>0)a.potCd-=dt;if(a.wardT>0)a.wardT-=dt;const mh=cs.health,boss=S.boss; // the home town (homeOf) only where a case uses it
   switch(a.state){
-  case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
+  case 'town':{const c=homeOf(a);a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
     if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;
       if(a.townStep===0)say(a,'idle',{p:.35});
       if(a.townStep===0){sellAndShop(a);a.townStep=1;a.wait=1+rnd()*1.5}
@@ -212,7 +213,7 @@ export function updAgent(a,dt){
         chooseBounty(a,c,tz); // no adventure: the captain's bounty for that region, if the hero wants it (issue #67)
         say(a,'depart',{zone:ZONES[tz]});
         a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate);if(a.player)writeSighting(a,ZONES[tz],c.name)}}break}
-  case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
+  case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}const c=homeOf(a);
     if(a.adv&&dmTravel(a,dt))break; // DM: walking to the adventure's next scene
     if(checkEncounter(a,dt))break; // road encounter in reach: detour and resolve (sim/encounters.js)
     if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
@@ -248,7 +249,7 @@ export function updAgent(a,dt){
     if(a.state==='return')say(a,'flee',{mob:MOBS[m.type].name});
     break}
   case 'regroup':{a.regT-=dt;if(a.regT<=0||!a.dest||moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state=a.regNext==='return'?'return':leaderOf(a)?'follow':'hunt';a.dest=null;a.regNext=null}break}
-  case 'return':if(steerClear(a,dt,moveTo))break;if(checkEncounter(a,dt))break;if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;
+  case 'return':{if(steerClear(a,dt,moveTo))break;if(checkEncounter(a,dt))break;const c=homeOf(a);if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break}
   case 'downed':case 'aid':downedStep(a,dt);break; // at zero HP, and the one who came to help (sim/downed.js)
   case 'duel':{const b=a.target;if(!b||b.state!=='duel'||b.target!==a){a.state='hunt';a.target=null;break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
