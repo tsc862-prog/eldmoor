@@ -12,7 +12,7 @@ export const MAP_BUDGET_CHARS = 7000; // about 1.7k tokens; room for a dozen mor
 
 // group title -> tool names. Names that do not exist are caught by orderscheck; tools not listed land in "More tools".
 export const HERO_GROUPS = {
-  'Look and learn': ['look', 'status', 'inventory', 'combat_log', 'places', 'lore', 'inspect', 'examine', 'search', 'companions', 'earshot', 'outposts', 'mark', 'unmark', 'read_chronicle'],
+  'Look and learn': ['look', 'survey', 'status', 'inventory', 'combat_log', 'places', 'lore', 'inspect', 'examine', 'search', 'companions', 'earshot', 'outposts', 'mark', 'unmark', 'read_chronicle'],
   'Move and fight': ['move_to', 'follow', 'hunt', 'fight', 'flee', 'rest', 'use_ability', 'use_item', 'finish', 'spare', 'choose_specialisation', 'gambits', 'set_gambit', 'move_gambit', 'toggle_gambit', 'drop_gambit', 'reset_gambits'],
   'Town, trade and craft': ['shop', 'buy', 'sell', 'equip', 'auction_browse', 'auction_list', 'auction_buy', 'auction_cancel', 'give', 'pay', 'bequeath', 'drop', 'recipes', 'learn_profession', 'unlearn_profession', 'nodes', 'gather', 'smith', 'craft'],
   'Jobs and quests': ['list_jobs', 'take_adventure', 'choose', 'quests', 'take_quest', 'focus_quest', 'abandon_quest', 'swear_oath', 'keep_oath', 'renounce_oath', 'turn_in', 'post_notice', 'intent', 'enter_site'],

@@ -126,7 +126,7 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
   const z=o&&o.route&&o.route.by&&o.route.by[0];
   a.lore=a.lore||{};const words=JSON.stringify(o.route);const known=ZONES.filter(n=>words.includes(n));
   ok(known.every(n=>{const q=playerAct(a.id,'places',{});return JSON.stringify(q).includes(n)}),'the route names only places the hero knows ('+(known.join(', ')||'none')+')');
-  ok(!!z&&/^(bridge|ford)$/.test(z.crossing),'the crossing is a fact: '+JSON.stringify(z))}
+  ok(!!z&&(/^(bridge|ford)$/.test(z.crossing)||z.crossing==='unknown'&&z.tiles==null),'the crossing is a fact, and one the hero cannot know has no kind or distance: '+JSON.stringify(z))}
 
 // ---- a long run ----
 {const run=seed=>{seedRng(seed);init();const P=[];let bad=new Map(),stuck=0;const last=new Map();

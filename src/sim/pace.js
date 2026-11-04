@@ -29,6 +29,7 @@ import {asleep,campView} from './camp.js';
 import {localsNear} from './locals.js';
 import {roadSight,TRAFFIC} from './traffic.js'; // who is on the road in sight (#796)
 import {sightLine} from './sighthero.js'; // companions in sight beyond earshot (#570)
+import {wayNow} from './ground.js'; // the detour under way, in a few words (#797)
 import {earshotLine} from './earshot.js'; // who hears you now, one line (#395) // people about, with a short hook each
 import {foeName,roadsLine} from './lore.js'; // the foe as the hero knows it, never its level (#188)
 import {questBrief} from './questlog.js'; // the focused quest and how many others
@@ -85,7 +86,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
   const seen=a.playEvSeen||0,news=mostNews((a.playEv||[]).filter(e=>e.n>seen),8).slice(-8).map(e=>e.t+' '+e.text),tv=tableView(a);
   return {ok:true,brief:{clock:day(),state:a.state,doing:a.playDoing||null,hp:Math.max(0,Math.round(a.hp/maxHp(a)*100))+'%',level:a.lvl,place:placeOf(a),
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
-    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),road:roadSight(a,TRAFFIC.BRIEF),earshot:earshotLine(a),hold:S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold.rule:null,insight:sightLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
+    scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),road:roadSight(a,TRAFFIC.BRIEF),earshot:earshotLine(a),hold:S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold.rule:null,insight:sightLine(a),roads:roadsLine(a),way:wayNow(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
     quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}),...(toldLine(a)?{told:toldLine(a)}:{}), // stories it told of its past round the fire (#571): keep them straight // the hero's own persona (#409): one line for the header, a signature, and on request the full text

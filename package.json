@@ -12,6 +12,7 @@
     "worldcheck": "node scripts/worldcheck.mjs",
     "passablecheck": "node scripts/passablecheck.mjs",
     "pathcheck": "node scripts/pathcheck.mjs",
+    "waycheck": "node scripts/waycheck.mjs",
     "initcheck": "node scripts/initcheck.mjs",
     "downcheck": "node scripts/downcheck.mjs",
     "bequeathcheck": "node scripts/bequeathcheck.mjs",
