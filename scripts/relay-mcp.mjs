@@ -204,7 +204,9 @@ const readBody = req => new Promise((res, rej) => {
 // behavior: a scripts/behavior-log.mjs writer (issue #129); without it the host keeps no behavior logs.
 export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null, embed = null} = {}) {
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
-  const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, rec, {links: links(), runners: runners()}) : false;
+  // A wish (#663) is stamped with the model that holds its seat; nothing of it ever goes back out.
+  const wishRunner = seat => {try {const s = String(seat || ''), r = s === 'dm' ? runnerOf(DM_KEY) : runnerOf(Number.isFinite(+s.slice(5)) ? +s.slice(5) : s.slice(5)); return r ? {provider: r.provider || null, model: r.model || null} : {}} catch (e) {return {}}};
+  const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, kind === 'wish' && rec && rec.type === 'wish' ? {...wishRunner(rec.seat), ...rec} : rec, {links: links(), runners: runners()}) : false;
   const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror || embed ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id); if (embed) embed.setWorld(w, id)} : null,
     onMirror: mirror ? seats => mirror.write(seats) : null, onHello: () => pushLinks()}); // mirror: scripts/memory-mirror.mjs (issue #155)
   const stats = {calls: 0, errors: 0};
