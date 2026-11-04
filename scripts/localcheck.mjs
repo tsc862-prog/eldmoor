@@ -391,7 +391,9 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
   let speed = 8, last = Date.now(), hold = false; // hold: a section steps the world itself (deterministic, issue #159)
   const tick = setInterval(() => {const now = Date.now(), real = Math.min(.25, (now - last) / 1000); last = now; if (hold) return; const dt = real * speed, n = Math.ceil(dt / (1 / 60)); for (let i = 0; i < n; i++) sim.step(dt / n)}, 50);
   const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
-  attachPlay(server, {backend: localBackend(), log: () => {}});
+  // idle: the runner sits in its pace poll (no turn in flight). Section B drops its news there, as a hero's news arrives between turns; a notice that lands inside a turn is read by that turn's next tool result, which is the game doing its job (takeEvents).
+  const be = localBackend(), callOrig = be.call.bind(be), flight = {pace: 0, tool: 0}; be.call = (id, tool, args, ...r) => {const k = tool === 'pace' && !(args && args.brief) ? 'pace' : 'tool'; flight[k]++; const done = () => {flight[k]--}; const p = callOrig(id, tool, args, ...r); Promise.resolve(p).then(done, done); return p};
+  attachPlay(server, {backend: be, log: () => {}});
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const PB = `http://127.0.0.1:${server.address().port}`;
   const park = a => {const c = homeOf(a); a.state = 'town'; a.x = c.gate.x; a.y = c.gate.y - 1; a.target = null; a.pq = []; a.dest = null}; // in town: nothing attacks
@@ -436,7 +438,7 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     // (the world may wake the hero first, say an attack on the way: then try again after that turn)
     let w2 = null, dt = null;
     for (let k = 2; k <= 6 && !w2; k++) {
-      await until(() => R.turns.length >= k, 30000); park(a); a.hp = a.maxhp || a.hp;
+      await until(() => R.turns.length >= k, 30000); const idle = await until(() => flight.pace > 0 && flight.tool === 0, 15000); park(a); a.hp = a.maxhp || a.hp; if (!idle) console.log('  note: the runner was not waiting in its pace poll when news ' + k + ' was dropped');
       notify(a, 'A test traveller hails you from the road (' + k + ').', true); const nw = R.wakes.length;
       // the hero's own world news (XP, loot) may name itself in the wake line: any soft wake after the notice counts. An
       // urgent wake ('now') may come first on a slow machine (#603): skip it and measure from the turn before the soft one.
@@ -445,7 +447,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
       const w = R.wakes.slice(nw).find(news);
       if (w) {w2 = w; dt = w.real - Math.max(...R.turns.filter(t => t.real < w.real).map(t => t.real))}
     }
-    ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`);
+    ok(w2 && w2.kind === 'soft' && dt >= 3500 && dt < 14000, `other news starts a turn once the gap has passed, not at the heartbeat: ${w2 && w2.kind} after ${dt} ms`+(w2?'':` | hero ${a.name} state ${a.state} hp ${Math.round(a.hp)} runner exited ${R.exited ?? '?'} turns ${R.turns.length} wakes ${R.wakes.map(w=>w.kind).join(',')}
+${R.out.slice(-800)}`));
     await until(() => R.turns.length >= R.wakes.length + 1, 30000);
     clearInterval(pinB); sim.markPlayer(a, false);
     const code = await Promise.race([R.done, sleep(20000).then(() => 'timeout')]);
@@ -649,6 +652,8 @@ console.log('runner pacing (in-process world at 8x, mock Ollama)');
     {const RF = await import('../src/sim/reflect.js'), NBm = await import('../src/sim/notebook.js'), {memoryMirror} = await import('./memory-mirror.mjs'), {readdirSync} = await import('node:fs');
       const a = mem.find(x => x.state !== 'dead' && x.player); park(a); a.hp = a.maxhp || a.hp; gather(); S.table = null; // G's Table switch stays off until the end of H
       RF.REFLECT.PER_DAY = PER_DAY; delete a.reflect; // a fresh state: no moment left over from the scenes of F
+      // reflectView counts reflections of the current game day: a run that crosses midnight reads 'today 0'. The earlier sections advance the clock by real time, so start well clear of it (the world runs about 30 game minutes here).
+      if (S.gameMin % 1440 > 1440 - 240) S.gameMin = Math.ceil(S.gameMin / 1440) * 1440 + 360;
       const n0 = a.memories ? a.memories.notes.length : 0, r0 = seen.reflect || 0;
       RF.moment(a, 'camp', 'Test Hollow');
       const due = RF.reflectDue(a);
