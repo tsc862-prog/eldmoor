@@ -82,6 +82,7 @@
     "costcheck": "node scripts/costcheck.mjs",
     "bestiarycheck": "node scripts/bestiarycheck.mjs",
     "focuscheck": "node scripts/focuscheck.mjs",
+    "trafficcheck": "node scripts/trafficcheck.mjs",
     "questcheck": "node scripts/questcheck.mjs",
     "labelcheck": "node scripts/labelcheck.mjs",
     "rulescheck": "node scripts/rulescheck.mjs",

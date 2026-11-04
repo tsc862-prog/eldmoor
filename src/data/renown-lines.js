@@ -5,6 +5,7 @@ export const RUMOUR_LINES={
   innkeeper:['Heard it over the taps last night: {text}','Between you and the barrel: {text}','Every table in the house had the same tale tonight: {text}'],
   captain:['Word at the gate: {text}','The watch has talked of little else: {text}','Carters in off the road all say the same: {text}'],
   bard:['There is a verse going round the square: {text}','I had it from a drover, so it is half true at least: {text}','Sung or spoken, it is the news: {text}'],
+  road:['Word from the last town, friend: {text}','They talk of nothing else back there: {text}','Mind how you go. They are saying: {text}'],
 };
 // What a person (or the narrator) says when the DM puts the Crypt or a raid to a company (call_to, #826) and the DM gave no words.
 // {crypt} the dungeon's name, {fac} the company's people. A company votes on the line; a solo answers it aloud.
