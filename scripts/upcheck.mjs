@@ -195,7 +195,7 @@ console.log('launcher (real children on spare ports)');
     git(other, 'merge', '-q', '--no-ff', 'feat', '-m', 'Merge pull request #101 from x/lanterns', '-m', 'Lanterns at the gate'); git(other, 'push', '-q', 'origin', 'main');
     m = mark(); send('u');
     ok(await seen(/\[notes\]\s+1 change\(s\) since you last looked/, m, 30000), 'u prints the notes merged since the last seen commit');
-    ok(await seen(/\[notes\]\s+2026-11-03 #101 Lanterns at the gate[\s\S]*\[notes\]\s+- The town gates now carry lanterns at night\./, m, 5000) && !/Not merged yet/.test(out.slice(m)), 'the merged PR\'s note with its date, number and lines; a note of a PR not merged is not shown');
+    ok(await seen(/\[notes\]\s+\d{4}-\d\d-\d\d #101 Lanterns at the gate[\s\S]*\[notes\]\s+- The town gates now carry lanterns at night\./, m, 5000) && !/Not merged yet/.test(out.slice(m)), 'the merged PR\'s note with its date, number and lines; a note of a PR not merged is not shown');
     ok(await until(async () => seenOf() === git(work, 'rev-parse', 'HEAD'), 10000), 'and records the new HEAD as seen');
     ok(await seen(/update applied/, m, 30000), 'the update finishes');
     m = mark(); send('n');
