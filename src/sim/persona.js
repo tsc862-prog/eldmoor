@@ -46,7 +46,7 @@ const goalTarget=a=>a.goal&&a.goal.target?a.goal.target:null;
 // ---- facts: what the sim knows about this hero, compact ----
 const NOTABLE=/^(Reached level (5|10|15|20)|Slew |Looted |Paid the blood debt|Avenged |Killed |Lost a |Now counts |Became friends|Saw through |Failed at |Cleared |Completed )/;
 export function factsOf(a){const r=raceOf(a),c=homeOf(a);
-  return {people:r.name,culture:r.culture,home:a.home||null,town:c.name,cls:a.cls,role:ROLE_NAME[roleOf(a)],lvl:a.lvl,
+  return {people:r.name,culture:r.culture,home:a.home||null,town:a.born||c.name,cls:a.cls,role:ROLE_NAME[roleOf(a)],lvl:a.lvl,
     scores:topScores(a,3).join(', '),skills:(a.prof||[]).map(k=>SKILLS[k]?SKILLS[k].name:k).join(', '),
     origin:a.origin||null,trade:tradeOf(a),traits:(a.traits||[]).map(t=>t+(TRAITS[t]?': '+TRAITS[t].desc:'')),
     oath:a.goal?a.goal.text+(a.goal.done?' (kept)':''):null,
@@ -145,7 +145,7 @@ const LINK={
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!=null?String(v[k]):m);
 
 export function buildBackstory(a,mates=[],fname='the Fellowship'){const f=a.fac===1?1:0,r=raceOf(a),c=homeOf(a),T=worldTies(a);
-  const v={name:a.name,home:a.home||c.name,people:r.plural||r.name,town:c.name,trade:tradeOf(a),child:((a.origin||'').match(/\b(son|daughter)\b/)||[])[1]||pick(a,5,['eldest','youngest'])}; // never contradict the origin line
+  const v={name:a.name,home:a.home||a.born||c.name,people:r.plural||r.name,town:a.born||c.name,trade:tradeOf(a),child:((a.origin||'').match(/\b(son|daughter)\b/)||[])[1]||pick(a,5,['eldest','youngest'])}; // never contradict the origin line
   const family=fill(pick(a,6,FAMILY[f]),v)+(a.origin?' '+a.origin:'');
   const arms=a.name+' '+fill(pick(a,7,ARMS[a.cls]||ARMS.Warrior),v)+'. Now a '+a.cls.toLowerCase()+' of the '+FAC[a.fac].name+', level '+a.lvl+'.';
   let defining;
