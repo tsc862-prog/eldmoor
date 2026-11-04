@@ -98,6 +98,61 @@ ok(/^move,hunt$/.test((A.pq || []).map(x => x.kind).join(',')) && /still in town
 S.parties = S.parties.filter(p => p !== party); A.party = B.party = null; A.pq = [];
 if (B.player) P.markPlayer(B, false);
 
+// ---------------------------------------------------------------- wait (#790)
+console.log('wait');
+{const {aimLine, aimState, aimBrief, intentWatch, INTENT} = await import('../src/sim/intent.js');
+ const {postHook} = await import('../src/sim/dm.js'); const {companyOf} = await import('../src/sim/company.js');
+ const hs3 = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && a.fac === A.fac && homeOf(a) === homeOf(A));
+ const [L, F1, F2] = hs3.length >= 3 ? hs3 : S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && a.fac === A.fac);
+ const M = [L, F1, F2]; const tryGroup = () => {const pt = {id: ++S.uid, fac: L.fac, leader: L, mem: [L, F1, F2], zone: 0, home: false}; for (const x of M) {fresh(x, 3); x.party = pt; x.partyOk = true; x.intent = null; x.townIdle = null; x.playEv = []} S.parties.push(pt); return pt};
+ const gm = (min, each) => {const t0 = S.gameMin; while (S.gameMin < t0 + min) {run(2); each && each()}};
+ const left = new Map();
+ // the owner's case: all three wait "until all three are level four" at level 3
+ let pt = tryGroup(); for (const x of M) idle(x);
+ let r = act(L, 'intent', {goal: 'Hold in town with the knot', why: 'we wait', until: 'all three are level four'});
+ ok(r.ok && L.intent.untilLevel === 4 && L.intent.untilAll, 'a level condition in the until words is read: level 4, all of them');
+ ok(L.intent.order && L.intent.order.kind === 'hunt' && L.intent.order.ground != null && !L.intent.order.n, 'and it maps to a hunt on the fitting ground, not a wait: ' + (L.intent.order && L.intent.order.ground));
+ ok(/not from waiting|not from waiting in town/.test(r.notes || '') && /Levels come from kills/.test(r.notes || ''), 'the tool says levels come from kills, not from waiting: ' + (r.notes || '').slice(0, 120));
+ ok(aimLine(L).includes('until level 4 (you are 3)'), 'the header shows: ' + aimLine(L));
+ for (const x of [F1, F2]) act(x, 'intent', {goal: 'Hold in town with the knot', why: 'we wait', until: 'all three are level four'});
+ for (const x of M) idle(x);
+ gm(720, () => {for (const x of M) {if (!left.has(x.id) && !inTownRect(x)) left.set(x.id, S.gameMin); if (!x.adv && x.playIdle !== true) idle(x); else if (x.playIdle) idle(x, 0 + 130)}});
+ ok(M.every(x => left.has(x.id)), 'the company is out of town within 12 game hours, followers included (' + M.map(x => left.has(x.id) ? Math.round((left.get(x.id) - (S.gameMin - 720)) / 60 * 10) / 10 + 'h' : 'never').join(', ') + ')');
+ ok(M.every(x => !x.adv && !x.quest), 'and none of them took a job or bounty on its own');
+ S.parties = S.parties.filter(x => x !== pt); for (const x of M) x.party = null;
+ // a wait is never progress: stale after 2 hours, ended at the cap
+ fresh(A, 3); A.intent = null; A.townIdle = null; idle(A); r = act(A, 'intent', {goal: 'Wait in town for Fena', why: 'she said she would come', until: 'Fena arrives'});
+ ok(r.ok && A.intent.order && A.intent.order.kind === 'wait' && A.intent.untilAt == null || A.intent.untilAt - A.intent.set <= INTENT.WAIT_MAX, 'a wait aim is held to ' + INTENT.WAIT_MAX + ' game minutes whatever its until says');
+ gm(125, () => idle(A));
+ ok(aimState(A) === 'stale' && aimBrief(A).ask && /waiting has earned nothing/.test(aimBrief(A).why), 'after 2 hours the wait is stale and the next turn asks: ' + aimBrief(A).why);
+ gm(130, () => idle(A));
+ ok(A.intent.done && /run its course/.test(A.intent.done.why), 'at the cap it ends: ' + (A.intent.done && A.intent.done.why));
+ // camp is not a wait that runs out
+ fresh(A, 3); A.intent = null; act(A, 'intent', {goal: 'Rest at the camp', why: 'night', until: 'dawn'}); A.intent.set -= 400; A.intent.prog -= 400; A.state = 'camp'; intentWatch(A);
+ ok(!A.intent.done, 'a camp rest is not cut off by the wait cap'); A.state = 'town'; intentWatch(A); ok(!!A.intent.done, 'out of camp the cap applies');
+ // the town-idle guard against a stubborn agent who keeps stating a wait
+ fresh(A, 3); A.intent = null; A.townIdle = null; A.playEv = []; const g0 = S.gameMin; let nextRe = g0, still10 = null, wake = null; const watchWake = () => {const e = (A.playEv || []).find(e => /waiting earns no levels/.test(e.text)); if (e && !wake) wake = e.text}; act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); nextRe += 100; idle(A);
+ gm(840, () => {if (S.gameMin >= nextRe) {act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); A.pq = (A.pq || []).filter(x => !x.auto); nextRe += 100} idle(A); watchWake(); if (still10 == null && S.gameMin - g0 >= 600) still10 = inTownRect(A)});
+ ok(still10 === true, 'before 12 idle hours the guard does not move a hero that keeps its wait');
+ ok(!inTownRect(A) || A.state !== 'town', 'after 12 idle hours autopilot hunts whatever wait aim it holds (' + A.state + ' in ' + ZONES[zoneAt(A.x, A.y)] + ')');
+ ok(wake && /Autopilot hunts/.test(wake) && /board has|Hunt out/.test(wake), 'and the agent was woken with a line naming the ground and the board: ' + String(wake).slice(0, 220));
+ ok(!A.adv && !A.quest, 'still no job taken for it');
+ // legitimate waits: an open meeting plan keeps the clock from running
+ fresh(A, 3); A.intent = null; A.townIdle = null; A.playEv = []; const C = companyOf(A); C.plans = [{id: 99, where: 'the ford', at: S.gameMin + 3000, atText: 'x', made: S.gameMin, by: A.id, who: [A.id], whoNames: [A.name], status: 'open'}];
+ act(A, 'intent', {goal: 'Wait in town for the meeting', why: 'the plan', until: '3'}); idle(A); nextRe = S.gameMin + 100; wake = null; gm(840, () => {watchWake(); if (S.gameMin >= nextRe) {act(A, 'intent', {goal: 'Wait in town for the meeting', why: 'the plan', until: '3'}); A.pq = (A.pq || []).filter(x => !x.auto); nextRe += 100} idle(A)});
+ ok(inTownRect(A) && !wake, 'an open meeting plan is a legitimate wait: no guard wake in 14 hours');
+ C.plans = [];
+ // the refusal names the board
+ fresh(A, 5); A.intent = null; const hi = postHook(homeOf(A), 'negotiate', 'writ'), lo = postHook(homeOf(A), 'rescue', 'writ');
+ r = act(A, 'take_adventure', {job_id: hi.id});
+ ok(!r.ok && /needs level 6/.test(r.error) && new RegExp('job:' + lo.id).test(r.error) && /Grow first/.test(r.error), 'a level refusal lists the takeable hooks with ids: ' + String(r.error).slice(0, 200));
+ r = act(A, 'take_quest', {id: 'job:' + hi.id});
+ ok(!r.ok && new RegExp('job:' + lo.id).test(r.error), 'take_quest too');
+ fresh(A, 3); r = act(A, 'take_adventure', {job_id: lo.id});
+ ok(!r.ok && !r.error.includes('job:' + lo.id) && /Grow first/.test(r.error), 'a hook the hero cannot take is not offered: ' + String(r.error).slice(0, 160));
+ S.adventures = S.adventures.filter(h => h !== hi && h !== lo);
+}
+
 // ---------------------------------------------------------------- edge
 console.log('edge');
 // a spot in a level-1 region whose road east enters a region 5+ levels above, first (no milder region between)

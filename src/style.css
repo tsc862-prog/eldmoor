@@ -26,6 +26,8 @@ button.agbtn{font-size:9px;padding:7px 9px}
 .agr{border:1px solid var(--edge);padding:5px 7px;display:flex;flex-direction:column;gap:3px;min-width:0}
 .agname{font-family:var(--px);font-size:8px;color:var(--ink)}
 .agnote{font-size:15px}
+.agfresh{font-family:var(--mono);font-size:16px;background:#0a0b14;color:var(--ink);border:1px solid var(--edge);padding:2px 8px;margin-top:6px;cursor:pointer}.agfresh:hover{border-color:#7fd6c2}
+.runfresh{font-size:15px;white-space:nowrap;cursor:pointer}.runfresh input{margin:0 3px 0 0;vertical-align:middle}
 .agfoot{font-size:15px}
 @media (max-width:560px){.agpop{position:fixed;left:16px;right:16px;top:64px;width:auto}}
 h1{font-family:var(--px);font-size:clamp(20px,4vw,30px);margin:0;color:var(--gold);letter-spacing:.04em;text-shadow:3px 3px 0 #6a3a10;text-wrap:balance}
@@ -120,7 +122,7 @@ div.daysep{margin:8px 0 3px}
 .src{font-family:var(--px);font-size:6px;padding:1px 3px;margin-right:4px;vertical-align:middle;border:1px solid var(--edge);color:var(--dim);white-space:nowrap}
 .src.s-agent{color:var(--gold);border-color:var(--gold)} .src.s-autopilot{color:#7fd6c2;border-color:#7fd6c2} .src.s-reflex{color:var(--amber);border-color:var(--amber)} .src.s-ai{color:#7fd6c2;border-color:#7fd6c2}
 .ai-badge.mk-scripted{background:var(--edge);color:var(--dim)} .ai-badge.mk-agent{background:var(--gold)} .ai-badge.mk-quiet{background:var(--edge);color:var(--dim)}
-.mlink.busy{color:var(--amber)}
+.mlink.busy,.mlink.pagebusy{color:var(--amber)}
 /* a Fellowship member's name in chat: bold, role colour as on the party frames, lightened for the dark theme */
 .hn.fmn{font-weight:bold} /* a member's colour is its class, set inline from core/colors.js */
 .hn.npcn{font-weight:normal;text-decoration:underline dotted;text-underline-offset:3px}

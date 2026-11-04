@@ -78,6 +78,31 @@ function sheet(e,[w,h]){const {cols,rows}=e.frames,fw=w/cols,fh=h/rows,im=canvas
     else{const ex=r===1?bx+1:r===2?bx+bw-2:bx+Math.round(bw/2);if(r!==3)fill(ex,by+1,ex+1,by+2,'#ffe060')}} // an eye on the side it faces
   return im}
 
+// What a model answers for a sprite sheet (#711), to test post-sheet.mjs: the entry's fixture sheet's figures set in a
+// cols x rows grid on a plain white size x size image (not the sheet's aspect, not on its frame grid), each sprite pixel a
+// block of 'block' px with slightly darker block edges, and each figure nudged by a few px. rows/cols override the layout
+// (a bad answer: 3 rows instead of 4); key:false paints the tabard grey (a hero that would not take the faction colour).
+export function sheetArt(e,{tier=32,size=1024,block=4,rows,cols,key=true}={}){const z=(e.sizes&&e.sizes[tier])||e.size,src=sheet(e,z),{cols:C,rows:R}=e.frames,fw=z[0]/C,fh=z[1]/R;
+  const nr=rows||R,nc=cols||C,cw=size/nc,ch=size/nr,im=canvas(size,size),grey={'91,143,242':[150,150,160],'42,79,160':[90,90,100]};
+  im.data.fill(255);
+  for(let r=0;r<nr;r++)for(let c=0;c<nc;c++){const sr=r%R,sc=c%C,dx=Math.round((hh(r,c,e.seed)-.5)*12),dy=Math.round((hh(c,r,e.seed+1)-.5)*12);
+    const ox=Math.round(c*cw+(cw-fw*block)/2)+dx,oy=Math.round(r*ch+(ch-fh*block)/2)+dy;
+    for(let y=0;y<fh;y++)for(let x=0;x<fw;x++){const so=((sr*fh+y)*z[0]+sc*fw+x)*4;if(!src.data[so+3])continue;
+      let px=[src.data[so],src.data[so+1],src.data[so+2]];if(!key&&grey[px.join(',')])px=grey[px.join(',')];
+      for(let by=0;by<block;by++)for(let bx=0;bx<block;bx++){const X=ox+x*block+bx,Y=oy+y*block+by;if(X<0||Y<0||X>=size||Y>=size)continue;
+        const edge=bx===0||by===0?.9:1,o=(Y*size+X)*4;im.data[o]=px[0]*edge;im.data[o+1]=px[1]*edge;im.data[o+2]=px[2]*edge}}}
+  return im}
+
+// What a model answers to an init image (#763, the mock Space and the checks): the canvas it was given with texture added, as a
+// low strength does: every block of 8 px nudged by a shade that grows with the strength, block edges a little darker. A bad answer:
+// spill paints a thing on the empty canvas round the subject, redraw ignores the init (a scene of its own, as at strength 1).
+export function img2imgArt(im,{strength=.4,seed=1,block=8,spill=false,redraw=false}={}){const {w,h}=im,d=new Uint8Array(im.data);
+  for(let y=0;y<h;y++)for(let x=0;x<w;x++){const o=(y*w+x)*4,bx=Math.floor(x/block),by=Math.floor(y/block);
+    if(redraw){const v=hh(bx>>2,by>>2,seed)*200+30;d[o]=v;d[o+1]=v*.8;d[o+2]=255-v;continue}
+    const white=d[o]===255&&d[o+1]===255&&d[o+2]===255;if(white){if(spill&&(bx+by)%3)d[o]=d[o+1]=d[o+2]=40;continue}
+    const n=(hh(bx,by,seed)-.5)*strength*50,e=x%block&&y%block?1:.97;for(let k=0;k<3;k++)d[o+k]=Math.max(0,Math.min(255,Math.round((d[o+k]+n)*e)))}
+  return {w,h,data:d}}
+
 // Trees, 16x16 on transparent ground: three shapes per biome.
 function tree(b,i){const im=canvas(16,16),P={
   meadow:{lit:'#5cb84e',mid:['#2f8a36','#338f3a','#2a7e31'],dark:'#1e6a28',rim:'#1a5a22',bark:['#5a3a20','#3a2414']},
@@ -181,3 +206,17 @@ export function fixtures(man,tier=32){const out={};
     else if((m=/^landmark:([a-z-]+)$/.exec(e.id)))im=landmark(m[1],size,e.seed);
     if(im&&im.w===size[0]&&im.h===size[1])out[e.id]=im}
   return out}
+
+// A fixture inbox for art:review (#712): pure data, the artcheck writes it to a temp folder.
+// -> {queue: assets/queue.json, files: [relative path under the assets folder], accepted: [keys already in the index]}
+// Two days of waiting art: the older day a prop and a tile that main already has (stale), the newer day a tile, a building and a
+// sprite (the last two need an in-game preview), plus one rejected redraw and one failed draw with its reason.
+export function reviewFixture(){
+  const old='2026-10-30',cur='2026-11-02',inc=(date,file)=>({date,file});
+  return {accepted:['tile:grass@32'],
+    files:[`incoming/${old}/sheet.html`,`incoming/${cur}/sheet.html`,`incoming/${cur}/sheet-2.html`],
+    queue:{version:1,model:{pinned:null,tried:{}},incoming:{
+      'tile:grass@32':inc(old,'tile/32/grass.png'),'prop:tree-meadow-1@32':inc(old,'prop/32/tree-meadow-1.png'),
+      'tile:snow@32':inc(cur,'tile/32/snow.png'),'building:stone-inn@32':inc(cur,'building/32/stone-inn.png'),'sprite:hero-mage@32':inc(cur,'sprite/32/hero-mage.png')},
+      failed:{'prop:rock-meadow-1@32':{tries:1,why:'HTTP 500',at:'2026-11-02T10:00:00Z'}},rejected:{'tile:mud@32':1},alts:{},
+      stats:{tile:{made:3,flat:1,failed:0},prop:{made:1,flat:0,failed:1}},costProbe:null,next:[],lastRun:null}}}

@@ -20,7 +20,7 @@ const cut=(s,n)=>{s=String(s==null?'':s).replace(/\s+/g,' ').trim();return s.len
 const clock=()=>{const m=Math.floor(S.gameMin||0)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
 
 export function noteDmCall(tool,args,res,now=Date.now()){
-  if(!tool||(tool==='table_call'&&res&&res.ok&&!res.call)||(tool==='npc_call'&&res&&res.ok&&!res.call))return; // an idle poll is not a call
+  if(!tool||(tool==='table_call'&&res&&res.ok&&!res.call)||(tool==='npc_call'&&res&&res.ok&&!res.call)||(tool==='companion_call'&&res&&res.ok&&!res.call))return; // an idle poll is not a call
   load();args=args&&typeof args==='object'?args:{};res=res&&typeof res==='object'?res:{};
   let t=turns[0];
   const acted=t&&(t.notes.length||t.levers.length||t.staged.length||t.said.length);

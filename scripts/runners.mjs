@@ -6,6 +6,8 @@
 //   POST /play/runner/start   {kind?:'hero'|'fellowship'|'dm', hero?, provider?, model?, maxTurns?, budget?}
 //                             -> {ok, runner} | 4xx {error}
 //   POST /play/runner/stop    {kind?, hero?} (or {key}) -> {ok, runner}
+//   POST /play/runner/fresh   {key?} -> {ok, asked:[key]} (issue #787): that live runner, or all of them, set their conversations
+//                             aside at the next safe moment (a "fresh" line on stdin; scripts/session-roll.mjs). {fresh: true} on a start is --new.
 //   POST /play/runner/limits  {sessionBudget?: number|null} and/or {key, maxTurns?, budget?} -> {ok, session, runner?, applies?}
 //                             (issue #145: limits set in the game). The session budget caps what all paid runners
 //                             started by this supervisor spend together: the spend so far is in GET's `session`, a paid
@@ -13,6 +15,13 @@
 //                             stopped ("session budget reached") and new paid starts are refused. A running runner's
 //                             own turn cap or budget can be lowered live (the supervisor stops it on reaching it);
 //                             raising it past what it was started with applies on its next start (applies: 'next start').
+//
+// A budget stop (issue #807): a runner whose budget is spent ([Name] done (budget reached), stopped after N turns (budget
+// reached), a cap or the session budget) is marked (r.budgetOut, `budgetSpent` in the view; on a Fellowship or company runner as
+// soon as its first member is let go) and is never started again or replaced by anything but a person: adopt() hands its heroes
+// no runner, it leaves the active list, and resume() skips it, the DM's open seat included, across a relay restart (the list's
+// `spent`). The world pauses at the gate and the page says what was spent and what another start costs. Every start and end goes
+// to logs/runners/events.jsonl with who asked (`by`: owner, page, setup, resume, adopt, local) and why it ended (`why`).
 //
 // A runner is one child process of a known kind (RUNNER_KINDS): 'hero' plays one agent-played hero
 // (scripts/agent-player.mjs --hero <id>), 'fellowship' plays every agent-played Fellowship member
@@ -42,6 +51,7 @@ import {hostname} from 'node:os';
 import {fileURLToPath} from 'node:url';
 import {LOGS, RUNNER_PROVIDERS, sessionPath} from './agent-sessions.mjs';
 import {numCtxFrom} from './providers/ollama.mjs';
+import {askFresh} from './session-roll.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Claude slots: concurrent Claude turns the app's runners may run (env RUNNER_CLAUDE_MAX, at least 1). A
@@ -101,6 +111,10 @@ export const kindInstalled = K => existsSync(join(ROOT, K.script));
 
 const localHost = h => /^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i.test(String(h || ''));
 const loopback = a => /^(127\.|::1$|::ffff:127\.)/.test(String(a || ''));
+// The reason a runner gives for ending by itself, and how a budget stop reads. `by` on a start: a click, the setup page, a local
+// tool, or the supervisor itself (AUTO_START), which never starts a runner whose budget is spent.
+const OWN_END = /^(?:\[[\d:]+\] )?\[(?:agent|dm)\] stopped after \d+ turns[^()]*\(([^)]{1,80})\)/, BUDGET_WHY = /^(session )?budget reached/;
+const AUTO_START = {resume: 1, adopt: 1};
 const stripAnsi = s => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
 const num = v => v === undefined || v === null || v === '' ? null : Number(v);
 export const SESSION_BUDGET_MAX = 500; // dollars: the most a session budget may be set to
@@ -121,6 +135,7 @@ export function checkStart(b, heroes, {running = [], max = MAX_RUNNERS} = {}) {
   const mt = num(b.maxTurns), bu = num(b.budget);
   if (mt !== null && !(Number.isInteger(mt) && mt >= 1 && mt <= K.caps.maxTurns)) return {error: `maxTurns must be a whole number from 1 to ${K.caps.maxTurns}`, code: 400};
   if (bu !== null && !(Number.isFinite(bu) && bu >= .01 && bu <= K.caps.budget)) return {error: `budget must be from $0.01 to $${K.caps.budget.toFixed(2)}`, code: 400};
+  if (b.fresh === true) req.fresh = true; // this start only: never saved to the active list, so a resume does not wipe a session (#787)
   req.maxTurns = mt; // null: until stopped (a paid mind until its budget is spent, #563)
   req.budget = local ? null : bu ?? K.defaults.budget; // a local model costs nothing: turns are its only cap
   const known = (heroes || []);
@@ -166,6 +181,7 @@ export function runnerArgs(req, base) {
   if (req.provider) a.push('--provider', req.provider);
   if (req.model) a.push('--model', req.model);
   if (req.claudeConcurrency) a.push('--claude-concurrency', String(req.claudeConcurrency));
+  if (req.fresh) a.push('--new');
   return a;
 }
 
@@ -190,12 +206,21 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   const left = () => session.budget == null ? Infinity : Math.max(0, session.budget - session.spent);
   const paid = r => r.budget != null; // local (Ollama) runners have no budget: they cost nothing
   const sessionView = () => ({budget: session.budget, spent: Math.round(session.spent * 10000) / 10000, left: session.budget == null ? null : Math.round(left() * 10000) / 10000})
-  const dir = join(logs, 'runners'), activeFile = join(dir, 'active.json');
+  const dir = join(logs, 'runners'), activeFile = join(dir, 'active.json'), eventsFile = join(dir, 'events.jsonl');
+  const spentOut = new Map(); // key -> {key, kind, hero, company, name, why, cost, budget, turns, at}: runners whose budget is spent, until someone starts them again (#807)
   const heroes = () => (play.backend.info().heroes || []);
   const running = () => [...table.values()].filter(r => !r.done);
   const host = hostname();
   let lastWorld = null; const worldNow = () => {try {const w = (play.backend.info() || {}).worldId; if (w) lastWorld = w} catch {} return lastWorld}; // the page's S.worldId from its hello (#691)
 
+  // One line per start and end, for reports (#807): a budget stop from a crash, an automatic start from an owner's click.
+  function event(ev, r, more = {}) {try {mkdirSync(dir, {recursive: true}); appendFileSync(eventsFile, JSON.stringify({at: new Date(now()).toISOString(), event: ev, key: r.key, kind: r.kind, name: r.name, world: worldNow(), ...more}) + '\n')} catch {}}
+  const budgetOf = r => r.capBudget ?? r.budget ?? null;
+  const spendText = r => '$' + r.cost.toFixed(2) + ' of $' + Number(budgetOf(r) || 0).toFixed(2);
+  const spentEntry = r => ({key: r.key, kind: r.kind, hero: r.hero ?? null, ...(r.kind === 'company' ? {company: r.company} : {}), name: r.name, why: r.budgetOut.why, cost: r.cost, budget: budgetOf(r), turns: r.turns, at: new Date(r.budgetOut.at).toISOString()});
+  // The runner's budget is spent: nothing automatic may bring it back. A multi-hero runner may still be finishing other members.
+  function budgetOut(r, why) {if (r.budgetOut) return; r.budgetOut = {why, at: now()}; spentOut.set(r.key, spentEntry(r));
+    log(`[runners] ${r.key} ${r.name}: ${why}, ${spendText(r)}: it stays stopped until you start it`); event('budget', r, {why, cost: r.cost, budget: budgetOf(r)}); saveActive()}
   // A runner's state from its process and its heroes' claims and links.
   function stateOf(r) {
     if (r.done) return r.state;
@@ -227,13 +252,16 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     return {key: r.key, kind: r.kind, hero: r.hero ?? null, heroes: ids, ...(left.length ? {left} : {}), name: r.name, state: stateOf(r), pid: r.pid,
       startedAt: new Date(r.started).toISOString(), uptime: Math.round(((r.ended || now()) - r.started) / 1000),
       turns: r.turns, cost: Math.round(r.cost * 10000) / 10000, provider: (mind && mind.provider) || r.provider || null, model: (mind && mind.model) || r.model || null,
-      capTurns: r.capTurns ?? null, capBudget: r.capBudget ?? null, stopWhy: r.stopWhy || null,
+      capTurns: r.capTurns ?? null, capBudget: r.capBudget ?? null, stopWhy: r.stopWhy || null, by: r.by || null, endWhy: r.endWhy || null,
+      ...(r.budgetOut ? {budgetSpent: true, spentWhy: r.budgetOut.why} : {}),
       maxTurns: r.maxTurns ?? null, turnCap: r.maxTurns != null ? 'up to ' + r.maxTurns + ' turns' + (multiRunner(r) ? ' each' : '') : 'until stopped',
       // issue #221: the context size every local call asks (children inherit OLLAMA_NUM_CTX), and the runner's warning when Ollama holds the model at another
       ...(((mind && mind.provider) || r.provider) === 'ollama' ? {numCtx: numCtxFrom(env), ctxWarn: (r.lines.filter(l => /runners ask \d+, so it reloads/.test(l)).pop() || '').replace(/^.*?note: /, '') || null} : {}),
-      ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
+      ...ctxView(r), ...turnRate(r), pace: r.pace || null, budget: r.budget, claudeSlots: r.claude || 0, lines: r.lines.slice(-8), error: r.error || null, exit: r.exit ?? null,
       log: relative(ROOT, r.logFile).replace(/\\/g, '/')};
   }
+  // issue #787: the biggest session it plays, thousands of tokens, from the `ctx 83k` of its turn lines (a multi-hero runner has one per member)
+  const ctxView = r => {const v = Object.values(r.ctxBy || {}); return {ctx: v.length ? Math.max(...v) : null, rolls: r.rolls || 0}};
   // turns per minute over the last TPM_WINDOW (or the uptime when shorter) and the last turn's time
   function turnRate(r) {const t = now(), since = Math.max(r.started, t - TPM_WINDOW), n = (r.turnTimes || []).filter(x => x >= since).length, mins = Math.max(1 / 6, ((r.ended || t) - since) / 60000);
     const last = r.turnTimes && r.turnTimes.length ? r.turnTimes[r.turnTimes.length - 1] : null;
@@ -245,8 +273,8 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   // ran out) leaves the list; a host shutdown does not (closing = true). Nothing secret: kind, hero, mind, caps.
   function saveActive() {
     if (closing || !enabled) return;
-    const rs = running().filter(r => !r.stopping).map(r => ({kind: r.kind, hero: r.hero ?? null, name: r.name, ...(r.kind === 'company' ? {company: r.company, members: (r.heroes || []).map(id => {const h = heroes().find(x => x.id === id); return {id, name: h ? h.name : null}})} : {}), provider: r.provider || null, model: r.model || null, maxTurns: r.maxTurns ?? null, budget: r.budget ?? null}));
-    try {mkdirSync(dir, {recursive: true}); const tmp = activeFile + '.tmp'; writeFileSync(tmp, JSON.stringify({saved: new Date(now()).toISOString(), world: worldNow(), runners: rs}, null, 1)); renameSync(tmp, activeFile)} catch {}
+    const rs = running().filter(r => !r.stopping && !r.budgetOut).map(r => ({kind: r.kind, hero: r.hero ?? null, name: r.name, ...(r.kind === 'company' ? {company: r.company, members: (r.heroes || []).map(id => {const h = heroes().find(x => x.id === id); return {id, name: h ? h.name : null}})} : {}), provider: r.provider || null, model: r.model || null, maxTurns: r.maxTurns ?? null, budget: r.budget ?? null}));
+    try {mkdirSync(dir, {recursive: true}); const tmp = activeFile + '.tmp'; writeFileSync(tmp, JSON.stringify({saved: new Date(now()).toISOString(), world: worldNow(), runners: rs, ...(spentOut.size ? {spent: [...spentOut.values()]} : {})}, null, 1)); renameSync(tmp, activeFile)} catch {}
   }
 
   function start(req) {
@@ -255,7 +283,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     const logFile = join(dir, req.key.replace(/[^A-Za-z0-9_-]+/g, '-') + '.log');
     const r = {...req, started: now(), turns: 0, cost: 0, lines: [], logFile, done: false};
     const write = line => {try {appendFileSync(logFile, line + '\n')} catch {}};
-    write(`=== ${new Date().toISOString()} start ${req.kind} ${req.name} | node ${args.join(' ')}`);
+    write(`=== ${new Date().toISOString()} start ${req.kind} ${req.name} | node ${args.join(' ')} | by ${req.by || 'local'}`);
     let child;
     try {child = spawnImpl(process.execPath, args, {cwd: ROOT, env: {...env, ELDMOOR_SUPERVISED: '1', ELDMOOR_RUNNER_KEY: req.key, AGENT_MODEL: env.AGENT_MODEL || APP_CLAUDE_MODEL, DM_MODEL: env.DM_MODEL || APP_CLAUDE_MODEL}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true})}
     catch (e) {return {error: 'could not start: ' + e.message}}
@@ -267,8 +295,12 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
         write(line); r.lines.push(line.slice(0, 300)); if (r.lines.length > KEEP_LINES) r.lines.shift();
         if (/\[turn \d+/.test(line)) {r.turns++; (r.turnTimes || (r.turnTimes = [])).push(now()); if (r.turnTimes.length > 200) r.turnTimes.shift()}
         const pc = line.match(/\[pace\] (.*)$/); if (pc) r.pace = pc[1].slice(0, 160);
+        const cx = line.match(/\| ctx (\d+)k\b/); if (cx) (r.ctxBy || (r.ctxBy = {}))[multiRunner(r) ? (line.match(/^(?:\[[\d:]+\] )?\[([^\]]{1,40})\] /) || [])[1] || '?' : 'seat'] = Number(cx[1]);
+        if (/\[session rolled/.test(line)) r.rolls = (r.rolls || 0) + 1;
         const md = line.match(/^(?:\[[\d:]+\] )?\[([^\]]{1,40})\] done \(([^)]{1,80})\)/); if (md) (r.memberDone || (r.memberDone = {}))[md[1]] = md[2]; // a Fellowship member finished (#563)
         const c = line.match(/\| run \$(\d+\.\d+)/); if (c) {const v = Number(c[1]); if (v > r.cost) session.spent += v - r.cost; r.cost = v}
+        const oe = line.match(OWN_END); if (oe) r.ownEnd = oe[1];
+        if (oe && oe[1] === 'budget reached' || md && md[2] === 'budget reached') budgetOut(r, 'budget reached'); // the runner's own word on its budget (#807)
         if (err || /failed|error|not ready|refused|No ANTHROPIC|is not|cannot|could not/i.test(line)) r.lastErr = line.slice(0, 300);
       }};
     child.stdout && child.stdout.on('data', d => {take(d, false); checkCaps()});
@@ -283,8 +315,11 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       const nw = code === NEW_WORLD_EXIT && !r.stopping;
       r.state = r.stopping || code === 0 || nw ? 'stopped' : 'crashed'; if (nw) r.stopWhy = 'a new world: stopped (start it again for the new heroes)';
       if (r.state === 'crashed') r.error = r.lastErr || (code == null ? 'the process could not start' : 'exited with code ' + code);
-      write(`=== ${new Date().toISOString()} ${r.state}${code != null ? ' (exit ' + code + ')' : ''}${r.error ? ': ' + r.error : ''}`);
-      log(`[runners] ${r.key} ${r.name} ${r.state}${r.error ? ': ' + r.error : ''} (${r.turns} turns${r.cost ? ', $' + r.cost.toFixed(4) : ''})`);
+      r.endWhy = r.budgetOut ? r.budgetOut.why : r.state === 'crashed' ? 'crash' : r.stopWhy || r.ownEnd || (r.stopping ? 'stopped by ' + (r.stopBy || 'the supervisor') : 'ended');
+      if (r.budgetOut) spentOut.set(r.key, spentEntry(r));
+      write(`=== ${new Date().toISOString()} ${r.state}${code != null ? ' (exit ' + code + ')' : ''}${r.error ? ': ' + r.error : ''} | why ${r.endWhy}${r.budgetOut ? ', ' + spendText(r) : ''}`);
+      log(`[runners] ${r.key} ${r.name} ${r.state} (${r.endWhy})${r.error ? ': ' + r.error : ''} (${r.turns} turns${r.cost ? ', $' + r.cost.toFixed(4) : ''})`);
+      event('end', r, {why: r.endWhy, state: r.state, exit: code, by: r.stopping ? r.stopBy || 'supervisor' : 'runner', turns: r.turns, cost: r.cost, budget: budgetOf(r), uptime: Math.round((r.ended - r.started) / 1000)});
       if (r.pid) play.dropRunner(`${host}:${r.pid}`); // its claims, in case it could not release them
       if (r.kind === 'hero' && !r.stopping && !closing) {const h = heroes().find(x => x.id === r.hero); if (!h || !h.alive) r.heirWatch = true} // a solo's heir may come (#460)
       dropLeases(r.key); saveActive();
@@ -293,7 +328,9 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (done.length > KEEP_DONE) table.delete(done[0].key);
     }
     table.delete(req.key); table.set(req.key, r);
-    log(`[runners] started ${req.kind} runner for ${req.name} (pid ${r.pid}): ${req.provider || 'saved provider'}${req.model ? ' ' + req.model : ''}, ${req.maxTurns != null ? req.maxTurns + ' turns' : 'until stopped'}${req.budget != null ? ', $' + req.budget.toFixed(2) : ''}`);
+    log(`[runners] started ${req.kind} runner for ${req.name} (pid ${r.pid}, by ${req.by || 'local'}): ${req.provider || 'saved provider'}${req.model ? ' ' + req.model : ''}, ${req.maxTurns != null ? req.maxTurns + ' turns' : 'until stopped'}${req.budget != null ? ', $' + req.budget.toFixed(2) : ''}`);
+    event('start', r, {by: req.by || 'local', budget: req.budget ?? null, provider: req.provider || null, model: req.model || null, ...(spentOut.has(req.key) ? {afterBudget: spentOut.get(req.key).cost} : {})});
+    spentOut.delete(req.key);
     saveActive();
     return {runner: view(r)};
   }
@@ -323,12 +360,13 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       out = {...out, runner: view(r), applies: later ? 'next start' : 'now'}}
     checkCaps(); out.session = sessionView(); return out}
 
-  function stop(key, why) {
+  function stop(key, why, by) {
     const r = table.get(key);
     if (!r) return {error: 'no such runner', code: 404};
     if (r.done) return {runner: view(r)};
     if (!r.stopping) {
-      r.stopping = true; if (why) r.stopWhy = why;
+      r.stopping = true; if (why) r.stopWhy = why; if (by) r.stopBy = by;
+      if (why && BUDGET_WHY.test(why)) budgetOut(r, why.match(BUDGET_WHY)[0]);
       try {r.child.stdin && r.child.stdin.write('stop\n')} catch {}
       r.killT = setTimeout(() => {try {r.child.kill()} catch {}}, STOP_GRACE_MS); if (r.killT.unref) r.killT.unref();
       log(`[runners] stopping ${r.key} ${r.name} (pid ${r.pid})${why ? ': ' + why : ''}`);
@@ -337,12 +375,21 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     return {runner: view(r)};
   }
   function stopAll() {for (const r of running()) stop(r.key)}
+  // Ask live runners to start fresh sessions (#787). The runner rolls at its next safe moment, so nothing here can touch a scene.
+  function fresh(key) {
+    const rs = key == null ? running().filter(r => !r.stopping) : running().filter(r => r.key === key && !r.stopping);
+    if (key != null && !rs.length) return {error: 'no such live runner', code: 404};
+    for (const r of rs) {try {r.child.stdin && r.child.stdin.write('fresh\n')} catch {}}
+    log(`[runners] fresh session asked of ${rs.map(r => r.key).join(', ') || 'nobody'}`);
+    return {asked: rs.map(r => r.key)};
+  }
   // A world reset (#691: New world, Load, Import, any start that is not Continue): stop every runner with one call, wait
   // (up to waitMs) until they are gone so the new world's starts are not refused as "already running", and leave the
   // active list empty so --resume-runners brings nothing back. -> {stopped: N, keys, left}
   async function resetAll({why = 'world reset', waitMs = RESET_WAIT_MS} = {}) {
     const keys = running().map(r => r.key);
     for (const r of running()) stop(r.key, why);
+    spentOut.clear(); // another world: the spent runners of this one are nothing to it
     for (const w of waiters.splice(0)) {clearTimeout(w.t); w.res(null)}
     const t0 = Date.now(); while (running().length && Date.now() - t0 < waitMs) await new Promise(r => setTimeout(r, 50));
     saveActive(); log(`[runners] world reset: ${keys.length} runner(s) stopped`);
@@ -364,9 +411,11 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     req.on('error', rej)});
 
   // Every start, from the page or from resume(): the checks, then the child. -> {code, obj}
-  function startRequest(b) {
+  function startRequest(b, by = 'local') {
     const c = checkStart(b, heroes(), {running: running(), max: maxRunners});
     if (c.error) {log(`[runners] start refused: ${c.error}`); return {code: c.code, obj: {ok: false, error: c.error}}}
+    c.req.by = by;
+    if (AUTO_START[by] && spentOut.has(c.req.key)) {const x = spentOut.get(c.req.key), error = `${x.name} spent its budget ($${Number(x.cost).toFixed(2)}): only you can start it again.`; log(`[runners] ${by} refused: ${error}`); return {code: 402, obj: {ok: false, error}}}
     if (c.req.kind === 'hero' && play.claimed(c.req.hero)) return {code: 409, obj: {ok: false, error: `${c.req.name} already has a live agent runner (one agent per hero).`}};
     if (c.req.kind === 'dm') {const d = play.dmInfo ? play.dmInfo() : null; // the DM seat (#66)
       if (d && !d.seat) return {code: 409, obj: {ok: false, error: 'The DM seat is closed: the page opens it when it plays a world (load or start one first).'}};
@@ -390,10 +439,11 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   async function resume({waitMs = 5 * 60000, pollMs = 500, settleMs = 1200, heroWaitMs = 6000} = {}) {
     const out = {resumed: [], skipped: []};
     if (!enabled) return out;
-    let saved, savedWorld = null; try {const j = JSON.parse(readFileSync(activeFile, 'utf8')); saved = j.runners; savedWorld = typeof j.world === 'string' ? j.world : null} catch {return out}
+    let saved, savedWorld = null, spent = []; try {const j = JSON.parse(readFileSync(activeFile, 'utf8')); saved = j.runners; savedWorld = typeof j.world === 'string' ? j.world : null; spent = Array.isArray(j.spent) ? j.spent : []} catch {return out}
     saved = (Array.isArray(saved) ? saved : []).filter(x => x && typeof x === 'object' && RUNNER_KINDS[x.kind]);
-    if (!saved.length) return out;
-    log(`[runners] ${saved.length} runner(s) from the last run to resume once the game page connects: ${saved.map(x => x.kind === 'hero' ? (x.name || '#' + x.hero) : x.kind).join(', ')}`);
+    spent = spent.filter(x => x && typeof x === 'object' && RUNNER_KINDS[x.kind] && typeof x.key === 'string');
+    if (!saved.length && !spent.length) return out;
+    if (saved.length) log(`[runners] ${saved.length} runner(s) from the last run to resume once the game page connects: ${saved.map(x => x.kind === 'hero' ? (x.name || '#' + x.hero) : x.kind).join(', ')}`);
     const sleep = ms => new Promise(r => setTimeout(r, ms)), t0 = Date.now();
     const info = () => play.backend.info();
     while (!info().connected) {if (closing || Date.now() - t0 > waitMs) {log('[runners] resume: the game page did not connect, nothing resumed (the list is kept)'); return out} await sleep(pollMs)}
@@ -406,8 +456,13 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (savedWorld && nowWorld && savedWorld !== nowWorld) {
       for (const x of saved) {const what = x.kind === 'hero' ? (x.name || '#' + x.hero) : x.kind; out.skipped.push({what, why: 'another world'})}
       log(`[runners] resume: the page plays another world (${nowWorld}, the list is from ${savedWorld}): nothing resumed`);
-      saved = [];
+      saved = []; spent = [];
     }
+    // Runners that ended on their budget (#807) stay ended across the restart: back on the page as stopped, so its alert still
+    // says what was spent, and nothing below starts them.
+    for (const x of spent) {if (table.has(x.key)) continue; spentOut.set(x.key, x); const at = Date.parse(x.at) || now(), why = x.why || 'budget reached';
+      const n = {...x, cost: Number(x.cost) || 0, budget: x.budget ?? null, started: at, ended: at, turns: Number(x.turns) || 0, lines: [], logFile: join(dir, x.key.replace(/[^A-Za-z0-9_-]+/g, '-') + '.log'), done: true, state: 'stopped', exit: 0, budgetOut: {why, at}, endWhy: why};
+      table.set(x.key, n); out.skipped.push({what: x.kind === 'hero' ? x.name || '#' + x.hero : x.kind, why: 'its budget was spent'}); log(`[runners] resume: ${x.name} spent its budget ($${n.cost.toFixed(2)}): not started`); event('no-restart', n, {by: 'resume', why, cost: n.cost})}
     for (const x of saved) {
       if (closing) break;
       const what = x.kind === 'hero' ? (x.name || '#' + x.hero) : x.kind, skip = why => {out.skipped.push({what, why}); log(`[runners] resume: skipped ${what}: ${why}`)};
@@ -418,13 +473,14 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       if (x.kind === 'company') {const hs = heroes(), same = (x.members || []).some(m => hs.some(h => h.id === m.id && h.name === m.name && h.alive && h.company === x.company));
         if (!same) {skip(`company #${x.company} has none of its members in this world`); continue}}
       const body = {kind: x.kind, ...(x.kind === 'hero' ? {hero: x.hero} : {}), ...(x.kind === 'company' ? {company: x.company} : {}), provider: x.provider || undefined, model: x.model || undefined, maxTurns: x.maxTurns ?? undefined, budget: x.budget ?? undefined};
-      const r = startRequest(body);
+      const r = startRequest(body, 'resume');
       if (r.code === 200) {out.resumed.push(r.obj.runner.key); log(`[runners] resumed ${what}`)} else skip(r.obj.error || 'refused');
     }
     // The DM is always an agent (#520, #559): with the seat open and no DM runner on the list or in the seat, resume starts
     // one anyway, with the mind its session saved (else the default), so the start gate is not left waiting for it.
-    if (!closing && !saved.some(x => x.kind === 'dm')) {const d = play.dmInfo ? play.dmInfo() : null;
-      if (d && d.seat && !d.claimed && !running().some(x => x.kind === 'dm')) {const r = startRequest({kind: 'dm'});
+    // Not a DM that spent its budget (#807): that seat waits for the owner, the world paused at the gate.
+    if (!closing && !saved.some(x => x.kind === 'dm') && !spentOut.has('dm')) {const d = play.dmInfo ? play.dmInfo() : null;
+      if (d && d.seat && !d.claimed && !running().some(x => x.kind === 'dm')) {const r = startRequest({kind: 'dm'}, 'resume');
         if (r.code === 200) {out.resumed.push(r.obj.runner.key); log('[runners] resumed dm (the DM seat is always played)')} else {out.skipped.push({what: 'dm', why: r.obj.error || 'refused'}); log(`[runners] resume: the DM runner did not start: ${r.obj.error || 'refused'}`)}}}
     saveActive();
     return out;
@@ -434,16 +490,22 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   // with the death) gets a hero runner with the fallen hero's mind and caps; a member who left a company (it rides on
   // as a solo, released by the company runner) gets a hero runner with the company runner's mind. Only heroes the game
   // names as agent-played and alive, with no claim and no runner of this supervisor on them; a stop from the page or
-  // a host shutdown never restarts anything. Heirs are looked for HEIR_WAIT_MS after the runner ended.
+  // a host shutdown never restarts anything. Heirs are looked for HEIR_WAIT_MS after the runner ended. A runner that spent its
+  // budget hands nothing on (#807): the money it was given is gone, and the owner decides at the gate whether to spend more.
   const handed = new Set(); // hero ids already handed a runner by adopt()
   function covered(id) {return play.claimed(id) || running().some(r => r.kind === 'hero' ? r.hero === id : (r.heroes || []).includes(id))}
   function adopt() {
     if (!enabled || closing) return [];
     const hs = heroes(), out = [];
     const give = (h, from, why) => {if (handed.has(h.id) || covered(h.id)) return; handed.add(h.id);
-      const o = startRequest({kind: 'hero', hero: h.id, provider: from.provider || undefined, model: from.model || undefined, maxTurns: from.maxTurns ?? undefined, budget: from.budget ?? undefined});
+      const o = startRequest({kind: 'hero', hero: h.id, provider: from.provider || undefined, model: from.model || undefined, maxTurns: from.maxTurns ?? undefined, budget: from.budget ?? undefined}, 'adopt');
       log(`[runners] ${h.name}: ${why}: ${o.code === 200 ? 'hero runner started' : 'not started (' + (o.obj.error || 'refused') + ')'}`); if (o.code === 200) out.push(o.obj.runner.key)};
-    for (const r of table.values()) {
+    const refuse = (r, h) => {const seen = r.noAdopt || (r.noAdopt = new Set()); if (seen.has(h.id)) return; seen.add(h.id); log(`[runners] ${h.name}: no hero runner: ${r.name} spent its budget, the seat waits for you`); event('no-restart', r, {by: 'adopt', hero: h.id, why: r.budgetOut.why, cost: r.cost})};
+    for (const r of [...table.values()]) {
+      if (r.budgetOut) { // #807: whoever it would have handed a seat to waits for the owner
+        if (r.heirWatch) {const heir = hs.find(h => h.succeeds === r.hero && h.alive); if (heir) refuse(r, heir)}
+        if (r.kind === 'company' && !r.done) {view(r); for (const id of r.held || []) {const h = hs.find(x => x.id === id); if (h && h.alive && h.company !== r.company && !mine(r, id)) refuse(r, h)}}
+        continue}
       if (r.kind === 'hero' && r.done && !r.stopping && r.heirWatch && now() - r.ended <= HEIR_WAIT_MS) {
         const heir = hs.find(h => h.succeeds === r.hero && h.alive); if (heir) {r.heirWatch = false; give(heir, r, `takes the place of ${r.name}`)}}
       if (r.kind === 'company' && !r.done && !r.stopping) {view(r); for (const id of r.held || []) {const h = hs.find(x => x.id === id);
@@ -470,7 +532,8 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
     if (req.method !== 'POST') return send(404, {error: 'not found'});
     if (!enabled) return send(403, {error: 'runners are off', how: HOW});
     let b; try {b = await readBody(req)} catch (e) {return send(400, {error: e.message})}
-    if (path === '/play/runner/start') {const r = startRequest(b); return send(r.code, r.obj)}
+    // who asked (#807): the page says a click or the setup page; only the page's origin may say so
+    if (path === '/play/runner/start') {const r = startRequest(b, o !== origin ? 'local' : b.by === 'owner' || b.by === 'setup' ? b.by : 'page'); return send(r.code, r.obj)}
     // A supervised runner's Claude turn: lease a slot (waits up to LEASE_WAIT_MS, then {ok:false, busy}; the
     // runner asks again) and release it after the turn. Only for a live runner of this supervisor.
     if (path === '/play/runner/slot') {
@@ -499,15 +562,19 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       const l = limits(b); if (l.error) return send(l.code, {ok: false, error: l.error});
       return send(200, {ok: true, ...l});
     }
+    if (path === '/play/runner/fresh') {
+      const f = fresh(typeof b.key === 'string' ? b.key : null); if (f.error) return send(f.code, {ok: false, error: f.error});
+      return send(200, {ok: true, ...f});
+    }
     if (path === '/play/runner/stop') {
       let key = typeof b.key === 'string' ? b.key : null;
       if (!key) {const K = RUNNER_KINDS[b.kind == null ? 'hero' : b.kind]; if (!K) return send(400, {ok: false, error: 'unknown runner kind'}); key = K.key({hero: Number(b.hero), company: Number(b.company)})}
-      const s = stop(key); if (s.error) return send(s.code, {ok: false, error: s.error});
+      const s = stop(key, undefined, o === origin ? 'owner' : 'local'); if (s.error) return send(s.code, {ok: false, error: s.error});
       return send(200, {ok: true, runner: s.runner});
     }
     send(404, {error: 'not found'});
   });
-  return {list, start, stop, stopAll, resetAll, shutdown, killAll, table, limits, resume, adopt, session: sessionView, activeFile};
+  return {list, start, stop, fresh, stopAll, resetAll, shutdown, killAll, table, limits, resume, adopt, session: sessionView, activeFile};
 }
 
 // A supervised runner (ELDMOOR_SUPERVISED=1) calls this once: fn runs on a "stop" line on stdin, or
@@ -516,7 +583,7 @@ export function onSupervisorStop(fn) {
   if (process.env.ELDMOOR_SUPERVISED !== '1' || !process.stdin) return false;
   let fired = false; const go = why => {if (fired) return; fired = true; fn(why)};
   process.stdin.setEncoding('utf8');
-  process.stdin.on('data', d => {if (/\bstop\b/.test(d)) go('stopped from the game')});
+  process.stdin.on('data', d => {if (/\bstop\b/.test(d)) go('stopped from the game'); if (/\bfresh\b/.test(d)) askFresh()}); // fresh: the page's Fresh session (#787)
   process.stdin.on('end', () => go('the supervisor went away'));
   process.stdin.on('error', () => go('the supervisor went away'));
   process.stdin.resume();

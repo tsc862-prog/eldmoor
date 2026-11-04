@@ -5,13 +5,15 @@
 //   npm run art:reprocess -- all                      every day under assets/incoming/
 // Reads assets/incoming/<date>/raw/index.json and the raw files, applies the current manifest entry and
 // post-processing (scripts/art/post-texture.mjs), and rewrites assets/incoming/<date>/<kind>/<name>.png, that day's
-// index.json and sheet.html. An output that is still flat is removed from review (logged), its raw image kept.
+// index.json and sheet.html. An output that is still flat is removed from review (logged), its raw image kept. An image made from
+// an init image (#763) is read back through the init kept beside it; a raw from before image to image keeps the text recipe.
 // Accept the results as usual with npm run art:accept.
 import {readFileSync,existsSync,writeFileSync,mkdirSync,rmSync,readdirSync} from 'node:fs';
 import {join,dirname} from 'node:path';
 import {spawnSync} from 'node:child_process';
 import {ROOT,MANIFEST,ASSETS,loadManifest,loadIndex,loadQueue,saveQueue,keyFile,splitKey,sha256,normKey,TILE} from './lib.mjs';
 import {parseArgs,processRaw,writeIndex} from './gen.mjs';
+import {loadInit} from './init.mjs';
 
 export async function main(argv=process.argv.slice(2)){
   const o=parseArgs(argv,['dir','manifest']),dir=o.dir||ASSETS,man=loadManifest(o.manifest||MANIFEST),PAL=await import('../../src/render/palette.js');
@@ -25,7 +27,7 @@ export async function main(argv=process.argv.slice(2)){
       const {id,tier}=splitKey(key),e=byId.get(id);if(!e){console.log(`[art] ${key}: no longer in the manifest; skipped`);skipped++;continue}
       if(q.incoming[key]===undefined&&ii.assets[key]===undefined&&q.failed[key]===undefined&&!only.includes(key)){skipped++;continue} // accepted or rejected since
       const file=keyFile(key),out=join(inc,file);
-      try{const {img,png}=processRaw(readFileSync(join(inc,'raw',r.file)),e,PAL,man.models[r.model],tier,man);
+      try{const {img,png}=processRaw(readFileSync(join(inc,'raw',r.file)),e,PAL,man.models[r.model],tier,man,r.init?loadInit(inc,r.init):null);
         mkdirSync(dirname(out),{recursive:true});writeFileSync(out,png);
         ii.assets[key]={id,tier,kind:e.kind,file,w:img.w,h:img.h,colors:img.notes.colors,grid:img.notes.grid,sha256:sha256(png),model:r.model,repo:r.repo,provider:r.provider,seed:r.seed,at:r.at,reprocessed:new Date().toISOString(),...(r.alt?{alt:r.alt}:{})};
         q.incoming[key]={date:d,file};delete q.failed[key];ok++;

@@ -135,7 +135,7 @@ for (const a of brainy.slice(0, 4)) {const h = homeOf(a); a.x = h.ah.x; a.y = h.
 BW.NO_NOTES_MIN = 150; // #179: two game days in play; short here so the silent members are flagged
 const memA = await post('/play/call', {hero: A.id, tool: 'remember', args: {title: 'The road east', text: 'Wolves on the road east of town.', tags: ['road']}, runner: 'mock-A'});
 ok(memA.ok, 'A wrote a memory (#179)');
-const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Hold the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
+const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 'Patrol the road east until dusk', why: 'wolves', until: '48'}, runner: 'mock-A'});
 ok(aimA.ok, 'A stated an aim (#535)');
 // C's agent keeps it in town on purpose (#466: a silent member's autopilot now walks out of town to hunt, so a stuck member
 // is one whose agent keeps acting without going anywhere): every game hour its runner orders a rest in town.
@@ -195,6 +195,7 @@ ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.n
 ok(world.some(w => w.intents && w.intents[A.name] >= 1) && anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id !== A.id) && !anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id === A.id), 'digests count aims stated per hero; no-aim flags the silent ones, not A (#535)');
 ok(/Aims stated \(intent\) per hero per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: aims stated per hero per game day');
 ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the last world digest');
+ok(/## Cost/.test(md) && /Turns by wake reason/.test(md) && rep.cost && rep.cost.total.turns > 0, 'report has a Cost section from the turn lines (#799)');
 // ---- per company (issue #460): the digest names every company, its size, minds and deaths; members carry their company ----
 {const FC = SLT.slotted().id, wc = world.filter(w => Array.isArray(w.companies));
   ok(wc.length === world.length && wc.every(w => w.companies.some(c => c.id === FC && c.fellowship && c.size >= 1 && c.minds >= 1 && Number.isInteger(c.deaths))), 'every digest lists the companies: the Fellowship\'s with its size, minds and deaths this hour (#460)');
@@ -216,6 +217,16 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   ok(r3[7] === '4' && r3[8] === '25%' && r3[9] === 'Wren', `a solo: its member's agent turns and empty share (${r3.join(' | ')})`);
   ok(Array.isArray(rc.companies) && rc.companies.length === 3, 'buildReport returns the per-company data');}
 
+// ---- 6a. rules the heroes wrote themselves (issue #779): the digest's per-hero count reaches the report ----
+{
+  const GD = join(ROOT, 'gambitwrote', 'mock'); const {mkdirSync: mkg} = await import('node:fs'); mkg(GD, {recursive: true});
+  const gt = Date.parse('2026-11-01T10:00:00Z');
+  writeFileSync(join(GD, FILES.world), [1, 2].map(h => JSON.stringify({ts: new Date(gt + h * 60000).toISOString(), gameMin: 60 * h, members: [],
+    gambits: {Hale: {acts: 2, edits: 3 * h, noFlee: false, own: true, wrote: 2 * h, wroteAb: h - 1}, Ivo: {acts: 1, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}}})).join('\n') + '\n');
+  const rg = writeReport(join(ROOT, 'gambitwrote'), 'mock'), gmd = readFileSync(rg.file, 'utf8');
+  ok(/rules written \/ with abilities/.test(gmd) && /\| Hale \|[^\n]*\| 4 \/ 1 \|/.test(gmd) && /\| Ivo \|[^\n]*\| 0 \/ 0 \|/.test(gmd), 'report: rules each hero wrote itself and how many name use_ability (latest total, not summed)');
+}
+
 // ---- 6b. the mind comparison (issue #280) on mock logs: two members on qwen, one on Claude, a death, writing calls ----
 {
   const MD = join(ROOT, 'minds', 'mock'); const {mkdirSync} = await import('node:fs'); mkdirSync(MD, {recursive: true});
@@ -225,6 +236,7 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   for (let h = 1; h <= 6; h++) W2.push({ts: ts(h * 60), gameMin: 600 + h * 60, fellowship: {name: 'The Mock Band', minds: 'agent'},
     members: [mem(1, 'Ann', 'tank', h === 3 ? 20 : 100, h % 2 ? 'agent' : 'autopilot', 'ollama', 'qwen2.5:14b'), mem(2, 'Bo', 'healer', 100, 'agent', 'anthropic', 'claude-haiku-5-5'),
       ...(h <= 4 ? [mem(3, 'Cy', 'dps1', 90, 'scripted', 'ollama', 'qwen2.5:14b')] : [])],
+    gambits: {Ann: {acts: 1, edits: h, noFlee: false, own: true, wrote: Math.min(h, 3), wroteAb: h >= 3 ? 1 : 0}, Bo: {acts: 0, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}},
     table: {opened: 1, agentTurns: 2, reflexTurns: h === 2 ? 1 : 0}, votes: {agent: 2, reflex: 0}, deaths: h === 5 ? [{name: 'Cy', lvl: 3, cls: 'Rogue', cause: 'slain by a Bristleback Boar ' + KEY2, agent: true}] : []});
   const turnL = (id, name, prov, model, i, o) => ({ts: ts(i * 10), seat: 'hero:' + id, hero: i % 3 ? {id, name} : null, provider: prov, model, turn: i, tools: o.tools || [{name: 'look', ok: true}], calls: (o.tools || [1]).length,
     narration: 'SECRET-NARRATION-' + name + ' ' + KEY2, seconds: o.s, tokensIn: o.tin ?? 1000, tokensOut: 50, cacheRead: prov === 'anthropic' ? 3000 : null, cacheWrite: prov === 'anthropic' ? 200 : null, cost: o.cost ?? 0, flags: o.flags || []});
@@ -238,13 +250,14 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   const rm = writeReport(join(ROOT, 'minds'), 'mock'), mmd = readFileSync(rm.file, 'utf8'), sec = (mmd.split('## Mind comparison')[1] || '').split('## World')[0];
   const rowOf = n => (sec.split('\n').find(l => l.startsWith('| ' + n + ' |')) || '').split('|').slice(1, -1).map(s => s.trim());
   const ann = rowOf('Ann'), bo = rowOf('Bo'), cy = rowOf('Cy');
-  ok(/## Mind comparison/.test(mmd) && ann.length === 20 && bo.length === 20 && cy.length === 20, 'report has a Mind comparison table with a row per member (#280)');
+  ok(/## Mind comparison/.test(mmd) && ann.length === 24 && bo.length === 24 && cy.length === 24, 'report has a Mind comparison table with a row per member (#280)');
   ok(ann[2] === 'ollama/qwen2.5:14b' && ann[3] === '10' && ann[4] === '2' && ann[5] === '1' && ann[6] === '1', `Ann on qwen: 10 turns (unnamed lines named from the digests), 2 empty, 1 failed, 1 Table answer: ${ann.slice(2, 7).join(' ')}`);
   ok(ann[7] === '-' && ann[8] === '-' && ann[9] === '-' && ann[12] === '-', 'a member with no decisions shows "-", not zero');
   ok(/2 by anthropic\/claude-haiku-5-5 \(1 failed\)/.test(ann[10]) && !sec.split('\n').some(l => l.startsWith('| Ann | tank | anthropic')), 'the relay writing Ann\'s sheet is folded into her row, not shown as her mind');
   ok(ann[11] === '5 / 9 s' && ann[16] === '6 (3, 0)' && ann[17] === '1', `Ann: turn seconds p50/p90, digest hours with autopilot, one close call: ${ann[11]} | ${ann[16]} | ${ann[17]}`);
   ok(bo[2] === 'anthropic/claude-haiku-5-5' && bo[7] === '4' && bo[8] === '1' && bo[9] === '2' && bo[12] === '500 / 9000 ms' && bo[15] === '$0.0400' && bo[13] === '16000 / 200' && bo[14] === '12000' && ann[14] === '-', `Bo on Claude: 4 decisions, 1 rejected, 2 fallbacks, decision ms p50/p90, cost: ${bo.slice(7, 16).join(' | ')}`);
-  ok(cy[3] === '-' && cy[16] === '4 (0, 4)' && /died: slain by a Bristleback Boar/.test(cy[19]) && ann[18] === '1' && bo[18] === '1' && cy[18] === '0', `deaths survived and lifetimes from the digests: Ann ${ann[18]}, Bo ${bo[18]}, Cy ${cy[19]}`);
+  ok(cy[3] === '-' && cy[16] === '4 (0, 4)' && /died: slain by a Bristleback Boar/.test(cy[20]) && ann[18] === '1' && bo[18] === '1' && cy[18] === '0', `deaths survived and lifetimes from the digests: Ann ${ann[18]}, Bo ${bo[18]}, Cy ${cy[20]}`);
+  ok(ann[19] === '3 / 1' && bo[19] === '0 / 0' && cy[19] === '-', `rules written / with abilities: the latest total from the digests, not a sum, and "-" for a member with no data (#779): ${ann[19]} | ${bo[19]} | ${cy[19]}`);
   ok(/\| ollama\/qwen2\.5:14b \| 2 \| 10 \| 2 \(20%\) \| 1 \(10%\) \|/.test(sec) && /\| anthropic\/claude-haiku-5-5 \| 2 \| 4 \|/.test(sec), 'overall per mind: qwen 10 turns 20% empty, Claude Haiku 4 turns');
   ok(/12 by the agent, 1 by reflex/.test(sec), 'overall Table turns by agent vs reflex from the digests');
   ok(!mmd.includes(KEY2) && sec.includes('[redacted]') && !sec.includes('SECRET-'), 'the comparison redacts keys and shows no narration or DM text');
@@ -338,6 +351,36 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   const dirO = join(ROOT, 'dmshare-old'); mk3(dirO, {recursive: true}); writeFileSync(join(dirO, FILES.world), JSON.stringify({ts: new Date().toISOString(), gameMin: 600, members: [], levers: {}}) + String.fromCharCode(10));
   const mdo = readFileSync(writeReport(ROOT, 'dmshare-old').file, 'utf8');
   ok(/predate #541/.test(mdo), 'report on old digests says the counters are missing instead of showing zeros');
+}
+
+// ---- 6b. a busy page (#736): the page's own page-stall anomaly and hour digest, and the relay's when a call times out on a silent page ----
+console.log('a busy page (#736)');
+{const {EventEmitter} = await import('node:events'), {mkdirSync: mk4} = await import('node:fs');
+  const fakePage = () => {const ws = new EventEmitter(); ws.readyState = 1; ws.sent = []; ws.send = t => ws.sent.push(JSON.parse(t)); ws.close = () => {}; ws.say = o => ws.emit('message', Buffer.from(JSON.stringify(o))); return ws};
+  // the page side: the bridge sends the watchdog's anomaly and the digest with its page field
+  const dirP = join(ROOT, 'pagestall'); mk4(dirP, {recursive: true});
+  const blP = behaviorLog({root: dirP, world: 'ps', log: () => {}}), srvP = http.createServer(), playP = attachPlay(srvP, {behavior: blP, log: () => {}});
+  const wsP = fakePage(); playP.backend.attach(wsP); wsP.say({type: 'hello', heroes: [{id: 1, name: 'Ann', alive: true}], world: 'ps'});
+  wsP.say({type: 'behavior', kind: 'anomaly', rec: {kind: 'page-stall', seat: 'page', severity: 'bad', text: 'the page froze for 3.2 s · dungeon The Sunken Crypt room 2/5 · 3440x1300', evidence: {ms: 3200, render: 3198, where: 'dungeon The Sunken Crypt room 2/5'}}});
+  wsP.say({type: 'behavior', kind: 'world', rec: {gameMin: 60, members: [], page: {longFrames: 4, worstMs: 3200, where: 'dungeon The Sunken Crypt room 2/5'}}});
+  const anP = readJsonl(join(dirP, 'ps'), FILES.anomaly), wdP = readJsonl(join(dirP, 'ps'), FILES.world);
+  ok(anP.some(a => a.kind === 'page-stall' && a.seat === 'page' && a.evidence.ms === 3200), 'the page\'s page-stall anomaly lands in anomalies.jsonl');
+  ok(wdP.some(d => d.page && d.page.longFrames === 4 && d.page.worstMs === 3200 && /Sunken Crypt/.test(d.page.where)), 'the world digest carries page {longFrames, worstMs, where}');
+  const mdP = readFileSync(writeReport(dirP, 'ps').file, 'utf8'); ok(/page-stall/.test(mdP), 'the report lists page-stall next to the other anomalies');
+  srvP.close();
+  // the relay side: a call that times out while the page sent nothing (no beat) is page busy, an anomaly, and the page is told
+  const dirR2 = join(ROOT, 'pagestall-relay'); mk4(dirR2, {recursive: true});
+  const blR = behaviorLog({root: dirR2, world: 'pr', log: () => {}}), srvR = http.createServer(), lines = [];
+  const playR = attachPlay(srvR, {behavior: blR, log: l => lines.push(l), pageOpts: {callMs: 120, silentMs: 80}, offlineWaitMs: 50});
+  const wsR = fakePage(); playR.backend.attach(wsR); wsR.say({type: 'hello', heroes: [{id: 1, name: 'Ann', alive: true}], world: 'pr'});
+  await new Promise(r => setTimeout(r, 100)); // the page goes silent
+  const r = await playR.call(1, 'status', {});
+  ok(r.offline && r.why === 'page busy', 'a call the silent page never answers comes back offline: page busy (' + r.why + ')');
+  ok(wsR.sent.some(m => m.type === 'pagelate' && m.tool === 'status' && m.silentMs >= 80), 'the page is told the relay gave up on it (pagelate), so its labels read page busy');
+  const anR = readJsonl(join(dirR2, 'pr'), FILES.anomaly);
+  ok(anR.some(a => a.kind === 'page-stall' && a.src === 'relay' && a.evidence.tool === 'status'), 'the relay writes a page-stall anomaly of its own (src relay)');
+  ok(lines.some(l => /page busy/.test(l)), 'and logs a line that names the page');
+  srvR.close();
 }
 
 // ---- 7. rotation by size ----
