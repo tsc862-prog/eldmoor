@@ -188,6 +188,7 @@ jobs:
       - {name: Brain policy and relay (mock model), run: npm run braincheck}
       - {name: Table mode and staged scenes, run: npm run tablecheck}
       - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
+      - {name: Talk guard (introductions and repeats; refused talk counted), run: npm run talkcheck}
       - {name: Companies initiate the Crypt and raids, run: npm run initiatecheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: DM rumours and names for deeds (seed_rumour and bestow), run: npm run rumourcheck}
