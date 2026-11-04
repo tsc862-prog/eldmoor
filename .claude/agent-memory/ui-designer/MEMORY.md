@@ -25,3 +25,4 @@
 - [DM panel, no seat](dm_panel_no_seat.md): #560 Restart DM, DM alert line on the frame, uismoke gate-state gotcha
 - [Gambit diff](gambit_diff.md): #679 gambitDiff/ownRule, Agent tab marks, sheet Agent row; Bash heredocs halve backslashes
 - [Downed UI](downed_ui.md): #659 downview.js, save flash by tally diff, purposeFor, timeline from hero Logs, banner on #698 beats
+- [Setup/title wide](setup_title_wide.md): #847 wide layout, details for professions, sticky Start bar
