@@ -133,6 +133,13 @@ const money = v => '$' + (v || 0).toFixed(4);
 export const turnPrompt = (turns, w = null) => turns === 0 ? 'Begin. Get to know yourself and your surroundings (status, look, journal_read), write a first journal entry, then act.'
   : `Turn ${turns + 1}. Continue living your life.${wakeNote(w)} Answer and speak only in English.`;
 // Between turns: wait for the game (scripts/pacing.mjs). -> {w} or {end: why the run is over}
+async function firstTurn(pacer) { // the first turn waits for a held world like a paced one (#770)
+  const r = await pacer.ready();
+  if (r.dead) return {end: 'the hero is dead'};
+  if (r.gone) return {end: 'the hero left agent play'};
+  if (r.stopped) return {end: 'stopped'};
+  return {};
+}
 async function between(pacer) {
   const w = await pacer.next();
   if (w.dead) return {end: 'the hero is dead'};
@@ -183,7 +190,7 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
   let ended = null, runIn = 0, runOut = 0, t0 = Date.now(), lastNote = null; const fails = failTracker(pace.maxFails);
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     let r = null, w = null;
-    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w} else {const b = await firstTurn(pacer); if (b.end) {ended = b.end; break}}
     {const n = await localModelNote(ol, rs.model); if (n && n !== lastNote) console.log('[agent] ' + n); lastNote = n} // before every turn: another model on the GPU
     const b0 = await pacer.brief(); let err = null;
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
@@ -214,7 +221,7 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
   for (let turn = 1; turn <= maxTurns && !ended; turn++) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let r = null, w = null;
-    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    if (turn > 1) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w} else {const b = await firstTurn(pacer); if (b.end) {ended = b.end; break}}
     const b0 = await pacer.brief(); let err = null;
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
     try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a reflection moment (issue #179)
@@ -305,7 +312,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (spent >= budget) {ended = 'budget reached'; break}
     let w = null;
     const again = resume; resume = false;
-    if (turn > 1 && !again) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w}
+    if (turn > 1 && !again) {const b = await between(pacer); if (b.end) {ended = b.end; break} w = b.w} else if (turn === 1) {const b = await firstTurn(pacer); if (b.end) {ended = b.end; break}}
     let b0 = await pacer.brief(); const tc = turnCollector(); let err = null; // the behavior log (issue #129); a Claude turn's prompt carries the fresh state header and the turn order (#401)
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
