@@ -155,6 +155,7 @@ other. The rules:
   terminals, still works. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
+- `npm run sessioncheck` (#787): Claude sessions kept small, on the real Agent SDK and its CLI binary against a mock Messages API (no key, no network): the compaction window through `query()`'s env, `getContextUsage().autoCompactThreshold`, a real `compact_boundary`, and hero, Fellowship and DM runners end to end (ctx on the turn line, a roll, held back at a scene, the old file, the resume prompt, a "fresh" line, `AGENT_HEAR_WAKE_MIN`, the report's table).
 - `npm run labelcheck` (#563): one steady runner label while a runner holds a seat. A held link reads "live" whether the agent calls tools, thinks or waits for a Claude slot (the relay still reports connected/waiting); a page that just (re)connected reads "connecting" until the relay's first links; a member the Fellowship runner lets go (`[Name] done (why)`, a released claim) leaves the runner's `heroes` for `left: [{id, name, why}]` and reads "no runner" at once, the gate saying why and restarting the Fellowship runner; a claimed seat whose runner has posted a turn line counts as ready (`implied`). The check plays a 120 s silent Claude turn on the real relay, supervisor and page modules with a fake clock.
 - `npm run dm`, `npm run dmcheck`: the DM as an agent (see "DM agent").
 - `npm run channelcheck`: the in-game channels rule (see "In-game channels").
@@ -232,7 +233,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   shows tool calls, narration, the journal and the agent's link). Then one terminal per hero:
   `npm run agent -- --hero <name|id>` (Claude Agent SDK, `claude-sonnet-5-5` by default,
   `AGENT_MODEL` to change; `--budget 1.00` is the default cap per runner, no turn cap (`--max-turns N` optional);
-  cost line per turn). Without `--hero` the runner lists the agent-played heroes and takes
+  cost line per turn, with the session size as `ctx 83k`). Without `--hero` the runner lists the agent-played heroes and takes
   the first living one with no runner, or says none is free.
 - Pacing (issue #126, `scripts/pacing.mjs`, game side `src/sim/pace.js`): turns follow the game, not a
   stopwatch. Between turns a runner long-polls `POST /play/pace` (not a tool; it never consumes the hero's
@@ -270,6 +271,12 @@ is silent, and scene choices time out to the scripted branch, so the world never
   pauses the world at once and the banner names who; "Resume anyway" (Start anyway before the first run) overrides until
   the next change. Headless sims and checks without runners are never held. A failed warm-up never
   stops the runner. `npm run localcheck` (slow and crashing mock warm-ups) and `npm run uismoke` cover it.
+- Session size (#787, `scripts/session-roll.mjs`): Claude Haiku 5.5 bills a request by its prompt length, input, cache reads and cache writes all counted: past 100,000 tokens every rate is 5x ($0.10/$0.50 -> $0.50/$2.50 per 1M, cache reads $0.01 -> $0.05; pricing page read 2026-11-04; no other current model has such a line). Left alone the SDK compacts near the 1M window (967k on Haiku), so a stable run lived past the line. Two levers, for hero, company and DM runners alike:
+  - **The roll** (main): between turns, when the last call's prompt (`ctx`, saved as `sess.ctx`) reached the seat's roll point, the session file goes to `logs/agents/old/` as `--new` puts it and the next turn starts a fresh SDK session, logged `[session rolled: 83k tokens]`, counted in `sess.rolls`, the end-of-run line and `logs/fellowship-runs.jsonl`. `SESSION_ROLL_TOKENS` (80000, every hero whatever its model), `DM_ROLL_TOKENS` (150000, but 80000 on Haiku: the line is the model's); 0 turns the roll off. Never inside a turn, with a scene open or due, on a reflection (it needs the day it reflects on), on a turn carrying on after a scene cut, or in the DM's prep. Standing orders with the YOUR PERSONA block, runner settings, turn count, spend and scene marks stay on the session object; the claim and the pacer are not touched; the first turn after a roll is told to read `journal_read` (the DM: `notes_read` and `read_dm_log`). A session saved before `ctx` was kept rolls on its first turn past 15 turns.
+  - **Compaction** (the net, for one long turn or a roll held back): `CLAUDE_CODE_AUTO_COMPACT_WINDOW` through `query()`'s env, set to the roll point + 40000 (an own value in the environment wins). The CLI compacts at the window less 33k (20k output room, 13k buffer), so 120000 compacts at 87k: above the roll point, below the line. It can fire mid-turn, so it is the net, not the path; a scene that comes due meanwhile is served by `sceneGrab`. Each runner reads the threshold back with `getContextUsage` and logs `[session] compaction net at 87k tokens`, or a warning if the SDK stops honouring it. With `SESSION_ROLL_TOKENS=0` the window is the minimum 100000 (compacts at 67k): summaries instead of rolls, mid-turn.
+  - **Shown**: `ctx 212k` on every Claude turn line beside the cost, `ctx`/`rolls` on the runner view (`GET /play/runner`, the biggest member for a company runner), the state line and Agents panel, `ctx` and the `session-rolled` flag in `turns.jsonl`, a `ctx` map per seat in `world.jsonl`, "turns/min", "ctx p50/peak" and "rolls" in the report's Mind comparison, and "Context size and cost" (cost per turn by prompt band). The Start runner picker's **Fresh session** starts with `--new` (`{fresh: true}`, this start only, never saved for a resume; `--new` keeps the hero's mind); the Agents panel's **Fresh sessions for all** is `POST /play/runner/fresh {key?}`: a "fresh" line on stdin, and the runner rolls at its next safe moment (a local or OpenAI mind too: its history empties).
+  - Measured from the owner's runner logs (20 hero logs, Haiku): $0.0075 a turn under 80k against $0.038-$0.044 past 100k, about 10k tokens of growth a turn at the median, 30k at the mean, so a member rolls about every 5 turns.
+- Chatty companies: `AGENT_HEAR_WAKE_MIN` (or `--hear-wake MIN`; default unset = the game's `PK.HEAR_WAKE` 15) is how many game minutes must pass before a companion's line may start this listener's turn again. It rides on the runner's pace calls (`a.playHearGap`, per listener; a runner without it puts the default back).
 - Autopilot: an agent-played hero with no command and no action that went through for `PK.IDLE` (120)
   game minutes, outside an adventure or a scene, carries on for its agent (`a.playIdle`, "autopilot: ..." in
   the Agent tab, with "Last agent order: N game min ago"): rest when hurt, hunt again when its last order was
@@ -303,7 +310,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   **connected** (calling tools), **waiting** (a runner holds it but is thinking or between
   turns), **no runner**.
 - Sessions: one file per hero, `logs/agents/<heroId>.json` (gitignored), with the Agent SDK
-  session id, system prompt, turns, cost and the hero's runner settings (`runner: {provider,
+  session id, system prompt, turns, cost, last context size (`ctx`), rolls and the hero's runner settings (`runner: {provider,
   model, effort}`, default `anthropic` + `claude-sonnet-5-5`; flags override, then saved, then
   env), so each hero can keep its own mind; `anthropic` (Agent SDK) and `ollama` (a local model,
   see "Model providers") and `openai` run today; the relay routes by hero id only. The next run for that hero resumes it. Runners
