@@ -118,6 +118,7 @@ jobs:
       - {name: Session size (real CLI on a mock API), run: npm run sessioncheck}
       - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
+      - {name: Cost report (fixture logs), run: npm run costcheck}
 
   rate:
     name: Model request rate
