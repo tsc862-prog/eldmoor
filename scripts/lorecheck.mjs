@@ -65,7 +65,8 @@ r = act(A, 'move_to', {target: CRYPT.name}); ok(!r.ok, 'move_to an unheard-of la
 // toward the middle of the map: the roster can seat A by the edge, where that way is (rightly) refused as the world's end
 {const {H} = await import('../src/world/tiles.js'); const way = A.y < H / 2 ? 'south' : 'north';
   r = act(A, 'move_to', {target: 'explore ' + way}); ok(r.ok && r.explore, `a direction is always open: ${r.going}`)}
-r = act(A, 'move_to', {target: Math.round(spot.x + 3) + ',' + Math.round(spot.y)}); ok(r.ok, 'coordinates are always open');
+{const {CITY: TW} = await import('../src/world/map.js'), far = (await import('../src/world/map.js')).ZPTS.flat().find(p => TW.every(c => Math.hypot(p.x - (c.x0 + c.x1) / 2, p.y - (c.y0 + c.y1) / 2) > 16)); // clear of every town: an enemy wall refuses
+  r = act(A, 'move_to', {target: Math.round(far.x) + ',' + Math.round(far.y), force: 'yes'}); ok(r.ok, 'coordinates are always open' + (r.ok ? '' : ': ' + r.error))}
 r = act(A, 'move_to', {target: ZONES[home]}); ok(r.ok, 'the home region is known');
 A.pq = []; A.state = 'hunt';
 
@@ -306,7 +307,7 @@ console.log('roads knowledge (#539)');
     S.gameMin += 400; const later = act(Q, 'search', {what: noRes.m2.name}); ok(later.ok !== false, 'the cooldown lapses'); }
   // cache
   S.places = [mk]; Q.srch = {}; Q.pq = []; Q.gold = gold0; delete mk.cacheBy;
-  let got = false; for (let i = 0; i < 30 && !got; i++) { Q.srch = {}; Q.pq = []; S.gameMin += 400; act(Q, 'search', {what: mk.name}); got = !!mk.cacheBy }
+  let got = false; for (let i = 0; i < 30 && !got; i++) { Q.pq = []; S.gameMin += 400; act(Q, 'search', {what: mk.name}); got = !!mk.cacheBy }
   ok(got && Q.gold === gold0 + 25, 'a cache of gold is handed over once');
   Q.srch = {}; Q.pq = []; S.gameMin += 400; const B2 = act(Q, 'search', {what: mk.name}); ok(Q.gold === gold0 + 25, 'the cache is not paid twice');
   ok(Q.pq[0] && Q.pq[0].search, 'a search keeps the hero busy');

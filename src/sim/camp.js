@@ -41,7 +41,7 @@
 import {rnd,ri,hash} from '../core/rng.js';
 import {CITY,LAIR,CRYPT,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
 import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
-import {solidAt} from '../world/passable.js';
+import {solidAt,standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {USES} from '../data/items.js';
 import {campMeal,campLight} from './inv.js'; // rations and torches (sim/inv.js)
@@ -200,7 +200,7 @@ function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zo
   const t=types[ri(0,types.length-1)],M=MOBS[t];
   let p=null;for(let k=0;k<8&&!p;k++){const ang=rnd()*Math.PI*2,x=g.x+Math.cos(ang)*7,y=g.y+Math.sin(ang)*7;if(open(x,y))p={x,y}}
   if(!p)return null;
-  const m=spawnMob(t,null,{lvl:Math.max(M.lv[0]-2,Math.min(M.lv[1]+1,lvl)),add:true});m.xpMul=.6;m.x=p.x;m.y=p.y;m.home={...p};m.spawn={...p};return m}
+  const m=spawnMob(t,null,{lvl:Math.max(M.lv[0]-2,Math.min(M.lv[1]+1,lvl)),add:true});m.xpMul=.6;Object.assign(m,standAt(p.x,p.y));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};return m}
 function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors++;
   const avg=Math.round(L.reduce((s,a)=>s+a.lvl,0)/L.length),spot=check(w,'perception',CAMP.SPOT_DC-(g.lit?USES['Pitch Torch'].watch:0)),victim=L[ri(0,L.length-1)];
   const pass=spot.pass&&!soloSleeps(g); // a solo asleep is caught unroused whatever its roll (the same roll is still made: no dice added)
