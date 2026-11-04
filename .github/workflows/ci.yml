@@ -50,6 +50,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Passability layer check, run: npm run passablecheck}
+      - {name: Paths check, run: npm run pathcheck}
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: init() reset, run: npm run initcheck}
       - {name: Downed and death saves, run: npm run downcheck}
