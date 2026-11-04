@@ -26,6 +26,7 @@
 //   - World-changing tools are rate limited (RATE per game hour).
 // Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
+import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
 import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
@@ -42,6 +43,7 @@ import {S,clockStr,dayNo} from './state.js';
 import {soloFor,companyOf,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
+import {route,doorAt} from './path.js'; // the way a walk goes (#794)
 import {partyMates,leaderOf,leaveParty} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {whisperTo,emoteAct} from './aside.js'; // whisper and emote (#627)
@@ -68,7 +70,7 @@ import {moment,talked,REFLECT} from './reflect.js'; // reflection moments (#179)
 onCamp((kind,g,d)=>{if(kind!=='make'||!g)return;for(const id of g.ids||[])moment(S.agents.find(x=>x.id===id),'camp',d&&d.zone)});
 import {reflexMay,agentLive,hasLinks} from './runlink.js';
 import {notEnglish} from './lang.js';
-import {fileWish} from './wish.js'; // a note for the people who build the game (#663)
+import {fileWish,wishInvite} from './wish.js'; // a note for the people who build the game (#663)
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote} from './council.js';
 import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sightings.js';
@@ -225,7 +227,8 @@ function boardFits(a,mem){const c=homeOf(a),lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x
   for(const h of (S.adventures||[]))if(h.phase==='open'&&h.town===c.name&&!jobFit(a,h,mem)){const zn=h.zone!=null?ZONES[h.zone]:null;out.push('job:'+h.id+' '+jobText(h)+(zn?' ('+zn+')':''))}
   for(const b of bountiesAt(c))if(MOBS[b.type]&&fits(lo,b.z))out.push('bounty: kill '+b.need+' '+MOBS[b.type].pl+' in '+ZONES[b.z]);
   return out.slice(0,4)}
-function townGuard(a){const now=S.gameMin;if(a.state!=='town'||a.hidden){if(a.townIdle)a.townIdle=null;return}
+function townGuard(a){const now=S.gameMin;if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk||a.state==='raid'&&a.raid&&!a.raidOk)return; // a draft it steps out of below is no time away from town
+  if(a.state!=='town'||a.hidden){if(a.townIdle)a.townIdle=null;return}
   const C=companyOf(a),sig=[a.lvl,Math.round(a.xp||0),a.kills||0,Math.round(a.gold||0),a.adv||0,a.quest?a.quest.have||0:-1,heldCount(a),a.conv==null?'':a.conv,invOf(a).list.length].join(',');
   const T=a.townIdle,pause=!!(sceneOf(a)||worldHeld()||a.hp<maxHp(a)*.6||a.splitUntil>now||(C&&(openProps(C).length||openPlans(C).length)));
   if(!T||T.sig!==sig||pause){a.townIdle={at:now,sig,woke:T?T.woke:0};return}
@@ -677,12 +680,22 @@ const FEEL={meadow:'even the meadow beasts here move like hunters',fen:'the air 
   tundra:'the wind brings a bitter cold, and the tracks in the snow are bigger than you are',highland:'the wind howls over bare stone, and something up there has been feeding well'};
 // The first point of the walk that enters such a region: {z, li (the leg), stop (the last safe point before it)}, or null.
 function dangerAhead(a,legs){const here=zoneAt(a.x,a.y);let px=a.x,py=a.y,safe={x:a.x,y:a.y};
-  for(let li=0;li<legs.length;li++){const l=legs[li],k=Math.max(1,Math.ceil(Math.hypot(l.x-px,l.y-py)));
-    for(let i=1;i<=k;i++){const x=px+(l.x-px)*i/k,y=py+(l.y-py)*i/k;
-      if(l.st!=='town'){const z=zoneAt(x,y),b=bandOf(z);if(z!==here&&b&&b[0]>=a.lvl+TP.DANGER)return {z,li,stop:safe}}
-      safe={x,y}}
+  for(let li=0;li<legs.length;li++){const l=legs[li],r=route(px,py,l.x,l.y),pts=r?r.pts:[l.x,l.y]; // the way it will really walk (#794)
+    for(let q=0;q<pts.length;q+=2){const ex=pts[q],ey=pts[q+1],k=Math.max(1,Math.ceil(Math.hypot(ex-px,ey-py)));
+      for(let i=1;i<=k;i++){const x=px+(ex-px)*i/k,y=py+(ey-py)*i/k;
+        if(l.st!=='town'){const z=zoneAt(x,y),b=bandOf(z);if(z!==here&&b&&b[0]>=a.lvl+TP.DANGER)return {z,li,stop:safe}}
+        safe={x,y}}
+      px=ex;py=ey}
     px=l.x;py=l.y}
   return null}
+// The way a walk will go, as facts beside the answer's going and distance (#794; the words are #797's): tiles walked, what stands
+// on the straight line (blocked), the bridges and fords on the way (by: kind, direction and tiles from the hero, the region only
+// when the hero knows it, so a route names no place it has not heard of), the door it ends at, and short when the ground ends it early.
+function routeFacts(a,p){let x=a.x,y=a.y,n=0,blocked=null,short=false;const by=[];
+  for(const l of p.legs){const r=route(x,y,l.x,l.y);if(!r)return null;n+=r.len;blocked=blocked||r.why||null;short=short||!!r.near;
+    for(const c of r.cross||[]){const z=ZONES[zoneAt(c.x,c.y)],o={crossing:c.k,dir:compass(c.x-a.x,c.y-a.y),tiles:Math.round(Math.hypot(c.x-a.x,c.y-a.y))};if(knowsPlace(a,z))o.region=z;by.push(o)}
+    const e=r.pts.length-2;x=r.pts[e];y=r.pts[e+1]}
+  const o={tiles:Math.round(n*10)/10};if(blocked)o.blocked=blocked;if(by.length)o.by=by;const d=doorAt(x,y);if(d)o.door=d.serves||d.piece;if(short)o.ends_short=true;return o}
 function dangerWords(a,z){let gw;const n=ZONES[z],known=knowsPlace(a,n),b=bandOf(z),R=REGIONS[z];
   const feel=FEEL[R&&R.biome]||'the beasts here look far beyond you',worse=b[0]-a.lvl>=10;
   const lw=known?placeWarn(a,n):null,tw=npcWarning(a);
@@ -910,6 +923,7 @@ const T={
       weather:weatherName(z),you:{hp:pct(a.hp,maxHp(a))+'%',state:a.state,doing:a.playDoing||null},sight:here?'the whole town':Math.round(sightOf(a))+' tiles',...s};
     const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv;
     const near=LANDMARKS.filter(l=>dist(a,l)<20).map(l=>l.name+' ('+r1(dist(a,l))+' tiles)');if(near.length)r.landmarks=near;
+    {const road=roadLook(a);if(road.length)r.on_the_road=road} // carts, travellers and guards in sight, in words (#796)
     {const f=followLine(a);if(f)r.following=f;const by=followersOf(a);if(by.length)r.walks_with_you=by.map(b=>b.name+' walks with you')} // follow (#445)
     lookSnap(a);return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
@@ -989,7 +1003,7 @@ const T={
     const p0=plan(a,target);if(p0.error)throw new Rule(p0.error);
     const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // a region far above the hero: stop at its edge first (#465)
     if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;
+    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))},rt=routeFacts(a,p);if(rt)r.route=rt;if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;
     if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;return r},
   talk(a,{target,text}){const t=clean(target,60).toLowerCase();need(t,'Talk to whom?');
     ensureNpcs();const here=cityAt(a);
@@ -1194,7 +1208,7 @@ const T={
       const z=ZONES.indexOf(p.label);
       if(z>=0&&fieldState(a)&&!inTown(a)&&!cityAt(a)&&zoneAt(a.x,a.y)===z){a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;return {ok:true,hunting:what+' in '+ZONES[z],note:'You are already in '+ZONES[z]+'.'}}
       a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label},hunt];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
-      const r={ok:true,going:'going to '+p.label+' to hunt',hunting:what+' once there',distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))};if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r}
+      const r={ok:true,going:'going to '+p.label+' to hunt',hunting:what+' once there',distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))},rt=routeFacts(a,p);if(rt)r.route=rt;if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r}
     a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;
     return {ok:true,hunting:what+' in '+ZONES[zoneAt(a.x,a.y)]}},
   flee(a){need(['fight','duel','assist'].includes(a.state),'You are not in a fight.');flee(a,false);return {ok:true,fleeing_to:homeOf(a).name,hp:pct(a.hp,maxHp(a))+'%'}},
@@ -1356,7 +1370,7 @@ const T={
     const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac); // crafting (#258): a friendly town's workshops, or the camp fire
     const r=craftTool(a,{recipe,count,for:forWho},{inTown:here});need(r.ok,r.why);return r},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
-    if(tv&&!tv.acted&&tv.options&&(tv.your_turn||(tv.phase==='frame'&&sceneOf(a).ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
+    if(tv&&!tv.acted&&tv.options&&tv.waiting_for!=='the DM'&&(tv.your_turn||(tv.phase==='frame'&&sceneOf(a).ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
     let m=Math.min(PK.WAIT[1],Math.max(PK.WAIT[0],Math.round(Number(minutes)||60)));
     const noAim=!aimHeld(a)&&m>INTENT.WAIT_NOAIM;if(noAim)m=INTENT.WAIT_NOAIM; // waiting needs a reason and a limit (#535)
     return {ok:true,pending:{hero:a.id,from:S.gameMin,until:S.gameMin+m,mark:a.playEvN||0,realMs:PK.WAIT_REAL_MS,...(noAim?{limit:'You have no aim stated, so the wait is held to '+INTENT.WAIT_NOAIM+' game minutes. intent {goal, why, until} says what you wait for.'}:{})}}},
@@ -1484,7 +1498,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(!a)return {ok:false,error:'No such hero.'};
   if(!a.player)return {ok:false,error:a.name+' is not agent-played.'};
   if(a.state==='dead'){const r={ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+', at '+(a.diedAt||'?')+'). Hardcore: one life. Their story is over.'};logCall(a,tool,args,r);return r}
-  const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'};
+  const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'+wishInvite(a)};
   if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}}
   if(meta.act&&a.state==='downed'&&tool!=='wait'){const r={ok:false,downed:true,offline:true,error:'You are down, bleeding at zero health: you cannot act until someone brings you back or you rise. Listen, remember, or wait.'};logCall(a,tool,args,r);return r} // downed (#626): reads still answer // held before play (#559): look, recall and the other reads still answer
   if(args&&args._pool===true&&(tool==='recall'||tool==='journal_search'))return fn(a,args); // the relay's ask for the texts it embeds (#553): not a turn, not logged
@@ -1496,7 +1510,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   const q0=a.pq&&a.pq[0];let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
-  if(meta.act&&r&&r.ok!==false){holdAnswered(a);a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
+  if(meta.act&&r&&r.ok!==false&&r.act!==false){holdAnswered(a);a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
     if((tool==='move_to'||tool==='hunt'||tool==='follow'||tool==='rest')&&a.intent&&!a.intent.done&&!a.intent.order){const c=a.pq&&a.pq[0];attachOrder(a,orderOf(a,c&&c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c,tool==='move_to'?args&&args.target:null))} // a command under an aim with none becomes its order (#535)
     if(tool==='follow'){const f=a.pq[0];a.playOrder={kind:'follow',id:f.id,until:f.until,h:f.h}}else if(a.playOrder&&a.playOrder.kind==='follow'&&(a.pq&&a.pq[0])!==q0)a.playOrder=null} // a new order ends a standing follow (#445) // the agent's last action that went through (autopilot, #126)
   if(!r.pending){const evs=takeEvents(a);if(evs.length)r.events=evs}
@@ -1506,10 +1520,11 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
 // The wait tool: the host polls waitOver and then calls finishWait (sim/player-host.js).
 export function waitOver(p){const a=hero(p.hero);if(!a||a.state==='dead'||!a.player)return true;if(S.gameMin>=p.until)return true;
   return (a.playEv||[]).some(e=>e.n>p.mark&&e.u)}
-export function finishWait(p,realOut){const a=hero(p.hero);if(!a)return {ok:false,error:'No such hero.'};
+export function finishWait(p,realOut,rest=null){const a=hero(p.hero);if(!a)return {ok:false,error:'No such hero.'};
   const r={ok:true,waited_min:Math.round(S.gameMin-p.from)};r.as_of=day();
   if(a.state==='dead')Object.assign(r,{ok:false,dead:true,error:a.name+' died ('+(a.cause||'fallen')+'). Hardcore: one life.'});
-  else{r.why=S.gameMin>=p.until?'time passed':realOut&&tableView(a)?'the world is paused for a scene at the table':realOut?'the world is paused or slow; nothing much happened':'something needs you';
+  else{if(rest)r.turn_over=true; // #868: nothing to wait for here: the runner ends the turn, pacing wakes it
+    r.why=rest?rest:S.gameMin>=p.until?'time passed':realOut&&tableView(a)?'the world is paused for a scene at the table':realOut?'the world is paused or slow; nothing much happened':'something needs you';
     if(p.limit)r.limit=p.limit;r.hp=pct(a.hp,maxHp(a))+'%';r.state=a.state;r.doing=a.playDoing||null;const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv){r.table=tv;const n=tv.options?waitsNote(a,tv.options):null;if(n)r.table_waits=n}}
   const evs=takeEvents(a);if(evs.length)r.events=evs;
   const e=(a.playLog||[])[0];if(e&&e.tool==='wait'&&e.pending){e.pending=false;e.text=summarize(r)}

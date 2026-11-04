@@ -24,6 +24,7 @@
 // a ward reaches those near, tending needs their side, and a withdrawal needs the stair. GEO.ON=false, or a room with no grid, plays as before.
 import {rnd,ri,pickA} from '../core/rng.js';
 import {CRYPT} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {BESTIARY,VARIANTS,ROLES,heroTag,baseId} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
 import {S} from './state.js';
@@ -281,7 +282,7 @@ function outcome(sc){const g=grp(sc);if(!g)return '';const cr=g.crawl,room=rooms
 setSceneKind('crawl',{options,reflex,apply,outcome,view,move:moveOf,place:placeMove,spotOf});
 
 // ---- the driver, once per step while the group is inside (called from dungeon.js dungeonCheck) ----
-function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;a.x=D.x+(rnd()-.5)*1.5;a.y=D.y+.5+rnd()*.6}}
+function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;Object.assign(a,standAt(D.x+(rnd()-.5)*1.5,D.y+.5+rnd()*.6))}}
 const endGroup=g=>{if(g.site!=null){const D=siteById(g.site);if(D)D.group=null}else CRYPT.group=null};
 const whoOf=g=>{const C=g.crawl&&companyById(g.crawl.co);return {t:g.name||(C?C.name:'The company'),c:'f'+g.fac}};
 function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats;leave(g);
@@ -299,7 +300,7 @@ function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats;leave(g);
 // Called when the group has no one left (everyone fell): the wipe, at the table's dice.
 export function crawlLost(g){const who=whoOf(g),D=dunOf(g);
   for(const a of crewOf(g))bleedOut(a); // nobody stands to carry them: the downed die where they lie (#654)
-  for(const a of g.mem)if(living(a)){a.hidden=false;a.x=D.x+(rnd()-.5)*1.5;a.y=D.y+.5+rnd()*.6;record(a,'Came up the stair alone from ',gd(D.name),'.');goHome(a)} // fill-ins who rode along with a crew that fell
+  for(const a of g.mem)if(living(a)){a.hidden=false;Object.assign(a,standAt(D.x+(rnd()-.5)*1.5,D.y+.5+rnd()*.6));record(a,'Came up the stair alone from ',gd(D.name),'.');goHome(a)} // fill-ins who rode along with a crew that fell
   log(who,' was lost in ',gd(D.name),'. No one came back up the stair.');timeline('death',who,' was lost in ',gd(D.name),' to the last man.');
   if(g.site!=null&&SITE_END)SITE_END(g,'wiped');
   tally('wipes',g,g.crawl)}

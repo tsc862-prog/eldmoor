@@ -34,7 +34,7 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
-import {fileWish} from './wish.js'; // #663
+import {fileWish,wishInvite} from './wish.js'; // #663
 import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS,validate as leverValidate} from './levers.js';
 import {log as chronLog} from './chronicle.js';
 import {setWhen,setWatch,cancel as whenCancel,whensView,whenStatus,whenTick,setWhenHooks} from './dmwhen.js'; // deferred actions and chosen wakes (#635)
@@ -62,6 +62,7 @@ import {woundSpanWord} from './tend.js'; // lasting wounds in the DM's needs (#6
 import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
 import {installRumourLever,rumoursView} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever,epithetView} from './epithet.js'; // bestow (#638)
+import {trafficView} from './traffic.js'; // who is on the road (#796)
 import {installSummonLever,summonView,summonedAlive,SUMMON} from './summon.js'; // summon_hero (#780)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
@@ -277,6 +278,7 @@ function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
     ...(F?{fellowship_regions:fo?[...fo.zones].map(z=>ZONES[z]):[],note:'Fellowship first: start an event only when nothing is pending for them, in a region they ride (fellowship_regions) or are headed to, and say why it serves their story.'}:{})}}
 
 // companies_needs is shown once a company other than the Fellowship rides (with the Fellowship alone dm_status reads as before).
+const roadTraffic=()=>{const v=trafficView(S.agents.filter(a=>a.company!=null&&a.state!=='dead'));return v?{road_traffic:v}:{}};
 const manyCompanies=()=>{const fs=focuses();return fs.length>1||fs.length===1&&!fs[0].company.slots};
 export const COMPANIES_FIRST='Every company is a thread: serve the company at the head of companies_needs first (the followed company first only when it must choose), then each other company in turn, the one longest without you next; a split-off member is a thread of its own, and a solo is the most fragile.';
 const unheardOf=D=>{const u=unheard(D),n=u.reduce((t,r)=>t+r.lines,0);return {total:n,by_company:u,...(n?{note:'Words were said aloud that you have not heard: read hear first.'}:{})}};
@@ -294,6 +296,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
+    ...roadTraffic(), // carts and travellers, nearest the companies first: stage_scene near "traffic:<n>" (#796)
     ...(compSummary()?{companions:compSummary()}:{}), // scripted companions of agent companies speak through you (#764)
     ...(S.sites?{sites:sitesView()}:{}), // the dungeon sites you raised (#69): state hidden, discovered, entered, cleared or collapsed
     proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,
@@ -444,7 +447,7 @@ function pullLever(a,via){const day=today(),D=dmState(),name0=clean(a.lever,40),
   const refuse=(why,usage)=>leverRefuse(name,why,usage,reason,params&&typeof params==='object'?params:String(a.params).slice(0,200),via);
   const call=via?via.usage:'call it as pull_lever {"lever":"'+(name||'<name>')+'","params":{...},"reason":"one sentence"}';
   if(!name)return refuse('lever is required (one of: '+leverNames().join(', ')+')',call);
-  if(!LEVERS[name])return refuse('no such lever "'+name+'"; levers: '+leverNames().join(', '));
+  if(!LEVERS[name])return refuse('no such lever "'+name+'"; levers: '+leverNames().join(', ')+'.'+wishInvite(dmState()));
   const usage=via?via.usage+'. The lever: '+leverUsage(name):leverUsage(name)+'; '+call;
   if(!params)return refuse('params must be an object such as {"region":"'+ZONES[0]+'"}',usage);
   if(name==='named_foe')return refuse('named foes are raised by the scripted DM inside a running scene');
@@ -767,7 +770,7 @@ const GROUND_ERR=/open ground|walkable|tiles of|inside|too close|off the map|unk
 export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();
   const lv=LEVERS[lo]?lo:Object.keys(LEVERS).filter(n=>lo.includes(n)).sort((x,y)=>y.length-x.length)[0];
   if(lv&&leverNames().includes(lv))return {ok:false,error:'"'+s+'" is not a tool'+(lv===lo?'':'; it looks like the lever '+lv)+'. Levers are pulled through pull_lever: pull_lever {"lever":"'+lv+'","params":{...},"reason":"one sentence"}. '+leverUsage(lv)+'.'+(flatOf(lv)?' Or call '+flatOf(lv)+' (flat arguments): '+FLAT_USAGE[flatOf(lv)]+'.':''),hint:'pull_lever',lever:lv,usage:leverUsage(lv)};
-  return {ok:false,error:'Unknown DM tool "'+s+'". Tools: '+DM_TOOLS.map(t=>t.name).join(', ')+'. World levers ('+leverNames().join(', ')+') go through pull_lever.'}}
+  return {ok:false,error:'Unknown DM tool "'+s+'". Tools: '+DM_TOOLS.map(t=>t.name).join(', ')+'. World levers ('+leverNames().join(', ')+') go through pull_lever.'+wishInvite(dmState())}}
 // One DM tool call: validated, answered, never thrown. The seat must be open.
 export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
@@ -776,7 +779,7 @@ export function dmAct(tool,args={}){
   if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
-  const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
+  const prepping=prepActive();prepCall(tool,args); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
   try{r=run(tool,args)}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
   if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene'||tool==='mark_danger'||tool==='custom_foe')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
@@ -840,7 +843,7 @@ function whenFields(){const w=whenStatus();return w?{whens:w.whens,watches:w.wat
 // a hero); a staged scene is previewed. Only shape errors refuse: what may change by then (who is where, the day's limits)
 // is checked again, for real, when it fires. who: the action names the hero who trips it ({who}), so hero and place reads wait.
 function whenCheck(tool,a,o={}){
-  if(tool==='pull_lever'){const name=leverAlias(clean(a.lever,40));if(!LEVERS[name]||!leverNames().includes(name))return {error:'no such lever "'+clean(a.lever,40)+'"; levers: '+leverNames().join(', ')};
+  if(tool==='pull_lever'){const name=leverAlias(clean(a.lever,40));if(!LEVERS[name]||!leverNames().includes(name))return {error:'no such lever "'+clean(a.lever,40)+'"; levers: '+leverNames().join(', ')+'.'+wishInvite(dmState())};
     if(name==='named_foe')return {error:'named foes are raised by the scripted DM inside a running scene'};if(o.who)return null;
     const params=aliasParams(clean(a.lever,40),leverParams(name,a));if(!params)return {error:'params must be an object',usage:leverUsage(name)};
     const v=leverValidate(LEVERS[name],params);return typeof v==='string'?{error:'the lever '+name+': '+v,usage:leverUsage(name)}:null}
