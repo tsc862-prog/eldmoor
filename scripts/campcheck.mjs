@@ -204,7 +204,8 @@ ok(typeof CO.propose(M[0], 'break_camp', 'x') === 'string', 'break_camp refused 
   Z.x = LD.x; Z.y = LD.y; Z.state = 'hunt';
   r = act(Z, 'rest', {hours: 3});
   ok(r.ok && solo.camp && solo.camp.phase && solo.camp.solo === 1, 'rest {hours} makes a solo camp: ' + JSON.stringify(r));
-  for (let i = 0; i < 40 && solo.camp.phase !== 'rest'; i++) run(10);
+  for (let i = 0; i < 40 && solo.camp.phase !== 'rest'; i++) {run(10); if (S.table && S.table.company !== solo.id) await settle()} // another company's scene (an ambush at the Fellowship's camp) holds the world: settle it first
+  if (S.table && S.table.company !== solo.id) await settle();
   const mh = SIM.maxHp ? SIM.maxHp(Z) : Z.maxhp; Z.hp = Math.round(mh * .2); const h0 = Z.hp; step(1 / 60);
   const got = Z.hp - h0, want = mh * CAMPM.CAMP.CAMP_HEAL * CAMPM.CAMP.SOLO_HEAL / 60;
   ok(Math.abs(got - want) < 1e-6, 'a one-person camp heals at SOLO_HEAL of CAMP_HEAL (' + got.toFixed(3) + ' vs ' + want.toFixed(3) + ' a tick)');
