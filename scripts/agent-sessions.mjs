@@ -8,6 +8,7 @@
 import {existsSync, readFileSync, writeFileSync, mkdirSync, renameSync, rmSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {PROVIDERS} from '../src/data/providers.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const LOGS = process.env.AGENT_LOGS ? resolve(process.env.AGENT_LOGS) : join(ROOT, 'logs'); // AGENT_LOGS: tests keep their sessions elsewhere
@@ -58,7 +59,7 @@ export function setAside(sess, logs = LOGS) {const f = sessionPath(sess.heroId, 
 // then the hero's saved settings, then the defaults (environment / built-in). Returns the settings
 // and whether they changed what was saved.
 export const DEFAULT_PROVIDER = 'anthropic';
-export const RUNNER_PROVIDERS = ['anthropic', 'ollama', 'openai', 'huggingface', 'google']; // providers with an agent runner (google: Gemini, #672)
+export const RUNNER_PROVIDERS = PROVIDERS; // providers with an agent runner: the one list, hero or DM (#824)
 export function runnerSettings(sess, overrides = {}, defaults = {}) {
   const saved = sess && sess.runner && typeof sess.runner === 'object' ? sess.runner : {};
   const pick = k => overrides[k] != null && overrides[k] !== '' ? String(overrides[k]) : saved[k] != null ? String(saved[k]) : defaults[k] != null ? String(defaults[k]) : null;

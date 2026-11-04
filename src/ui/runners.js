@@ -12,11 +12,15 @@
 //                              sent with the next start, and to a running runner live (lowering applies now)
 //   sessionInfo() / setSessionBudget(v)  the budget across all paid runners and the spend so far (kept per viewer,
 //                              re-sent when the relay restarts)
+//   budgetText(r)              a budget stop in words: "budget spent: $2.05 of $2.00" (#807)
+//   startCost(kind,hero) / costNote(kind,hero)  what another start would spend, a number and " · another $2.00"
+//   restartRunner(kind,hero)   stop it, wait until it is gone, start it: one click (#807)
 //   runnerSig(a)               what the controls show, for the callers' rebuild signatures
 //   initRunners(after)         one delegated handler for every control on the page
 // When the relay runs without --runners the controls say how to turn it on; the world never waits on any of this.
 import {bridgeUrl} from './player-bridge.js';
 import {priceLabel} from './pricelabel.js';
+import {PROVIDERS} from '../data/providers.js';
 import {S,playerSeats} from '../sim/index.js';
 import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
@@ -46,6 +50,7 @@ export function ollamaBusy(a){const r=runnerFor(a);if(!r||DONE[r.state]||r.provi
 // The runner's own reason: "stopped after N turns (reason)", else the crash error, else a keyword in its last lines.
 export function reasonOf(r,a){
   if(a&&a.state==='dead')return 'the hero died';
+  if(r.budgetSpent)return budgetText(r);
   const L=(r.lines||[]).slice(-6);
   const m=[...L].reverse().map(l=>l.match(/stopped after \d+ turns[^()]*\(([^)]+)\)/)).find(Boolean);
   if(r.state==='crashed'){const last=r.error||L[L.length-1]||(r.exit!=null?'exit '+r.exit:'');return 'crashed'+(last?': '+String(last).slice(0,160):'')}
@@ -56,6 +61,20 @@ export function reasonOf(r,a){
   if(/empty|failed turns/i.test(t))return '5 empty or failed turns';
   if(/left agent play|not agent-played/i.test(t))return 'the hero left agent play';
   return 'the runner ended'+(r.exit!=null?' (exit '+r.exit+')':'')}
+
+// A runner that spent its budget (#807): it stays stopped until the owner starts it, so the words and the buttons say what was
+// spent and what another start costs. The relay marks it (budgetSpent); nothing here decides.
+const usd=v=>'$'+(+v||0).toFixed(2);
+export const budgetText=r=>r.spentWhy==='session budget reached'?'session budget spent: '+usd(sessionInfo().spent)+' of '+usd(sessionInfo().budget):'budget spent: '+usd(r.cost)+' of '+usd(r.capBudget!=null?r.capBudget:r.budget);
+export function startCost(kind,hero){const k=keyOf(kind,hero),p=picks[k]||'',r=runnerByKey(k);if(p.startsWith('ollama:')||!p&&r&&r.provider==='ollama')return 0;
+  const K=kindInfo(kind),b=Number(limitOf(k).budget)||(K&&K.defaults?K.defaults.budget:kind==='hero'||kind==='dm'?1:2),s=info&&info.session;
+  return s&&s.left!=null?Math.min(b,s.left):b}
+export const anotherText=v=>v>0?'another '+usd(v):'';
+export const costNote=(kind,hero)=>{const t=anotherText(startCost(kind,hero));return t?' · '+t:''};
+// the ended runner that spent the budget this hero played on: its own, or the Fellowship's or company's it was part of
+const spentFor=a=>allRunners().find(x=>x.budgetSpent&&DONE[x.state]&&(x.key==='hero:'+a.id||(x.heroes||[]).includes(a.id)||x.kind==='fellowship'&&((slotted()&&slotted().ids)||[]).includes(a.id)))||null;
+export const NO_SESSION='No session budget is set: nothing caps what all runners spend together.';
+export const noSessionBudget=()=>{const s=sessionInfo();return !!(info&&info.enabled)&&s.want==null&&s.budget==null};
 
 // For the runner-stop alert (ui/runalert.js).
 const userStop={};
@@ -71,7 +90,7 @@ export function runnerFor(a){if(!a||!info||!info.runners)return null;const own=r
   return any||info.runners.find(r=>!DONE[r.state]&&leftOf(r,a))||own}
 // {id, name, why} when runner r held hero a and let it go, else null (#563)
 export const leftOf=(r,a)=>r&&a&&Array.isArray(r.left)&&r.left.find(x=>x.id===a.id)||null;
-export const runnerSig=a=>{poll();const k=a?'hero:'+a.id:'fellowship',r=a?runnerFor(a):runnerByKey('fellowship'),lf=a&&leftOf(r,a);return (r?r.key+':'+r.state+':'+r.turns+':'+(r.model||'')+':'+r.cost+(lf?':left:'+lf.why:''):'-')+':'+(note[k]||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks[k]||'')};
+export const runnerSig=a=>{poll();const k=a?'hero:'+a.id:'fellowship',r=a?runnerFor(a):runnerByKey('fellowship'),lf=a&&leftOf(r,a);return (r?r.key+':'+r.state+':'+r.turns+':'+(r.model||'')+':'+r.cost+(r.budgetSpent?':spent':'')+(lf?':left:'+lf.why:''):'-')+(a&&spentFor(a)?':spent':'')+':'+(note[k]||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks[k]||'')};
 export const relayUp=()=>up;
 export const kindInfo=kind=>info&&info.kinds&&info.kinds[kind]||null;
 export const pickOf=k=>picks[k]||'';
@@ -89,17 +108,22 @@ async function send(path,body){
   try{const r=await fetch(base()+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));
     return r.ok?{ok:true,runner:j.runner,applies:j.applies,session:j.session,asked:j.asked}:{ok:false,error:j.how||j.error||('HTTP '+r.status)}}
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
-// pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
-const pickBody=(k,lk=k)=>{const p=picks[k]||'',L=limitOf(lk),t={...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:p.startsWith('huggingface:')?{provider:'huggingface',model:p.slice(12)}:p.startsWith('google:')?{provider:'google',model:p.slice(7)}:{}),...t}};
+// pick: '' (the seat's saved mind), 'anthropic', or '<provider>:<model>' for any provider of the one list (#824)
+const pickBody=(k,lk=k)=>{const p=picks[k]||'',L=limitOf(lk),t={...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};const i=p.indexOf(':'),pr=i<0?p:p.slice(0,i),m=i<0?'':p.slice(i+1);return {...(PROVIDERS.includes(pr)?{provider:pr,...(m?{model:m}:{})}:{}),...t}};
 // kind 'company' (#460): `hero` is the company's id and the runner's key is 'company:<id>'
 const keyOf=(kind,hero)=>kind==='hero'?'hero:'+hero:kind==='company'?'company:'+hero:kind;
 // Fresh sessions for all (#787): every live runner sets its conversations aside at its next safe moment, never in a scene.
 export async function freshAll(){const r=await send('/fresh',{});poll(true,true);return r}
-export async function startRunner(kind,hero,pickKey){const k=keyOf(kind,hero);note[k]='';delete userStop[k];
+// by: who asked, for the relay's log (#807): every call here is a click unless the caller says otherwise
+export async function startRunner(kind,hero,pickKey,by='owner'){const k=keyOf(kind,hero);note[k]='';delete userStop[k];
   const lk=pickKey&&limitOf(pickKey).budget&&!limitOf(k).budget?pickKey:k;
-  const r=await send('/start',{kind,...(hero!=null?(kind==='company'?{company:hero}:{hero}):{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k,lk),...(fresh[pickKey||k]||fresh[k]?{fresh:true}:{})});if(!r.ok)note[k]=r.error;else{delete fresh[k];if(pickKey)delete fresh[pickKey]}poll(true,true);return r}
+  const r=await send('/start',{kind,by,...(hero!=null?(kind==='company'?{company:hero}:{hero}):{}),...pickBody(pickKey&&picks[pickKey]?pickKey:k,lk),...(fresh[pickKey||k]||fresh[k]?{fresh:true}:{})});if(!r.ok)note[k]=r.error;else{delete fresh[k];if(pickKey)delete fresh[pickKey]}poll(true,true);return r}
 export async function stopRunner(kind,hero){const k=keyOf(kind,hero);note[k]='';userStop[k]=Date.now();
   const r=await send('/stop',{key:k});if(!r.ok)note[k]=r.error;poll(true,true);return r}
+// Restart is one click (#807): the relay refuses a start while the old child is stopping, so ask again until it has gone (it is killed after 6 s).
+export async function restartRunner(kind,hero){await stopRunner(kind,hero);let r;
+  for(let i=0;i<32;i++){r=await startRunner(kind,hero);if(r.ok||!/already/.test(r.error||''))break;await new Promise(w=>setTimeout(w,250))}
+  return r}
 // A company that is not the five-place Fellowship (#457, #460): Start <company> starts one company runner for a company
 // of two or more agent-played members when none of them has a runner yet (one process plays them all, each with its own
 // session), else a hero runner for each member that has none (a solo, or a company whose members already run apart);
@@ -127,6 +151,7 @@ export function stateLine(r,k){if(note[k])return note[k];
   if(r.turns)bits.push(r.turns+' turn'+(r.turns===1?'':'s'));
   // spend against the budget (owner, #563: the dollar budget is the limit, not turns); a local mind is free
   const bud=r.capBudget!=null?r.capBudget:r.budget;if(bud!=null)bits.push('$'+(r.cost||0).toFixed(3)+' of $'+bud.toFixed(2));else if(r.cost)bits.push('$'+r.cost.toFixed(3));
+  if(r.budgetSpent)bits.push('budget spent');
   // pacing (issue #126): turns per minute, the last turn's age; a turn cap only when one was asked
   if(r.turns&&r.turnsPerMin!=null)bits.push(r.turnsPerMin+'/min');if(r.ctx!=null&&!DONE[r.state])bits.push('ctx '+r.ctx+'k'); // #787: the last call's prompt; Haiku costs 5x past 100k
   if(r.lastTurnAgo!=null&&!DONE[r.state])bits.push('last '+ago(r.lastTurnAgo));if(r.maxTurns!=null&&r.turnCap&&!DONE[r.state])bits.push(r.turnCap);
@@ -149,16 +174,16 @@ function button(label,act,kind,hero,title){const b=el('button','mini runbtn',lab
 export function runnerControl(a,{line=true}={}){poll();const d=el('span','runctl');if(!a||a.state==='dead'||!a.player)return d;
   const r=runnerFor(a),k='hero:'+a.id,on=r&&!DONE[r.state],fel=on&&r.kind!=='hero',lf=fel&&leftOf(r,a);
   const rl=r&&r.kind==='company'?'Company runner':'Fellowship runner';
-  if(lf){d.append(el('span','dm',rl));if(line){const s=el('span','dm runstate r-none',' done with '+a.name+' ('+lf.why+'): no runner; Restart the '+rl.toLowerCase()+' to play on');s.title=tip(r,4);d.append(s)}return d}
+  if(lf){d.append(el('span','dm',rl));if(line){const s=el('span','dm runstate r-none',' done with '+a.name+' ('+lf.why+'): no runner; Restart the '+rl.toLowerCase()+' to play on'+(r.budgetSpent?costNote(r.kind,r.kind==='hero'?r.hero:undefined):''));s.title=tip(r,4);d.append(s)}return d}
   if(fel)d.append(el('span','dm',rl));
   else if(on)d.append(button('Stop runner','stop','hero',a.id,'Stop this hero\'s agent runner (it lets go of the hero; reflexes play on)'));
-  else{const b=button('Start runner','start','hero',a.id,info&&!info.enabled?HOW_TEXT:'Start an agent runner for '+a.name+' from the relay (no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
+  else{const b=button('Start runner'+(spentFor(a)?costNote('hero',a.id):''),'start','hero',a.id,info&&!info.enabled?HOW_TEXT:'Start an agent runner for '+a.name+' from the relay (no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   if(line){const s=el('span','dm runstate r-'+(r&&!note[k]?r.state:'none'),' '+stateLine(r,k));s.title=tip(r,4);d.append(s)}
   return d}
 
 export function fellowshipRunnerControl(name){poll(true);const d=el('div','runctl fbar');const r=runnerByKey('fellowship'),on=r&&!DONE[r.state];
   const others=((slotted()&&slotted().ids)||[]).some(id=>{const x=runnerByKey('hero:'+id);return x&&!DONE[x.state]});
-  if(!on){const b=button('Start '+(name||'the Fellowship'),'start','fellowship',null,info&&!info.enabled?HOW_TEXT:'One runner plays every agent-played member (npm run fellowship, started by the relay)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
+  if(!on){const b=button('Start '+(name||'the Fellowship')+(r&&r.budgetSpent?costNote('fellowship'):''),'start','fellowship',null,info&&!info.enabled?HOW_TEXT:'One runner plays every agent-played member (npm run fellowship, started by the relay)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   if(on||others)d.append(button('Stop all','stopall','fellowship',null,'Stop the Fellowship runner and every member\'s own runner'));
   const s=el('span','dm runstate r-'+(r&&!note.fellowship?r.state:'none'),stateLine(r,'fellowship'));s.title=tip(r,6);d.append(s);
   return d}
@@ -167,30 +192,33 @@ export function fellowshipRunnerControl(name){poll(true);const d=el('div','runct
 export function companyRunnerControl(C){poll(true);const d=el('div','runctl fbar'),L=coHeroes(C),name=C.name||(L.length===1?L[0].name:'the company');
   const cr=runnerByKey('company:'+C.id),con=!!cr&&!DONE[cr.state],live=L.filter(a=>con&&Array.isArray(cr.heroes)&&cr.heroes.includes(a.id)||liveKey('hero:'+a.id));
   if(!L.length){d.append(el('span','dm runstate','No agent-played hero here.'));return d}
-  if(live.length<L.length){const b=button('Start '+name,'startco',null,null,info&&!info.enabled?HOW_TEXT:'Start a hero runner for each agent-played member of this company that has none');b.dataset.runco=String(C.id);if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
+  if(live.length<L.length){const b=button('Start '+name+(cr&&cr.budgetSpent?costNote('company',C.id):''),'startco',null,null,info&&!info.enabled?HOW_TEXT:'Start a hero runner for each agent-played member of this company that has none');b.dataset.runco=String(C.id);if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   if(live.length){const b=button('Stop '+name,'stopco',null,null,'Stop the hero runners of this company (reflexes play on)');b.dataset.runco=String(C.id);d.append(b)}
   if(con){const s=el('span','dm runstate r-'+cr.state,'company runner · '+stateLine(cr,'company:'+C.id)+' · ');s.title=tip(cr,6);d.append(s)}
   d.append(el('span','dm runstate r-'+(live.length?'live':'none'),live.length+' of '+L.length+' runners on'));return d}
-export const companyRunnerSig=C=>{poll(true);const cr=runnerByKey('company:'+C.id);return (cr?cr.state+cr.turns+(cr.model||'')+(cr.heroes||[]).join('.'):'-')+'|'+coHeroes(C).map(a=>{const x=runnerByKey('hero:'+a.id);return a.id+(x?x.state+x.turns+(x.model||''):'-')}).join(',')+':'+up+':'+(info?info.enabled:'?')};
+export const companyRunnerSig=C=>{poll(true);const cr=runnerByKey('company:'+C.id);return (cr?cr.state+cr.turns+(cr.model||'')+(cr.budgetSpent?'spent':'')+(cr.heroes||[]).join('.'):'-')+'|'+coHeroes(C).map(a=>{const x=runnerByKey('hero:'+a.id);return a.id+(x?x.state+x.turns+(x.model||''):'-')}).join(',')+':'+up+':'+(info?info.enabled:'?')};
 
 // The DM agent's runner (#66): Start DM / Stop DM and its state, for the DM panel and the Minds panel's
 // DM row (src/ui/dmseat.js). It plays no hero, so it polls whether or not a hero is agent-played.
 export function dmRunnerControl(){poll(true);const d=el('span','runctl');const r=runnerByKey('dm'),on=r&&!DONE[r.state];
   if(on){d.append(button('Restart DM','restart','dm',null,'Stop the DM runner and start it again (the world waits for the DM meanwhile)'));
     d.append(button('Stop DM','stop','dm',null,'Stop the DM agent: the world pauses until a DM runner is back (Start DM)'))}
-  else{const b=button('Start DM','start','dm',null,info&&!info.enabled?HOW_TEXT:'Start the DM agent from the relay (npm run dm, no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
+  else{const b=button('Start DM'+(r&&r.budgetSpent?costNote('dm'):''),'start','dm',null,info&&!info.enabled?HOW_TEXT:'Start the DM agent from the relay (npm run dm, no terminal needed)');if(info&&!info.enabled||up===false)b.classList.add('off');d.append(b)}
   const s=el('span','dm runstate r-'+(r&&!note.dm?r.state:'none'),' '+stateLine(r,'dm'));s.title=tip(r,6);d.append(s);
   return d}
-export const dmRunnerSig=()=>{poll(true);const r=runnerByKey('dm');return (r?r.state+':'+r.turns+':'+(r.model||'')+':'+(r.error||''):'-')+':'+(note.dm||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks.dm||'')};
+export const dmRunnerSig=()=>{poll(true);const r=runnerByKey('dm');return (r?r.state+':'+r.turns+':'+(r.model||'')+':'+(r.error||'')+(r.budgetSpent?':spent':''):'-')+':'+(note.dm||'')+':'+up+':'+(info?info.enabled:'?')+':'+(picks.dm||'')};
 
 // The mind a runner starts with. models: pulled local models (from the relay's /health), may be empty.
-export function runnerPick(k,models,openai,hf,gm){const s=el('select','msel');s.dataset.runpick=k;s.title='The mind the runner starts with (saved: what this hero used last, else Claude). Hugging Face models share the free allowance with the art pipeline.';
+export const DM_PICK_TITLE='The mind the DM starts with (saved: what the DM used last, else Claude). Stop DM, pick another and Start DM to switch: the notes, plans and DM log stay with the world; on another provider the old conversation is set aside in logs/agents/old/ and the DM reads its notes again. Hugging Face models share the free allowance with the art pipeline.';
+export function runnerPick(k,models,openai,hf,gm){const s=el('select','msel');s.dataset.runpick=k;s.title=k==='dm'?DM_PICK_TITLE:'The mind the runner starts with (saved: what this hero used last, else Claude). Hugging Face models share the free allowance with the art pipeline.';
   // Claude by model (the owner pays per model): Haiku is also what a runner started here plays when nothing is saved
   const opts=[['','saved mind (new: Claude Haiku)'],['anthropic:claude-haiku-5-5','Claude Haiku'],['anthropic:claude-sonnet-5-5','Claude Sonnet']].concat((models||[]).map(m=>['ollama:'+m,m+' · local'])).concat((openai||[]).map(m=>['openai:'+m,m+' · openai'+(openai&&openai.prices?priceLabel(openai,m):'')])).concat((hf||[]).map(m=>['huggingface:'+m,m+' · huggingface'])).concat((gm||[]).map(m=>['google:'+m,m+' · google'+(gm&&gm.prices?priceLabel(gm,m):'')]));
   if(picks[k]&&!opts.some(o=>o[0]===picks[k]))opts.push([picks[k],picks[k].replace(/^(ollama|openai|huggingface|google|anthropic):/,'')+(picks[k].startsWith('openai:')?' · openai':picks[k].startsWith('huggingface:')?' · huggingface':picks[k].startsWith('google:')?' · google':picks[k].startsWith('anthropic')?'':' · local')]);
   for(const [v,t] of opts){const o=new Option(t,v);if(v===(picks[k]||''))o.selected=true;s.append(o)}
   // the budget the runner starts with (owner, #563: dollars are the limit, a runner plays until stopped); also in the Agents panel
-  const w=el('span','runpick');w.append(s,budgetPick(k),freshPick(k));return w}
+  const w=el('span','runpick');w.append(s,budgetPick(k),freshPick(k));
+  if(noSessionBudget()){const n=el('span','dm',' no session budget');n.title=NO_SESSION+' Set one under Agents.';w.append(n)} // #807: shown, never defaulted
+  return w}
 // Fresh session (#787): the next start from here sets the old conversation aside (--new). The hero keeps its journal, notes and persona.
 function freshPick(k){const l=el('label','runfresh'),c=document.createElement('input');c.type='checkbox';c.dataset.runfresh=k;c.checked=!!fresh[k];l.title='Start with a new conversation: cheaper turns. The hero keeps its journal, notes and persona, and the old session is kept in logs/agents/old/.';l.append(c,' Fresh session');return l}
 const KIND_OF=k=>k==='dm'||k==='fellowship'?k:/^co(mpany)?:/.test(k)?'company':'hero';
@@ -203,7 +231,7 @@ export function budgetPick(k){const K=kindInfo(KIND_OF(k)),cap=K&&K.caps?K.caps.
 export function initRunners(after){const done=after||(()=>{});
   const act=async t=>{if(t.dataset.runco!=null){const C=(S.companies||[]).find(x=>x.id===+t.dataset.runco);if(C){if(t.dataset.runact==='startco')startCompany(C).then(done);else stopCompany(C).then(done)}done();return}
     const k=t.dataset.runkind,h=t.dataset.runhero!=null?+t.dataset.runhero:null,a=t.dataset.runact;
-    if(a==='start')startRunner(k,h).then(done);else if(a==='stop')stopRunner(k,h).then(done);else if(a==='stopall')stopAllFellows().then(done);else if(a==='restart')stopRunner(k,h).then(()=>startRunner(k,h)).then(done);done()};
+    if(a==='start')startRunner(k,h).then(done);else if(a==='stop')stopRunner(k,h).then(done);else if(a==='stopall')stopAllFellows().then(done);else if(a==='restart')restartRunner(k,h).then(done);done()};
   // pointerdown as well as click: the hero card is rebuilt several times a second, which can swallow a click
   let downAt=0;
   document.addEventListener('pointerdown',e=>{if(e.button!==0)return;const t=e.target&&e.target.closest?e.target.closest('[data-runact]'):null;if(!t)return;e.preventDefault();e.stopPropagation();downAt=Date.now();act(t)},true);

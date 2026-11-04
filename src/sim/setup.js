@@ -37,11 +37,13 @@ import {RACES,racesOf,homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {WORLDS} from '../world/spec.js';
 import {S} from './state.js';
 import {makeHero} from './heroes.js';
 import {rollScores} from './abilities.js';
 import {disableBrain,MIND_PROVIDERS} from './brain.js';
+import {PROVIDERS} from '../data/providers.js';
 import {markPlayer} from './player.js';
 import {setDmSeat} from './dmagent.js';
 import {PROF,MAX_PROF} from '../data/professions.js';
@@ -64,7 +66,7 @@ export function seatCap(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];re
 export function seatNote(s0){const H=s0&&Array.isArray(s0.heroes)?s0.heroes:[];
   return H.length>SEATS.PAID&&seatCap(s0)===SEATS.LOCAL?H.length+' local minds share one GPU: each agent turn will be slow (expect long waits between turns).':''}
 export const CLAUDE_MODELS={haiku:'claude-haiku-5-5',sonnet:'claude-sonnet-5-5'};
-export const SETUP_PROVIDERS=['anthropic','ollama','openai','huggingface','google']; // what the runners can start with
+export const SETUP_PROVIDERS=PROVIDERS; // what the runners can start with, hero or DM: the one list (#824)
 export const MIND_MODES=['agent']; // a hero's mind (#148)
 export const DM_MODES=['agent']; // the DM's mind (#520): always an agent
 export const ARCHETYPE_RANDOM='random';
@@ -238,7 +240,7 @@ export function suggestName(raceId,u1=rnd(),u2=rnd()){const r=RACES.find(x=>x.id
 const free=(a,fac,used)=>a.kind==='hero'&&a.state!=='dead'&&a.fac===fac&&!inSlots(a)&&!a.player&&!used.has(a.id);
 // Make a level-1 hero of this people: new skin, hair and home town, abilities rolled again.
 export function restyle(a,raceId){const r=RACES.find(x=>x.id===raceId);if(!r||r.fac!==a.fac||a.race===r.id)return;
-  a.race=r.id;a.skin=pickA(r.skin);a.hair=pickA(r.hair);a.town=r.home;const c=homeOf(a);a.town=c.name;a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;rollScores(a)}
+  a.race=r.id;a.skin=pickA(r.skin);a.hair=pickA(r.hair);a.town=r.home;const c=homeOf(a);a.town=c.name;Object.assign(a,standAt(c.x0+2+rnd()*7,c.y0+4+rnd()*3));rollScores(a)}
 // One hero for a setup entry: a level-1 recruit of the chosen class (and people, when one of the roster already
 // is), else a fresh newcomer made to fit; then the chosen people and name.
 function pickOne(p,fac,used,taken){

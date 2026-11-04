@@ -34,6 +34,7 @@ import './company.js'; // load order: keep the module graph as before (an import
 import {companyOf,companyById,companies,members,isSolo,campaign as clog,slotted} from './company.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
 import {reflexMay,ownerHeld} from './runlink.js';
+import {wounded} from './wounds.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {inRange,together,outOfRange,nameList,makePlan,reachTick,toldBy,REACH} from './reach.js';
 
@@ -108,7 +109,7 @@ export function setCampHook(f){campHook=f} // sim/camp.js: break the camp when a
 // How a member votes by reflex: its runner is gone (and the owner said go on), or its agent let HOLD_MIN pass.
 export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
   switch(P.kind){
-  case 'crypt':return a.lvl>=7&&!hurt?'yes':'no';
+  case 'crypt':return a.lvl>=7&&!hurt&&!wounded(a)?'yes':'no'; // a reflex says no with a wound on it (#656)
   case 'raid':return a.lvl>=14&&!hurt?'yes':'no';
   case 'split':return 'no';
   case 'site':return siteHook?siteHook.vote(a,P):'no';
