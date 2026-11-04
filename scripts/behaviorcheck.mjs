@@ -216,6 +216,16 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   ok(r3[7] === '4' && r3[8] === '25%' && r3[9] === 'Wren', `a solo: its member's agent turns and empty share (${r3.join(' | ')})`);
   ok(Array.isArray(rc.companies) && rc.companies.length === 3, 'buildReport returns the per-company data');}
 
+// ---- 6a. rules the heroes wrote themselves (issue #779): the digest's per-hero count reaches the report ----
+{
+  const GD = join(ROOT, 'gambitwrote', 'mock'); const {mkdirSync: mkg} = await import('node:fs'); mkg(GD, {recursive: true});
+  const gt = Date.parse('2026-11-01T10:00:00Z');
+  writeFileSync(join(GD, FILES.world), [1, 2].map(h => JSON.stringify({ts: new Date(gt + h * 60000).toISOString(), gameMin: 60 * h, members: [],
+    gambits: {Hale: {acts: 2, edits: 3 * h, noFlee: false, own: true, wrote: 2 * h, wroteAb: h - 1}, Ivo: {acts: 1, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}}})).join('\n') + '\n');
+  const rg = writeReport(join(ROOT, 'gambitwrote'), 'mock'), gmd = readFileSync(rg.file, 'utf8');
+  ok(/rules written \/ with abilities/.test(gmd) && /\| Hale \|[^\n]*\| 4 \/ 1 \|/.test(gmd) && /\| Ivo \|[^\n]*\| 0 \/ 0 \|/.test(gmd), 'report: rules each hero wrote itself and how many name use_ability (latest total, not summed)');
+}
+
 // ---- 6b. the mind comparison (issue #280) on mock logs: two members on qwen, one on Claude, a death, writing calls ----
 {
   const MD = join(ROOT, 'minds', 'mock'); const {mkdirSync} = await import('node:fs'); mkdirSync(MD, {recursive: true});

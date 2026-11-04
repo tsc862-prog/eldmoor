@@ -133,7 +133,7 @@ export function makeWatch(opts={}){
   // flagged no-flee-rule (once, and again every BW.NO_FLEE_MIN while it lasts)
   function rules(out,a,t,now){if(!a.player)return;const g=gambitRec(a),n=g?g.n:0,nf=noFlee(a);const en=a.gambitEdits||0;if(t.gn==null){t.gn=n;t.ge=en}
     const edits=Math.max(0,en-t.ge),acts=Math.max(0,n-t.gn);t.gn=n;t.ge=en;
-    if(acts||edits||nf||a.gambits){const G=H.gambits[a.name]||(H.gambits[a.name]={acts:0,edits:0,noFlee:false,own:false});G.acts+=acts;G.edits+=edits;G.noFlee=nf;G.own=!!a.gambits}
+    if(acts||edits||nf||a.gambits){const G=H.gambits[a.name]||(H.gambits[a.name]={acts:0,edits:0,noFlee:false,own:false,wrote:0,wroteAb:0});G.acts+=acts;G.edits+=edits;G.noFlee=nf;G.own=!!a.gambits;G.wrote=a.gambitWrote?a.gambitWrote.n:0;G.wroteAb=a.gambitWrote?a.gambitWrote.ab:0}
     if(!nf){t.nfAt=null;return}if(t.nfAt==null||now-t.nfAt>=BW.NO_FLEE_MIN){t.nfAt=now;
       anomaly(out,'no-flee-rule',a,a.name+' runs with no rule that breaks it off a losing fight (its gambits have no flee_home or retreat_to)',{rules:(a.gambits||[]).length,place:place(a),mind:mindOf(a),hp:pct(a)})}}
   // The log entries that tell who answered (issue #541): levers and posted hooks by caller, scripted board posts and branches,
