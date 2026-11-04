@@ -22,7 +22,7 @@
 // turns are dropped (the journal is the long-term memory). Local calls cost nothing: the loop
 // counts tokens (prompt_eval_count / eval_count) and seconds instead.
 // Plain Node, no SDK import; scripts/localcheck.mjs tests it against a mock Ollama.
-import {PLAYER_TOOLS} from '../src/data/player-tools.js';
+import {PLAYER_TOOLS, ATTEMPT_INVITE} from '../src/data/player-tools.js';
 
 // temperature/repeatPenalty (issue #126): a local model looping on one plan, or drifting into another language, is
 // nudged out of it; freshAfter: that many empty turns in a row and the next turn starts with a fresh context.
@@ -72,7 +72,7 @@ const wishInviteOnce = () => {const n = Date.now(); if (n - inviteAt < 3600e3) r
 export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
   const M = byName(list), t = M.get(name);
   // a DM calling a world lever by name (post_hook, mark_place: issue #401) is pointed at pull_lever
-  if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '') + (M.has('wish') ? wishInviteOnce() : '')};
+  if (!t) return {error: `unknown tool "${name}". ${M.has('attempt') ? ATTEMPT_INVITE + ' ' : ''}Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '') + (M.has('wish') ? wishInviteOnce() : '')};
   let a = raw; if (typeof a === 'string') {try {a = a.trim() ? JSON.parse(a) : {}} catch {return {error: 'arguments are not valid JSON'}}}
   if (a == null) a = {}; if (typeof a !== 'object' || Array.isArray(a)) return {error: 'arguments must be an object'};
   // a tool with one object argument (pull_lever's params): keys the tool does not take are that object's, not dropped

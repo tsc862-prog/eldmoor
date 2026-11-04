@@ -38,7 +38,7 @@ import {TRAITS,tm} from '../data/traits.js';
 import {listings,mine,listFor,buyListing,cancelListing,gearRef,goodRef,gearUpgrade,TRADE} from './market.js'; // hero-to-hero trades (#14)
 import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../data/items.js';
 import * as D from '../data/adventures.js';
-import {PLAYER_TOOLS} from '../data/player-tools.js';
+import {PLAYER_TOOLS,ATTEMPT_INVITE} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
 import {soloFor,companyOf,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
@@ -70,6 +70,7 @@ onCamp((kind,g,d)=>{if(kind!=='make'||!g)return;for(const id of g.ids||[])moment
 import {reflexMay,agentLive,hasLinks} from './runlink.js';
 import {notEnglish} from './lang.js';
 import {fileWish,wishInvite} from './wish.js'; // a note for the people who build the game (#663)
+import {lookInvites,sellsBest} from './invite.js'; // tools nothing else invites (#872, #864)
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote} from './council.js';
 import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sightings.js';
@@ -913,6 +914,7 @@ const T={
     const near=LANDMARKS.filter(l=>dist(a,l)<20).map(l=>l.name+' ('+r1(dist(a,l))+' tiles)');if(near.length)r.landmarks=near;
     {const road=roadLook(a);if(road.length)r.on_the_road=road} // carts, travellers and guards in sight, in words (#796)
     {const f=followLine(a);if(f)r.following=f;const by=followersOf(a);if(by.length)r.walks_with_you=by.map(b=>b.name+' walks with you')} // follow (#445)
+    lookInvites(a,r); // the trainer, what sells, gathering spots, whether you can attempt (#872, #864)
     lookSnap(a);return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
     const r={ok:true,name:a.name,...(titleOf(a)?{known_as:styled(a)}:{}),people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,home:c.name,level:a.lvl,
@@ -1230,7 +1232,7 @@ const T={
     need(n,'Nothing to sell.');a.gold+=tot;if(tot>=REFLECT.TRADE)moment(a,'trade','sold '+n+' thing'+(n>1?'s':'')+' for '+tot+'g');return {ok:true,sold:n,gold_gained:tot,gold:a.gold}},
   auction_browse(a){need(inTown(a),'The auction house is in town.');const ago=l=>Math.max(0,Math.round((l.until-S.gameMin)/60));
     const row=l=>({id:l.id,what:l.kind==='gear'?itemText(l.item):l.good,n:l.n,each:l.ask,seller:l.sname,hours_left:ago(l),...(l.kind==='gear'?{slot:l.item.slot,level:l.item.ilvl,class:l.item.cls||'any',better_by:Math.max(0,gearUpgrade(a,l.item)),wearable:gearUpgrade(a,l.item)>=0}:{})});
-    const all=listings();return {ok:true,listings:all.filter(l=>l.seller!==a.id).map(row),yours:all.filter(l=>l.seller===a.id).map(row),recent_trades:(S.trades||[]).slice(0,5).map(t=>t.seller+' sold '+t.what+(t.n>1?' x'+t.n:'')+' to '+t.buyer+' for '+t.gold+'g'),gold:a.gold}},
+    const all=listings();return {ok:true,listings:all.filter(l=>l.seller!==a.id).map(row),yours:all.filter(l=>l.seller===a.id).map(row),recent_trades:(S.trades||[]).slice(0,5).map(t=>t.seller+' sold '+t.what+(t.n>1?' x'+t.n:'')+' to '+t.buyer+' for '+t.gold+'g'),gathered_sells_best:sellsBest(),gold:a.gold}},
   auction_list(a,{index,n,price:ask}){need(inTown(a),'The auction house is in town.');const i=Number(index);need(i>=0&&i<used(a),'No pack entry '+index+'.');
     need(mine(a).length<TRADE.MAX_PER_HERO,'You already have '+TRADE.MAX_PER_HERO+' listings.');const e=invOf(a).list[i];
     if(isGear(e)){const ref=gearRef(e),p=ask==null?ref:Number(ask);need(p>=ref*TRADE.MIN_X&&p<=ref*TRADE.MAX_X,'Ask between '+Math.ceil(ref*TRADE.MIN_X)+'g and '+Math.floor(ref*TRADE.MAX_X)+'g for that.');
@@ -1486,7 +1488,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(!a)return {ok:false,error:'No such hero.'};
   if(!a.player)return {ok:false,error:a.name+' is not agent-played.'};
   if(a.state==='dead'){const r={ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+', at '+(a.diedAt||'?')+'). Hardcore: one life. Their story is over.'};logCall(a,tool,args,r);return r}
-  const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'+wishInvite(a)};
+  const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'. '+ATTEMPT_INVITE+wishInvite(a)};
   if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}}
   if(meta.act&&a.state==='downed'&&tool!=='wait'){const r={ok:false,downed:true,offline:true,error:'You are down, bleeding at zero health: you cannot act until someone brings you back or you rise. Listen, remember, or wait.'};logCall(a,tool,args,r);return r} // downed (#626): reads still answer // held before play (#559): look, recall and the other reads still answer
   if(args&&args._pool===true&&(tool==='recall'||tool==='journal_search'))return fn(a,args); // the relay's ask for the texts it embeds (#553): not a turn, not logged

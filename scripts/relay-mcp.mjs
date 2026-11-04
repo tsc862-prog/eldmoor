@@ -66,7 +66,7 @@ import {WebSocketServer} from 'ws';
 import {z} from 'zod';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {PLAYER_TOOLS} from '../src/data/player-tools.js';
+import {PLAYER_TOOLS, ATTEMPT_INVITE} from '../src/data/player-tools.js';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -453,7 +453,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         return send(200, {ok: true, dm: dmInfo(), ...(info ? {runner: info} : {})})}
       if (b.hero !== undefined) {hero = heroParam(b.hero); if (Number.isNaN(hero)) return send(400, {error: 'bad hero id'})}
       if (path === '/play/call') {
-        if (typeof b.tool !== 'string' || !PLAYER_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown tool'});
+        if (typeof b.tool !== 'string' || !PLAYER_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown tool. ' + ATTEMPT_INVITE});
         const r = await call(hero, b.tool, b.args && typeof b.args === 'object' ? b.args : {}, rid);
         return send(r && r.refused ? 409 : 200, r)}
       // Runner pacing (issue #126): the claimed runner's long poll between turns. Not a tool call: it is not
