@@ -62,12 +62,13 @@ function mockApi() {
     let b = ''; req.on('data', d => b += d); req.on('end', () => {
       if (!/\/v1\/messages/.test(req.url)) {res.writeHead(404, {'content-type': 'application/json'}); return res.end('{"type":"error","error":{"type":"not_found_error","message":"mock"}}')}
       if (req.url.includes('count_tokens')) {res.writeHead(200, {'content-type': 'application/json'}); return res.end('{"input_tokens":1000}')}
-      const j = JSON.parse(b), last = j.messages[j.messages.length - 1], isResult = Array.isArray(last.content) && last.content.some(x => x.type === 'tool_result');
+      const j = JSON.parse(b), tail = j.messages.slice(-2).flatMap(x => Array.isArray(x.content) ? x.content : [{type: 'text', text: x.content}]), isResult = tail.some(x => x.type === 'tool_result'); // the CLI adds its budget line after the result
+      const summary = tail.some(x => x.type === 'text' && /summary of the conversation|detailed summary|summarize/i.test(x.text)); // a compaction: it carries the tools too, and wants words
       const tool = (j.tools || []).map(t => t.name).find(n => /__(status|dm_status)$/.test(n)) || null;
       const sys = typeof j.system === 'string' ? j.system : (j.system || []).map(x => x.text).join('\n');
       const text = JSON.stringify(j.messages), userText = j.messages.filter(x => x.role === 'user').flatMap(x => Array.isArray(x.content) ? x.content : [{type: 'text', text: x.content}]).filter(x => x.type === 'text').map(x => x.text).join('\n');
       m.calls.push({n: m.calls.length + 1, sys, chars: text.length, msgs: j.messages.length, tool: !!tool, isResult, userText, model: j.model});
-      const content = tool && !isResult ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: tool, input: {}}] : [{type: 'text', text: 'The road goes on.'}];
+      const content = tool && !isResult && !summary ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: tool, input: {}}] : [{type: 'text', text: 'The road goes on.'}];
       const usage = {input_tokens: 5, cache_read_input_tokens: m.ctx(m.calls[m.calls.length - 1]), cache_creation_input_tokens: 100, output_tokens: 7};
       const msg = {id: 'msg_' + m.calls.length, type: 'message', role: 'assistant', model: j.model, content: [], stop_reason: null, stop_sequence: null, usage}, stop = content[0].type === 'tool_use' ? 'tool_use' : 'end_turn';
       if (!j.stream) {res.writeHead(200, {'content-type': 'application/json'}); return res.end(JSON.stringify({...msg, content, stop_reason: stop}))}
@@ -146,7 +147,7 @@ await world.until;
 const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
 {
   api.calls.length = 0; api.ctx = () => 30000;
-  const run = start(['scripts/agent-player.mjs', '--url', px.url, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '7', '--min-gap', '0', '--heartbeat', '5', '--budget', '1'], {stdin: 'pipe'});
+  const run = start(['scripts/agent-player.mjs', '--url', px.url, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '12', '--min-gap', '0', '--heartbeat', '5', '--budget', '1'], {stdin: 'pipe'});
   ok(await until(() => /\| ctx 30k \| turn \$/.test(run.out())), 'the turn line carries ctx beside the cost');
   ok(/\[session\] compaction net at 87k tokens/.test(run.out()), 'the runner reads the threshold back from getContextUsage and says it');
   const s1 = await until(() => {const s = readSess(hero.id); return s && s.ctx === 30105 ? s : null});
@@ -163,7 +164,7 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   const s2 = await until(() => {const s = readSess(hero.id); return s && s.sessionId && s.sessionId !== sid ? s : null});
   ok(s2 && s2.rolls === 1 && s2.system === orders && s2.runner && s2.runner.model === 'claude-haiku-5-5' && s2.turns >= 3, 'the session file has a new session, the same standing orders and mind, the turns counted on, one roll');
   ok(oldFiles().some(f => f.startsWith(hero.id + '-')), `the old file lies in old/: ${oldFiles().join(', ')}`);
-  const fresh = api.calls.slice(since).find(c => c.tool && !c.isResult && c.msgs <= 2);
+  const fresh = await until(() => api.calls.slice(since).find(c => c.tool && !c.isResult && c.msgs <= 2)); // the line comes just before the call
   ok(fresh && /journal_read/.test(fresh.userText), 'the new session starts small and is told to read its journal');
   ok(fresh && fresh.sys.includes(orders.slice(0, 200)), 'with its standing orders');
   const h = await health(WORLD), me = h.heroes.find(x => x.id === hero.id); ok(me && me.link !== 'none', `the claim held through the roll (link ${me && me.link})`);
@@ -183,7 +184,7 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
 // The page's Fresh session: a "fresh" line on stdin, and --new keeps the mind.
 {
   api.ctx = () => 26000;
-  const run = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '4', '--min-gap', '0', '--heartbeat', '5', '--budget', '1'], {stdin: 'pipe', env: {...childEnv, ELDMOOR_SUPERVISED: '1', AGENT_HEAR_WAKE_MIN: '45'}});
+  const run = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--min-gap', '0', '--heartbeat', '5', '--budget', '1'], {stdin: 'pipe', env: {...childEnv, ELDMOOR_SUPERVISED: '1', AGENT_HEAR_WAKE_MIN: '45'}});
   ok(await until(() => /\| ctx 26k \| turn \$/.test(run.out())), 'a supervised runner plays');
   run.p.stdin.write('fresh\n');
   ok(await until(() => /\[session rolled: a fresh session was asked for\]/.test(run.out())), 'a "fresh" line rolls it at the next turn');
@@ -207,7 +208,7 @@ world.p.kill(); px.close(); await sleep(300);
 console.log('npm run fellowship on a headless Fellowship');
 {
   const fport = port + 601, FW = `http://127.0.0.1:${fport}`;
-  const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '8', '--world', join(tmp, 'fworld.json')], {wait: /^\[play\] headless world at /m});
+  const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '1', '--world', join(tmp, 'fworld.json')], {wait: /^\[play\] headless world at /m});
   await fw.until; api.ctx = () => 85000; api.calls.length = 0;
   const run = start(['scripts/fellowship.mjs', '--url', FW, '--env', join(envDir, '.env'), '--max-turns', '2', '--min-gap', '0', '--heartbeat', '5', '--budget', '1', '--provider', 'anthropic', '--model', 'claude-haiku-5-5']);
   await run.done;

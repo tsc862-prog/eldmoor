@@ -87,7 +87,7 @@ export async function setSessionBudget(v){sessWant=v===''||v==null?null:Number(v
 
 async function send(path,body){
   try{const r=await fetch(base()+path,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));
-    return r.ok?{ok:true,runner:j.runner,applies:j.applies,session:j.session}:{ok:false,error:j.how||j.error||('HTTP '+r.status)}}
+    return r.ok?{ok:true,runner:j.runner,applies:j.applies,session:j.session,asked:j.asked}:{ok:false,error:j.how||j.error||('HTTP '+r.status)}}
   catch(e){return {ok:false,error:'The relay is not reachable (start it: npm run relay -- --runners).'}}}
 // pick: '' (the hero's saved mind), 'anthropic', 'ollama:<model>' or 'openai:<model>'
 const pickBody=(k,lk=k)=>{const p=picks[k]||'',L=limitOf(lk),t={...(L.budget&&!p.startsWith('ollama:')?{budget:Number(L.budget)}:{})};return {...(p==='anthropic'?{provider:'anthropic'}:p.startsWith('anthropic:')?{provider:'anthropic',model:p.slice(10)}:p.startsWith('ollama:')?{provider:'ollama',model:p.slice(7)}:p.startsWith('openai:')?{provider:'openai',model:p.slice(7)}:p.startsWith('huggingface:')?{provider:'huggingface',model:p.slice(12)}:p.startsWith('google:')?{provider:'google',model:p.slice(7)}:{}),...t}};
