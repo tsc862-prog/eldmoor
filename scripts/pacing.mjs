@@ -172,13 +172,15 @@ export const sightNote = b => b && typeof b.insight === 'string' && b.insight ? 
 export const gatherNote = b => b && typeof b.gather === 'string' && b.gather ? `\nSESSION ZERO: ${b.gather.slice(0, 200)}` : '';
 export const holdNote = b => b && typeof b.hold === 'string' && b.hold ? `\nTHE WORLD IS HELD FOR YOU by your rule (${b.hold.slice(0, 160)}): nothing moves until you act (any acting tool), at most 2 minutes. Look, then act.` : '';
 export const woundNote = b => b && typeof b.wounds === 'string' && b.wounds ? `\n${b.wounds.slice(0, 320)}.` : ''; // a lasting wound (brief.wounds, #656)
+// One rare line naming a tool that fits here (brief.invite, src/sim/invite.js, #872, #864): absent on most turns.
+export const inviteNote = b => b && b.invite && typeof b.invite.text === 'string' ? `\n${b.invite.text.slice(0, 240)}` : '';
 export const earshotNote = b => b && typeof b.earshot === 'string' && b.earshot ? `\nIn earshot: ${b.earshot.slice(0, 300)} (the earshot tool tells more).` : '';
 export function talkText(b) {
   if (!b) return '';
   const heard = Array.isArray(b.heard) ? b.heard : [], met = Array.isArray(b.met) ? b.met : [];
   const near = Array.isArray(b.nearby) ? b.nearby : [];
   const road = Array.isArray(b.road) ? b.road : [];
-  return holdNote(b) + earshotNote(b) + sightNote(b) + (road.length ? `\nOn the road: ${road.join('; ')}.` : '') + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
+  return holdNote(b) + inviteNote(b) + earshotNote(b) + sightNote(b) + (road.length ? `\nOn the road: ${road.join('; ')}.` : '') + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
     (met.length ? `\nCompanions you have met: ${met.join(', ')}. You know each other: do not introduce yourself again or repeat a line; talk to move the party forward (propose, vote, lead_to, or answer a question you were asked).` : '');
 }
 
