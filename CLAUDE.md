@@ -752,8 +752,8 @@ Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pic
 own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
 1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
 with its source and date) drives cost; a model not in it reports tokens with cost "unknown" (the turn
-line says so; the run budget cannot count it). Cached-input discounts are ignored, so costs are an
-upper bound. Every request sends `reasoning_effort: "none"` (Chat Completions supports function calling
+line says so; the run budget cannot count it). Cached input (`prompt_tokens_details.cached_tokens`, #728) is priced at the
+cached rate where `PRICES` has one (gpt-6.1-terra, gpt-6-luna) and shown as "tokens in 4449 (3900 cached)"; other models keep the full rate, an upper bound. Every request sends `reasoning_effort: "none"` (Chat Completions supports function calling
 on the current reasoning models only with it); a model that rejects the field is asked again without it.
 Errors: 401 "bad or missing key", 429 "rate limit" (the relay's limiter queues OpenAI calls,
 `RELAY_OPENAI_CONCURRENCY`, default 4, pauses on `retry-after`, drops a late decision and retries writing
@@ -905,6 +905,7 @@ encounters and speak at their tables (issue #132, below).
   kind `falter`/`reinforce`, `rival`, `tremor`). Each call has `TABLE.dmMs` (6 s) at 1x, and only while the
   runner is polling; then the scripted DM fills it, and after 2 misses it fills the rest at once. At 3x/8x
   every slot is scripted and the scene resolves in one step.
+- Never a member's words (#750, `src/sim/spokefor.js`): every DM-voiced text (table_answer, narrate, npc_say, whisper, dream, ruling_answer, and a when firing one) is cut of any quote attributed to a living agent-played hero before anyone hears it (the narration around it stays; all of it gone = refused); the call's DM log entry carries `spoke_for`, the result tells the DM, `dm_status.spoke_for_today` counts it, behavior anomaly `dm-spoke-for`. Exempt: an arrival's newcomer on its own voice/oath call, and a quote of the hero's own words. A fireside's quiet-day topic is the fire's own question to one member (who gets `answer`), never one member asking another.
 - Ruling voice (#522): `npm run dm` also rules on the heroes' free actions (polls `ruling_call`, one forced structured answer with
   enums for skill, DC and effect kinds, then `ruling_answer`; `--ruling-model`/`DM_RULING_MODEL`, default the table model; `--ruling-budget S`,
   8 s with Anthropic, 25 s local; `--no-ruling-voice` leaves every ruling to the scripted DM). A `[ruling]` line per call.
@@ -1047,6 +1048,7 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   generated sheets; `terrain.js` per-pixel tile textures into cached chunks at TILE (or U with no terrain asset);
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
   overlay with torch light, labels at constant CSS size.
+  Ambient life (#795, solid-world slice 4): `life.js` the frame's shared facts and a private random stream; `critters.js` town critters (chickens, dogs, cats, goats) and wild ones by biome (deer, hares, crows, gulls) that scatter from a hero within 2 tiles and come home, plus roosting birds that burst from a tree a hero passes; `townlife.js` stalls (market hours, shut in rain and at night), gate guards and a wall walker, chimney smoke at the smithy and inn by hour, door lamps and forge glow at dusk, the hall's pennant; `footprints.js` prints in snow. All render only (no sim state, nothing in `step()`, no shared RNG), placed from `CITY` buildings and `solidAt`, so hashes hold; `draw.js` takes them as `kind:'deco'` entries in the y-sorted list and calls `lifeBegin/lifeGround/lifeEnts/lifeAir/lifeLight`; `lifeStats.ms` is their frame cost (about 0.1-0.3 ms). `townart.js` now draws the sketch pieces (smithy, chapel, inn, board) when no asset covers them. There is no `src/sim/critters.js`: nothing the sim needs to know.
 - `src/ui/`: `panels.js` hero card, factions, chronicle, graveyard, guilds,
   top heroes, auction house, clock; `controls.js` speed, view (incl. Follow Fellowship)
   and selection; `fellowship.js` the Fellowship panel (founding, roster, sheet editor,
