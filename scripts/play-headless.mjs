@@ -43,7 +43,9 @@ import {mirrorDirty} from '../src/sim/notebook.js';
 import {memoryMirror} from './memory-mirror.mjs';
 import {semanticRecall} from './embed.mjs'; // semantic memory search, opt in with --embed (issue #553)
 import {ollamaAdapter} from './providers/ollama.mjs';
-import {WORLD_ID} from '../src/world/map.js';
+import {WORLD_ID, CRYPT} from '../src/world/map.js';
+import {learnPlace} from '../src/sim/lore.js';
+import {season} from '../src/sim/opening.js';
 import {loadCampaigns} from './campaign-files.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -87,12 +89,18 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     restore(snap);
     console.log(`[play] resumed ${worldFile} at day ${Math.floor(S.gameMin / 1440) + 1}`);
   } else {
-    const fs = flag('fellowship') || opt('fellowship', null); const others = opt('others', null), none = (others || process.env.ELDMOOR_OTHERS) === 'none'; init(fs || none ? {fac: Number(opt('fac', 0)) === 1 ? 1 : 0, ...(others ? {others} : {})} : {fellowship: false}); // --others none (#780): the company alone, whoever the DM brings const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
+    const fs = flag('fellowship') || opt('fellowship', null); const others = opt('others', null), none = (others || process.env.ELDMOOR_OTHERS) === 'none'; init(fs || none ? {fac: Number(opt('fac', 0)) === 1 ? 1 : 0, ...(others ? {others} : {})} : {fellowship: false}); // --others none (#780): the company alone, whoever the DM brings
+    const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
   }
   // Heroes to play: named ones, else --agents N alternating the factions (Concord first).
   // The Fellowship (#68): found one with every member agent-played, unless the save already has one.
   if (flag('fellowship') || opt('fellowship', null)) {
     if (!SLT.slotted()) {const fac = Number(opt('fac', 0)) === 1 ? 1 : 0, r = SLT.foundSlots(SLT.autoPick(fac), {fac, ai: !flag('no-relay')}); if (!r.ok) throw new Error('could not found a Fellowship: ' + r.error)}
+    if (opt('fellowship-level', null)) { // a seasoned Fellowship for long runs (#926): every member the career of that level, all standing together where the first one was put
+      const L = Math.max(2, Math.min(20, Number(opt('fellowship-level')))), ms = SLT.slotHeroes(SLT.slotted()); let at = null;
+      for (const m of ms) {season(m, L); if (!at) at = {x: m.x, y: m.y, zone: m.zone}; else {m.x = at.x + (Math.random() - .5); m.y = at.y + (Math.random() - .5); m.zone = at.zone; m.dest = null}}
+      console.log(`[play] Fellowship seasoned to level ${L}: ${ms.map(m => m.name + ' L' + m.lvl).join(', ')}`);
+    }
     SLT.setSlotMinds(SLT.slotted(), 'agent'); if (flag('no-relay')) S.brainOn = false; // --no-relay: never call a brain relay (sheets and table lines stay scripted)
     console.log(`[play] Fellowship: ${SLT.slotted().name} (${SLT.slotted().ids.length} members, Minds: agents)`);
   }
@@ -101,6 +109,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   for (const n of names) {const a = chooseHero({name: n}); if (!a) throw new Error('no living hero called ' + n); markPlayer(a, true)}
   for (let k = 0; !SLT.slotted() && playerSeats().filter(a => a.state !== 'dead').length < want && k < 16; k++) {
     const a = chooseHero({cls: opt('class', null), fac: k % 2}); if (!a) break; markPlayer(a, true)}
+  // --solos N (with --told-crypt: each has been told where the Sunken Crypt is, as a talk at the gate would): N more background heroes (the highest levels, alternating factions) agent-played beside the company, each a company of one.
+  for (let k = 0; k < Number(opt('solos', 0)); k++) {const a = chooseHero({fac: k % 2}); if (!a) break; markPlayer(a, true); if (flag('told-crypt') && CRYPT) learnPlace(a, CRYPT.name, 'told'); console.log(`[play] solo agent hero: ${a.name} (#${a.id}), level ${a.lvl} ${a.cls} of faction ${a.fac}`)}
   // The DM is always an agent (#520, #559): --wait-ready plays the world as the page does, so it opens the DM seat and the
   // start gate counts it; --no-dm keeps a heroes-only hold (checks that test hero runners alone).
   if (flag('dm') || (flag('wait-ready') && !flag('no-dm'))) {setDmSeat(true); console.log('[play] DM seat open: npm run dm -- --url http://127.0.0.1:' + port)}
