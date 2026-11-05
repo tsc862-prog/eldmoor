@@ -25,8 +25,10 @@ let clock=()=>Date.now(),host=false;
 export const setPrepHost=v=>{host=!!v};
 export const setPrepClock=f=>{clock=typeof f==='function'?f:()=>Date.now()}; // test seam
 export const prepActive=()=>!!(P&&P.state==='running');
+// A new world's prep begins: the first delve is raised now, so the DM reads the place it frames (#922, sim/prologue.js).
+let onStart=null;export const setPrepStart=f=>{onStart=typeof f==='function'?f:null};
 // Start a prep: kind 'opening' (full caps) or 'resume' (half). Returns the view. A running prep is left as it is.
-export function beginPrep(kind){if(prepActive())return prepView();const short=kind!=='opening';
+export function beginPrep(kind){if(prepActive())return prepView();const short=kind!=='opening';if(!short&&onStart)onStart();
   P={kind:short?'resume':'opening',since:clock(),at:null,calls:0,maxCalls:Math.max(1,Math.round(PREP.CALLS*(short?PREP.SHORT:1))),ms:Math.round(PREP.MS*(short?PREP.SHORT:1)),hardMs:Math.round(PREP.HARD_MS*(short?PREP.SHORT:1)),state:'running',why:null};
   return prepView()}
 // End it: 'done' (the DM ended its turn), 'calls' / 'time' (a cap), 'hard' (PREP.HARD_MS from the gate), 'anyway' (Start

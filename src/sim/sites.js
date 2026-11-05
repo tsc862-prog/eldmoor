@@ -246,17 +246,17 @@ function clearSite(s,g,L,share){S.sites.stats.clears++;const who=gd(g.name||'The
   if(rest){s.state='cleared';s.cleared={at:Math.round(S.gameMin),by:g.name||null}}
   else{s.state='locked';s.lockUntil=Math.round(S.gameMin+SITE.LOCK_DAYS*DAY);s.lastKill={at:Math.round(S.gameMin),by:g.name||null}}
   const each=L.length?Math.round(s.loot.gold*pay*(1+.2*s.grow)/L.length):0,heir=L.slice().sort((x,y)=>((x.epics||[]).length-(y.epics||[]).length)||(x.id-y.id))[0];
-  L.forEach((a,i)=>{gainXp(a,Math.round(clearXp(a)*share*pay*(1+.1*s.grow)));a.gold+=each;a.kills+=s.rooms.length*2;
+  L.forEach((a,i)=>{gainXp(a,Math.round(clearXp(a)*share*pay*(1+.1*s.grow)*(s.xp||1)));a.gold+=each;a.kills+=s.rooms.length*2;
     for(let k=i;k<s.loot.goods.length;k+=L.length)addGood(a,s.loot.goods[k],1);record(a,s.raid?'Raided ':'Cleared ',siteTag(s),s.raid?' and slew ':' and destroyed ',gd(s.boss),'.')});
   const gearTo=L.slice().sort((x,y)=>(x.gear-y.gear)||(x.id-y.id))[0],slots=['head','chest','hands','feet','main','trinket'];
-  if(gearTo&&CLS[gearTo.cls])addGear(gearTo,makeItem(gearTo.cls,slots[s.id%slots.length],s.loot.ilvl,Math.min(s.region,3),{quality:'rare',src:s.boss}));
-  if(heir)getEpic(heir,s.epic,{t:s.boss,c:'gd'}); // the boss's guaranteed epic
+  if(gearTo&&CLS[gearTo.cls])addGear(gearTo,makeItem(gearTo.cls,slots[s.id%slots.length],s.loot.ilvl,Math.min(s.region,3),{quality:s.loot.quality||'rare',src:s.boss}));
+  if(heir&&s.epic)getEpic(heir,s.epic,{t:s.boss,c:'gd'}); // the boss's guaranteed epic (a first delve has none, #922)
   if(s.raid&&!rest){const T=SITE_THEMES[s.theme],E=T&&T.relic==='crypt'?DG_EPICS:(EPICS[s.region]||EPICS[s.region%EPICS.length]);if(E&&E.length)s.epic=E[(E.indexOf(s.epic)+1)%E.length]} // the next keeper carries another
   if(s.raid){log(who,' slew ',gd(s.boss),' in ',siteTag(s),'!'+(rest?' The place is laid to rest.':' The place lies quiet; its keeper will rise again.'));
     siteLine('site',s,who,' slew ',gd(s.boss),' in the raid of ',gd(s.name),', '+ZONES[s.region]+(rest?'; laid to rest after '+s.kills+' kills.':'.'))}
   else{log(who,' cleared ',siteTag(s),' and destroyed ',gd(s.boss),'!');
     siteLine('site',s,who,' cleared ',gd(s.name),' in '+ZONES[s.region]+' and destroyed ',gd(s.boss),'.')}
-  if(rest){const p=placeOf(s);if(p){p.kind='ruin';p.cleared=true;p.until=S.gameMin+SITE.RUIN_DAYS*DAY}}
+  if(rest){const p=placeOf(s);if(p){p.kind='ruin';p.cleared=true;p.until=s.prologue?null:S.gameMin+SITE.RUIN_DAYS*DAY}} // a first delve's ruin stays on the map (#922)
   for(const a of L)goHome(a)}
 
 // The abstract roll (no agent of the company has the say, or Table mode is off): the Crypt's formula against the site's level.

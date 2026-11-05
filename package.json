@@ -44,6 +44,8 @@
     "tablecheck": "node scripts/tablecheck.mjs",
     "talkcheck": "node scripts/talkcheck.mjs",
     "crawlcheck": "node scripts/crawlcheck.mjs",
+    "prologuecheck": "node scripts/prologuecheck.mjs",
+    "prologuecheck:stepping": "node scripts/prologuecheck.mjs --world stepping",
     "sitecheck": "node scripts/sitecheck.mjs",
     "localscheck": "node scripts/localscheck.mjs",
     "campcheck": "node scripts/campcheck.mjs",
