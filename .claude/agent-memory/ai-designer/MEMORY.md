@@ -34,7 +34,7 @@
 - [Reflex moves #347/#348](reflex_moves.md) — reflex members heal with class moves only (reflexMay), reflex spec pick; Antler Ward's spec-only widened rally
 - [Table items #360](table_items.md) — use:<slug> round options via useItem, when each item is offered, same-party potions, reflex unchanged
 - [Camp refusals #400](camp_refusals.md) — campBlock text, second break_camp = yes vote, non-leader break_camp proposes, refusals name the next call
-- [Sim perf #433](sim_perf.md) — hash-identical speedups: within() box+hypot, non-enumerable hero caches, LOD flag off by default
+- [Sim perf #433/#730](sim_perf.md) — hash-identical speedups: fewer combatStats calls, count-reset grids, greet snapshot; measure by A/B not self time
 - [Emergent parties #402](emergent_parties.md) — companies of 1-8 (5 minds), single faction, together default; owner decisions 2026-11-03
 - [Company model #438](company_model.md) — company.js, accessor shims (S.fellowship, a.fellow, p.fellow), companySeq ids, save v7, hash proof
 - [Setup v2 #453](setup_v2.md) — together = the five places, apart = company per group, v1 migration by index, slotsView, hash proof
@@ -61,6 +61,7 @@
 - [Apart companycheck #459](apart_companycheck.md) — companycheck-apart.mjs sections, fixture traps (links/seat not reset by init), heir-wait fix
 - [Starved company #530](starved_company.md) — serveStarved in dm.js refill, LEAD 120, busy not skipped, dmcheck bound 360
 - [Fireside #571](fireside.md) — fireside/debrief kinds, table.js next/liveMs/onSceneEnd hooks, hasLinks gate, 600-char lines, copy refusal, townsfolk hmem
+- [DM spoke for #750](dm_spoke_for.md) — fire asks the question; spokefor.js cuts DM quotes of agent heroes in dmagent run(); newcomer and own-words exempt
 - [Sight events #570](sight_events.md) — sighthero.js: you-see events on coming into sight, seeker stops on sight, In sight header, Looking for
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap
 - [Night sight #583](night_sight.md) — sightFor(a,z): night 0.6 for agent heroes only, towns exempt, hash unchanged
@@ -79,6 +80,7 @@
 - [PvP mercy #657](pvp_mercy.md) — mercy.js: downs not kills, finish/spare odds, life-debts, bled = no credit, finish = guild grudge
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
+- [Fight log #773](fight_log_773.md) — hurt who=attacker; won via shared xp; over vs fled
 - [Gambit cap 30 #779](gambit_cap_30.md) — MAX 30, a.gambitWrote counts hero-written rules and use_ability ones for the report
 - [Watch clock and DM downed call #655](watch_clock_downcall.md) — WATCH_TICK 20 gated on Table Off+agent+hasLinks, kin wake per save, downcall.js non-blocking DM call
 - [Wounds and tending #656](wounds_tending.md) — wounds.js leaf, who tends, priest is the existing NPC, scripted rest rules, balance read
