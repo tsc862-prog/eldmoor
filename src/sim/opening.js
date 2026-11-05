@@ -29,6 +29,7 @@ import {record,first} from './history.js';
 import {pickSetup,pickApart,applyMinds,cleanSetup,groupsOf,startOf,resolveArchetype,hallOf,CLASSIC} from './setup.js';
 import {foundCompany,campaign,foundSlots,autoPick,spreadAt} from './company.js';
 import {markPlayer} from './player.js';
+import {careerLore} from './lore.js';
 import {disableBrain} from './brain.js';
 import {seedProfs} from './professions.js';
 import {applyArchetype} from './persona.js';
@@ -127,7 +128,7 @@ function openApart(setup){
     else for(const a of group)record(a,'Set out from '+town.name+(group.length>1?' with '+group.filter(b=>b!==a).map(b=>b.name).join(' and '):' alone')+'.');
     const r=foundCompany(group,{hall:town.name,name:group.length>1?group.map(b=>b.name).join(' and '):group[0].name});
     if(!r.ok)continue;made.push(r.company);
-    for(const a of group){if(a.brain){disableBrain(a);delete a.fellowBrain}markPlayer(a,true)}
+    for(const a of group){if(a.brain){disableBrain(a);delete a.fellowBrain}markPlayer(a,true);careerLore(a)} // a seasoned start has heard of the places and creatures its level has worked (#930)
     for(const i of g){const h=setup.heroes[i],a=hs[i];if(h.profs&&h.profs.length)seedProfs(a,h.profs);
       const id=resolveArchetype(setup,i);if(id&&applyArchetype(a,id,group.filter(b=>b!==a)))a.persona.edited=true}
     const who=group.flatMap((b,i)=>i?[i===group.length-1?' and ':', ',b]:[b]),line=[...who,group.length>1?' set out together from '+town.name+'.':' sets out alone from '+town.name+'.'];

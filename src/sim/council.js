@@ -241,7 +241,8 @@ export function soloCrypt(a,cmd){const F=companyOf(a),g=CRYPT.group;if(!F)return
   cmd.waited=!!cryptGo(F,[a]);return null}
 function carryOut(P){const F=propCompany(P),L=members(F);if(!F)return;
   if(P.kind==='crypt')P.result+=cryptGo(F,L);
-  else if(P.kind==='raid'){setWait(F,'raid');(F.accept||(F.accept={})).raid=S.gameMin+COUNCIL.ACCEPT_MIN;for(const b of L)if(b.player)b.raidOk=true}
+  else if(P.kind==='raid'){setWait(F,'raid');(F.accept||(F.accept={})).raid=S.gameMin+COUNCIL.ACCEPT_MIN;for(const b of L)if(b.player)b.raidOk=true;
+    if(hasLinks())for(const b of L)notify(b,'The vote to raid Kragmaw carried, but a vote does not move anyone: the muster forms only when the whole company stands together (within about '+REACH.SHOUT+' tiles of one another) and enough raiders of your faction gather. You have '+Math.round(COUNCIL.ACCEPT_MIN/60)+' game hours; gather now (lead_to, follow, or a courier to anyone out of range), or the vote lapses.',true)}
   else if(P.kind==='break_camp'){if(campHook&&campHook('called',F))P.result+='; camp is broken'}
   else if(P.kind==='split'){const pr=P.meet&&L.find(b=>b.id===P.by),pl=pr?makeMeeting(pr,P.meet.where,P.meet.hours):null;
     if(pl&&!pl.error)P.result+='; we meet at '+pl.where+' at '+pl.atText;
@@ -317,7 +318,7 @@ function councilOne(F){const M=members(F);
       if(!P.held){P.held=1;for(const b of wait)notify(b,'The vote on "'+P.details+'" still waits for you: vote('+P.id+', yes|no, reason).',3)}continue}
     resolveProp(P,wait.length?'waited for '+wait.map(b=>b.name).join(' and ')+' as long as it could':'time ran out')}
   // a raid vote that never mustered in time lapses with word to the company, or the faction's reserve would idle on (#826)
-  if(hasLinks()&&F.wait&&F.wait.raid&&!(F.accept&&F.accept.raid>S.gameMin)){delete F.wait.raid;clog(F,'council','The muster on Kragmaw never came together; ',gd(F.name),' lets it go.');for(const b of M)notify(b,'The muster on Kragmaw never came together. The vote has lapsed; propose raid again when you are ready.',true)}
+  if(hasLinks()&&F.wait&&F.wait.raid&&!(F.accept&&F.accept.raid>S.gameMin)){delete F.wait.raid;clog(F,'council','The muster on Kragmaw never came together; ',gd(F.name),' lets it go.');for(const b of M)notify(b,'The muster on Kragmaw never came together (the company was not all in one place in time, or too few raiders gathered). The vote has lapsed; gather first, then propose raid again when you are ready.',true)}
   if(isSolo(F)&&F.wait&&F.wait.crypt&&M[0]&&!(M[0].pq||[]).some(c=>c.kind==='crypt'))delete F.wait.crypt; // a solo who walked away from the mouth
   for(const a of members(F)){if(a.cryptOk&&a.state!=='dungeon')a.cryptOk=false;if(a.raidOk&&!a.raid&&a.state!=='raid'&&!(F.accept&&F.accept.raid>S.gameMin))a.raidOk=false;
     if(a.splitUntil&&S.gameMin>=a.splitUntil)delete a.splitUntil}}

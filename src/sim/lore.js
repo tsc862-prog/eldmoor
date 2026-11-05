@@ -142,6 +142,14 @@ function place(a,name,how){const L=loreOf(a),p=L.p[name];const order={told:0,see
 export function found(a,name,text,dmId){if(!learner(a)||!name)return;const e=place(a,name,'seen');if(dmId!=null&&e.dm==null)e.dm=dmId;e.found=clean(text,LORE.SNIP*2)}
 export function knowsPlace(a,name){if(!learner(a))return true;return !!loreOf(a).p[name]}
 export function learnPlace(a,name,how='told'){if(!learner(a)||!name)return;const was=!!loreOf(a).p[name];place(a,name,how);return !was}
+// A hero who starts seasoned (#930) has been on the road: the regions its level has worked, the landmarks standing in them (the
+// Crypt and the wyrm's lair among them) and the creatures there are known as heard of, so a veteran solo can answer for its own
+// level (go_crypt, hunt prey by name). Told, not seen: nothing is marked seen or fought. Agent heroes only; no RNG; idempotent.
+export function careerLore(a){if(!learner(a)||!(a.lvl>1))return 0;let n=0;const ok=z=>{const b=REGIONS[z]&&REGIONS[z].band;return !!b&&b[0]<=a.lvl};
+  for(let z=0;z<ZONES.length;z++)if(ok(z)&&learnPlace(a,ZONES[z],'told'))n++;
+  for(const l of [...LANDMARKS,...(CRYPT&&!LANDMARKS.includes(CRYPT)?[CRYPT]:[])])if(l&&l.name&&ok(zoneAt(l.x,l.y))&&learnPlace(a,l.name,'told'))n++;
+  for(const k of Object.keys(MOBS)){const z=MOBS[k].z;if(!ZONES[z]||!ok(z))continue;const e=entry(a,k);if(!e.name){e.name=1;n++}if(!e.z.includes(ZONES[z]))e.z.push(ZONES[z])}
+  return n}
 
 // ---- DM-marked places (S.places: mark_place, create_site, a staged mystery; #423) ----
 // Learned by the same rules as landmarks: seen within sight, heard named, told by a job. The entry keeps only the
