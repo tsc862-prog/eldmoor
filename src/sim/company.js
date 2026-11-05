@@ -237,8 +237,9 @@ export function checkSlots(slots,fac){const seen=new Set(),F=slotted();
 // The next recruit of a class: a pending recruit of that faction and class arrives now, else a fresh one.
 // It arrives a few levels under the company's lowest living member (balance #107), not at level 1 beside veterans.
 export const SEED_BEHIND=2;
+export const NEW_BLOOD=480; // game minutes a fresh Fellowship replacement is no chance-duel target (#660: no spiral onto a green newcomer); grudges still hold
 function recruit(C,fac,cls){const i=S.recruits.findIndex(r=>r.fac===fac&&r.cls===cls);if(i>=0)S.recruits.splice(i,1);
-  const mates=slotHeroes(C),a=hushOath(()=>makeHero(fac,cls,null,1));if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
+  const mates=slotHeroes(C),a=hushOath(()=>makeHero(fac,cls,null,1));if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);a.newBlood=S.gameMin+NEW_BLOOD;log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
 
 // ---- founding, joining, leaving ----
 // Where the i-th of n stands around a point: two rows, a tile and a half apart, in order. No dice.

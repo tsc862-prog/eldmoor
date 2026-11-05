@@ -94,3 +94,4 @@
 - [Paths #794](paths_794.md) — path.js rules: near lines skip A*, mob limit, clearLine, reachable goal swap, road shoulders, fixture traps
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
 - [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
+- [New blood grace #660](new_blood_grace.md) — Fellowship replacements skip chance duels 480 min; recruit() stamps newBlood, pvp.js skips
