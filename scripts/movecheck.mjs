@@ -14,7 +14,7 @@ import {effOn} from '../src/sim/eff.js';
 import {rebuild} from '../src/sim/spatial.js';
 import {optionsFor, reflexFor, TABLE} from '../src/sim/table.js';
 import {SPECS, CLASS_SPECS, SPEC_LVL} from '../src/data/classes.js';
-import {SPEC_MOVES, SPEC_PASSIVES} from '../src/data/moves.js';
+import {SPEC_MOVES, SPEC_PASSIVES, CAPSTONE_LVL} from '../src/data/moves.js';
 import {chooseSpec, specBlock, pickSpec, ensureSpec} from '../src/sim/spec.js';
 import {score} from '../src/sim/abilities.js';
 import {SKILLS} from '../src/data/abilities.js';
@@ -84,13 +84,13 @@ const pa = mk('Warrior', 5); pa.hp = combatStats(pa).health * .2; const low = dm
 // ---- specialisations (#82) ----
 for (const c in CLS) ok((CLASS_SPECS[c] || []).length === 2, c + ': two paths');
 for (const id in SPECS) {const P = SPECS[id];
-  ok(P.name && P.desc && P.skill in SKILLS && Object.keys(P.abil).length && (SPEC_MOVES[id] || []).length === 1 && (SPEC_PASSIVES[id] || []).length === 1 && MOVES[SPEC_MOVES[id][0]].cls === P.cls && MOVES[SPEC_MOVES[id][0]].lvl === SPEC_LVL, id + ': well formed (' + P.name + ', 1 ability + 1 passive at ' + SPEC_LVL + ')')}
+  ok(P.name && P.desc && P.skill in SKILLS && Object.keys(P.abil).length && (SPEC_MOVES[id] || []).length === 2 && (SPEC_PASSIVES[id] || []).length === 1 && MOVES[SPEC_MOVES[id][0]].cls === P.cls && MOVES[SPEC_MOVES[id][0]].lvl === SPEC_LVL, id + ': well formed (' + P.name + ', 1 ability + 1 passive at ' + SPEC_LVL + ', plus a capstone)')}
 {const t = mk('Priest', 9); ok(/level 10/.test(specBlock(t) || ''), 'no path before level 10');
  const m10 = mk('Priest', 10), brawn0 = score(m10, 'insight'), crit0 = combatStats(m10).crit, n0 = movesOf(m10).length, h0 = abilityView(m10).length;
  ok(!chooseSpec(m10, 'reaver').ok, 'a path of another class is refused');
  const r = chooseSpec(m10, 'mender'); ok(r.ok && m10.spec === 'mender', 'Mender chosen: ' + r.text);
  ok(score(m10, 'insight') === brawn0 + 1 && m10.prof.includes('empathy'), 'the path adds a score point and a trained skill');
- ok(movesOf(m10).includes('mendingtouch') && movesOf(m10).length === n0 + 1 && abilityView(m10).length === h0 + 2, 'the path adds an ability and a passive to the list');
+ ok(movesOf(m10).includes('mendingtouch') && movesOf(m10).length === n0 + 1 && abilityView(m10).length === h0 + 3, 'the path adds an ability, a locked level-15 capstone and a passive to the list');
  ok(!chooseSpec(m10, 'battlecleric').ok, 'a path is permanent');
  ok(!!S.chronicle.find(e => e.parts.some(x => x && x.t === 'Mender')) && m10.history.some(h => /path of the Mender/.test(h.text)), 'the Chronicle and the hero log record the choice');
  const hurt = mk('Warrior', 10); hurt.hp = 10; hurt.x = m10.x + 1; hurt.y = m10.y; hurt.fac = m10.fac; const rr = useMove(m10, 'mendingtouch', hurt); ok(rr.ok && hurt.hp > 10 && rr.healed > 0, 'Mending Touch heals one friend: ' + rr.text);
@@ -103,6 +103,24 @@ for (const id in SPECS) {const P = SPECS[id];
  const old = mk('Warrior', 14); ok(!old.spec && movesOf(old).length === 3, 'an old save (no spec) keeps its three abilities and plays on');
  const back2 = (restore(JSON.parse(JSON.stringify(snapshot()))), S.agents.find(x => x.id === m10.id)); ok(back2 && back2.spec === 'mender' && score(back2, 'insight') === brawn0 + 1, 'the path survives a save');
 }
+
+// ---- level-15 capstones (#713): one more active per path ----
+for (const id in SPECS) {const P = SPECS[id], ids = SPEC_MOVES[id] || [], cap = ids.filter(i => MOVES[i].lvl === CAPSTONE_LVL);
+  ok(ids.length === 2 && cap.length === 1 && MOVES[cap[0]].cls === P.cls && MOVES[cap[0]].spec === id && MOVES[cap[0]].lvl === 15 && ids.some(i => MOVES[i].lvl === SPEC_LVL), `${id}: one level-10 move and one level-15 capstone (${cap[0]})`);
+  const M = MOVES[cap[0]]; ok(M.name && M.cd > 0 && M.rounds > 0 && M.desc && M.fx && M.use, `${id}: capstone ${M.name} has name, cooldown, rounds, desc, fx and policy`);
+  const a14 = mk(P.cls, 14); chooseSpec(a14, id); ok(!movesOf(a14).includes(cap[0]) && !useMove(a14, cap[0], a14).ok, `${id}: not learned at 14`);
+  const a = mk(P.cls, 15); chooseSpec(a, id); a.mcd = {}; a.mcr = {}; a.eff = {}; a.hp = combatStats(a).health * .6;
+  ok(movesOf(a).includes(cap[0]) && abilityView(a).some(r => r.id === cap[0] && r.learned && r.lvl === 15), `${id}: ${M.name} is learned and listed at 15`);
+  const f = M.target === 'foe' || M.target === 'foes' ? foeNear(a) : null; if (f) for (const m of S.mobs) if (m !== f) m.target = null; rebuild(); const t = M.target === 'ally' ? a : f;
+  const r = useMove(a, cap[0], M.target === 'foe' || M.target === 'ally' ? t : null, {mates: [a], foe: f});
+  ok(r.ok && cdLeft(a, cap[0]) > 0 && roundsLeft(a, cap[0]) === M.rounds, `${id}: ${M.name} works and cools down: ${r.text || r.error}`);
+  if (M.kind === 'attack') ok(r.dmg > 0, `${id}: ${M.name} deals damage`);
+  if (M.fx.heal) ok(r.healed > 0, `${id}: ${M.name} heals`);
+  if (M.fx.taken) ok(effOn(a, 'taken'), `${id}: ${M.name} wards`);
+  if (M.fx.delay && M.target !== 'self') ok(f.cd > 0, `${id}: ${M.name} slows the foe`);
+  ok(!useMove(a, cap[0], M.target === 'foe' || M.target === 'ally' ? t : null).ok, `${id}: not again while it cools down`);
+  const w = mk(P.cls, 15); chooseSpec(w, id === 'warden' ? 'reaver' : id === 'reaver' ? 'warden' : SPEC_MOVES && Object.keys(SPECS).find(k => k !== id && SPECS[k].cls === P.cls));
+  ok(!useMove(w, cap[0], w).ok, `${id}: ${M.name} is refused to the other path`)}
 
 // ---- the Table offers abilities ----
 init({fellowship: true}); for (let i = 0; i < 60; i++) step(1 / 60); used.clear(); usedM.clear();

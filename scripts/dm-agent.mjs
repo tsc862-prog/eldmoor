@@ -258,6 +258,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
 // a few seconds (CONV.VOICE_MS, 8 s) while this loop is polling, then the scripted DM answers from the person's role. Like
 // the table voice: one structured model call per exchange (Haiku 5.5 by default, the seat's model with Ollama), then
 // npc_say {conv} and at most one npc_offer. A late, failed or refused answer changes nothing: the scripted DM has it.
+const VOICE_SETTLE_MS = 10000;
 export const TALK_POLL_IDLE = 1500, TALK_POLL_HOT = 400;
 export const TALK_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), voicing one of its people. ' +
   NO_WORDS +
@@ -283,7 +284,7 @@ export function talkVoice({base, adapter, model, effort = 'low', log = () => {},
     while (!done && !stopped()) {
       const p0 = Date.now(), t = await tool(base, 'npc_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
       const c = t && t.ok && t.call;
-      if (c && c.call !== seen && c.seconds_left > .8) {
+      if (c && c.call !== seen && c.seconds_left > .8 && !stopped()) {
         seen = c.call; const t0 = Date.now(), who = c.npc && c.npc.id;
         try {
           const ms = Math.max(800, c.seconds_left * 1000 - 400);
@@ -337,7 +338,7 @@ export function companionVoice({base, adapter, model, effort = 'low', log = () =
     while (!done && !stopped()) {
       const p0 = Date.now(), t = await tool(base, 'companion_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
       const c = t && t.ok && t.call;
-      if (c && c.call !== seen && c.seconds_left > .8) {
+      if (c && c.call !== seen && c.seconds_left > .8 && !stopped()) {
         seen = c.call; const t0 = Date.now(), who = c.companion && c.companion.name;
         try {
           const ms = Math.max(800, c.seconds_left * 1000 - 400);
@@ -400,11 +401,11 @@ export function rulingVoice({base, adapter, model, effort = 'low', log = () => {
       const p0 = Date.now(), t = await tool(base, 'ruling_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
       const c = t && t.ok && t.call;
       if (c && c.call !== seen && c.seconds_left <= .8) {seen = c.call; log(`[ruling] ${rulingWho(c)}: picked up with ${Number(c.seconds_left).toFixed(1)} s left, too late to ask; the scripted DM rules`)} // #864: this loss left no line
-      if (c && c.call !== seen && c.seconds_left > .8) {
+      if (c && c.call !== seen && c.seconds_left > .8 && !stopped()) {
         seen = c.call; const t0 = Date.now(), left = `left ${Number(c.seconds_left).toFixed(1)} s`; // #885
         const end = t0 + Math.max(800, c.seconds_left * 1000 - 400); let user = rulingPrompt(c);
         try {
-          for (let again = false; ; again = true) { // one more try after a refused answer (#864): the game's words say what was wrong, and the DM's ruling beats the scripted one
+          for (let again = false; ; again = true) { if (stopped()) break; // one more try after a refused answer (#864): the game's words say what was wrong, and the DM's ruling beats the scripted one
             const ms = end - Date.now();
             const r = await adapter.call({system: RULING_SYSTEM, user, schema: rulingSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
             let j = null; try {j = JSON.parse(r.text)} catch {}
@@ -539,8 +540,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const gem = isCompat(rs.provider), label = compatLabel(rs.provider);
     const {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} = await import('./providers/ollama.mjs');
     const {localTurn, localLine, paidLine} = await import('./local-agent.mjs');
-    let ol = null, spentG = 0, unknown = false;
-    const over = () => gem && spentG >= budget; // a voice can spend the rest of the budget between turns
+    let ol = null, spentG = 0, unknown = false, voiceBusy = 0, voiceAd = null;
+    const over = () => gem && spentG >= budget;
+    // a voice call in flight is money not yet counted: a turn waits for it (at most VOICE_SETTLE_MS) so the budget is judged on the real spend (#869)
+    const settle = async () => {for (const t0 = Date.now(); voiceBusy > 0 && Date.now() - t0 < VOICE_SETTLE_MS;) await new Promise(r => setTimeout(r, 100))}; // a voice can spend the rest of the budget between turns
     const noPrice = u => {if (u && u.costKnown === false && !unknown) {unknown = true; log(`[dm] ${rs.model} reports no price: its spend is counted as $0, so the budget does not limit it`)}};
     if (gem) {
       const {openaiRunner} = await import('./agent-chat.mjs'), o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
@@ -559,16 +562,18 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     }
     const where = gem ? ` (${label})` : ' (local)', onCost = gem ? u => {const c = u && u.cost || 0; spentG += c; sess.costUsd = (sess.costUsd || 0) + c; noPrice(u)} : undefined;
     {const {warmUp} = await import('./warmup.mjs'); await warmUp({base, seat: {role: 'dm'}, runner, model: rs.model, adapter: ol, log})} // the start gate (issue #222): ready = answered
-    if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost}); log(`[dm] table voice: ${rs.model}${where} answers the calls of staged scenes`)}
-    if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || (gem ? 8 : 25)))}); log(`[dm] talk voice: ${rs.model}${where} answers the Fellowship's conversations with world characters`)}
-    if (!flag('no-companion-voice')) {companionVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || (gem ? 8 : 25)))}); log(`[dm] companion voice: ${rs.model}${where} speaks for the scripted companions of agent companies`)}
-    if (!flag('no-ruling-voice')) {rulingVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || (gem ? 8 : 25)))}); log(`[dm] ruling voice: ${rs.model}${where} rules on the heroes' free actions`)}
+    voiceAd = gem ? {call: async (...a) => {voiceBusy++; try {return await ol.call(...a)} finally {voiceBusy--}}} : ol;
+    if (!flag('no-table-voice')) {tableVoice({base, adapter: voiceAd, model: rs.model, log, stopped: () => stopping || over(), onCost}); log(`[dm] table voice: ${rs.model}${where} answers the calls of staged scenes`)}
+    if (!flag('no-talk-voice')) {talkVoice({base, adapter: voiceAd, model: rs.model, log, stopped: () => stopping || over(), onCost, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || (gem ? 8 : 25)))}); log(`[dm] talk voice: ${rs.model}${where} answers the Fellowship's conversations with world characters`)}
+    if (!flag('no-companion-voice')) {companionVoice({base, adapter: voiceAd, model: rs.model, log, stopped: () => stopping || over(), onCost, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || (gem ? 8 : 25)))}); log(`[dm] companion voice: ${rs.model}${where} speaks for the scripted companions of agent companies`)}
+    if (!flag('no-ruling-voice')) {rulingVoice({base, adapter: voiceAd, model: rs.model, log, stopped: () => stopping || over(), onCost, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || (gem ? 8 : 25)))}); log(`[dm] ruling voice: ${rs.model}${where} rules on the heroes' free actions`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
     if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
       if (over()) {ended = 'budget reached'; break}
       const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping || over(), gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = over() ? 'budget reached' : 'the seat closed'; break}
+      await settle(); if (over()) {ended = 'budget reached'; break}
       let r = null, err = null;
       const prepping = st === prepSt && !!prepSt, prepAt = Date.now();
       {const rd = rollDue(sess, 0, {busy: prepping}); if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}} // only when asked from the page (#787)
@@ -599,28 +604,28 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!flag('no-table-voice')) {
     const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
     const tableModel = opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL);
-    tableVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: tableModel}), model: tableModel, log, stopped: () => stopping,
+    tableVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: tableModel}), model: tableModel, log, stopped: () => stopping || spent >= budget,
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] table voice: ${tableModel} answers the calls of staged scenes`);
   }
   if (!flag('no-talk-voice')) {
     const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
     const talkModel = opt('talk-model', env.DM_TALK_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
-    talkVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: talkModel}), model: talkModel, log, stopped: () => stopping, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 8)),
+    talkVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: talkModel}), model: talkModel, log, stopped: () => stopping || spent >= budget, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || 8)),
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] talk voice: ${talkModel} answers the Fellowship's conversations with world characters`);
   }
   if (!flag('no-companion-voice')) {
     const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
     const compModel = opt('talk-model', env.DM_TALK_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
-    companionVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: compModel}), model: compModel, log, stopped: () => stopping, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || 8)),
+    companionVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: compModel}), model: compModel, log, stopped: () => stopping || spent >= budget, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || 8)),
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] companion voice: ${compModel} speaks for the scripted companions of agent companies`);
   }
   if (!flag('no-ruling-voice')) {
     const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
     const rulingModel = opt('ruling-model', env.DM_RULING_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
-    rulingVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: rulingModel}), model: rulingModel, log, stopped: () => stopping, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || 8)),
+    rulingVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: rulingModel}), model: rulingModel, log, stopped: () => stopping || spent >= budget, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || 8)),
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] ruling voice: ${rulingModel} rules on the heroes' free actions`);
   }

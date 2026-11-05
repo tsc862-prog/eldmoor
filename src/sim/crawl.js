@@ -92,7 +92,7 @@ function buildFoes(room,lvl,cr,D){const out=[],fl=room.alvl!=null?room.alvl+((D&
   for(const f of room.foes)for(let k=0;k<scaleN(f.n,cr);k++){const h=hitsOf(f);out.push({type:f.type,name:foeName(f),hp:h,hits:h,atk:f.atk||1,lvl:Math.max(1,fl)})}
   return out}
 // A foe above the party hits harder in a site room (its level is its own); the Crypt's rooms keep their written hit.
-const hitOf=(room,f,cr)=>{if(room.alvl==null)return room.hit;const d=f.lvl-cr.lvl;return room.hit*Math.max(.12,Math.min(1.8,d>=0?1+.08*d:1+.1*d))};
+const hitOf=(room,f,cr)=>{if(room.alvl==null)return room.hit;const d=f.lvl-cr.lvl;return room.hit*Math.max(.12,Math.min(1.8,d>=0?1+.08*d:1+.1*d))*(f.ph||1)}; // f.ph: a raid site boss's phase (sim/sites.js, #642)
 const woundedWord=a=>isDown(a)?(a.down.stable?' (down, stable)':' (down, bleeding)'):a.hp<maxHp(a)*.35?' (badly hurt)':a.hp<maxHp(a)*.65?' (hurt)':'';
 function frameOf(g,room){const cr=g.crawl,rem=liveFoes(cr),by={};for(const f of rem)by[f.name]=(by[f.name]||0)+1;
   const list=Object.keys(by).map(n=>by[n]>1?by[n]+' '+(species((rem.find(f=>f.name===n)||{}).type)||{}).pl||n+'s':n).join(' and ');

@@ -183,7 +183,8 @@ function since(list,k){if(!list||!list.length)return [];if(!k)return list.slice(
 // #487: with the scripted heroes' caution. A hurt hero walks home to heal (it rests out here only when no creature is
 // close), a storm sends it home, and every hunt autopilot starts is wary (field(), fight()): it keeps to one ground,
 // takes only prey it sizes up as an even match or less, and breaks off at PK.WARY_FLEE.
-function autopilot(a){const field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
+function autopilot(a){if((a.state==='hunt'||a.state==='travel')&&cityAt(a)){a.state='town';a.dest=null} // an orderless hero left in the hunt state at a town's edge is in town: neither branch took it, so it stood there for good
+  const field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
   if(!field&&a.state!=='town')return null;
   return idlePick(a,{town:a.state==='town',field}); // the hero's gambits (#617): its class preset is the policy above, rule for rule
 }
@@ -1437,7 +1438,8 @@ const T={
     // the hero in town (a wait-kind order until its until), and the answer names who is about and the tools for it
     const c=a.pq&&a.pq[0],ct=townHere(a),er=ct?errandOf(g):null;let order=orderOf(a,c&&!c.auto?(c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c):null),here=false;
     if(!order){const go=goalOrder(a,g),toHere=!!(ct&&go&&go.kind==='move'&&go.target===ct.name);here=!!(ct&&namesTown(g,ct)&&(!go||toHere));
-      order=er&&(!go||toHere||go.kind==='wait')?{kind:'wait',errand:er.k,town:ct.name}:toHere?null:go}
+      const topic=!!(go&&go.kind==='move'&&go.target&&new RegExp('\\b(?:about|of|for|regarding|concerning|on)\\s+(?:the\\s+)?'+reEsc(String(go.target).replace(/^the\s+/i,'').toLowerCase())+'(?:$|[^a-z])','i').test(g)); // a place named as the topic of the asking is not where to walk (#725)
+      order=er&&(!go||toHere||topic||go.kind==='wait')?{kind:'wait',errand:er.k,town:ct.name}:toHere?null:go}
     // #790: a level condition is never a wait, an errand's included: it maps to a hunt on the fitting ground
     const lc=levelCond(until)||(waitish(g)?levelCond(g):null);let ord=order,level=null;
     if(lc&&(!ord||ord.kind==='wait')){const mem=lc.all?[a,...partyMates(a)]:[a],lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a);

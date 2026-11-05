@@ -22,3 +22,5 @@ warn then allow, never a hard block. `apartNote` says when a walk leaves a non-f
 **How to apply:** only `a.player` heroes reach this code, so the seeded hash (professioncheck --hash) must stay equal to
 main. Fixtures that walk a low hero across a high region now get `stops_short` first (lorecheck had one; call again). Fixtures that need a member idle/stuck in town must keep it there through its agent (behaviorcheck: runner orders rest hourly), since autopilot now walks out.
 Check: `npm run townpilotcheck`. Related: [[turn_hold]], [[learn_the_world]], [[emergent_parties]].
+
+Town edge: `cityAt` pads the rect by .5, so a hunter walking along a wall reads as in town while its state is `hunt`. Autopilot now puts such an orderless hero in state `town` (before: neither branch, stood for good). Fixtures must not stand on a live hero's position (`out.x`): it moves with real time; fix a spot away from walls.
