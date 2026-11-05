@@ -35,6 +35,7 @@ const ABOUT = {
   'lever-near-hurt': 'a danger lever pulled near a badly hurt Fellowship member',
   'request-flood': 'too many tool or relay calls in a minute',
   'no-memories': 'an agent-played Fellowship member wrote no memory for two game days',
+  'refused-talk': 'an agent hero had several lines refused by the talk guard in one game hour (a repeat or a second introduction, #870)',
   'no-flee-rule': 'an agent hero ran with gambits that hold no flee rule (flee_home or retreat_to), its own call (#617)',
   'no-aim': 'an agent hero had no stated aim (intent) for two game hours outside camp and town rest (#535)',
   'town-idle': 'an agent hero earned nothing in town for twelve game hours (no XP, kill, buy, sell, job or talk); it was woken with the board and autopilot hunts (#790)',
@@ -113,14 +114,14 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   // ---- per seat ----
   L.push('## Per-seat health', '');
   const seats = new Map();
-  for (const t of T) {const k = t.seat || '?'; let s = seats.get(k); if (!s) seats.set(k, s = {seat: k, name: t.hero && t.hero.name || (k === 'dm' ? 'DM' : k), minds: new Set(), n: 0, empty: 0, repeat: 0, foreign: 0, stale: 0, refused: 0, calls: 0, failed: 0, secs: [], tin: [], tout: [], cr: [], cost: 0, costKnown: false, last: null, lastNarr: null});
+  for (const t of T) {const k = t.seat || '?'; let s = seats.get(k); if (!s) seats.set(k, s = {seat: k, name: t.hero && t.hero.name || (k === 'dm' ? 'DM' : k), minds: new Set(), n: 0, empty: 0, repeat: 0, foreign: 0, chatbot: 0, stale: 0, refused: 0, calls: 0, failed: 0, secs: [], tin: [], tout: [], cr: [], cost: 0, costKnown: false, last: null, lastNarr: null});
     s.n++; s.minds.add(mind(t)); const f = new Set(t.flags || []);
-    if (f.has('empty')) s.empty++; if (f.has('repeat')) s.repeat++; if (f.has('foreign')) s.foreign++; if (f.has('stale')) s.stale++; if (f.has('refused')) s.refused++;
+    if (f.has('empty')) s.empty++; if (f.has('repeat')) s.repeat++; if (f.has('foreign')) s.foreign++; if (f.has('chatbot')) s.chatbot++; if (f.has('stale')) s.stale++; if (f.has('refused')) s.refused++;
     s.calls += t.calls || 0; s.failed += t.failed || 0; s.secs.push(t.seconds); if (legacyTokens(t)) s.legacy = (s.legacy || 0) + 1; else {s.tin.push(t.tokensIn); s.tout.push(t.tokensOut); s.cr.push(t.cacheRead)}
     if (Number.isFinite(t.cost)) {s.cost += t.cost; s.costKnown = true}
     s.last = t.ts; if (t.narration) s.lastNarr = t.narration}
-  L.push(table(['seat', 'who', 'mind', 'turns', 'empty', 'repeat', 'foreign', 'stale', 'refused', 'calls (failed)', 'avg s', 'tokens in/out per turn', 'cache read per turn', 'cost', 'last turn'],
-    [...seats.values()].map(s => [s.seat, s.name, [...s.minds].join(', '), s.n, pct(s.empty, s.n), s.repeat, s.foreign, s.stale, s.refused, `${s.calls} (${s.failed})`, f1(avg(s.secs)), `${f1(avg(s.tin))} / ${f1(avg(s.tout))}`, f1(avg(s.cr)), s.costKnown ? money(s.cost) : '-', (s.last || '').slice(0, 19)])), '');
+  L.push(table(['seat', 'who', 'mind', 'turns', 'empty', 'repeat', 'foreign', 'chatbot', 'stale', 'refused', 'calls (failed)', 'avg s', 'tokens in/out per turn', 'cache read per turn', 'cost', 'last turn'],
+    [...seats.values()].map(s => [s.seat, s.name, [...s.minds].join(', '), s.n, pct(s.empty, s.n), s.repeat, s.foreign, s.chatbot, s.stale, s.refused, `${s.calls} (${s.failed})`, f1(avg(s.secs)), `${f1(avg(s.tin))} / ${f1(avg(s.tout))}`, f1(avg(s.cr)), s.costKnown ? money(s.cost) : '-', (s.last || '').slice(0, 19)])), '');
   for (const s of seats.values()) if (s.lastNarr) L.push(`- ${s.name}, last narration: "${q(s.lastNarr, 200)}"`);
   L.push('');
 
@@ -188,6 +189,11 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
     for (const m of last.members || []) if (m.agent && !aim.has(m.name)) aim.set(m.name, new Map());
     L.push('', 'Aims stated (intent) per hero per game day:', '');
     L.push(aim.size ? table(['hero', ...dl.map(d => 'day ' + d), 'total'], [...aim.entries()].map(([k, m]) => [k, ...dl.map(d => m.get(d) || 0), [...m.values()].reduce((t, v) => t + v, 0)])) : '_none stated_', '');
+    // refused talk (#870), from the digests
+    const rt = new Map();
+    for (const w of W) for (const [k, v] of Object.entries(w.talkRefused || {})) {const m = rt.get(k) || {same: 0, intro: 0}; m.same += v.same || 0; m.intro += v.intro || 0; rt.set(k, m)}
+    L.push('', 'Lines refused by the talk guard per hero:', '');
+    L.push(rt.size ? table(['hero', 'repeats', 'introductions', 'total'], [...rt.entries()].map(([k, m]) => [k, m.same, m.intro, m.same + m.intro])) : '_none refused_', '');
     // gambits (issue #617): rule-driven acts and edits per hero, and who ran without a flee rule
     const gb = new Map();
     for (const w of W) for (const [k, v] of Object.entries(w.gambits || {})) {const m = gb.get(k) || {acts: 0, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}; m.acts += v.acts || 0; m.edits += v.edits || 0; m.wrote = Math.max(m.wrote, v.wrote || 0); m.wroteAb = Math.max(m.wroteAb, v.wroteAb || 0); m.noFlee = !!v.noFlee; m.own = m.own || !!v.own; gb.set(k, m)}

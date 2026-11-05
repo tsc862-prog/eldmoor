@@ -32,6 +32,10 @@ export const HEAD=12*PROC_SCALE+5;
 // Camera: the follow view shows about this many tiles across (re-base it when TILE goes to 64: the owner's note is
 // that 64 px art reads best at about 53 tiles across a 3440 px screen).
 export const FOLLOW_TILES=29;
+// The follow view grows with the pane (#846): 29 tiles across up to FOLLOW_NARROW device px of canvas, FOLLOW_WIDE tiles
+// from FOLLOW_FULL px (a 3440 screen's map pane is about 2350), eased between. The caller snaps the scale to whole art pixels.
+export const FOLLOW_WIDE=40,FOLLOW_NARROW=1400,FOLLOW_FULL=2350;
+export const followTiles=w=>FOLLOW_TILES+(FOLLOW_WIDE-FOLLOW_TILES)*Math.max(0,Math.min(1,(w-FOLLOW_NARROW)/(FOLLOW_FULL-FOLLOW_NARROW)));
 
 // Pixel size of a manifest entry at a tier: entries give sizes per tier ({"32":[w,h],"64":[w,h]}).
 export const sizeAt=(e,tier=TILE)=>(e&&e.sizes&&e.sizes[tier])||null;
