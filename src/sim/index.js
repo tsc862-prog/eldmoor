@@ -60,6 +60,7 @@ wireSites();setSiteRoom(siteRoom); // the scripted DM raises sites too (#642)
 import {sessionTick,planOpening} from './arrival.js';
 import {prologueTick} from './prologue.js'; // the first delve (#922)
 export {prologueOn,pickRow} from './prologue.js';
+import {prologueOn} from './prologue.js';
 import './vision.js'; // a vision the DM stages: its Table scene kind (#639)
 import {iqTick} from './interrogate.js'; // a yielded foe questioned at the table (#431 slice 3)
 import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
@@ -116,7 +117,7 @@ export function init(o={}){resetWorld();
   try{opening(o)}finally{if(seeded)seedRng(null)}
   if(none)S.setup={...S.setup,others:'none'}; // the opening writes its own record of the setup
   noteProlog(o); // the first delve (#922): stored only when it differs, so a setup world on the default keeps today's state
-  if(o.setup)planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
+  if(o.setup||prologueOn())planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
   log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
   log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');

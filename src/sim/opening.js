@@ -48,10 +48,10 @@ export function othersStart(o={}){let v=o.others!=null?o.others:o.setup&&o.setup
 
 // The first delve (#922): 'delve' or 'none', or null when nothing asks. init's option wins, then the setup's, then ?prologue= in the browser, then
 // ELDMOOR_PROLOGUE in Node. noteProlog keeps it in S.setup only when it differs from what the world would do by itself.
-export function prologueStart(o={}){let v=o.prologue!=null?o.prologue:o.setup&&o.setup.prologue;
-  try{if(v==null&&typeof location!=='undefined'&&location.search)v=new URLSearchParams(location.search).get('prologue')}catch(e){}
-  if(v==null&&typeof globalThis.ELDMOOR_PROLOGUE!=='undefined')v=String(globalThis.ELDMOOR_PROLOGUE);
-  if(v==null){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_PROLOGUE!=null)v=p.env.ELDMOOR_PROLOGUE}
+export function prologueStart(o={}){let v=o.prologue!=null?o.prologue:o.setup&&o.setup.prologue;const page=!!o.setup; // a setup has chosen, the default included: the URL and the environment do not overrule it
+  try{if(v==null&&!page&&typeof location!=='undefined'&&location.search)v=new URLSearchParams(location.search).get('prologue')}catch(e){}
+  if(v==null&&!page&&typeof globalThis.ELDMOOR_PROLOGUE!=='undefined')v=String(globalThis.ELDMOOR_PROLOGUE);
+  if(v==null&&!page){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_PROLOGUE!=null)v=p.env.ELDMOOR_PROLOGUE}
   v=String(v==null?'':v).trim().toLowerCase();return PROLOGUE_VALUES.includes(v)?v:null}
 export function noteProlog(o){const v=prologueStart(o);if(!v)return;const base=S.setup&&S.setup.world!=null?PROLOGUE_DEFAULT:'none';
   if(v!==base)S.setup={...S.setup,prologue:v};else if(S.setup)delete S.setup.prologue}

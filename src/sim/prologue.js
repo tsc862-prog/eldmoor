@@ -39,6 +39,7 @@ import {SITE,ensureSites,siteSpotErr,enterSite,siteById,siteTag} from './sites.j
 
 export const PRO={
   NEAR:14,  // tiles past SITE.TOWN_GAP the mouth may stand from the gate: a short walk
+  MAX_LVL:3, // a company with anyone above this is past a green blade's chore: a seasoned apart group keeps the start it chose
 };
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
 const byId=id=>S.agents.find(x=>x.id==id)||null;
@@ -48,6 +49,7 @@ const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length
 const rowOf=id=>PROLOGUES.find(r=>r.id===id)||null;
 const fill=(t,P)=>String(t).replace(/\{town\}/g,P.town).replace(/\{crypt\}/g,CRYPT?CRYPT.name:'the deep places');
 const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
+const words=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.t||'').join('');
 
 // The setting: in S.setup only when it differs. A setup world (S.setup.world) takes the default; a world with no setup never does.
 export const prologueOn=()=>!!S.setup&&(S.setup.prologue||(S.setup.world!=null?PROLOGUE_DEFAULT:'none'))==='delve';
@@ -55,7 +57,7 @@ export const prologueOn=()=>!!S.setup&&(S.setup.prologue||(S.setup.world!=null?P
 // ---- raising it ----
 const used=()=>new Set(((S.sites&&S.sites.list)||[]).map(s=>s.prologue).filter(Boolean));
 export function pickRow(town,fac,taken=used()){const free=PROLOGUES.filter(r=>!taken.has(r.id));
-  return free.find(r=>r.towns&&r.towns.includes(town))||free.find(r=>r.fac===fac)||null}
+  return free.find(r=>r.towns&&r.towns.includes(town))||free.find(r=>r.fac===fac&&!r.towns)||free.find(r=>r.fac===fac)||null}
 // The nearest open ground past the town's clear ring, walking outward from the gate: no dice, so a town always gets the same spot.
 function mouthNear(c){const g=c.gate||c.qg;if(!g)return null;
   for(let d=SITE.TOWN_GAP+1;d<=SITE.TOWN_GAP+PRO.NEAR;d++)for(let k=0;k<16;k++){const ang=k*Math.PI/8,q={x:Math.floor(g.x+Math.cos(ang)*d)+.5,y:Math.floor(g.y+Math.sin(ang)*d)+.5};
@@ -68,7 +70,7 @@ function raise(row,at){const X=ensureSites(),T=SITE_THEMES[row.theme],born=Math.
   (S.places||(S.places=[])).push(pl);s.place=pl.id;X.list.push(s);X.stats.made++;return s}
 function placeAtMouth(s,L){const p={x:s.x,y:s.y+1.5},T=SITE_THEMES[s.theme];
   L.forEach((a,i)=>{Object.assign(a,spreadAt(p,i,L.length),{state:'hunt',zone:s.region,dest:null,target:null,moving:false});found(a,s.name,T.mouth,s.place)})}
-function begin(C){const L=memOf(C);if(L.length<2||!tableOn()||!companyAtTable(C))return false;
+function begin(C){const L=memOf(C);if(L.length<2||L.some(a=>a.lvl>PRO.MAX_LVL)||!tableOn()||!companyAtTable(C))return false;
   const town=C.hall||homeOf(L[0]).name,c=CITY.find(x=>x.name===town)||homeOf(L[0]),row=pickRow(town,C.fac),at=row&&mouthNear(c);if(!at)return false;
   const s=raise(row,at);placeAtMouth(s,L);C.prologue={row:row.id,site:s.id,phase:'intro',town};
   log(gd(C.name||L[0].name+'\'s company'),' stands at the mouth of ',siteTag(s),', a short walk from ',gd(town),'.');return true}
@@ -93,10 +95,10 @@ const view=()=>{const out=companies().filter(C=>C.prologue).map(C=>{const P=C.pr
 // ---- the rooms: the DM frames each room's first round; the room's own words stand when it is slow ----
 const siteOfScene=sc=>sc&&sc.ctx&&sc.ctx.site!=null?siteById(sc.ctx.site):null;
 const delveRoom=sc=>{const s=siteOfScene(sc);return !!(sc&&sc.kind==='crawl'&&s&&s.prologue)};
-voicedScene(delveRoom);
+voicedScene(sc=>delveRoom(sc)&&!!(sc.calls&&sc.calls.some(c=>!c.done))); // only while its call waits: a long crawl never hides another company's scene
 kindHooks('crawl').dm={
   onFrame(sc){if(!delveRoom(sc)||sc.ctx.rd)return;const s=siteOfScene(sc),room=s.rooms[sc.ctx.room],row=rowOf(s.prologue);
-    pushCall(sc,{kind:'frame',ms:TABLE.frameMs,who:'the narrator',about:'The first delve, '+s.name+', room '+(sc.ctx.room+1)+' of '+s.rooms.length+': '+room.name+'. What the table shows: '+room.frame+' Behind it (yours alone): '+row.dm+' Write what they see and hear as they come in, a few lines, true to the foes named; decide nothing for them.'})},
+    pushCall(sc,{kind:'voice',ms:TABLE.frameMs,who:'the narrator',about:'The first delve, '+s.name+', room '+(sc.ctx.room+1)+' of '+s.rooms.length+': '+room.name+'. What the table shows, which stays on it: '+words(sc.frame)+' Behind it (yours alone): '+row.dm+' Add what they see and hear as they come in, a few lines, true to the foes named; decide nothing for them.'})}, // voice, not frame: the foes left and who is hurt stay on the table
   live:voiceLive,
   fill(sc,c){resolveCall(sc,c,{text:'',by:'scripted'})}, // the room's own frame is already on the table
   done(){},
@@ -126,6 +128,7 @@ function atGate(P,L){const c=CITY.find(x=>x.name===P.town)||homeOf(L[0]),g=c.gat
   L.forEach((a,i)=>{Object.assign(a,spreadAt(g,i,L.length),{zone:zoneAt(g.x,g.y),dest:null,target:null,moving:false});if(a.state!=='downed'){a.state='town';a.townStep=1}})}
 function comeHome(C,P){const L=memOf(C),s=siteById(P.site),row=rowOf(P.row);
   if(!L.length){delete C.prologue;return}
+  if(P.end==='off'){delete C.prologue;const ld=openingLead(C);if(ld)tellFirstMove(ld,firstMove(P.town).first,L.length>1);return} // the table went away before they went down: nobody fled anything, and the place stays open
   atGate(P,L);const end=P.end==='clear'?'clear':'left',words=fill(row.closing[end],P);
   const lost=(P.ids||[]).map(byId).filter(a=>a&&a.state==='dead').map(a=>a.name),site=s?s.name:row.name;
   const ctx={prologue:1,town:P.town,anchor:(openingLead(C)||L[0]).id,setting:'gate',end,site,lost,words};
@@ -136,7 +139,7 @@ function comeHome(C,P){const L=memOf(C),s=siteById(P.site),row=rowOf(P.row);
 export function prologueTick(){const CS=S.companies;if(!CS)return;
   for(const C of CS){const P=C.prologue;if(!P||sceneFor(C))continue;const s=siteById(P.site);
     if(P.phase==='descend'){P.ids=memOf(C).map(a=>a.id);
-      if(s&&tableOn()&&companyAtTable(C)&&enterSite(C,s)&&s.group&&s.group.crawl){P.phase='below';continue}
+      if(s&&tableOn()&&companyAtTable(C)&&enterSite(C,s)){P.phase='below';continue}
       P.end='off';P.phase='out'}
     else if(P.phase==='below'){if(s&&s.group)continue;P.end=s&&s.state==='cleared'?'clear':'left';P.phase='out'}
     if(P.phase==='out')comeHome(C,P)}}
