@@ -263,6 +263,26 @@ At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/
 
 The **Warden** path is a living warrior's vow to stand guard over friends; it has nothing to do with the undead wardens of the Sunken Crypt (Lich-Warden Vesk and his Grave Wardens), who guard the dead. The word is shared, the calling is not. Trapper: Thornfield now also opens on one worthwhile foe (an elite, a boss, a duellist or a mob near the Trapper's level), not only on a pack; Mender: Mending Touch answers a friend below 72% health.
 
+### Level-15 capstones (issue #713)
+Each path learns a second ability at level 15 (rows of `src/data/moves.js` carrying `spec:` and `lvl:15`), the longest cooldown of the hero's list, a heavier version of what the path already does. All names are plain-English coinages.
+
+| Path | Capstone | Gist |
+| --- | --- | --- |
+| Warden | **Gatewall** | the shield planted as a gate: every friend within five tiles takes blows at 72% for 8 s |
+| Reaver | **Red Harvest** | a reaping circle: 140% to every foe at your side, costs 8% of your health |
+| Runescribe | **Last Rune** | the rune that ends the sentence: 320%, +15% crit |
+| Rimekeeper | **Deep Winter** | winter on the whole fight: 50% and 4 s to every foe within four tiles (a save halves the delay; at the Table a failed save stuns) |
+| Stalker | **Hawkfall** | the arrow that drops like a stooping hawk: 340%, +25% crit |
+| Trapper | **Deadfall** | a hidden pit and a weighted log: 80% and 7 s on one foe (at the Table it roots) |
+| Battle-Cleric | **Bell of Reckoning** | a bell struck once over the fight: 120% and 1.5 s to every foe within two and a half tiles |
+| Mender | **Second Dawn** | the light comes up again: every friend within five tiles heals 24 + 4 per level + 12% of their health |
+| Cutthroat | **Last Whisper** | the blow it never hears: 400%, +20% crit, on a fresh, unhurt foe |
+| Trickster | **Mirror Trick** | three of you and none where the blade falls: foes on you lose 3 s, blows land at 40% for 4 s |
+| Warchanter | **Battle-Saga** | the saga at full voice: 110% and 1 s to every foe within three and a half tiles |
+| Soothsinger | **Evensong** | the last song of the day: every friend within five tiles heals 14 + 3.5 per level + 8% and takes blows at 88% for 6 s |
+| Thornbinder | **Thornstorm** | briars in a storm: 90% and 2.5 s to every foe within four tiles (at the Table it roots) |
+| Springwarden | **Heart of Spring** | the green heart of the wood opens: friends within five tiles take blows at 70% for 8 s and are mended a little |
+
 ## Skald (issue #83)
 The sixth class: a **Skald** is a war-singer, one of the road-poets who march behind a shield wall and make the fight easier to bear. Not a healer and not a mage: the voice is the weapon, and the work is done to the whole company at once. In the Fellowship a Skald is a DPS pick (Mage, Hunter, Rogue or Skald); the three DPS places still prefer three different classes. Ability score Presence (then Wits); trained in Persuasion, Lore, Intimidation and Perception. Mid health, a medium reach of about three tiles, no armour training (light gear, hide and cloth like a Rogue: armour weight .25, the main hand carries the weapon damage). Skald gear nouns (#274, `SLOT_NOUNS` in `src/data/items.js`): Cap (head), Doublet (chest), Bracers (hands), Marchboots (feet), Warhorn (main hand), Songstone (off hand, a hand-sized stone that rings when struck) and Lutecharm (trinket). Banner colours: rose and plum, with a gold-bodied lute carried on the right.
 
