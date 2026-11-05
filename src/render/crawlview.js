@@ -20,7 +20,7 @@ import {roomSpots,roomGrid,spotAt} from '../sim/roomgrid.js';
 import {TABLE} from '../sim/table.js';
 import {maxHp} from '../sim/heroes.js';
 import {isDown} from '../sim/downed.js';
-import {heroSprite,outlined} from './sprites.js';
+import {outlined,sceneFigure,sceneCreature} from './sprites.js';
 import {foeSprite,foeKind} from './dgfoes.js';
 import {classColor,DISP} from '../core/colors.js';
 import {MARK,DUNGEON as D} from './palette.js';
@@ -162,27 +162,28 @@ export function drawCrawl(ctx,m,v,now,dpr,sc,PS){if(!v.live||!v.spots)return fal
   return true}
 function lungeOf(q,id,h){if(!q||q.id!==id||q.k!=='strike'||!foes[q.foe])return 0;const F=foes[q.foe],e=Math.sin(Math.min(1,q.p/.8)*Math.PI);return e*Math.min(.65,Math.max(0,Math.hypot(F.x-h.x,F.y-h.y)-.75))}
 function drawHero(ctx,a,h,q,now,dpr,sc,PS,close,fight){const down=h.down,walking=now-h.moved<.15,fr=walking?Math.floor(now*6)&1:0;
-  const s=outlined(heroSprite(a,false,fr));let x=h.x,y=h.y;
+  let x=h.x,y=h.y;
   const lg=lungeOf(q,a.id,h);if(lg){const F=foes[q.foe],d=Math.hypot(F.x-h.x,F.y-h.y)||1;x+=(F.x-h.x)/d*lg;y+=(F.y-h.y)/d*lg}
   if(!walking&&foes.length&&V.spots)h.face=V.spots.den.x>=h.x-.05?1:-1;const face=h.face;
-  const px=Math.round(x*T),py=Math.round(y*T),sw=Math.floor(s.width/2);
+  const s=sceneFigure(a,face,fr?(Math.floor(now*6)&2?2:1):0),px=Math.round(x*T),py=Math.round(y*T); // a step frame, the two feet in turn
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,down?8:6,1.8,0,0,7);ctx.fill();
   const stb=h.stumble&&now-h.stumble<.9?Math.sin(Math.min(1,(now-h.stumble)/.9)*Math.PI):0,fl=!down&&h.flash&&now-h.flash<.35;
   ctx.save();ctx.translate(px,py);
-  if(down){ctx.rotate(-Math.PI/2*face);ctx.globalAlpha=.85;ctx.drawImage(s,-s.width+2,-sw)}
-  else{if(stb)ctx.rotate(stb*.5*face);ctx.scale(face,1);ctx.drawImage(s,-sw,-s.height+Math.round(stb*2));
-    if(fl){ctx.globalAlpha=.8*(1-(now-h.flash)/.35);ctx.drawImage(tinted(s,'#ff5a48'),-sw,-s.height)}}
+  if(down){ctx.rotate(-Math.PI/2*face);ctx.globalAlpha=.85;ctx.drawImage(s.img,s.sx,s.sy,s.sw,s.sh,-s.dw+2,-s.dw/2,s.dw,s.dh)}
+  else{if(stb)ctx.rotate(stb*.5*face);if(s.mirror)ctx.scale(-1,1);const dy=s.oy+Math.round(stb*2);ctx.drawImage(s.img,s.sx,s.sy,s.sw,s.sh,s.ox,dy,s.dw,s.dh);
+    if(fl){ctx.globalAlpha=.8*(1-(now-h.flash)/.35);ctx.drawImage(tinted(s.img,'#ff5a48'),s.sx,s.sy,s.sw,s.sh,s.ox,dy,s.dw,s.dh)}}
   ctx.restore();ctx.globalAlpha=1;
   // a ring under the feet as a guard, a hold, a ward or a heal plays (the ward's spreads over the party)
   if(q&&q.id===a.id&&RING[q.k]){const p=q.p,rr=q.k==='ward'?.6+p*2.6:.5+p*.5;ring(ctx,px,py,rr,RING[q.k],1-p)}
   if(q&&q.tgt===a&&q.id!==a.id&&(q.k==='heal'||q.k==='potion'))ring(ctx,px,py,.5+q.p*.4,RING.heal,1-q.p);
-  const top=down?py-9:py-s.height;
+  const top=down?py-9:py-s.h;
   if(fight){const mh=maxHp(a),f=mh>0?Math.max(0,Math.min(1,(a.hp+h.pend)/mh)):1;bar(ctx,px-BAR_W/2,top-2,BAR_W,f,false)}
   if(close)label(ctx,a.name+(down?' (down)':''),px,top-5,classColor(a.cls),13,dpr,sc);
   if(a.eff)drawConditions(ctx,null,PS,a,px,py,top-(close?17*dpr/sc:4),now)}
 function ring(ctx,px,py,r,col,a){ctx.strokeStyle=col;ctx.globalAlpha=Math.max(0,a)*.9;ctx.lineWidth=1.2;ctx.beginPath();ctx.ellipse(px,py-1,r*T,r*T*.45,0,0,7);ctx.stroke();ctx.globalAlpha=1}
 function drawFoe(ctx,m,f,F,k,q,now,dpr,sc,PS,close,party){if(!f)return;const dead=f.hp<=0&&F.pend<=0&&!(F.flash&&now-F.flash<.3),s0=foeSprite(f.type,(Math.floor(now*1.8)+k)&1);if(!s0)return;
-  const scl=s0.height<11?1.5:1,o=dead?outlined(s0):rimmed(s0,FOE_RIM),w=o.width*scl,hgt=o.height*scl; // small creatures drawn half again as large: hero size
+  const fcol=(Math.floor(now*1.8)+k)&1,faceIn=V.spots&&V.spots.stair.x<F.x-.05?1:-1,G=sceneCreature(f.type,-faceIn,fcol?(fcol&&k&1?2:1):0); // a generated creature sheet when there is one (#862), looking the way in
+  const scl=G?1:s0.height<11?1.5:1,o=G?G.img:dead?outlined(s0):rimmed(s0,FOE_RIM),w=(G?G.dw:o.width)*scl,hgt=(G?G.dh:o.height)*scl; // small creatures drawn half again as large: hero size
   let x=F.x,y=F.y;
   if(q&&q.k==='blow'&&q.foe===k){const a=whoAt(party,q.id),h=a&&heroes.get(a.id);if(h){const e=Math.sin(Math.min(1,q.p/.8)*Math.PI)*.55,d=Math.hypot(h.x-x,h.y-y)||1;x+=(h.x-x)/d*e;y+=(h.y-y)/d*e}}
   const sh=F.shake&&now-F.shake<.45?Math.round(Math.sin((now-F.shake)*70)*1.5):0;
@@ -193,10 +194,14 @@ function drawFoe(ctx,m,f,F,k,q,now,dpr,sc,PS,close,party){if(!f)return;const dea
     ctx.globalAlpha=1}
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,w*.42,2,0,0,7);ctx.fill();
   const face=V.spots&&V.spots.stair.x<x-.05?1:-1; // foes face the way in, where the party comes from
-  ctx.save();ctx.translate(px,py);ctx.scale(-face*scl,scl);
+  if(G){ctx.save();ctx.translate(px,py);const lift=G.oy+(wet?1:0);
+    if(dead){ctx.globalAlpha=.5;ctx.rotate(Math.PI/2);ctx.drawImage(G.img,G.sx,G.sy,G.sw,G.sh,-G.dw*.5,-G.dh*.5,G.dw,G.dh)}
+    else{ctx.drawImage(G.img,G.sx,G.sy,G.sw,G.sh,G.ox,lift,G.dw,G.dh);
+      if(F.flash&&now-F.flash<.3){ctx.globalAlpha=1-(now-F.flash)/.3;ctx.drawImage(tinted(G.img,'#ffffff'),G.sx,G.sy,G.sw,G.sh,G.ox,lift,G.dw,G.dh)}}}
+  else{ctx.save();ctx.translate(px,py);ctx.scale(-face*scl,scl);
   if(dead){ctx.globalAlpha=.5;ctx.rotate(Math.PI/2);ctx.drawImage(o,-o.width*.5-1,-o.height*.5)} // a body for the room
   else{const lift=-o.height+(wet?1:0);ctx.drawImage(o,-Math.floor(o.width/2),lift);
-    if(F.flash&&now-F.flash<.3){ctx.globalAlpha=1-(now-F.flash)/.3;ctx.drawImage(tinted(o,'#ffffff'),-Math.floor(o.width/2),lift)}}
+    if(F.flash&&now-F.flash<.3){ctx.globalAlpha=1-(now-F.flash)/.3;ctx.drawImage(tinted(o,'#ffffff'),-Math.floor(o.width/2),lift)}}}
   ctx.restore();ctx.globalAlpha=1;
   drawn.push({f,x0:px-w/2,y0:py-hgt-6,x1:px+w/2,y1:py+2});if(dead)return;
   const hits=Math.max(1,f.hits||f.hp),shown=Math.max(0,f.hp+F.pend),top=py-hgt,bw=f.boss?18:BAR_W;
