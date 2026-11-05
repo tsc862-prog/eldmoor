@@ -302,7 +302,7 @@ if (process.argv[2] === '--hall') {
   const {cleanSetup, defaultSetup, applyPreset} = SIM, {CITY} = await import('../src/world/map.js'), {gatherNote} = await import('./pacing.mjs');
   let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
   const mixed = () => {const s = defaultSetup(771, 'stepping', 1); ['ashfolk', 'mirekin', 'mirekin', 'ashfolk', 'thornhide'].forEach((r, i) => s.heroes[i].race = r); return s};
-  const world = () => {init({setup: cleanSetup(mixed())}); const M = SLT.slotHeroes(SLT.slotted()); SIM.setRunnerLinks(x => M.includes(x) ? 'connected' : 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; return M};
+  const world = () => {init({setup: cleanSetup({...mixed(), prologue: 'none'})}); const M = SLT.slotHeroes(SLT.slotted()); SIM.setRunnerLinks(x => M.includes(x) ? 'connected' : 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; return M};
   const murk = CITY.find(c => c.name === 'Murkstead'), send = L => {for (const [i, a] of L.entries()) {a.x = murk.x0 + 3 + i; a.y = murk.y0 + 5}};
   // 1. the bug: session zero seats all five
   let M = world(); step(1 / 60); let sc = S.table;

@@ -20,6 +20,7 @@ import {solidAt,standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {SLOTS} from '../data/items.js';
+import {PROLOGUE_DEFAULT,PROLOGUE_VALUES} from '../data/prologues.js';
 import {S,noOthers} from './state.js';
 import {log,fac} from './chronicle.js';
 import {xpNeed,maxHp,seedLevel,makeHero} from './heroes.js';
@@ -44,6 +45,16 @@ export function othersStart(o={}){let v=o.others!=null?o.others:o.setup&&o.setup
   if(v==null&&typeof globalThis.ELDMOOR_OTHERS!=='undefined')v=String(globalThis.ELDMOOR_OTHERS);
   if(v==null){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_OTHERS!=null)v=p.env.ELDMOOR_OTHERS}
   return String(v==null?'':v).trim().toLowerCase()==='none'?'none':'full'}
+
+// The first delve (#922): 'delve' or 'none', or null when nothing asks. init's option wins, then the setup's, then ?prologue= in the browser, then
+// ELDMOOR_PROLOGUE in Node. noteProlog keeps it in S.setup only when it differs from what the world would do by itself.
+export function prologueStart(o={}){let v=o.prologue!=null?o.prologue:o.setup&&o.setup.prologue;
+  try{if(v==null&&typeof location!=='undefined'&&location.search)v=new URLSearchParams(location.search).get('prologue')}catch(e){}
+  if(v==null&&typeof globalThis.ELDMOOR_PROLOGUE!=='undefined')v=String(globalThis.ELDMOOR_PROLOGUE);
+  if(v==null){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_PROLOGUE!=null)v=p.env.ELDMOOR_PROLOGUE}
+  v=String(v==null?'':v).trim().toLowerCase();return PROLOGUE_VALUES.includes(v)?v:null}
+export function noteProlog(o){const v=prologueStart(o);if(!v)return;const base=S.setup&&S.setup.world!=null?PROLOGUE_DEFAULT:'none';
+  if(v!==base)S.setup={...S.setup,prologue:v};else if(S.setup)delete S.setup.prologue}
 
 // The flag: init's option wins, then ?fellowship= in the browser, then ELDMOOR_FELLOWSHIP in Node.
 export function fellowshipStart(o={}){if(o.fellowship!=null)return !!o.fellowship;let v=null;
@@ -83,7 +94,7 @@ export function opening(o={}){
   const ff=setup?setup.fac:o.fac!=null?o.fac:rnd()<.5?0:1,pick=setup?pickSetup(setup):autoPick(noOthers()?classicFive(ff):ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
   seasonOthers(ids);
   const r=foundSlots(pick,{fac:ff,ai:false,name:setup&&setup.name,hall:hallOf(setup),gather:!!setup}); // the five set out at level 1 from their hall (the setup's town, every member standing in it, #771), agent-played from the first tick (#148)
-  if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(hallOf(setup)?{hall:setup.hall}:{}),...(profs&&Object.keys(profs).length?{profs}:{})}}}
+  if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(hallOf(setup)?{hall:setup.hall}:{}),...(setup.prologue?{prologue:setup.prologue}:{}),...(profs&&Object.keys(profs).length?{profs}:{})}}}
   return r.ok?r.fellowship:null}
 
 // Everyone not chosen starts part-way through a career (START_BANDS), then the line about the worn roads.
@@ -123,5 +134,5 @@ function openApart(setup){
     campaign(r.company,'found',...line);log(...line)}
   if(made.length&&S.followId==null)S.followId=made[0].id;
   setDmSeat(true); // the DM is always an agent (#520): the seat is open from the first tick
-  S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,mode:'apart',dm:setup.dm};
+  S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,mode:'apart',dm:setup.dm,...(setup.prologue?{prologue:setup.prologue}:{})};
   return made[0]||null}
