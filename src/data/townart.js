@@ -16,8 +16,8 @@ export function townStyle(c){
   const n=FAC_STYLE.length,f=c&&Number.isInteger(c.fac)?c.fac:0;return FAC_STYLE[((f%n)+n)%n]}
 
 // The pieces every town has, laid out in tiles from the town's top-left corner of an 11x9 town whose gate is in the east
-// wall (TOWN_REF); the renderer maps each box's centre through the town's gate side and size the way the world maps the
-// spots (src/world/gen.js spotAt), and keeps the image upright. `serves` names the spot whose keeper stands at the door.
+// wall (TOWN_REF); the world generator (src/world/gen.js planBuildings, #793) maps each box's centre through the town's gate side and size,
+// rounds it to the solid footprint and picks the door; the renderer draws from that plan (town.buildings), not from here. `serves` names the spot whose keeper stands at the door.
 // `box` [x, y, w, h] in tiles; a box may reach past the wall line (a spire over the north wall).
 // Walls and the gate are not boxes: they follow the town's wall tiles and gate side (see the renderer).
 export const TOWN_REF=[11,9];

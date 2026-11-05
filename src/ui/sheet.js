@@ -26,6 +26,7 @@ import {span} from './combat.js';
 import {portrait} from '../render/sprites.js'; // generated face portraits (#367, #372)
 import {renderLife,resetLife} from './lifeview.js'; // the Life view (#389)
 import {gambitDiff} from '../sim/gambits.js'; // how a member's rules differ from its class preset (#679)
+import {threadText} from '../sim/oath.js'; // an unsworn thread, in words (#800)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -62,7 +63,7 @@ export function sheetRows(){const ms=followedMembers().slice(0,MAX_HEROES),cols=
   row('fight','Record','Last fight',lastFight);
   row('gold','Record','Gold',a=>({t:a.gold+'g',n:a.gold}));
   row('kills','Record','Kills',a=>({t:String(a.kills),n:a.kills}));
-  row('oath','Story','Oath',a=>{const g=a.goal;if(!g)return {t:'none',n:-1,c:'dm'};const f=g.done?1:g.need?(g.progress||0)/g.need:0;
+  row('oath','Story','Oath',a=>{const g=a.goal;if(!g||g.aside)return {t:'none',n:-1,c:'dm'};if(g.offered)return {t:'unsworn: '+threadText(a),n:-1,c:'dm'};const f=g.done?1:g.need?(g.progress||0)/g.need:0;
     return {t:(g.done?'Done: ':'')+g.text+(g.need?' ('+(g.done?g.need:g.progress||0)+'/'+g.need+')':''),n:f,c:g.done?'gd':''}});
   row('mem','Story','Last memory',a=>{const r=a.memory&&a.memory.recent;const e=r&&r.length?r[r.length-1]:null;return e?{t:e.t+' · '+e.text,n:a.memory.n||0}:{t:'nothing yet',n:0,c:'dm'}});
   row('gambits','Agent','Gambits',a=>{if(!a.player)return {t:'-',n:null,c:'dm'};const D=gambitDiff(a),n=Object.values(D.counts).reduce((s,x)=>s+x,0);

@@ -7,7 +7,6 @@
 import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
-import {heroStream,sysLine} from './chatpanel.js';
 import {CITY,CRYPT,LAIR,ZONES,OUTPOSTS,zoneFor} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -48,6 +47,7 @@ import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 import {downView,downText,downTitle,flashOf,pips,downKind,DOWN_BADGE} from './downview.js'; // the downed (#659)
+import {threadText} from '../sim/oath.js'; // an unsworn thread, in words (#800)
 
 const $=id=>document.getElementById(id);
 let pick=()=>{};
@@ -78,6 +78,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'hunt':return a.quest?`Hunting ${MOBS[a.quest.type].pl} in ${zn}`:`Hunting in ${zn}`;
     case 'fight':return a.target?`Fighting a level ${a.target.lvl} ${MOBS[a.target.type].name}`:'Fighting';
     case 'return':return `Heading back to ${c}`;
+    case 'mend':return `Mending from wounds in ${c}`;
     case 'duel':return a.target?`Fighting ${a.target.name} of the ${FAC[a.target.fac].name}`:'In a fight';
     case 'ghost':return `Dead. Running back to ${c} as a ghost`;
     case 'raid':return 'Raiding Kragmaw the Cinder Wyrm';
@@ -161,8 +162,8 @@ function story(b,a){sec(b,'Story');
   const tr=el('div','meta');tr.append('Traits: ');const ts=a.traits||[];if(!ts.length)tr.append('none');
   ts.forEach((t,i)=>{const s=el('span','gd',t);if(TRAITS[t])s.title=TRAITS[t].desc;tr.append(s);if(i<ts.length-1)tr.append(', ')});b.append(tr);
   if(a.origin)b.append(el('div','meta',a.origin));
-  if(a.goal){const g=el('div','goal');g.append(el('div',a.goal.done?'gd':'',(a.goal.done?'Done: ':'Goal: ')+a.goal.text));
-    if(a.goal.need){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}
+  if(a.goal&&!a.goal.aside){const th=a.goal.offered,g=el('div','goal');g.append(el('div',a.goal.done?'gd':'',th?'Unsworn: '+threadText(a):(a.goal.done?'Done: ':'Goal: ')+a.goal.text));
+    if(a.goal.need&&!th){g.append(meter('gl',a.goal.done?1:(a.goal.progress||0)/a.goal.need));g.append(el('div','dm',`${a.goal.done?a.goal.need:a.goal.progress||0} / ${a.goal.need}`))}b.append(g)}
   {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
   const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
@@ -286,14 +287,10 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){
   // a Fellowship member: its slice of the chat panel's stream (lines it said or heard, and its proposals and votes), newest first
-  if(slotted()&&inSlots(a)){const rows=heroStream(a).reverse().slice(0,40);
-    if(!rows.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
-    const ul=el('ul','log chat');let last=null;
-    const gs=[];for(const it of rows){const p=gs[gs.length-1];
-      if(p&&it.kind==='chat'&&p.it.kind==='chat'&&p.it.e.from===it.e.from&&p.it.e.text===it.e.text&&!!p.it.e.party===!!it.e.party)p.n++;else gs.push({it,n:1})}
-    for(const {it,n} of gs){const d=it.kind==='chat'?dayOf(it.e):Math.floor(it.gm/1440)+1;if(d!=null&&d!==last){ul.append(daySep(d));last=d}
-      ul.append(it.kind==='chat'?chatLine(it.e,n):sysLine(it))}
-    b.append(el('div','meta','This hero’s part of the Fellowship chat; the Chat panel has it all.'),ul);return}
+  // a Fellowship member's chat is the Chat panel's stream (#845): one place for it, so this tab only points there
+  if(slotted()&&inSlots(a)){const dk=typeof document!=='undefined'&&document.getElementById&&document.getElementById('dock-chat');
+    b.append(el('div','meta',a.name+'’s lines, and what they heard, are in the Chat panel with the rest of the company’s talk.'));
+    if(dk){const g=el('button','mini','Open the Chat tab');g.dataset.gochat='1';b.append(g)}return}
   const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
   if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far (Settings, World chatter, shows it).':'Nothing said or heard yet.'));return}
   const ul=el('ul','log chat');chatByDay(ul,chatGroups(c));b.append(ul)}
@@ -491,6 +488,7 @@ function initChronicle(){const el_=$('log');
 // tab buttons ([data-tab]) switch the dossier tab.
 function initClicks(){const host=document.querySelector('.main')||document.body;
   host.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
+    if(t.closest('[data-gochat]')){const d=document.getElementById('dock-chat');if(d)d.click();return}
     const ag=t.closest('[data-agent]');if(ag){const a=cam.sel;if(a){if(a.player)agentOff(a);else if(agentOn(a))tab='agent';renderHero()}return}
     const ai=t.closest('[data-ai]');if(ai){const a=cam.sel;if(a){if(a.brain)disableBrain(a);else enableBrain(a);renderHero()}return}
     const mp=t.closest('[data-mprompt]');if(mp){if(mindOpen)mindOpen.prompt=!mindOpen.prompt;renderHero();return}

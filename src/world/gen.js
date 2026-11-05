@@ -6,6 +6,8 @@
 // Owned by world-builder.
 import {hash,vnoise,fbm,clamp,pickA} from '../core/rng.js';
 import {placeNodes} from './nodes.js';
+import {solidGrid,landsOf} from './solidgrid.js';
+import {TOWN_PIECES,TOWN_REF} from '../data/townart.js';
 import {G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE,WALKABLE} from './tiles.js';
 
 // ---- biomes: tile painters. n and n2 are the two fbm fields of the spec seeds.
@@ -58,6 +60,29 @@ function spotAt(t,fx,fy){const g=t.gate||'E',w=t.w-1,h=t.h-1;
   if(g==='W')return{x:t.x0+(1-fx)*w,y:t.y0+fy*h};
   if(g==='S')return{x:t.x0+fy*w,y:t.y0+fx*h};
   return{x:t.x0+fy*w,y:t.y0+(1-fx)*h}}
+// ---- town plans (#793): the buildings of a town as sim data, {piece, box:[x,y,w,h], door:[x,y], serves, draw}.
+// The layout (data/townart.js TOWN_PIECES, drawn for an 11x9 town with the gate east) is mapped through the town's gate
+// side and size like the spots; `draw` is that exact (maybe fractional) art box, `box` the whole tiles the building stands
+// on (solid, src/world/passable.js), `door` the one open tile of the footprint, on the edge that faces the street that runs
+// from the gate. The keeper of `serves` stands at the door: those spots are the door tiles. A spec town may list its own
+// `buildings` instead (same shape, whole-tile boxes, door optional: the middle of the south edge).
+function placeBox(t,[bx,by,bw,bh]){const fx=(bx+bw/2)/(TOWN_REF[0]-1),fy=(by+bh/2)/(TOWN_REF[1]-1),w=t.w-1,h=t.h-1,g=t.gate||'E';
+  const p=g==='E'?[t.x0+fx*w,t.y0+fy*h]:g==='W'?[t.x0+(1-fx)*w,t.y0+fy*h]:g==='S'?[t.x0+fy*w,t.y0+fx*h]:[t.x0+fy*w,t.y0+(1-fx)*h];
+  return [p[0]-bw/2,p[1]-bh/2,bw,bh]}
+function planBuildings(t,gateTiles){
+  const x0=t.x0,y0=t.y0,x1=x0+t.w-1,y1=y0+t.h-1,g=t.gate||'E',along=g==='E'||g==='W',E=1e-6;
+  if(Array.isArray(t.buildings))return t.buildings.map(b=>{const [bx,by,bw,bh]=b.box;
+    return{piece:b.piece,box:[bx,by,bw,bh],door:b.door?[b.door[0],b.door[1]]:[bx+Math.floor((bw-1)/2),by+bh-1],serves:b.serves||null,draw:b.draw||[bx,by,bw,bh]}});
+  // the street: the line through the middle of the two gate tiles
+  const sx=gateTiles[0][0]+(along?0:1),sy=gateTiles[0][1]+(along?1:0);
+  return TOWN_PIECES.map(P=>{const d=placeBox(t,P.box);
+    let l=Math.ceil(d[0]-E),r=Math.floor(d[0]+d[2]+E),tp=Math.ceil(d[1]-E),b=Math.floor(d[1]+d[3]+E);
+    if(r<=l){l=Math.round(d[0]+d[2]/2-.5);r=l+1}if(b<=tp){tp=Math.round(d[1]+d[3]/2-.5);b=tp+1}
+    l=Math.max(l,x0+1);tp=Math.max(tp,y0+1);r=Math.min(r,x1);b=Math.min(b,y1); // inside the walls
+    const w=r-l,h=b-tp;let door;
+    if(along){const cy=tp+h/2;door=[l+Math.floor((w-1)/2),cy<sy?b-1:tp]}
+    else{const cx=l+w/2;door=[cx<sx?r-1:l,tp+Math.floor((h-1)/2)]}
+    return{piece:P.piece,box:[l,tp,w,h],door,serves:P.serves||null,draw:d}})}
 function mkTown(t){
   const x0=t.x0,y0=t.y0,x1=x0+t.w-1,y1=y0+t.h-1,g=t.gate||'E';
   const mx=Math.floor(t.w/2),my=Math.floor(t.h/2); // middle wall tile; the gate is this tile and the next
@@ -66,11 +91,12 @@ function mkTown(t){
   else if(g==='W'){gateTiles=[[x0,y0+my],[x0,y0+my+1]];gate={x:x0-.8,y:y0+my+1}}
   else if(g==='S'){gateTiles=[[x0+mx,y1],[x0+mx+1,y1]];gate={x:x0+mx+1,y:y1+1.8}}
   else{gateTiles=[[x0+mx,y0],[x0+mx+1,y0]];gate={x:x0+mx+1,y:y0-.8}}
-  const spots={};
+  const buildings=planBuildings(t,gateTiles),spots={};
   for(const k in SPOT_DEFAULTS){const o=t.spots&&t.spots[k];
     spots[k]=o?{x:x0+o[0],y:y0+o[1]}:spotAt(t,SPOT_DEFAULTS[k][0],SPOT_DEFAULTS[k][1])}
   for(const k in t.spots||{})if(!spots[k])spots[k]={x:x0+t.spots[k][0],y:y0+t.spots[k][1]};
-  return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,
+  for(const k of Object.keys(spots)){const b=buildings.find(q=>q.serves===k);if(b)spots[k]={x:b.door[0]+.5,y:b.door[1]+.5}} // the keeper stands at the door
+  return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,buildings,
     spots,npcs:t.npcs||null,ah:spots.quartermaster,qg:spots.gate,gate,grave:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
 
 // ---- roads
@@ -122,6 +148,11 @@ export function buildWorld(spec){
     const wd=spec.river.width||2;
     if(c.axis==='y'){for(let y=0;y<h;y++){const x0=c.fn(y);for(let k=0;k<wd;k++)if(x0+k>=0&&x0+k<w)tiles[I(x0+k,y)]=RIVER}}
     else{for(let x=0;x<w;x++){const y0=c.fn(x);for(let k=0;k<wd;k++)if(y0+k>=0&&y0+k<h)tiles[I(x,y0+k)]=RIVER}}}
+  // fords (#794): spec.river.fords, places along the river (a y on a north-south river, an x on an east-west one) where it
+  // can be waded. The tiles stay RIVER, so they keep its slow pace; the solid grid leaves them open.
+  const fords=[];
+  if(spec.river)for(const t of spec.river.fords||[]){const c=curves[spec.river.curve],wd=spec.river.width||2,at=c.fn(t);
+    for(let k=0;k<wd;k++)fords.push(c.axis==='y'?I(at+k,t):I(t,at+k))}
 
   // towns
   const CITY=(spec.towns||[]).map(mkTown);
@@ -162,6 +193,9 @@ export function buildWorld(spec){
       if(!path)throw new Error('world spec: no road route from '+r.from+' to '+r.to);
       ROUTES.push(path);paintPolyline(world,path)}}
 
+  // what cannot be walked (solidgrid.js, #794): after the roads, since a road opens what it crosses
+  const solid=solidGrid({tiles,I,w,h,CITY,LANDMARKS,fords}),{land,main:mainLand}=landsOf({tiles,I,w,h,CITY},solid);
+
   // level ladder: the region whose band holds the level. Ties go to the one
   // nearest `near` (a hero's home) when given, else the lower index.
   const bands=regions.map(r=>r.band||[1,Infinity]);
@@ -182,7 +216,7 @@ export function buildWorld(spec){
   const excl=LANDMARKS.filter(l=>l.exclude>0).map(l=>l.mouth?{x:(l.mouth.x0+l.mouth.x1+1)/2,y:(l.mouth.y0+l.mouth.y1+1)/2,r:l.exclude}:{x:l.x,y:l.y,r:l.exclude});
   const ZPTS=regions.map(()=>[]);
   for(let y=1;y<h-1;y++)tile:for(let x=1;x<w-1;x++){const t=tiles[I(x,y)];
-    if(WALKABLE.indexOf(t)<0)continue;
+    if(WALKABLE.indexOf(t)<0||land[I(x,y)]!==mainLand)continue; // never on solid ground, nor in a pocket nobody can walk to (#794)
     for(const c of CITY)if(x>=c.x0-pad[0]&&x<=c.x1+pad[0]&&y>=c.y0-pad[1]&&y<=c.y1+pad[1])continue tile;
     for(const e of excl)if(Math.hypot(x+.5-e.x,y+.5-e.y)<e.r)continue tile;
     ZPTS[zone[I(x,y)]].push({x:x+.5,y:y+.5})}
@@ -201,8 +235,8 @@ export function buildWorld(spec){
     ...CITY.map(c=>[c.name.toUpperCase(),(c.x0+c.x1+1)/2,c.y0>2?c.y1+2.2:c.y0-.6])];
 
   const OUTPOSTS=(spec.outposts||[]).map(o=>({id:o.id,name:o.name,x:o.x,y:o.y,r:o.r||3.5,z:zoneAt(o.x,o.y)})); // contested outposts (#11): data only, never painted
-  const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS},spec); // gathering nodes (#255): an overlay list, not tiles
+  const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS,land,mainLand},spec); // gathering nodes (#255): an overlay list, not tiles
   return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
     REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT,ROUTES,OUTPOSTS,
-    zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,
+    zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,solid,land,mainLand,fords,
     road:pts=>paintPolyline(world,pts)}}

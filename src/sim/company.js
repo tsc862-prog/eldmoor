@@ -13,10 +13,12 @@
 // inSlots(a), slotKeyOf(a) and partySlotted(p). Saves carry only S.companies / a.company / p.company (the old
 // S.fellowship, a.fellow, a.fellowRole and p.fellow accessors are gone; save.js migrates v6 saves that stored them).
 import {S,clockStr} from './state.js';
+import {swornOf,hushOath} from './oath.js'; // only a sworn oath is an open thread (#800)
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {bond} from './bonds.js';
 import {CITY,ZONES,zoneFor,zoneAt,dist} from '../world/map.js';
+import {solidAt,standAt} from '../world/passable.js';
 import {ELITES,MOBS} from '../data/mobs.js';
 import {hash} from '../core/rng.js';
 import {log} from './chronicle.js';
@@ -83,7 +85,7 @@ export function openThreads(C){if(!C)return [];const out=[],seen=new Set();
   for(const a of members(C)){for(const id in a.nemesis||{}){const n=byId(id);if(alive(n)&&!seen.has(n.id)){seen.add(n.id);out.push({kind:'nemesis',parts:['Blood owed: ',n,' of the '+FAC[n.fac].name+' (',a,' swore it for '+a.nemesis[id]+')']})}}
     if(a.vow)out.push({kind:'oath',parts:[a,' swore, aloud: ',gd(a.vow.text)]}); // a sworn vow (#526): the DM can stage its keeping
     const bk=a.vowBroke&&S.gameMin-a.vowBroke.at<3*1440?a.vowBroke:null;if(bk)out.push({kind:'broken',parts:[a,bk.how==='failed'?' failed a vow: ':' broke their word: ',gd(bk.text)]});
-    if(a.goal&&!a.goal.done)out.push({kind:'oath',parts:[a,' swore to ',gd(a.goal.text.charAt(0).toLowerCase()+a.goal.text.slice(1)),' ('+(a.goal.progress||0)+'/'+a.goal.need+')']})}
+    const g=swornOf(a);if(g)out.push({kind:'oath',parts:g.sworn&&g.sworn.words?[a,' swore: ',gd(g.text)]:[a,' swore to ',gd(g.text.charAt(0).toLowerCase()+g.text.slice(1)),' ('+(g.progress||0)+'/'+g.need+')']})}
   return out}
 
 // ---- writing (data only: no lines, no chronicle; the callers write the story) ----
@@ -184,6 +186,8 @@ export const slotParty=C=>C?(S.parties||[]).find(p=>p.company!=null&&p.company==
 export const slotLabel=a=>{const k=a&&slotKeyOf(a),s=k&&slotOf(k);return s?s.label:null};
 export const wasSlotted=(a,C=slotted())=>!!(a&&C&&(inSlots(a)||C.past.some(p=>p.id===a.id)));
 export const lcRoleOf=k=>slotOf(k)?lcRole(k):'companion';
+// The word a character would use for its place in a company (#863): its class, never the game's role term (Tank, Healer, Damage).
+export const placeWord=cls=>cls?String(cls).toLowerCase():'companion';
 // The same beat for several members at once (a shared kill, a party level-up) is one line: 'A, B and C slew ...'.
 export function campaignBy(C,kind,a,...tail){if(!C)return null;const e=C.log[0],tt=plain(tail);
   if(e&&e.kind===kind&&e.tail===tt&&Math.abs(e.gameMin-S.gameMin)<=3&&Array.isArray(e.who)&&!e.who.includes(a.id)){e.who.push(a.id);
@@ -234,11 +238,11 @@ export function checkSlots(slots,fac){const seen=new Set(),F=slotted();
 // It arrives a few levels under the company's lowest living member (balance #107), not at level 1 beside veterans.
 export const SEED_BEHIND=2;
 function recruit(C,fac,cls){const i=S.recruits.findIndex(r=>r.fac===fac&&r.cls===cls);if(i>=0)S.recruits.splice(i,1);
-  const mates=slotHeroes(C),a=makeHero(fac,cls,null,1);if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
+  const mates=slotHeroes(C),a=hushOath(()=>makeHero(fac,cls,null,1));if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
 
 // ---- founding, joining, leaving ----
 // Where the i-th of n stands around a point: two rows, a tile and a half apart, in order. No dice.
-export function spreadAt(p,i,n){const cols=Math.ceil(n/2);return {x:p.x+(i%cols-(cols-1)/2)*1.5,y:p.y+(i<cols?-.7:.7)}}
+export function spreadAt(p,i,n){const cols=Math.ceil(n/2),q={x:p.x+(i%cols-(cols-1)/2)*1.5,y:p.y+(i<cols?-.7:.7)};return solidAt(q.x,q.y)?standAt(q.x,q.y,2):q} // not on a building (#793)
 // A new world's company stands in its hall (#771): a setup's members come from their peoples' home towns, and an opening
 // scene takes only those in shouting range. Members already all inside the hall town stay exactly where they are (a
 // single-people company builds the world of before), so this rolls no dice. Returns those who came from another town;
@@ -260,12 +264,12 @@ export function foundSlots(slots,o={}){if(slotted())return {ok:false,error:'A Fe
   F.name=(o.name&&String(o.name).trim().slice(0,40))||companyName(fac,lead,seed,F.hall);
   for(const s of SLOTS)joinSlot(F,filled[s.key],s.key,null,true);
   const came=o.gather?gatherAtHall(F,mem):[]; // a new world only: a founding in a running world never moves anyone
-  const roster=[];mem.forEach((b,i)=>{roster.push(b,' ('+slotOf(SLOT_KEYS[i]).label+')');if(i<mem.length-2)roster.push(', ');else if(i===mem.length-2)roster.push(' and ')});
+  const roster=[];mem.forEach((b,i)=>{roster.push(b,' ('+placeWord(b.cls)+')');if(i<mem.length-2)roster.push(', ');else if(i===mem.length-2)roster.push(' and ')});
   campaign(F,'found',gd(F.name),' is founded in '+F.hall+': ',...roster,'.');
   if(came.length){campaign(F,'found',...came.flatMap((b,i)=>[...(i?[', ']:[]),b,', come from '+b.born]),'.');for(const b of came)record(b,'Came to '+F.hall+' from '+b.born+' to swear in.')}
   log('In ',F.hall,', ',...roster,' swear themselves into ',gd(F.name),'. Whatever comes, it comes to the five of them.');
   timeline('oath',gd(F.name),' is founded in '+F.hall+' by ',lead,' and four companions.');
-  for(const b of mem){record(b,'Swore into ',gd(F.name),' as its '+slotLabel(b)+'.');remember(b,'join','Swore into '+F.name+' in '+F.hall+' as its '+slotLabel(b)+', beside '+mem.filter(x=>x!==b).map(x=>x.name).join(', ')+'.')}
+  for(const b of mem){record(b,'Swore into ',gd(F.name),' as its '+placeWord(b.cls)+'.');remember(b,'join','Swore into '+F.name+' in '+F.hall+' as its '+placeWord(b.cls)+', beside '+mem.filter(x=>x!==b).map(x=>x.name).join(', ')+'.')}
   for(const b of mem)if(!b.persona||!b.backstory)sheets(F,b);
   for(const b of mem)refreshStances(b,F.ids);
   muster(F);if(F.ai)for(const b of mem)enrich(F,b);
@@ -280,12 +284,12 @@ export function joinSlot(F,a,key,why,quiet){if(!F||!F.slots||!alive(a)||!fits(ke
   F.slots[key]=a.id;F.ids=slotIds(F);a.town=F.hall;
   if(!quiet||why==='arrival')(F.joined||(F.joined={}))[a.id]=Math.round(S.gameMin); // when they joined: a fallen member's letter goes to a later joiner (#452)
   memOf(a);agentMind(a); // the Fellowship is always agent-played (#148): one mind per member, its agent (#126)
-  if(!quiet){campaign(F,'recruit',a,' joins ',gd(F.name),' as its '+slotOf(key).label+(why?' ('+why+')':'')+'.');
-    log(a,' takes the empty place in ',gd(F.name),' as its '+lcRole(key)+'.');
-    timeline('oath',a,' joins ',gd(F.name),' as its '+slotOf(key).label+'.');
-    record(a,'Joined ',gd(F.name),' as its '+slotOf(key).label+'.');
-    sheets(F,a);remember(a,'join','Joined '+F.name+' as its '+slotOf(key).label+(why?', '+why:'')+'. '+slotHeroes(F).filter(b=>b!==a).map(b=>b.name).join(', ')+' ride with me now.');
-    for(const b of slotHeroes(F))if(b!==a){remember(b,'join',a.name+' took the empty place as our '+slotOf(key).label+'.');refreshStances(b,F.ids)}
+  if(!quiet){campaign(F,'recruit',a,' joins ',gd(F.name),' as its '+placeWord(a.cls)+(why?' ('+why+')':'')+'.');
+    log(a,' takes the empty place in ',gd(F.name),' as its '+placeWord(a.cls)+'.');
+    timeline('oath',a,' joins ',gd(F.name),' as its '+placeWord(a.cls)+'.');
+    record(a,'Joined ',gd(F.name),' as its '+placeWord(a.cls)+'.');
+    sheets(F,a);remember(a,'join','Joined '+F.name+' as its '+placeWord(a.cls)+(why?', '+why:'')+'. '+slotHeroes(F).filter(b=>b!==a).map(b=>b.name).join(', ')+' ride with me now.');
+    for(const b of slotHeroes(F))if(b!==a){remember(b,'join',a.name+' took the empty place as our '+placeWord(a.cls)+'.');refreshStances(b,F.ids)}
     refreshStances(a,F.ids);if(F.ai)enrich(F,a);muster(F)}
   return true}
 
@@ -347,10 +351,10 @@ function onDeath(F,a,key){F.slots[key]=null;F.ids=slotIds(F);
   F.past.push({id:a?a.id:null,name:a?a.name:'?',cls:a?a.cls:'?',slot:key,lvl,cause,day:day()});
   if(a){if(a.company===F.id)delete a.company;a.fellowPast=F.id}
   const who=a&&a.kind==='hero'?a:gd(a&&a.name||'a companion');
-  campaign(F,'death',who,' fell at level '+lvl+' ('+cause+'). The '+lcRole(key)+'’s place stands empty.');
-  log({t:'',c:'nar'},gd(F.name),' has lost ',who,', their '+lcRole(key)+', '+cause+'. Hardcore: there is no coming back.');
+  campaign(F,'death',who,' fell at level '+lvl+' ('+cause+'). The '+placeWord(a&&a.cls)+'’s place stands empty.');
+  log({t:'',c:'nar'},gd(F.name),' has lost ',who,', their '+placeWord(a&&a.cls)+', '+cause+'. Hardcore: there is no coming back.');
   for(const b of slotHeroes(F))moment(b,'death',(a&&a.name||'a companion')+' fell ('+cause+')'); // reflection moment (#179)
-  for(const b of slotHeroes(F)){remember(b,'death',(a&&a.name||'A companion')+', our '+lcRole(key)+', fell ('+cause+'). One life each, and that was theirs.');
+  for(const b of slotHeroes(F)){remember(b,'death',(a&&a.name||'A companion')+', our '+placeWord(a&&a.cls)+', fell ('+cause+'). One life each, and that was theirs.');
     if(b.state==='hunt'||b.state==='travel'||b.state==='follow')goHome(b)} // the survivors carry the news home
   if(F.letters)for(const k in F.letters){const l=F.letters[k];if(l&&a&&l.from===a.id&&l.fell==null)l.fell=Math.round(S.gameMin)} // the letter waits for the next joiner (#452)
   // A world with runners (a host reports their links): the place is refilled through an arrival scene at the next camp

@@ -6,6 +6,8 @@
 // the three decision hooks are the ai-designer's: pilgrim travel (pilgrimSteer, called from
 // goalsTick), crypt-group picks (cryptPull in dungeon.js) and raid picks (raidPull in boss.js).
 //
+// An agent-played hero's goal is an offered thread until it swears (#800, sim/oath.js): it rolls and ends with the same dice, and
+// nothing speaks of it. Sworn in its own words it may be any type below, or 'own' (sim/sworn.js).
 // Goal types and how they finish:
 //   avenge        kill the named rare elite                 (killMob -> goalEvent 'kill')
 //   avengeHero    kill, or be in the fight that kills, the enemy who slew a guildmate (agentDie -> 'slay'); also a nemesis entry
@@ -35,6 +37,10 @@ import {moment} from './reflect.js';
 import {oathDone} from './questlog.js'; // finished oaths in the quest log (no dice)
 import {vowEvent,vowTick} from './vows.js'; // sworn vows (#526): agent heroes only, no dice
 import {goHome,huntZone} from './heroes.js';
+import {hushed} from './oath.js'; // an agent hero's goal is an offered thread until it swears (#800)
+import {oathKept,ownHit,ownTick,oathFailed} from './sworn.js';
+import {hasLinks} from './runlink.js';
+import {ev} from './notify.js';
 
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!==undefined?String(v[k]):m);
 const lc=t=>t.charAt(0).toLowerCase()+t.slice(1);
@@ -63,7 +69,7 @@ export function assignBackstory(a){const f=a.fac,o=pickA(ORIGINS[f]),E=originEli
   const bias=o.loss==='elite'?{avenge:E}:o.loss==='heirloom'?{heirloom:ep}:o.loss==='raiders'?{raiders:true}:null;
   a.goal=rollGoal(a,0,bias);bump(stats().rolled,a.goal.type);
   // Recruits (not the opening roster) announce their oath about a third of the time.
-  if(S.chronicle.length&&rnd()<.3)log(a,', ',a.originShort,', swears to ',lc(a.goal.text),'.')}
+  if(S.chronicle.length&&rnd()<.3&&!hushed())log(a,', ',a.originShort,', swears to ',lc(a.goal.text),'.')}
 
 // ---- goal makers (each returns null when the world holds no sensible target) ----
 const mk=(type,tier,v={})=>({type,tier,text:fill(GOAL_TEXT[type],v),target:v.target,targetId:v.targetId,targetFac:v.targetFac,victim:v.victim,
@@ -101,16 +107,21 @@ function rollGoal(a,tier,bias){
   const opts=TIERS[tier].map(k=>M[k](a,tier)).filter(Boolean);
   return pickA(opts)||M.hoard(a,tier)}
 
-function next(a,tier){const g=rollGoal(a,tier,null);bump(stats().rolled,g.type);a.goal=g;return g}
+// An agent hero's next goal is rolled like anyone's (the world's dice stay the same) and read by nobody: it swears its own (#800).
+function next(a,tier){const g=rollGoal(a,tier,null);bump(stats().rolled,g.type);a.goal=g;if(a.player){g.offered=true;g.aside=true}return g}
 
-function complete(a){const g=a.goal;g.done=true;oathDone(a,g,'done');bump(stats().done,g.type);moment(a,'oath',g.text); // reflection moment (#179): agent heroes only
-  const n=next(a,Math.min(TIERS.length-1,g.tier+1));
+function complete(a){const g=a.goal;g.done=true;const up=Math.min(TIERS.length-1,g.tier+1);
+  if(g.offered){next(a,up);return} // a thread that came true unsworn: no oath was kept, so none is spoken of (#800)
+  oathDone(a,g,'done');bump(stats().done,g.type);moment(a,'oath',g.text); // reflection moment (#179): agent heroes only
+  const n=next(a,up);
+  if(a.player){oathKept(a,g);if(!(g.sworn&&g.sworn.words)){if(g.tier>=2)timeline('oath',a,' kept a high oath: '+lc(g.text)+'.');log(a,fill(GOAL_DONE[g.type],g))}return}
   if(g.tier>=2)timeline('oath',a,' kept a high oath: '+lc(g.text)+'.');
   log(a,fill(GOAL_DONE[g.type],g),' A new oath: ',lc(n.text),'.')}
 
 // The target died before the oath could be kept: re-roll at the same tier.
-function voided(a){const g=a.goal;stats().moot++;oathDone(a,g,'expired');const n=next(a,g.tier);
-  if(rnd()<.5)log(a,' outlived ',{t:g.target,c:'f'+g.targetFac},' with the oath unkept. A new oath: ',lc(n.text),'.')}
+function voided(a){const g=a.goal;stats().moot++;if(!g.offered)oathDone(a,g,'expired');const n=next(a,g.tier),said=rnd()<.5;
+  if(a.player){if(!g.offered)ev(a,g.target+' is gone by another hand; the oath you swore cannot be kept now: '+g.text,true);return}
+  if(said)log(a,' outlived ',{t:g.target,c:'f'+g.targetFac},' with the oath unkept. A new oath: ',lc(n.text),'.')}
 
 function checkRival(a){const g=a.goal,t=byId(g.targetId);if(!alive(t)){voided(a);return}
   g.need=t.lvl+1;g.progress=a.lvl;if(a.lvl>t.lvl)complete(a)}
@@ -118,6 +129,7 @@ function checkRival(a){const g=a.goal,t=byId(g.targetId);if(!alive(t)){voided(a)
 // ---- hooks called from heroes.js, dungeon.js and boss.js ----
 export function goalEvent(a,kind,x){
   if(a&&a.vow)vowEvent(a,kind,x);
+  if(a&&ownHit(a,kind,x))complete(a); // an oath in the hero's own words (#800)
   // An enemy hero x fell to a: every oath-bearer of a's side in the fight (within 8 tiles) shares the vengeance.
   if(kind==='slay'){for(const h of S.agents){const g=h.goal;if(!g||g.done||g.type!=='avengeHero'||g.targetId!==x.id||!alive(h))continue;if(h===a||(h.fac!==x.fac&&dist(h,x)<=8))complete(h)}return}
   const g=a&&a.goal;if(!g||g.done)return;
@@ -127,7 +139,7 @@ export function goalEvent(a,kind,x){
   case 'level':if(g.type==='ascend'){g.progress=a.lvl;if(a.lvl>=g.need)complete(a)}else if(g.type==='rival')checkRival(a);break;
   case 'crypt':if(g.type==='delve')complete(a);break;
   case 'boss':if(g.type==='legend')complete(a);break;
-  case 'died':if(rnd()<.5)log(a,' died with the oath unkept: ',{t:g.text,c:'dm'},'.');break;
+  case 'died':if(rnd()<.5&&!g.offered)log(a,' died with the oath unkept: ',{t:g.text,c:'dm'},'.');break;
   }}
 
 // Sort keys for the crypt pool (dungeon.js) and raid muster (boss.js): oath-bound heroes first.
@@ -141,8 +153,9 @@ export const raidPull=a=>a.goal&&!a.goal.done&&(a.goal.type==='legend'||a.goal.t
 function goalPoint(a,g){if(g.type==='pilgrimCrypt')return{x:CRYPT.x,y:CRYPT.y+1};
   const gate=homeOf(a).gate;let best=null,bd=1e9;for(const p of ZPTS[g.zone]){const d=dist(p,gate);if(d<bd){bd=d;best=p}}return best}
 function pilgrimStep(a,g){
-  const arrived=g.type==='pilgrimCrypt'?dist(a,CRYPT)<2.6:zoneAt(a.x,a.y)===g.zone;
-  if(arrived&&a.state!=='ghost'){complete(a);if(huntZone(a)!==g.zone&&(a.state==='hunt'||a.state==='travel'))goHome(a);return}
+  const arrived=g.type==='pilgrimCrypt'?dist(a,CRYPT)<2.6:zoneAt(a.x,a.y)===g.zone,thread=g.offered&&hasLinks(); // in real play a thread walks nobody anywhere (#800); a world with no host keeps its dice
+  if(arrived&&a.state!=='ghost'){complete(a);if(!thread&&huntZone(a)!==g.zone&&(a.state==='hunt'||a.state==='travel'))goHome(a);return}
+  if(thread)return;
   if(a.lvl<g.minLvl||a.party||(a.state!=='travel'&&a.state!=='hunt'))return;
   if(!a.dest||!a.dest.pil){const p=goalPoint(a,g);if(!p)return;stats().pilgrimSteers++;a.dest={x:p.x,y:p.y,pil:true}}}
 
@@ -156,4 +169,5 @@ export function goalsTick(dt){S.goalT=(S.goalT===undefined?0:S.goalT)-dt;if(S.go
     case 'avengeHero':if(!alive(byId(g.targetId)))voided(a);break;
     case 'ascend':g.progress=a.lvl;if(a.lvl>=g.need)complete(a);break;
     case 'pilgrimFar':case 'pilgrimCrypt':pilgrimStep(a,g);break;
+    case 'own':{const r=ownTick(a,g);if(r==='kept')complete(a);else if(r==='failed')oathFailed(a,'They fell.');break}
     }}}

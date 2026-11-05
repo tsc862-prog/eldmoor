@@ -15,6 +15,7 @@
 //   hours            the hourly world digests: hours the member was seen under this mind's runner, and how many of
 //                    them it ran on autopilot or the scripted rules (no runner) instead of its agent
 //   deaths survived  Fellowship deaths (from the digests) while the member lived; close calls = digests at 25% HP or less
+//   rules written    the rules the hero wrote itself and how many name use_ability (#779): the latest running total in the digests, not a sum
 //   lifetime         game hours from the first to the last digest (or the death); "died" with its cause
 // A member with no data for a column shows "-", never 0. Names, model ids, counts and death causes only: no
 // narration, prompts or another seat's text.
@@ -54,7 +55,7 @@ export function compareMinds(T = [], D = [], W = []) {
 
   const rows = new Map();
   const row = (h, mind) => {const k = h.key + '|' + mind; let r = rows.get(k);
-    if (!r) rows.set(k, r = {hero: h, mind, turns: 0, empty: 0, failed: 0, table: 0, sceneTurns: 0, secs: [], tin: 0, tout: 0, tokN: 0, cr: 0, crN: 0, legacy: 0, cost: 0, costN: 0,
+    if (!r) rows.set(k, r = {hero: h, mind, turns: 0, empty: 0, failed: 0, table: 0, sceneTurns: 0, secs: [], tin: 0, tout: 0, tokN: 0, cr: 0, crN: 0, legacy: 0, cost: 0, costN: 0, t0: null, t1: null, ctx: [], rolls: 0,
       dec: 0, rejected: 0, fallback: 0, decMs: [], relayDec: 0, relayDecFail: 0, relayMs: [], writing: 0, writingFail: 0, hours: 0, autopilot: 0, scripted: 0, close: 0, died: null}); return r};
 
   // agent turns
@@ -64,6 +65,7 @@ export function compareMinds(T = [], D = [], W = []) {
     const name = t.hero && t.hero.name || nameAt(id, tsOf(t)) || lastNamed.get(id) || null; if (name) lastNamed.set(id, name);
     const r = row(heroOf(id, name), mindKey(t.provider, t.model)), f = new Set(t.flags || []);
     r.turns++; if (f.has('empty')) r.empty++;
+    {const ts = tsOf(t); if (Number.isFinite(ts)) {r.t0 = r.t0 == null ? ts : Math.min(r.t0, ts); r.t1 = r.t1 == null ? ts : Math.max(r.t1, ts)}} if (Number.isFinite(t.ctx)) r.ctx.push(t.ctx); if (f.has('session-rolled')) r.rolls++; // #787
     else if (t.error || f.has('failed') || f.has('refused')) r.failed++;
     if (f.has('scene') || f.has('forced-scene')) r.sceneTurns++;
     r.table += (t.tools || []).filter(x => x.name === 'scene_act' && x.ok).length;
@@ -94,6 +96,8 @@ export function compareMinds(T = [], D = [], W = []) {
       if (Number.isFinite(s.hp) && s.hp <= MC.CLOSE) r.close++; h.lastMind = mind;
     }
   }
+  // rules the hero wrote itself (#779): the digest's latest running total per hero, with how many name use_ability
+  for (const w of Ws) for (const [name, g] of Object.entries(w.gambits || {})) {const h = byName.get(name); if (h && g && Number.isFinite(g.wrote)) h.wrote = {n: g.wrote, ab: g.wroteAb || 0}}
   // deaths: a watched hero's death (by name) ends its life; other members survive it if they were alive then
   const deaths = [];
   for (const w of Ws) for (const x of w.deaths || []) {const h = byName.get(x.name); if (h) deaths.push({h, gm: w.gameMin, cause: x.cause || '?', fs: h.fs})}
@@ -124,6 +128,18 @@ export function compareMinds(T = [], D = [], W = []) {
 }
 
 // The section, as Markdown lines. tableFn: the report's Markdown table builder.
+const kTok = n => Math.round(n / 1000) + 'k';
+const perMin = r => r.turns > 1 && r.t1 > r.t0 ? r1((r.turns - 1) / ((r.t1 - r.t0) / 60000)) : '-'; // from the first turn line to the last (#787)
+// Issue #787: cost per turn against the size of the prompt, per band. Haiku's rates are 5x past 100k, so the 100k+ rows are where a roll that did not happen shows.
+export const CTX_BANDS = [[0, 50000, 'under 50k'], [50000, 80000, '50-80k'], [80000, 100000, '80-100k'], [100000, 200000, '100-200k'], [200000, Infinity, '200k+']];
+export function ctxSection(T, tableFn) {
+  const L = ['## Context size and cost', ''], rows = T.filter(t => Number.isFinite(t.ctx) && Number.isFinite(t.cost));
+  if (!rows.length) {L.push('_No Claude turn with a context size logged yet._', ''); return L}
+  L.push('Cost per turn by the size of the last model call\'s prompt, per mind. Claude Haiku 5.5 charges 5x once a prompt passes 100k tokens, so a seat should not show there.', '');
+  const by = new Map(); for (const t of rows) {const b = CTX_BANDS.find(x => t.ctx >= x[0] && t.ctx < x[1]), k = mindKey(t.provider, t.model) + '|' + b[2]; let r = by.get(k); if (!r) by.set(k, r = {mind: mindKey(t.provider, t.model), band: b, n: 0, cost: 0, seats: new Set()}); r.n++; r.cost += t.cost; r.seats.add(t.seat)}
+  L.push(tableFn(['mind', 'prompt size', 'turns', 'seats', 'cost per turn', 'cost'], [...by.values()].sort((a, b) => a.mind.localeCompare(b.mind) || a.band[0] - b.band[0]).map(r => [r.mind, r.band[2], r.n, r.seats.size, money(r.cost / r.n), money(r.cost)])), '');
+  return L;
+}
 export function mindSection(T, D, W, tableFn) {
   const c = compareMinds(T, D, W), L = [];
   L.push('## Mind comparison', '');
@@ -132,11 +148,11 @@ export function mindSection(T, D, W, tableFn) {
   const writes = r => {const parts = Object.entries(r.writers || {}).map(([m, n]) => n + ' by ' + m); if (r.writing) parts.unshift(r.writing + ' by this mind');
     return parts.length ? parts.join(', ') + (r.writingFail ? ' (' + r.writingFail + ' failed)' : '') : '-'};
   const lat = (xs, unit) => {const a = pctile(xs, 50), b = pctile(xs, 90); return a == null ? '-' : `${r1(a)} / ${r1(b)}${unit}`};
-  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'lifetime (game h)'],
+  L.push(tableFn(['member', 'role', 'mind', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'rejected', 'fallbacks', 'sheets written', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out', 'cache read', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths survived', 'rules written / with abilities', 'lifetime (game h)', 'turns/min', 'ctx p50/peak', 'rolls'],
     c.rows.map(r => {const h = r.hero, t = r.turns > 0, d = r.dec > 0, life = h.lifeH == null ? '-' : r1(h.lifeH) + (h.died ? ' (died' + (r.died ? ': ' + r.died : '') + ')' : ' (alive)');
       return [h.name + (h.named === false ? ' (unnamed)' : ''), h.role || (h.fellow ? 'member' : 'agent hero'), r.mind, dash(r.turns, t), dash(r.empty, t), dash(r.failed, t), t || r.table ? r.table : '-', dash(r.dec, d), dash(r.rejected, d), dash(r.fallback, d),
         writes(r), lat(r.secs, ' s'), lat(d ? r.decMs : r.relayMs, ' ms'), r.tokN ? `${r.tin} / ${r.tout}` : '-', r.crN ? r.cr : '-', r.costN ? money(r.cost) : '-',
-        r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, life]})), '');
+        r.hours ? `${r.hours} (${r.autopilot}, ${r.scripted})` : '-', r.hours ? r.close : '-', h.first == null ? '-' : h.survived, h.wrote ? h.wrote.n + ' / ' + h.wrote.ab : '-', life, perMin(r), r.ctx.length ? `${kTok(pctile(r.ctx, 50))} / ${kTok(Math.max(...r.ctx))}` : '-', r.ctx.length ? r.rolls : '-']})), '');
   L.push('Overall per mind:', '');
   L.push(tableFn(['mind', 'heroes', 'agent turns', 'empty', 'failed', 'Table answers', 'decisions', 'fallbacks', 'sheets written (failed)', 'turn s p50/p90', 'decision ms p50/p90', 'tokens in/out per turn', 'cache read per turn', 'cost per turn', 'cost', 'hours (autopilot, scripted)', 'close calls', 'deaths'],
     c.overall.map(o => {const t = o.turns > 0;

@@ -12,6 +12,7 @@
 import {rnd} from '../core/rng.js';
 import {S,dayNo} from './state.js';
 import {CITY,ZONES,zoneAt,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {racesOf,raceOf,homeOf} from '../data/races.js';
@@ -75,8 +76,8 @@ const SUMMON_LEVER={name:'summon_hero',allow:['cls'],about:'Bring a background h
     a.summoned={day:dayNo()};a.dest=null;a.townStep=1;a.hp=maxHp(a);
     let where;
     if(p.town){const c=townRow(p.town),was=homeOf(a).name;if(was!==c.name)a.born=was;
-      a.town=c.name;a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;a.state='town';where='in '+c.name}
-    else{a.x=p.at.x;a.y=p.at.y;a.zone=zoneAt(a.x,a.y);a.state='hunt';where='in '+ZONES[a.zone]}
+      a.town=c.name;Object.assign(a,standAt(c.x0+2+rnd()*7,c.y0+4+rnd()*3));a.state='town';where='in '+c.name}
+    else{Object.assign(a,standAt(p.at.x,p.at.y));a.zone=zoneAt(a.x,a.y);a.state='hunt';where='in '+ZONES[a.zone]}
     record(a,'Came '+(p.town?'to '+p.town:'onto the roads of '+ZONES[a.zone])+'.');
     log('A ',raceOf(a).name,' ',p.cls.toLowerCase(),', ',a,', comes '+(p.town?'to '+p.town:'onto the roads of '+ZONES[a.zone])+'.');
     return {ok:true,effect:{hero:a.name,id:a.id,cls:a.cls,fac:FAC[f].name,people:raceOf(a).name,level:a.lvl,where,alive:summonedAlive().length+'/'+SUMMON.ALIVE}}},

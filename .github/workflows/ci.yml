@@ -49,6 +49,8 @@ jobs:
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           GH_TOKEN: ${{ github.token }}
       - {name: World spec snapshot check, run: npm run worldcheck}
+      - {name: Passability layer check, run: npm run passablecheck}
+      - {name: Paths check, run: npm run pathcheck}
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: init() reset, run: npm run initcheck}
       - {name: Downed and death saves, run: npm run downcheck}
@@ -78,6 +80,7 @@ jobs:
       - {name: DM levers, run: npm run levercheck}
       - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
       - {name: Gathering, run: npm run gathercheck}
+      - {name: Road traffic, run: npm run trafficcheck}
       - {name: Crafting, run: npm run craftcheck}
       - {name: Hero trades, run: npm run tradecheck}
       - {name: Gathering nodes, run: npm run nodecheck}
@@ -114,8 +117,10 @@ jobs:
       - {name: Hugging Face provider (mock router and no token), run: npm run hfcheck}
       - {name: Gemini provider (mock Gemini and no key), run: npm run googlecheck}
       - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
+      - {name: Session size (real CLI on a mock API), run: npm run sessioncheck}
       - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
+      - {name: Cost report (fixture logs), run: npm run costcheck}
 
   rate:
     name: Model request rate
@@ -183,6 +188,8 @@ jobs:
       - {name: Brain policy and relay (mock model), run: npm run braincheck}
       - {name: Table mode and staged scenes, run: npm run tablecheck}
       - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
+      - {name: Talk guard (introductions and repeats; refused talk counted), run: npm run talkcheck}
+      - {name: Companies initiate the Crypt and raids, run: npm run initiatecheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: DM rumours and names for deeds (seed_rumour and bestow), run: npm run rumourcheck}
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}

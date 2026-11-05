@@ -33,6 +33,7 @@
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
 import {clamp} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
+import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {GOODS,QUEST_ITEMS,USES,EPICS,BOSS_EPICS,DG_EPICS,SLOTS} from '../data/items.js';
@@ -50,6 +51,7 @@ import {focuses,pullTouchesAny,reserveOf,fairRefusal} from './dmfocus.js'; // th
 import {timeline,record} from './history.js';
 import {npcSay,ensureNpcs} from './npcs.js';
 import {moveTo} from './heroes.js';
+import {clearLine} from './path.js';
 import {spawnMob} from './mobs.js';
 import {postHook,withdrawHook} from './dm.js';
 import {postSupply,withdrawSupply,openAt as supplyOpenAt,SUP} from './supply.js'; // goods jobs (#720): post_hook takes their names as tpl
@@ -123,7 +125,10 @@ export function spotErr(p,o={}){
   if(!(p.x>=1&&p.y>=1&&p.x<W-1&&p.y<H-1))return 'off the map';
   const t=tiles[I(Math.floor(p.x),Math.floor(p.y))];
   if(o.road&&t!==ROAD)return 'not a road tile';
-  if(!WALKABLE.includes(t))return 'not a walkable tile';
+  // solid ground (#792): the passability layer is the one way to ask; the refusal names the nearest spot that passes
+  const hint=()=>{if(o._hint)return '';const q=nearestOpen(p.x,p.y,12,s=>!spotErr(s,{...o,_hint:1}));return q?'; nearest open ground is '+q.x+','+q.y:'; no open ground within 12 tiles'};
+  if(solidAt(p.x,p.y))return 'solid ground ('+solidWhy(p.x,p.y)+')'+hint();
+  if(!WALKABLE.includes(t))return 'not a walkable tile'+hint();
   const c=CITY.find(c=>p.x>=c.x0-1&&p.x<=c.x1+1&&p.y>=c.y0-1&&p.y<=c.y1+1);if(c)return 'inside '+c.name;
   const g=CITY.find(c=>dist(p,c.gate)<(o.clear||LK.TOWN_CLEAR));if(g)return 'within '+(o.clear||LK.TOWN_CLEAR)+' tiles of '+g.name+'’s gate';
   for(const l of LANDMARKS)if(l.exclude&&dist(p,l)<l.exclude+1)return 'on '+l.name;
@@ -173,6 +178,9 @@ export function pull(name,raw,o={}){raw=aliasRaw(name,raw);name=leverAlias(name)
   if(!reason)return fail('a reason is required');
   if(def.stub&&!IMPL[def.stub]&&!def.native)return fail('not available yet');
   const p=validate(def,raw);if(typeof p==='string')return fail(p);
+  // The engine's own placements (by 'scripted') never fail on solid ground (#792): the point steps to the nearest open tile.
+  // A model or agent caller is refused instead, with that tile named (spotErr), so it can choose.
+  if(by==='scripted'&&p.at&&solidAt(p.at.x,p.at.y)){const q=nearestOpen(p.at.x,p.at.y,12);if(q)p.at={x:q.x,y:q.y}}
   const ctx={by,reason,adv:o.adv||null,now:S.gameMin};
   if(def.check){const e=def.check(p,ctx);if(e)return fail(e)}
   const z=def.region?def.region(p):p.region!=null?p.region:null,D=today(),lim=def.limits;
@@ -451,7 +459,7 @@ register({name:'custom_foe',about:'A special foe from the bestiary: base creatur
   apply(p,ctx){const lvl=p.lvl!=null?bandLvl(p.region,p.lvl).lvl:band(p.region)[0]+2,pair=v=>v&&Array.isArray(v.pair)&&v.pair.length===2?v.pair:undefined;
     const f=customFoe(p.base,{name:p.name,levels:p.levels,swap:pair(p.swap),resist:pair(p.resist)},{region:p.region,level:lvl,reason:ctx.reason,adv:ctx.adv});
     if(!f){const e=S.dmLog&&S.dmLog[0];return {ok:false,effect:e&&e.kind==='custom'?String(e.summary[0]).replace('Special foe refused: ',''):'the bestiary refused it'}}
-    const m=spawnFoe(f);m.hpl=m.hp;m.x=p.at.x;m.y=p.at.y;m.home={...p.at};m.spawn={...p.at};m.lever=ctx.id;if(ctx.adv)m.adv=ctx.adv.id;
+    const m=spawnFoe(f);m.hpl=m.hp;Object.assign(m,standAt(p.at.x,p.at.y));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};m.lever=ctx.id;if(ctx.adv)m.adv=ctx.adv.id;
     return {ok:true,effect:{mob:m.id,name:f.name,lvl:m.lvl,points:f.points},until:S.gameMin+DAY,ret:m}},
   expire(rec){mobsOf(rec.id,true)},
   describe:p=>(p.name||p.base)+' in '+ZONES[p.region]});
@@ -509,7 +517,7 @@ export function leverTick(dt){const L=ensureLevers();
 function wander(w,dt){if(w.chatCd>0)w.chatCd-=dt;if(w.bubble){w.bubble.life-=dt;if(w.bubble.life<=0)w.bubble=null}
   if(w.stroll){if(moveTo(w,w.stroll.x,w.stroll.y,dt,1)){w.stroll=null;w.wait=4+r()*8}}
   else{w.moving=false;w.wait-=dt;if(w.wait<=0){const a=r()*6.283,d=r()*1.4,q={x:w.home.x+Math.cos(a)*d,y:w.home.y+Math.sin(a)*d};
-    if(!spotErr(q,{clear:.1})||w.homeKind==='town')w.stroll=q;else w.wait=3}}
+    if((!spotErr(q,{clear:.1})||w.homeKind==='town')&&clearLine(w,q))w.stroll=q;else w.wait=3}} // a stroll stays in the open: never round a house (#794)
   if(w.chatCd>0)return;
   for(const a of S.agents){if(a.state==='dead'||a.state==='ghost'||a.hidden||dist(a,w)>2.2)continue;
     const last=w.met[a.id];if(last!=null&&S.gameMin-last<DAY)continue;w.met[a.id]=S.gameMin;
