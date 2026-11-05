@@ -364,6 +364,23 @@ ok(/## Cost/.test(md) && /Turns by wake reason/.test(md) && rep.cost && rep.cost
   ok(/predate #541/.test(mdo), 'report on old digests says the counters are missing instead of showing zeros');
 }
 
+// ---- 6e. the DM spoke for a member (issue #750): each cut is a dm-spoke-for anomaly on the dm seat, one line per quiet window, counted per DM model ----
+{const {dmlog} = await import('../src/sim/dmlog.js'), w = makeWatch({dmLink: () => 'connected'}), r = []; w.tick();
+  const D = S.dmAgent || {}; const turns0 = D.turns; D.turns = [{id: 1, model: 'claude-haiku-5-5', provider: 'anthropic'}]; S.dmAgent = D;
+  dmlog('agent', null, ['Narrator (at the table): The fire sinks low.'], {by: 'dm-agent', voice: 'narrate', text: 'The fire sinks low.', spoke_for: 'Ulgug'}, {heroes: []});
+  dmlog('agent', null, ['At the table (fireside, frame): Sparks rise.'], {by: 'dm-agent', call: 'frame', scene: 'fireside', text: 'Sparks rise.', spoke_for: 'Ooloss'}, {heroes: []});
+  dmlog('agent', null, ['Narrator (at the table): The wind turns.'], {by: 'dm-agent', voice: 'narrate', text: 'The wind turns.'}, {heroes: []});
+  S.gameMin += 1; r.push(...w.tick()); D.turns = turns0;
+  const an = r.filter(o => o.kind === 'anomaly' && o.rec.kind === 'dm-spoke-for');
+  ok(an.length === 2 && an.every(o => o.rec.seat === 'dm' && o.rec.evidence.model === 'claude-haiku-5-5') && an[0].rec.evidence.who === 'Ulgug' && an[1].rec.evidence.scene === 'fireside', 'each cut line is a dm-spoke-for anomaly on the dm seat, with who and the DM model (' + an.map(o => o.rec.text).join(' | ') + ')');
+  const dirS = join(ROOT, 'spokefor'), {mkdirSync: mk4} = await import('node:fs'); mk4(dirS, {recursive: true});
+  const bl = behaviorLog({root: dirS, world: 'sf', log: () => {}}); for (const o of an) bl.ingest(o.kind, o.rec);
+  const lines = readFileSync(join(dirS, 'sf', FILES.anomaly), 'utf8').split(/\r?\n/).filter(Boolean).map(l => JSON.parse(l)).filter(x => x.kind === 'dm-spoke-for');
+  ok(lines.length === 1, 'the logger keeps one dm-spoke-for line per seat in its quiet window (' + lines.length + ')');
+  const md = readFileSync(writeReport(dirS, 'sf').file, 'utf8');
+  ok(/dm-spoke-for/.test(md) && /DM spoke for a member \(`dm-spoke-for`\): 1 \(anthropic\/claude-haiku-5-5 1\)/.test(md), 'the report names the anomaly and counts it per DM model');
+}
+
 // ---- 6b. a busy page (#736): the page's own page-stall anomaly and hour digest, and the relay's when a call times out on a silent page ----
 console.log('a busy page (#736)');
 {const {EventEmitter} = await import('node:events'), {mkdirSync: mk4} = await import('node:fs');

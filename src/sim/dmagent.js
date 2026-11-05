@@ -34,6 +34,7 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
+import {spokeFor,VOICE_FIELDS,spokeNote} from './spokefor.js'; // the DM never speaks for a member (#750)
 import {fileWish,wishInvite} from './wish.js'; // #663
 import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS,validate as leverValidate} from './levers.js';
 import {log as chronLog} from './chronicle.js';
@@ -306,7 +307,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     unheard:unheardOf(D),since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
-    your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
+    your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},spoke_for_today:day.spoke||0, // lines cut because they put words in a member's mouth (#750)
     ...(downCallSummary()?{downed:downCallSummary()}:{}), // a hero down: voice it through table_call (#655)
     ...(noOthers()?{others:'none: no background heroes ride here, only the companies and whoever you bring (summon_hero)'}:{}), // the world setting (#780)
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
@@ -789,7 +790,29 @@ export function dmAct(tool,args={}){
   if(!((tool==='table_call'||tool==='npc_call'||tool==='ruling_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
   return r}
 // One tool, answered (dmAct's bookkeeping aside); a when fires its action through it too (#635).
-function run(tool,args){let r;
+// The DM never speaks for a member (#750): every DM-voiced text is cut of quotes attributed to a living agent-played hero before the tool
+// runs (sim/spokefor.js); the call's DM log entry carries spoke_for, the result tells the DM, dm_status counts spoke_for_today. A when
+// that fires later goes through here too. The newcomer of an arrival scene is voiced by the DM until sworn (#452): its own voice and
+// oath calls are not cut for that name. A quote that repeats the member's own words (a scene line, a say, an attempt) stays.
+function voiceGuard(tool,args){const F=VOICE_FIELDS[tool];if(!F)return null;
+  const heroes=S.agents.filter(a=>a.kind==='hero'&&a.player&&a.state!=='dead');if(!heroes.length)return null;
+  let c=null;if(tool==='table_answer'){const sc=ourScene()||findScene(x=>x.ctx&&x.ctx.staged!=null),id=Math.round(Number(args.call));c=sc&&(sc.calls||[]).find(x=>x.id===id)||null}
+  const voiced=c&&(c.kind==='voice'||c.kind==='oath')&&c.who?String(c.who):null,names=heroes.map(a=>a.name).filter(n=>n!==voiced),allow={};
+  for(const a of heroes){const L=(a.talkSaid||[]).slice();for(const sc of allScenes())for(const b of sc.beats||[])if(b.id===a.id&&b.line)L.push(b.line);
+    for(const r of (S.rulings&&S.rulings.cur)||[])if(r.hero===a.id&&r.what)L.push(r.what);allow[a.name]=L}
+  const out={...args},cut=[];let gone=false;
+  for(const f of F){if(typeof args[f]!=='string')continue;const g=spokeFor(args[f],{names,allow});if(!g.cut.length)continue;out[f]=g.text;
+    if(f===F[0]&&!g.text&&!(c&&c.kind==='complication'))gone=true;for(const n of g.cut)if(!cut.includes(n))cut.push(n)}
+  if(!cut.length)return null;const g={args:out,cut,seq:S.dmLogSeq||0};
+  if(gone){spokeLog(g,tool);g.res={ok:false,error:spokeNote(cut)+' Nothing else was left in it: answer again in your own voice (the narrator or the person), describing what they do.',spoke_for:cut}}
+  return g}
+function spokeLog(g,tool){const day=today();day.spoke=(day.spoke||0)+1;const n=g.cut.join(', ');let hit=false;
+  for(const e of S.dmLog||[]){if(e.id<=g.seq)break;(e.detail||(e.detail={})).spoke_for=n;hit=true}
+  if(!hit)dmlog('agent',null,['The DM spoke for '+n+' ('+tool+'): that line was cut'],{by:'dm-agent',spoke_for:n,tool},{heroes:[]})}
+function run(tool,args){const g=voiceGuard(tool,args&&typeof args==='object'?args:{});if(g&&g.res)return g.res;
+  const r=run0(tool,g?g.args:args);if(!g)return r;spokeLog(g,tool);
+  return r&&typeof r==='object'?{...r,spoke_for:g.cut,warning:spokeNote(g.cut)}:r}
+function run0(tool,args){let r;
   switch(tool){
     case 'dm_status':r=status();break;
     case 'read_timeline':r=timelineRead(args.n);break;

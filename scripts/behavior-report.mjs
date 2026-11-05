@@ -43,6 +43,7 @@ const ABOUT = {
   'dm-scripted': 'the DM agent answered under half of the answerable calls (talk, table voice, slots) over two game hours while its seat was held; the scripted DM filled the rest (#541)',
   'hold-expired': 'a gambit hold stopped the world and the agent did not act within its limit (#630)',
   'scene-missed': 'a live member did not answer its Table scene in time: the table waited, then its reflex acted (#515)',
+  'dm-spoke-for': 'a DM voice quoted an agent-played member (put words in their mouth); the game cut the line (#750)',
 };
 
 export function readJsonl(dir, name, sinceMs = 0) {
@@ -249,11 +250,18 @@ export function companySection(W = [], T = [], table) {
   return {lines: L, data: rows.map(x => ({id: x.id, name: x.name, size: x.size, minds: x.minds, hours: Math.round(x.hours * 10) / 10, deaths: x.deaths, turns: x.turns || 0, empty: x.empty || 0, fellowship: x.fellowship, members: x.members}))};
 }
 
+// dm-spoke-for (#750) per DM model: the model the game saw on the DM runner's latest turn, held-back repeats counted.
+export function spokeForLine(A = []) {
+  const by = new Map(); for (const a of A) if (a.kind === 'dm-spoke-for') {const e = a.evidence || {}, k = (e.provider || '?') + '/' + (e.model || '?'); by.set(k, (by.get(k) || 0) + 1 + (a.heldBack || 0))}
+  const n = [...by.values()].reduce((t, v) => t + v, 0);
+  return `Lines cut because the DM spoke for a member (\`dm-spoke-for\`): ${n}${n ? ' (' + [...by.entries()].map(([k, v]) => k + ' ' + v).join(', ') + ')' : ''}.`;
+}
 function dmShareSection(W, T, A, table) {
   const L = ['## DM agent share', ''], D = W.filter(w => w.dmShare && w.dmShare.kinds);
   if (!D.length) {
     L.push(`_No digest carries the DM share counters yet (${W.length} digest${W.length === 1 ? '' : 's'} predate #541). Computable from them: nothing per call kind; the log-based figures under World (DM log entries by kind, levers by caller, dmFocus) still apply. New digests count, per kind of DM call, how many the DM agent answered, answered late and the scripted DM filled, and the seat's minutes closed, with no runner, live and waiting._`, '');
     const dmTurns = T.filter(t => t.seat === 'dm'); if (dmTurns.length) L.push(`DM agent turns on record: ${dmTurns.length}.`, '');
+    L.push(spokeForLine(A), '');
     return L;
   }
   const dnum = w => Math.floor((w.gameMin - 1) / 1440) + 1, zero = () => ({agent: 0, late: 0, scripted: 0, seat: {}});
@@ -278,6 +286,7 @@ function dmShareSection(W, T, A, table) {
   L.push('Per model (digests go to the model of the DM latest turn before them):', '');
   L.push(table(['DM model', 'DM turns', 'answerable calls', 'answered by the agent', 'late', 'scripted fill', 'agent share'], [...by.entries()].map(([k, v]) => {const [a, b] = share(v), late = ANSWERABLE.reduce((t, x) => t + (v[x] ? v[x].late : 0), 0); return [k, v.turns, a + b, a, late, b, pct(a, a + b)]})), '');
   const an = A.filter(x => x.kind === 'dm-scripted'); L.push(`Anomalies \`dm-scripted\`: ${an.length}${an.length ? ' (' + an.slice(-3).map(x => day(x.gameMin)).join(', ') + ')' : ''}.`, '');
+  L.push(spokeForLine(A), '');
   return L;
 }
 
