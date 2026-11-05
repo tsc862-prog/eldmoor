@@ -1,4 +1,5 @@
 - [Party rules](party_rules.md) — why followers have their own state, duelers stay, regroup exists, zone = weakest member, 50% outnumbered flee
+- [Companies initiate #826](companies_initiate.md) — inMuster keyed on hasLinks, solo go_crypt/join_raid, raid vote lapse, askCompany seam for call_to
 - [Own oaths #800](own_oaths.md) — goal is an offered thread until sworn; swornOf is the one reader; dice stay in goals.js; keep_oath for words
 - [Mirefen PvP dynamics](pvp_dynamics.md) — Mirefen hero-time drives deaths; clustering multiplies duel pairs; how to instrument deaths headlessly
 - [Chatter rules](chatter_rules.md) — say() in chat.js, private RNG, lazy per-hero fields, spot at 2+ levels, merge-safe one-line inserts
@@ -85,4 +86,6 @@
 - [Log outcome tags #785](log_outcome_tags.md) — OUTCOME regex in history.js leaves src off outcome lines; add new outcome openings there
 - [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap
 - [Wait is not progress #790](wait_not_progress.md) — wait cap 240, level condition -> hunt, 12 h town-idle guard, refusals list the board
+- [Paths #794](paths_794.md) — path.js rules: near lines skip A*, mob limit, clearLine, reachable goal swap, road shoulders, fixture traps
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
+- [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
