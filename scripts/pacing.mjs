@@ -1,3 +1,4 @@
+import {PRICES} from './providers/anthropic.mjs';
 // Runner pacing (issue #126): a runner's turns follow the game, not a stopwatch. Shared by the hero
 // runner (scripts/agent-player.mjs) and the Fellowship runner (scripts/fellowship.mjs); plain Node.
 //
@@ -339,6 +340,24 @@ export function sceneGrab({due, abort, onGrab = null, ms = SCENE_GRAB_MS, every 
   }, every);
   if (t.unref) t.unref();
   return {stop: () => clearInterval(t), grabbed: () => fired};
+}
+// #747: an aborted query sends no result message, so its spend would never reach the run budget. grabSpend() watches the stream:
+// every assistant message carries the usage of its model call (one call can repeat under the same id as it streams; the largest
+// figure per field wins). grabSpend(...).cost(model, {sent}) prices what was reported with the Anthropic price table (cache reads at
+// 0.1x and cache writes at 1.25x the input rate) -> {usd, how: 'reported'}; with nothing reported (cut before the first model call
+// finished) it estimates from the characters sent (system + prompt, 3 chars a token, all at the full input rate, plus GRAB_EST_OUT
+// output tokens) -> {usd, how: 'estimated'}. An unpriced model counts as the dearest listed. No RNG, no network.
+export const GRAB_EST_OUT = 400;
+export function grabSpend() {
+  const calls = new Map(); let n = 0;
+  return {
+    add(msg) {const u = msg && msg.message && msg.message.usage; if (!u) return; const id = msg.message.id || ('anon' + n++), c = calls.get(id) || {in: 0, out: 0, cr: 0, cw: 0};
+      c.in = Math.max(c.in, u.input_tokens || 0); c.out = Math.max(c.out, u.output_tokens || 0); c.cr = Math.max(c.cr, u.cache_read_input_tokens || 0); c.cw = Math.max(c.cw, u.cache_creation_input_tokens || 0); calls.set(id, c)},
+    reported: () => calls.size,
+    cost(model, {sent = 0} = {}) {
+      const p = PRICES[model] || Object.values(PRICES).reduce((a, b) => b.out > a.out ? b : a);
+      if (calls.size) {let usd = 0; for (const c of calls.values()) usd += (c.in * p.in + c.cr * p.in * .1 + c.cw * p.in * 1.25 + c.out * p.out) / 1e6; return {usd, how: 'reported', calls: calls.size}}
+      return {usd: (Math.ceil(sent / 3) * p.in + GRAB_EST_OUT * p.out) / 1e6, how: 'estimated', calls: 0}}};
 }
 export const GRAB_RESUME = 'Your turn was paused so the Table scene could be answered, and it has been (see the state header). Carry on from what you were doing; do not repeat what you already did.';
 
