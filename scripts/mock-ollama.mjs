@@ -14,7 +14,10 @@
 // startMockOllama() -> {url, seen (every /api/chat body; seen.final counts closing calls), close()}
 import http from 'node:http';
 
-export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b', 'mock-busy:1b', 'mock-pose:1b'];
+export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b', 'mock-busy:1b', 'mock-pose:1b', 'mock-table:1b'];
+// Lines of different words: the table turns away a line that near-copies another member's, and a refused answer is a failed turn (five in a row end the runner).
+export const MOCK_TABLE_LINES = ['Steady now, keep the torches low.', 'I have the left flank; mind the roots.', 'Something moved beyond the stones.', 'Rest your arm, I will take the first watch.', 'We came for the lantern and we leave with it.', 'Count the arrows before we press on.', 'The wind has turned; I smell smoke.', 'Stay together and nobody gets lost.', 'That road did not look like this at noon.', 'Bind the cut before it stiffens.', 'Hush, the birds have gone quiet.', 'One breath, then we move.'];
+export const MOCK_TABLE_MS = 500; // mock-table's answer time (#822)
 export const WARM_SLOW_MS = 2500; // mock-slow's warm-up answer takes this long (issue #222)
 export const MOCK_BUSY = {BUSY_MS: 1200, SCENE_MS: 150}; // mock-busy's tool-loop call and scene answer times (issue #515); a check may change them
 // Embeddings (issue #553): startMockOllama({embed: true}) also lists the model MOCK_EMBED_MODEL and answers POST /api/embed with a
@@ -46,7 +49,7 @@ export async function startMockOllama({embed = false} = {}) {
     json: [{tool: 'status', args: {}}, {tool: 'wait', args: {minutes: 20}}, {tool: 'end', args: {}, narration: 'The hero waited, local and free.'}],
   };
   const server = http.createServer((req, res) => {
-    const send = (code, o) => {res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(o))};
+    let send = (code, o) => {res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(o))};
     if (req.url === '/api/tags') return send(200, {models: (embed ? [...MOCK_MODELS, MOCK_EMBED_MODEL] : MOCK_MODELS).map(name => ({name, model: name}))});
     if (req.url === '/api/embed' && req.method === 'POST') {
       let eb = ''; req.on('data', c => eb += c);
@@ -77,6 +80,19 @@ export async function startMockOllama({embed = false} = {}) {
         return body.model === 'mock-slow:1b' ? void setTimeout(answer, WARM_SLOW_MS) : answer();
       }
       if (body.model === 'mock-down:1b') return send(500, {error: 'model runner has unexpectedly stopped'});
+      if (body.model === 'mock-table:1b') { // nightly run (#822): plays like mock-tools, but answers a scene with a legal option and its own line, so the table sees an agent, not a reflex
+        const send0 = send; send = (code, o) => void setTimeout(() => send0(code, o), MOCK_TABLE_MS); // a real model is not instant: at 0 ms a member passes the runner's 60 calls a minute cap (#467) in a burst of scene wakes and its turns end empty
+        const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
+        if (en) {
+          const who = ((msgs[0] && msgs[0].content || '').match(/^You are (\w+)/) || [])[1] || 'Someone', pick = ['press', 'listen', 'speak'].find(o => en.includes(o)) || en[0];
+          seen.tableScene = (seen.tableScene || 0) + 1;
+          return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: pick, line: `${who} says: ${MOCK_TABLE_LINES[seen.tableScene % MOCK_TABLE_LINES.length]}`})}});
+        }
+        // a free turn: look, set out to hunt, then wait (mock-tools only rests, so its company never leaves town and stuck-state and idle would measure the mock)
+        const k = after.filter(m => m.role === 'assistant').length, walk = [['status'], ['hunt', {count: 2, where: 'Thornvale'}], ['wait', {minutes: 30}]];
+        if (!body.tools || k >= walk.length) return send(200, {...done, message: {role: 'assistant', content: 'The hero set out and waited.'}});
+        return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: walk[k][0], arguments: walk[k][1] || {}}}]}});
+      }
       if (body.model === 'mock-busy:1b') { // issue #515: slow free turns, quick scene answers
         const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
         if (en) {seen.busyScene = (seen.busyScene || 0) + 1; return void setTimeout(() => send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: en.includes('press') ? 'press' : en[0], line: 'Steady, I am with you.'})}}), MOCK_BUSY.SCENE_MS)}
