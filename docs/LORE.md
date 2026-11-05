@@ -20,7 +20,7 @@ the hero card ("People: Tarrow of Highgate") and in the recruit line ("A new Ash
 warrior, Kardul, joins <BF> Bloodfang in Grimhold."). Recruits are drawn to keep the living
 roster of each faction roughly even across its peoples, with a nudge toward the classes a
 people favours. Peoples differ in skin and hair, names, home and culture only; stats come
-from class and level. Home towns not yet on the map are reserved names: Cairnmoot, Brinereach (today a hamlet), Murkstead and Thornteeth (today a camp).
+from class and level. Home towns not yet on the Eldmoor map are reserved names: Cairnmoot, Brinereach (today a hamlet), Murkstead and Thornteeth (today a camp). Brinereach and Thornteeth are real towns on the Stepping Lands test continent (see The Stepping Lands).
 
 | People | Faction | Home | Look | Favours | Culture |
 | --- | --- | --- | --- | --- | --- |
@@ -406,10 +406,14 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 | --- | --- | --- | --- |
 | Highgate | Concord | Hallowan | As in Eldmoor, in the north-west corner. |
 | Cairnmoot | Concord | Tarrow | A cairn-ringed hill market on the western bank of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Brinereach | Concord | Skerrin | A salt-reach fishing town of net-menders on the western bank of the Greywater, south of Cairnmoot. Its name was reserved in "Peoples of Eldmoor". |
 | Grimhold | Warband | Ashfolk | As in Eldmoor, in the south-west corner. |
 | Murkstead | Warband | Mirekin | A stilted salt-boilers' town at the fen margin, west of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Thornteeth | Warband | Thornhide | A bone-carvers' ridge-town in the south-east of the fen country, on the road to the Sunken Crypt. Its name was reserved in "Peoples of Eldmoor". |
 
 - **The Greywater**: the river that divides Lowmark from the fen and the upland.
+- **Brinereach** (Stepping Lands town, Concord, Skerrin home, Lowmark, level 1-5): a salt-reach fishing town of net-menders on the west bank of the Greywater, road to the western hub. Not Eldmoor canon geography.
+- **Thornteeth** (Stepping Lands town, Warband, Thornhide home, Sedgewater, level 4-9): a bone-carvers' ridge-town in the south, roads to Murkstead and the Sunken Crypt. Not Eldmoor canon geography.
 - **The Sunken Crypt of the Stepping Lands** (level 4-9, Sedgewater): the same dungeon name, but the crawl here is three chambers of its own (#309), proving the rooms are data per world. Creatures are the Crypt species (Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens).
   - **The Reed Sump**: a flooded stair-foot choked with dead reeds; Tomb Skitters under the water-mat.
   - **The Salt-Bone Hall**: shelves crusted white with fen salt; a Crypt Shambler and a Bone Archer.
@@ -417,7 +421,7 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 - **The Hollow Cairn** (level 8-13, Cairnwold): placeholder second dungeon. Only the entrance exists today; it has no group runs, boss fight or loot. Its warden, **The Cairn-Warden**, is reserved for the future dungeon.
 - **Brask Ironhorn, the Ram-King of the Cairnwold** (Cairnwold elite, level 15, kin Tundra Shaghorn): a crag-ram with one horn snapped and the other grown into his own shoulder. Placeholder.
 - **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.
-- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth stay reserved.
+- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (see the town table and entries above).
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
@@ -754,6 +758,21 @@ Moss, Venom Sac, Ember Core, Rime Pelt, Hoar Wool) are ordinary creature loot, n
 | Fenmire Eel Stew | A camp meal; the name is the camp cook's joke, the recipe is serious. |
 | Tarn Whitefish Chowder | A camp meal; the best the Hoarfell camps can offer. |
 | Hoarfell Survey Chart | A scribed map of the high country that tells a reader where they are. |
+| Fenwater Salve | A thin green potion of redroot in fen-water (crafted, skill band 1). |
+| Wightbone Philtre | Tarn Wight marrow cut with rimebloom; the strongest crafted draught (band 4). |
+| Hearthbloom Fish Pie | A camp meal of perch in a petal crust; sharpens the eye (band 1). |
+| Tarn Hunter's Feast | A Hoarfell hunter's winter-march meal of whitefish and eel (band 4). |
+| Scroll of the Brief Ward | A hurried, weak ward (band 1). |
+| Scroll of the Unbroken Line | A strong ward inked with grave dust (band 4). |
+
+**Crafted gear pieces** (`CRAFT_GEAR` rows for skill bands 1 and 4; a gear row, not a consumable):
+
+| Name | Slot | Item level | What it is |
+| --- | --- | --- | --- |
+| Mireforged Greaves | feet | 8 | Fen-forged boots of tin and bogiron (smithing band 1). |
+| Boarhide Buckler | off hand | 7 | A small round shield of wolf pelt and mud-boar bristle (leatherworking band 1). |
+| Rimesteel Greatblade | main hand | 20 | A frost-hard master's weapon of icevein and cinder scale (smithing band 4). |
+| Shagmane Hood | head | 20 | A master's hood of hoar wool and shaghorn horn (leatherworking band 4). |
 
 **Crafted gear** (`CRAFT_GEAR`): Tinforged Weapon, Bogiron Handguard, Ashsteel Cuirass, Wolfhide Cowl, Hoarfrost Greatcoat.
 Tinforged is a new material word (tin-forged, the plain first alloy of a new smith, sitting below Bogiron in the
@@ -778,6 +797,16 @@ Thornvale tier); the other material words are the existing ones under Equipment.
 | Scribing | scroll-hearthward | 0 | 2 Rushpulp, Redroot Leaf | Scroll of Hearthward |
 | Scribing | scroll-steadfast | 2 | Rushpulp, Venom Sac | Scroll of the Steadfast Hour |
 | Scribing | chart-hoarfell | 3 | 3 Rushpulp, Venom Sac | Hoarfell Survey Chart |
+| Alchemy | salve-fenwater | 1 | 2 Redroot Leaf, Fen Moss | Fenwater Salve |
+| Alchemy | philtre-wightbone | 4 | Rimebloom, Wight Marrow, Hearthbloom | Wightbone Philtre |
+| Smithing | forge-mireforged | 1 | 2 Tin Ore, 2 Bogiron Ore | Mireforged Greaves |
+| Smithing | forge-rimesteel | 4 | 3 Icevein Ore, 2 Cinder Scale, 2 Ember Core | Rimesteel Greatblade |
+| Leatherworking | cure-boarhide | 1 | 2 Wolf Pelt, 2 Mudback Bristle | Boarhide Buckler |
+| Leatherworking | cure-shagmane | 4 | 3 Hoar Wool, 2 Shaghorn Horn, Cinder Scale | Shagmane Hood |
+| Cooking | meal-bloom-pie | 1 | 2 River Perch, Hearthbloom | Hearthbloom Fish Pie |
+| Cooking | meal-hunters-feast | 4 | 2 Tarn Whitefish, Hearthbloom, Mere Eel | Tarn Hunter's Feast |
+| Scribing | scroll-brief-ward | 1 | 2 Rushpulp, Fen Moss | Scroll of the Brief Ward |
+| Scribing | scroll-unbroken | 4 | 3 Rushpulp, Grave Dust, Venom Sac | Scroll of the Unbroken Line |
 
 **Where things are made (issue #258).** Every recipe can be made at the workshops of a friendly town; at a camp fire only
 cooking and alchemy (a meal over the coals, a draught in a pot). A crafted piece of gear takes the crafter's class noun

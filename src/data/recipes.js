@@ -26,7 +26,18 @@ export const RECIPES=[
   // Scribing: scrolls and maps
   R('scroll-hearthward', 'scribing',0,[['Rushpulp',2],['Redroot Leaf',1]],6,['use','Scroll of Hearthward']),
   R('scroll-steadfast',  'scribing',2,[['Rushpulp',1],['Venom Sac',1]],2,['use','Scroll of the Steadfast Hour']),
-  R('chart-hoarfell',    'scribing',3,[['Rushpulp',3],['Venom Sac',1]],8,['use','Hoarfell Survey Chart'])];
+  R('chart-hoarfell',    'scribing',3,[['Rushpulp',3],['Venom Sac',1]],8,['use','Hoarfell Survey Chart']),
+  // Bands 1 and 4 (issue #718): the gaps at skill 25-49 and at 100. Appended, so the rows above keep their place.
+  R('salve-fenwater',    'alchemy',1,[['Redroot Leaf',2],['Fen Moss',1]],2,['use','Fenwater Salve']),
+  R('philtre-wightbone', 'alchemy',4,[['Rimebloom',1],['Wight Marrow',1],['Hearthbloom',1]],10,['use','Wightbone Philtre']),
+  R('forge-mireforged',  'smithing',1,[['Tin Ore',2],['Bogiron Ore',2]],40,['gear','Mireforged Greaves']),
+  R('forge-rimesteel',   'smithing',4,[['Icevein Ore',3],['Cinder Scale',2],['Ember Core',2]],150,['gear','Rimesteel Greatblade']),
+  R('cure-boarhide',     'leatherworking',1,[['Wolf Pelt',2],['Mudback Bristle',2]],35,['gear','Boarhide Buckler']),
+  R('cure-shagmane',     'leatherworking',4,[['Hoar Wool',3],['Shaghorn Horn',2],['Cinder Scale',1]],140,['gear','Shagmane Hood']),
+  R('meal-bloom-pie',    'cooking',1,[['River Perch',2],['Hearthbloom',1]],1,['use','Hearthbloom Fish Pie']),
+  R('meal-hunters-feast','cooking',4,[['Tarn Whitefish',2],['Hearthbloom',1],['Mere Eel',1]],4,['use',"Tarn Hunter's Feast"]),
+  R('scroll-brief-ward', 'scribing',1,[['Rushpulp',2],['Fen Moss',1]],1,['use','Scroll of the Brief Ward']),
+  R('scroll-unbroken',   'scribing',4,[['Rushpulp',3],['Grave Dust',1],['Venom Sac',1]],6,['use','Scroll of the Unbroken Line'])];
 export const RECIPE_BY_ID=Object.fromEntries(RECIPES.map(r=>[r.id,r]));
 export const recipesOf=prof=>RECIPES.filter(r=>r.prof===prof);
 // Recipes a crafter of this skill band can make (band is skillBand(skill)).
