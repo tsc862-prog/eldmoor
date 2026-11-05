@@ -19,8 +19,8 @@ export const SEARCH_TOOL = 'ToolSearch', ALWAYS_LOAD_META = 'anthropic/alwaysLoa
 export const LAZY_GROUPS = {
   // most used: 97% of the 8846 hero tool calls in logs/behavior/eldmoor/turns.jsonl up to 2026-11-05
   used: ['wait', 'scene_act', 'party_say', 'move_to', 'intent', 'journal_write', 'look', 'status', 'remember', 'talk', 'party_read', 'hunt', 'rest', 'propose', 'say', 'vote', 'fight', 'journal_read', 'lead_to', 'list_jobs', 'flee', 'companions', 'take_adventure', 'follow', 'lore'],
-  // who the hero is, what it swore and what it remembers: rarely called, never to be a hurdle (the owner's rule on personality and story)
-  story: ['self', 'become', 'swear_oath', 'keep_oath', 'renounce_oath', 'journal_search', 'recall', 'update_memory', 'forget', 'pin', 'attempt', 'emote', 'whisper', 'chat_read'],
+  // who the hero is, what it swore, what it remembers and the moral choices it can make: rarely called, but a hero who does not see a choice will not make it
+  story: ['self', 'become', 'swear_oath', 'keep_oath', 'renounce_oath', 'journal_search', 'recall', 'update_memory', 'forget', 'pin', 'attempt', 'emote', 'whisper', 'chat_read', 'finish', 'spare', 'accept', 'decline'],
   // a scene, a fight or a clock that cannot wait for a lookup
   scene: ['use_ability', 'use_item', 'choose', 'answer_challenge', 'break_camp', 'stabilize', 'tend', 'carry'],
 };

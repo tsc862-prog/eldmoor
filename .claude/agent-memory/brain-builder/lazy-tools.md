@@ -16,7 +16,7 @@ metadata:
 - A 400 naming defer_loading: the CLI retries without deferred tools and stays so for the process (mock: 3 refused, then all 107 sent). The turn survives; `ctx` would show no drop.
 - CLI text: "this conversation has run without ToolSearch, and stays so until compacted or cleared. ENABLE_TOOL_SEARCH=true overrides this", hence the pin. We also roll on a switch change (`sess.lazyTools`, `rollDue {lazy}`), since an API with history of both shapes is unverified.
 
-**Figures:** schemas 75,689 -> 35,565 chars, names list +1,726, net about 10.7k tokens by chars/3.6 (an estimate; the same ratio reads the full list as 21k, #808 said 17k). 47 kept of 107. Replay of 808 logged hero turns: 1.9% of calls cold, about 0.10 lookups a turn with 8-turn sessions.
+**Figures:** schemas 75,689 -> 37,819 chars, names list +1,638, net about 10.1k tokens by chars/3.6 (an estimate; the same ratio reads the full list as 21k, #808 said 17k). 51 kept of 107: finish, spare, accept and decline are kept on purpose (coordinator on #924: a hero who does not see a moral choice will not make it, and zero logged uses may be why), so never defer a choice on low use alone. Replay of 808 logged hero turns: 1.9% of calls cold, about 0.10 lookups a turn with 8-turn sessions.
 
 **Why:** cache reads are 70% of hero spend, and the fixed prefix rides every call. **How to apply:** a live test reads the report's Tool loading table (prompt floor drop near 10k, lookups under 0.3 a turn, no used tool going unused), one Haiku turn first, then 3+ hours. Dollars need hours to rise above noise; the floor does not.
 
