@@ -88,3 +88,4 @@
 - [Chatbot voice](chatbot-voice.md) — #837 chatbotVoice guard, refusal note, FP count 0/1646, flag plumbing
 - [Slot stall](slot-stall.md) — #868 turn_over + PostToolUse continue:false, scene slot, lease beats/tickets, real leak, measured calls
 - [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
+- [Lazy tools](lazy-tools.md) — #808 AGENT_LAZY_TOOLS: tools:[] blocks ToolSearch, alwaysLoad list, mock pitfalls, figures, live test needs
