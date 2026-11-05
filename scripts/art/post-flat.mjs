@@ -71,7 +71,7 @@ const darkest=cols=>cols.slice().sort((a,b)=>{const l=c=>{const [r,g,bb]=hexToRg
 // The whole recipe for one entry (called by post-texture.mjs postProcess when entry.post.flat). Returns {w, h, data,
 // notes} or throws OffStyleError (kind 'flat').
 export function postFlat(img,entry,pal,{hint=8,tier=32}={}){
-  const p=entry.post||{},[W,H]=(entry.sizes&&entry.sizes[tier])||entry.size,g=detectGrid(img,p.grid||hint);
+  const p=entry.post||{},[W,H]=(entry.sizes&&entry.sizes[tier])||entry.size,g=detectGrid(img,p.grid||hint,false);
   // flat colour areas carry few block edges, so the grid search can lock onto a multiple: keep it near the hint
   for(const a of ['x','y'])if(!p.grid&&!(g[a].s>=hint/1.5&&g[a].s<=hint*1.5)){g[a]={s:hint,o:0,score:0};g.found=false}
   const notes={grid:g.found?`${g.x.s}x${g.y.s}`:`none (used ${g.x.s})`,recipe:'flat'};

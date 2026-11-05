@@ -12,8 +12,13 @@ import {rnd,ri,pickA} from '../core/rng.js';
 import {raceOf} from '../data/races.js';
 import {SPECS} from '../data/classes.js';
 import {
-  ABILITIES,ABIL_IDS,CLASS_ABIL,SKILLS,SKILL_IDS,CLASS_SKILLS,TRADE_SKILL,TRAIT_SKILL,SOCIAL_LEAN,profBonus,GROWTH_LEVELS,SCORE_MAX,
+  ABILITIES,ABIL_IDS,CLASS_ABIL,SKILLS,SKILL_IDS,CLASS_SKILLS,TRADE_SKILL,TRAIT_SKILL,SOCIAL_LEAN,profBonus,GROWTH_LEVELS,SCORE_MAX,GROWTH,
 } from '../data/abilities.js';
+import {S} from './state.js';
+import {agentLive,reflexMay} from './runlink.js';
+import {histNote} from './persona.js';
+import {record} from './history.js';
+import {notify} from './notify.js';
 
 export const modOf=s=>Math.floor((s-10)/2);
 const roll4=()=>{const d=[ri(1,6),ri(1,6),ri(1,6),ri(1,6)];return d[0]+d[1]+d[2]+d[3]-Math.min(...d)};
@@ -37,6 +42,37 @@ export function growScores(a,lvl){
   if(!a.abil)return;const ca=CLASS_ABIL[a.cls];if(!ca)return;
   a.abil[ca.primary]=Math.min(SCORE_MAX,a.abil[ca.primary]+1);
   if(rnd()<.5)a.abil[ca.secondary]=Math.min(SCORE_MAX,a.abil[ca.secondary]+1)}
+
+// A level-up on a growth level (heroes.js gainXp): an agent-played hero with a live runner is offered the point
+// (a.growPending [{lvl, at}] until raise_score or the hold runs out); everyone else grows at once, with the same
+// dice as before, so scripted worlds and runner-less sims are unchanged. Returns true when the point waits.
+export function levelGrowth(a,lvl){
+  if(a.player&&agentLive(a)){(a.growPending||(a.growPending=[])).push({lvl,at:S.gameMin});return true}
+  growScores(a,lvl);return false}
+export const growthWaiting=a=>(a&&a.growPending&&a.growPending[0])||null;
+// Names for the prompt and the tool text: "Brawn, Reflex, ..." with the ones at the cap left out.
+export const raisable=a=>ABIL_IDS.filter(k=>baseScore(a,k)<SCORE_MAX);
+export function growthText(a){const g=growthWaiting(a);if(!g)return null;
+  return 'You may raise one score by 1 (level '+g.lvl+'): raise_score {score, why} with '+raisable(a).map(k=>k+' '+baseScore(a,k)).join(', ')+'. Left alone, your class default is taken in '+Math.max(0,Math.ceil(GROWTH.HOLD-(S.gameMin-g.at)/60))+' game hours.'}
+// The hero's choice. Resolves an id, name or short; refuses with nothing pending, an unknown score, a capped one, no reason.
+export function raiseScore(a,score,why){
+  const g=growthWaiting(a);if(!g)return {ok:false,error:'No score point is waiting for you (they come at levels '+GROWTH_LEVELS.join(', ')+').'};
+  const key=String(score==null?'':score).trim().toLowerCase();
+  const k=ABIL_IDS.find(i=>i===key||ABILITIES[i].name.toLowerCase()===key||ABILITIES[i].short.toLowerCase()===key);
+  if(!k)return {ok:false,error:'Not a score: "'+String(score==null?'':score).slice(0,30)+'". Yours: '+ABIL_IDS.join(', ')+'.'};
+  if(baseScore(a,k)>=SCORE_MAX)return {ok:false,error:ABILITIES[k].name+' is already at the cap ('+SCORE_MAX+'). Choose from: '+raisable(a).join(', ')+'.'};
+  const w=String(why==null?'':why).trim();if(!w)return {ok:false,error:'Say why in a few words (why): it goes in your story.'};
+  const before=baseScore(a,k);a.abil[k]=before+1;a.growPending.shift();if(!a.growPending.length)delete a.growPending;
+  histNote(a,'score',ABILITIES[k].name+' '+before,ABILITIES[k].name+' '+(before+1),w);
+  record(a,'Raised '+ABILITIES[k].name+' to '+(before+1)+' ('+w.slice(0,80)+').');
+  return {ok:true,score:k,value:before+1,text:ABILITIES[k].name+' is now '+(before+1)+'.'+(a.growPending?' Another point waits.':'')}}
+// The class default once the hold has run out, or at once when no runner holds the hero (the owner said go on).
+export function growthTick(a){const g=growthWaiting(a);if(!g)return;
+  if(!(reflexMay(a)||S.gameMin-g.at>=GROWTH.HOLD*60))return;
+  const before=a.abil?{...a.abil}:{};growScores(a,g.lvl);a.growPending.shift();if(!a.growPending.length)delete a.growPending;
+  const up=ABIL_IDS.filter(k=>a.abil&&a.abil[k]!==before[k]).map(k=>ABILITIES[k].name+' '+a.abil[k]);
+  histNote(a,'score','',up.join(', ')||'no change','class default (no choice made)');
+  notify(a,'Your growth point was taken by your class default'+(up.length?': '+up.join(', '):'')+'.',0,1)}
 
 export const baseScore=(a,k)=>a.abil&&a.abil[k]!==undefined?a.abil[k]:10;
 // Points worn items add to one score (item.bonus); 0 for a hero without slots.

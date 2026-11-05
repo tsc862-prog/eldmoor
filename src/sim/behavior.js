@@ -24,9 +24,13 @@
 //             Table turn resolved by reflex after the wait (issue #515; the digest counts missed and queued waits).
 //             dm-scripted (issue #541): the DM agent answered under BW.DM_SHARE of the answerable calls (talk, table voice, slot)
 //             over BW.DM_WIN game minutes while the seat stayed held by a runner.
+//             refused-talk: an agent hero whose lines the talk guard refused BW.REFUSED_TALK times in a digest hour (#870; the digest counts them per hero)
 //             no-flee-rule: an agent hero whose gambits hold no flee rule (issue #617), again every BW.NO_FLEE_MIN
+//             dm-spoke-for (issue #750): a DM-voiced line quoted an agent-played member and the game cut it (seat dm, the DM model).
 //             no-aim: an agent hero with no stated aim (issue #535, sim/intent.js) for BW.NO_AIM_MIN outside camp and town
 //             rest (the digest counts aims stated per hero, by name).
+//             errand-unacted (issue #727): an aim with town-errand words (ask, information, buy, sell, a trainer, the board) that
+//             was held in town and ended (done, stale or replaced) with no talk, list_jobs, buy, sell or earshot in between.
 //   decision  each hero's Mind entry (sim/brain.js) once it settles: kind, provider, model, options,
 //             choice, outcome (applied, late, rejected, offline, superseded, overruled), latency, error.
 // Read only: it never writes S or a hero, rolls no random number and is not part of step(), so a world
@@ -38,7 +42,7 @@ import {maxHp} from './heroes.js';
 import {companies,minds,inSlots,slotKeyOf,slotMembers,slotted} from './company.js'; // per-company digest (#460)
 import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
-import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
+import {INTENT,aimHeld,aimState} from './intent.js'; // the stated aim (#535)
 import {gambitRec,noFlee} from './gambits.js';
 import {takeWishes} from './wish.js'; // wishes for the builders (#663)
 import {drainHolds} from './gambithold.js'; // finished gambit holds (#630) // the hero's own rules (#617)
@@ -61,6 +65,7 @@ export const BW={
   DM_SHARE:.5,       // the DM agent's share of answerable calls below this over DM_WIN while its seat is held -> dm-scripted (#541)
   DM_WIN:120,        // game minutes of that window
   DM_MIN_CALLS:4,    // ... and at least this many answerable calls in it
+  REFUSED_TALK:3, // lines refused by the talk guard in one digest hour -> refused-talk (#870)
   NO_NOTES_MIN:2*1440, // game minutes an agent-played Fellowship member goes without writing a memory -> no-memories (#179)
   NO_FLEE_MIN:720, // game minutes between two no-flee-rule lines for one hero (#617)
   TOWN_IDLE_MIN:720, // game minutes an agent hero earns nothing in town -> town-idle (#790; the same 12 hours as TP.IDLE_TOWN in sim/player.js)
@@ -88,7 +93,7 @@ export function makeWatch(opts={}){
   const coSeen=new Map();let coDeaths={}; // hero id -> the company it was last seen in; deaths per company this hour (#460)
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map(),iseq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
-    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{},gambits:{}});
+    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{},talkRefused:{},gambits:{}});
   const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
@@ -105,7 +110,7 @@ export function makeWatch(opts={}){
 
   function track(out,a,dt){let t=T.get(a.id);const now=S.gameMin;
     if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:seq0.has(a.id)?seq0.get(a.id):a.memories?a.memories.seq||0:0,noteAt:now,iseq:iseq0.has(a.id)?iseq0.get(a.id):a.intentSeq||0,aimAt:now};T.set(a.id,t)}
-    notes(out,a,t,now);aims(out,a,t,now);townIdle(out,a,t,now);rules(out,a,t,now);
+    notes(out,a,t,now);refusedTalk(out,a,t);aims(out,a,t,now);errands(out,a,t,now);townIdle(out,a,t,now);rules(out,a,t,now);
     H.share[mindOf(a)]+=dt;
     if(a.player&&a.playActAt!==t.act){t.act=a.playActAt;H.acts++}
     // idle in one place (outside camp)
@@ -117,6 +122,11 @@ export function makeWatch(opts={}){
     else if(!t.stuck&&now-t.stSince>=BW.STUCK_MIN){t.stuck=true;anomaly(out,'stuck-state',a,a.name+' has been in state '+a.state+' for '+Math.round((now-t.stSince)/60)+' game hours with no kill or level',
       {minutes:Math.round(now-t.stSince),state:a.state,place:place(a),mind:mindOf(a),doing:a.playDoing||null})}}
 
+  // refused talk (#870): lines sim/talk.js turned away (the same line again, a second introduction), counted per hero in the digest;
+  // a hero with BW.REFUSED_TALK or more refused in one digest hour is flagged refused-talk, so the next loose rule is seen
+  function refusedTalk(out,a,t){const R=a.talkNo;if(!R)return;const s0=t.tn?t.tn.same:0,i0=t.tn?t.tn.intro:0,ds=R.same-s0,di=R.intro-i0;t.tn={same:R.same,intro:R.intro};if(ds<=0&&di<=0)return;
+    const C=H.talkRefused[a.name]||(H.talkRefused[a.name]={same:0,intro:0});C.same+=Math.max(0,ds);C.intro+=Math.max(0,di);
+    if(C.same+C.intro>=BW.REFUSED_TALK)anomaly(out,'refused-talk',a,a.name+' had '+(C.same+C.intro)+' lines refused this hour ('+C.same+' repeats, '+C.intro+' introductions)',{same:C.same,intro:C.intro,mind:mindOf(a)})}
   // memories written (issue #179): counted per member each digest; a member with none for BW.NO_NOTES_MIN is flagged
   function notes(out,a,t,now){const seq=a.memories?a.memories.seq||0:0;
     if(seq>t.nseq){H.memories[a.name]=(H.memories[a.name]||0)+(seq-t.nseq);t.nseq=seq;t.noteAt=now}
@@ -130,6 +140,14 @@ export function makeWatch(opts={}){
     if(!a.player||aimHeld(a)||a.state==='camp'||a.state==='dead'||a.state==='ghost'||resting){t.aimAt=now;return}
     if(now-t.aimAt>=BW.NO_AIM_MIN){const I=a.intent;anomaly(out,'no-aim',a,a.name+' has had no stated aim for '+Math.round((now-t.aimAt)/60*10)/10+' game hours ('+(I?'the last one is '+(I.done?'done':'stale'):'never stated')+')',
       {minutes:Math.round(now-t.aimAt),state:a.state,place:place(a),mind:mindOf(a),last:I?(I.done?'done':'stale'):'none',aims:a.intentSeq||0});t.aimAt=now}}
+  // town errands (issue #727): an errand aim (not a rest) that was held in town is watched until it ends; ended with none of the
+  // errand's tools used -> errand-unacted (once per aim). Only the errand word leaves the hero, never the aim's text.
+  function errands(out,a,t,now){if(!a.player)return;const I=a.intent,W=t.errI;
+    if(W&&(W!==I||W.done||(aimState(a)==='stale'&&!(W.order&&W.order.kind==='wait')))){ // a wait goes stale at 2 h but is still held (#790): it can yet be run, so judge it when it ends
+     t.errI=null;t.errN=W.n;
+      if(W.inTown&&!W.acted)anomaly(out,'errand-unacted',a,a.name+' held an aim to '+W.errand+' in town and let it go ('+(W!==I?'replaced':W.done?'done: '+W.done.why:'stale')+') without talk, list_jobs, buy, sell or earshot',
+        {errand:W.errand,ended:W!==I?'replaced':W.done?'done':'stale',minutes:Math.round(now-W.set),place:place(a),mind:mindOf(a)})}
+    if(I&&!I.done&&I.errand&&I.errand!=='rest'&&t.errI!==I&&t.errN!==I.n&&aimState(a)!=='stale')t.errI=I}
   // town-idle (issue #790): an agent hero in town with nothing earned for BW.TOWN_IDLE_MIN game minutes (sim/player.js townGuard woke it); again every BW.TOWN_IDLE_MIN
   function townIdle(out,a,t,now){const T=a.player&&a.state==='town'?a.townIdle:null;if(!T||now-T.at<BW.TOWN_IDLE_MIN){t.tiAt=null;return}
     if(t.tiAt==null||now-t.tiAt>=BW.TOWN_IDLE_MIN){t.tiAt=now;anomaly(out,'town-idle',a,a.name+' has earned nothing in town for '+Math.round((now-T.at)/60*10)/10+' game hours',{hours:Math.round((now-T.at)/60*10)/10,place:place(a),mind:mindOf(a),aim:a.intent&&!a.intent.done?a.intent.goal:null,level:a.lvl})}}
@@ -158,10 +176,15 @@ export function makeWatch(opts={}){
     const A=dmWin.reduce((t,w)=>t+w.ag,0),B=dmWin.reduce((t,w)=>t+w.sc,0),N=A+B;
     if(S.gameMin-dmHeld>=BW.DM_WIN&&N>=BW.DM_MIN_CALLS&&A/N<BW.DM_SHARE&&S.gameMin-dmAnom>=BW.DM_WIN){dmAnom=S.gameMin;
       anomaly(out,'dm-scripted',null,'The DM agent answered '+A+' of '+N+' answerable calls ('+Math.round(100*A/N)+'%) over '+BW.DM_WIN/60+' game hours while its seat was held: the scripted DM filled '+B,{agent:A,scripted:B,share:Math.round(100*A/N)/100,windowMin:BW.DM_WIN,seat:st})}}
+  // dm-spoke-for (#750): the game cut a DM-voiced line that quoted an agent-played member (sim/spokefor.js); one per cut, the logger
+  // keeps one line per seat in BD.QUIET and counts the rest. The model is the DM runner's latest reported turn.
+  function spoke(out,e){const d=e.detail||{};if(!d.spoke_for)return;H.dmSpokeFor=(H.dmSpokeFor||0)+1;const t=S.dmAgent&&S.dmAgent.turns&&S.dmAgent.turns.find(x=>x.model)||null;H.anomalies++;
+    out.push({kind:'anomaly',rec:{kind:'dm-spoke-for',seat:'dm',hero:null,gameMin:Math.round(S.gameMin),clock:day(),severity:'warn',text:'The DM spoke for '+d.spoke_for+' ('+(d.voice||d.call||d.tool||e.kind)+'): the line was cut',
+      evidence:{who:String(d.spoke_for),voice:d.voice||d.call||d.tool||null,scene:d.scene||null,provider:t&&t.provider||null,model:t&&t.model||null}}})}
   function dmLog(out){const L=S.dmLog||[],seq=S.dmLogSeq||0;if(seq<=dmSeen)return;
     const fresh_=L.filter(e=>e.id>dmSeen).reverse();dmSeen=seq;const now=S.gameMin;
     const fo=focus();
-    for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;shareOf(e);if(fo&&countable(e)){H.dmFocus.acts++;if(touches(e,fo))H.dmFocus.fellow++}if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');
+    for(const e of fresh_){H.dmlog[e.kind]=(H.dmlog[e.kind]||0)+1;shareOf(e);spoke(out,e);if(fo&&countable(e)){H.dmFocus.acts++;if(touches(e,fo))H.dmFocus.fellow++}if(e.kind!=='lever')continue;const d=e.detail||{},by=String(d.by||'?');
       const ok=d.result==='applied';H.levers[ok?'pulled':'refused']++;const b=H.levers.by[by]||(H.levers.by[by]={pulled:0,refused:0});b[ok?'pulled':'refused']++;
       pulls.push(now);if(!ok)refusals.push(now);
       if(ok&&BW.DANGER.includes(d.lever)){const P=d.params||{},at=Number.isFinite(+P.x)&&Number.isFinite(+P.y)?{x:+P.x,y:+P.y}:null;

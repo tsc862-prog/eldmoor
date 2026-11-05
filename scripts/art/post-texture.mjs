@@ -22,11 +22,30 @@ function edges(img,axis){const {w,h,data}=img,n=axis==='x'?w:h,m=axis==='x'?h:w,
 // Block size and offset of the model's pixel grid along one axis: the period (3..32 px, quarter steps) whose lines
 // carry the most edge energy relative to the average. Multiples of the true period score as high, so the smallest
 // period within 85% of the best wins. null when nothing looks like a grid.
-export function gridAxis(e){const n=e.length;let mean=0;for(let i=1;i<n;i++)mean+=e[i];mean/=Math.max(1,n-1);if(mean<=0)return null;
+export function gridAxis(e,fund=true){const n=e.length;let mean=0;for(let i=1;i<n;i++)mean+=e[i];mean/=Math.max(1,n-1);if(mean<=0)return null;
   const res=[];for(let s=3;s<=32;s+=.25){let best=0,bo=0;for(let o=0;o<Math.ceil(s);o++){let t=0,c=0;for(let x=o;x<n;x+=s){const i=Math.round(x);if(i>=1&&i<n){t+=e[i];c++}}const sc=c?t/c/mean:0;if(sc>best){best=sc;bo=o}}res.push({s,o:bo,score:best})}
   const top=Math.max(...res.map(r=>r.score));if(top<1.6)return null;
-  return res.find(r=>r.score>=top*.85)}
-export function detectGrid(img,hint=8){const gx=gridAxis(edges(img,'x')),gy=gridAxis(edges(img,'y')),fb={s:hint,o:0,score:0};
+  const pick=res.find(r=>r.score>=top*.85);return fund?fundamental(e,mean,pick,top):pick}
+// Score and best offset of one integer period d (the same measure as above).
+function gridAt(e,mean,d){const n=e.length;let best=0,bo=0;
+  for(let o=0;o<d;o++){let t=0,c=0;for(let x=o;x<n;x+=d){if(x>=1){t+=e[x];c++}}const sc=c?t/c/mean:0;if(sc>best){best=sc;bo=o}}
+  return {s:d,o:bo,score:best}}
+// A structured image (bricks, cracks, long lines) has its edges on every 2nd or 3rd pixel line, so a multiple of the true
+// period scores as high as the period and the 85% rule can land on 16, 24 or 32 for a model that drew 8 px blocks (the
+// striped ice, mud, snow and swamp tiles of 2026-11-03). A period that divides the pick (within half a pixel over the
+// image, so 23.75 counts as 3 x 8) is the real one when the lines it adds carry real energy, not chance: its score above 1
+// (1 is chance) must be at least 60% of the best score's above 1. Chance lines of a wrong period sit at 0.0 to 0.4 of it.
+export function fundamental(e,mean,pick,top){
+  for(let d=3;d<pick.s;d++){const r=Math.round(pick.s/d);if(r<2||Math.abs(pick.s-r*d)>.5)continue;
+    const g=gridAt(e,mean,d);if(g.score-1>=.6*(top-1))return g}
+  return pick}
+// Block size and offset per axis; an axis with no grid of its own takes the other's size (the model draws square pixels)
+// at its own best offset.
+export function detectGrid(img,hint=8,fund=true){const ex=edges(img,'x'),ey=edges(img,'y');let gx=gridAxis(ex,fund),gy=gridAxis(ey,fund);
+  const mean=e=>{let m=0;for(let i=1;i<e.length;i++)m+=e[i];return m/Math.max(1,e.length-1)};
+  if(gx&&!gy&&mean(ey)>0&&Number.isInteger(gx.s))gy=gridAt(ey,mean(ey),gx.s);
+  else if(gy&&!gx&&mean(ex)>0&&Number.isInteger(gy.s))gx=gridAt(ex,mean(ex),gy.s);
+  const fb={s:hint,o:0,score:0};
   return {x:gx||fb,y:gy||fb,found:!!(gx&&gy)}}
 // One output pixel per grid cell: the mean of the cell's middle half (block edges are often blurred).
 export function sampleCells(img,g){const {w,h,data}=img,cols=Math.floor((w-g.x.o)/g.x.s),rows=Math.floor((h-g.y.o)/g.y.s),out=new Uint8Array(cols*rows*4);
@@ -67,6 +86,27 @@ export function quantise(img,colors,{dither=0}={}){const q=quantiser(colors),P=c
   return {w,h,data:out}}
 export function colorCount(img){const s=new Set();for(let i=0;i<img.w*img.h;i++){const o=i*4;if(img.data[o+3]>=128)s.add((img.data[o]<<16)|(img.data[o+1]<<8)|img.data[o+2])}return s.size}
 
+// A transition piece of the renderer's dual grid (src/render/terrain.js autotileAt/QUAD): an edge is ground A on top and
+// ground B below, a corner is B in the bottom-right quarter and A elsewhere, an inner corner is A in the top-left quarter
+// and B elsewhere. So the check samples quarter-size boxes: an edge's A is the top band and B the bottom band; a corner's B is the bottom-right box and
+// A the other three; an inner corner's A is the top-left box and B the other three. The two must be clearly different colours and each box must be mostly its own
+// one (nearest of the two means), or the image is not that piece: the scenes, walls and random blotches the model drew
+// for "transition tile" on 2026-11-03 (a wrong subject cannot be repaired by processing). Returns {dist, sep, pa, pb, ok}.
+export function pieceStats(img,piece='edge'){const {w,h,data}=img,bw=Math.max(2,w>>2),bh=Math.max(2,h>>2),TL=[0,0,bw,bh],TR=[w-bw,0,w,bh],BL=[0,h-bh,bw,h],BR=[w-bw,h-bh,w,h];
+  const A=piece==='edge'?[[0,0,w,bh]]:piece==='corner'?[TL,TR,BL]:[TL],B=piece==='edge'?[[0,h-bh,w,h]]:piece==='corner'?[BR]:[TR,BL,BR];
+  const each=(rs,f)=>{for(const r of rs)for(let y=r[1];y<r[3];y++)for(let x=r[0];x<r[2];x++){const q=(y*w+x)*4;if(data[q+3]>=128)f([data[q],data[q+1],data[q+2]])}};
+  const mean=rs=>{const s=[0,0,0];let n=0;each(rs,p=>{s[0]+=p[0];s[1]+=p[1];s[2]+=p[2];n++});return n?s.map(v=>v/n):null};
+  const ma=mean(A),mb=mean(B);if(!ma||!mb)return {dist:0,sep:0,pa:0,pb:0,ok:false};
+  const d=(p,q)=>Math.hypot(p[0]-q[0],p[1]-q[1],p[2]-q[2]);
+  const pur=(rs,m,o)=>{let g=0,n=0;each(rs,p=>{n++;if(d(p,m)<=d(p,o))g++});return n?g/n:0};
+  const mad=(rs,m)=>{let t=0,n=0;each(rs,p=>{t+=d(p,m);n++});return n?t/n:0};
+  const pmin=Math.min(...A.map(r=>pur([r],ma,mb)),...B.map(r=>pur([r],mb,ma))); // every box on its own: one box of the wrong ground fails
+  const dist=d(ma,mb),pa=pur(A,ma,mb),pb=pur(B,mb,ma),sep=dist/Math.max(1,(mad(A,ma)+mad(B,mb))/2);
+  return {dist:Math.round(dist),sep:Math.round(sep*10)/10,pa:Math.round(pa*100)/100,pb:Math.round(pb*100)/100,ok:dist>=SHAPE.DIST&&sep>=SHAPE.SEP&&pa>=SHAPE.PURE&&pb>=SHAPE.PURE&&pmin>=SHAPE.BOX}}
+export const SHAPE={DIST:25,SEP:1.5,PURE:.4,BOX:.3}; // the mean-colour gap, that gap over the boxes' own spread, and the share of each box nearer its own mean (the 2026-11-03 failures: sep 0.1-0.7; drawn fixtures: 3-38)
+export const pieceOf=id=>/-corner$/.test(id||'')?'corner':/-inner$/.test(id||'')?'inner':'edge';
+// kind 'flat' on purpose: a rejected image is handled the same way downstream (raw kept, redrawn on a later run, art:reprocess).
+export class ShapeError extends Error{constructor(piece,st,notes){super(`not ${piece==='edge'?'an':'a'} ${piece} piece: its two grounds are not clearly apart (colour gap ${st.dist}, gap over spread ${st.sep}, purity ${st.pa} and ${st.pb})`);this.kind='flat';this.shape=true;this.notes=notes}}
 export class FlatError extends Error{constructor(n,min,notes){super(`flat: ${n} colour${n===1?'':'s'} (needs ${min}+)`);this.kind='flat';this.colors=n;this.notes=notes}}
 
 // The whole chain for one manifest entry. pal = resolved colour list; outlineColor from palette MARK.outline.
@@ -83,7 +123,7 @@ export function postProcess(img,entry,pal,outlineColor,{hint=8,tier=32,minPalett
   const [W,H]=(entry.sizes&&entry.sizes[tier])||entry.size,tile=entry.kind==='tile'||entry.kind==='autotile';
   // a sprite sheet: the figures from the full image (a sheet is mostly plain ground, where no pixel grid shows)
   if(entry.frames)return postSheet(img,entry,pal,outlineColor,{tier,minPalette,factors,key},{grid:'figures',native:`${img.w}x${img.h}`});
-  const g=detectGrid(img,p.grid||hint);let native=sampleCells(img,g),im;
+  const g=detectGrid(img,p.grid||hint,p.fundamental!==false);let native=sampleCells(img,g),im;
   const notes={grid:g.found?`${g.x.s}x${g.y.s}`:`none (used ${g.x.s})`,native:`${native.w}x${native.h}`};
   if(tile&&(p.fit||'crop')==='crop'){const c=seamlessCrop(native,W,H);im=c;notes.crop=c.at;notes.seam=Math.round(c.seam)}
   else{if(p.transparent)native=clearBackground(native,p.bgTolerance??40);
@@ -93,6 +133,7 @@ export function postProcess(img,entry,pal,outlineColor,{hint=8,tier=32,minPalett
   const colors=expandPalette(pal,p.minPalette??minPalette,factors);
   if(p.tone!==false)im=toneMatch(im,colors);
   im=quantise(im,colors,{dither:p.dither??0});
+  if(entry.kind==='autotile'&&p.shape!==false){const pc=pieceOf(entry.id),st=pieceStats(im,pc);notes.piece=`${pc} ${st.dist}/${st.pa}/${st.pb}`;if(!st.ok)throw new ShapeError(pc,st,notes)}
   if(p.outline)im=outline(im,p.outlineColor||outlineColor);
   notes.colors=colorCount(im);const min=p.minColors??(tile?4:2);
   if(notes.colors<min)throw new FlatError(notes.colors,min,notes);

@@ -48,7 +48,7 @@ export const SITE_THEMES={
 export const SITE_THEME_IDS=Object.keys(SITE_THEMES);
 // Place words that never pair (lore check on #69): a famous name, or one that reads badly. A pair whose join doubles a letter
 // (Wold+dell) or that equals a region or town name (Hoar+fell, Sedge+water) is skipped by the generator as well.
-export const SITE_BANNED=['Winterfell','Sedgewater','Hoarfell','Soothearth','Slagcrag','Brambleley'];
+export const SITE_BANNED=['Winterfell','Sedgewater','Hoarfell','Soothearth','Slagcrag','Brambleley','Rimereach','Oldmoor'];
 
 // Place words for site names, by region biome (world/spec.js regions[].biome), first part then second part. A biome
 // not listed uses `other`. Built to read like the zone's own names (Thornvale, Mirefen, Cinderpass, Hoarfell).

@@ -416,6 +416,21 @@ if (process.argv[2] === '--fireside') {
   ok(!S.table, 'while the start gate holds the world no fireside opens');
   SIM.setGateHold(false); k = 0; while (!(S.table && S.table.kind === 'fireside') && k++ < 600) step(1 / 60);
   ok(S.table && S.table.kind === 'fireside', 'once the hold lifts the waiting fireside opens'); k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
+  // 3c. the fire asks, never a member (#750): a quiet day's question names only the one asked, who gets answer; a DM frame that quotes a member is cut
+  CM.breakCampNow('called'); {const Fq = SLT.slotted(); Fq.fire.last -= 1e4; Fq.joined = {}; for (const x of M) {x.goal = null; if (x.tiers) x.tiers.marks = []}}
+  setDmSeat(true); camp(); const sq = S.table, to = sq ? M.find(x => x.id === sq.ctx.to) : null;
+  ok(sq && sq.kind === 'fireside' && sq.ctx.tk === 'question' && to && sq.ctx.topic.startsWith('The fire puts a question to ' + to.name + ': ') && !/has a question/.test(sq.ctx.topic) && !M.some(x => x !== to && sq.ctx.topic.includes(x.name)),
+    `a quiet day's question is the fire's and names no asker (${sq && sq.ctx.topic})`);
+  ok(to && ((T.tableView(to) || {}).options || []).some(o => /^answer = Answer the question the fire puts to you: "/.test(o)) && sq.ids.filter(id => id !== to.id).every(id => !((T.tableView(M.find(x => x.id === id)) || {}).options || []).some(o => /^answer/.test(o))),
+    'the asked member is offered answer, nobody else');
+  k = 0; while (S.table === sq && !(sq.calls && sq.calls.length) && k++ < 600) {dmAct('table_call'); step(1 / 60)}
+  {const tq = dmAct('table_call'), sp = M.find(x => x !== to && x.player && sq.ids.includes(x.id));
+    ok(tq.call && /never by one of them/.test(tq.call.about) && sp, 'the frame call asks for the night\'s own question, never a member\'s');
+    const fq = tq.call && sp ? dmAct('table_answer', {call: tq.call.id, text: 'The fire sinks low. ' + sp.name + ' speaks quietly: \'' + to.name + ', before the night is out, what are you afraid of?\''}) : {};
+    ok(fq.ok && fq.spoke_for && fq.spoke_for.join() === sp.name && fq.said === 'The fire sinks low.' && !M.some(x => (x.chat || []).some(e => e.text.includes(sp.name + ' speaks quietly'))),
+      'a DM frame that quotes a member is cut to its narration; nobody hears the made-up line (' + JSON.stringify(fq).slice(0, 140) + ')');
+    ok((S.dmLog || []).some(e => e.detail && e.detail.scene === 'fireside' && e.detail.spoke_for === (sp && sp.name)), 'the frame\'s DM log entry carries spoke_for')}
+  k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
   // 4. no host: a camp opens no fireside
   CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; SIM.setRunnerLinks(null); field(); CM.leaderRest(live, 4); run(30);
   ok(!S.table && !SLT.slotted().fireQ, 'with no host (npm run sim) a camp opens no fireside');
@@ -1505,6 +1520,9 @@ console.log('everyone answers at once');
  const PB = C.propById(sc.ctx.prop);
  ok(PB.status === 'passed' && sc.beats.map(b => b.id).join() === sc.ids.join() && sc.beats.every(b => b.by === 'agent'), `the last answer resolves it at once, in slot order (${PB.result})`);
  ok(!CP.campOf(), 'the camp breaks');
+ {const key = sc.company + ':' + sc.id, rec = (S.tableLog || []).find(r => r.key === key), ln = (o3.chat || []).find(e => e.text === 'Dawn is up.'); // the watcher's scene record (#734)
+  ok(rec && rec.kind === 'decision' && rec.prop === sc.ctx.prop && rec.acts.length === 5 && rec.acts.find(x => x.id === o3.id).said && rec.result === PB.result + '.' && rec.frame && rec.ids.join() === sc.ids.join(), 'the closed scene leaves a write-only record for the Chat (frame, acts, result): ' + (rec && rec.result));
+  ok(ln && ln.sk === key && ln.opt === 'yes' && !ln.rfx, 'a table line carries its scene and the act it went with')}
  stepUntil(() => !S.table, 10);
 
  // a silent but connected member's reflex comes after the live wait, side by side (not summed)
@@ -1591,7 +1609,7 @@ console.log('talking takes presence');
  for (const x of mem) if (!PP.votes[x.id] && PP.status === 'open') act(x, 'vote', {proposal_id: PP.id, vote: 'yes', reason: 'ok'});
  ok(PP.status !== 'open' && !PP.votes[RB.id] && /Passed 4-0/.test(PP.result), 'a vote counts only the members present, and settles without the absent one: ' + PP.result);
  const cq = act(RA, 'propose', {kind: 'crypt', details: 'Down we go'});
- ok(!cq.ok && /whole Fellowship together/.test(JSON.stringify(cq)), 'a Crypt call needs everyone together');
+ ok(!cq.ok && /whole Fellowship/.test(JSON.stringify(cq)), 'a Crypt vote needs everyone together');
  // meeting plans
  gather(); awayB(); for (const x of RM) x.memories = null;
  const pl = C.makeMeeting(RA, 'the ford at Mirefen', 6);
@@ -1633,7 +1651,8 @@ T.TABLE.mode = 'off'; T.TABLE.speed = 1; // outside Table mode: the Crypt call i
 const reset = () => {if (CRYPT.group) for (const a of CRYPT.group.mem) {a.state = 'hunt'; a.hidden = false} CRYPT.group = null; CRYPT.cd = 0};
 // everyone of the faction safe in town (in the Crypt pool, and nothing attacks them there)
 const field = () => {for (const a of S.agents) if (a.fac === 0 && a.state !== 'dead') {const c = homeOf(a); a.lvl = SLT.inSlots(a) ? 8 : 6; a.state = 'town'; a.townStep = 2; a.wait = 9; a.x = c.gate.x; a.y = c.gate.y - 1; a.target = null; a.pq = []; a.hidden = false; a.raid = false; a.hp = maxHp(a)}};
-for (const x of RM) link(x, 'none');
+// no host at all (npm run sim): the reflex draft (#826: with a host the world never asks, see initiatecheck)
+const hostLinks = x => LINK[x.id] || 'none'; SIM.setRunnerLinks(null);
 ok(RM.every(x => x.player && SIM.reflexMay(x)), 'no runner holds any member: their reflexes play them and vote (#148)');
 field(); const others = S.agents.filter(a => a.fac === 0 && !SLT.inSlots(a) && a.state !== 'dead').slice(0, 2); for (const a of others) a.lvl = 8;
 let formed = null; for (let k = 0; k < 400 && !formed; k++) {reset(); field(); for (const a of others) a.lvl = 8; S.dmLogSeq = S.dmLogSeq; step(1 / 60); const g = CRYPT.group; if (g && g.fac === 0) formed = g.mem.slice();}
@@ -1642,11 +1661,12 @@ reset(); field(); for (const a of others) a.lvl = 8; RM[4].state = 'ghost'; // o
 let split = false; for (let k = 0; k < 400; k++) {reset(); field(); for (const a of others) a.lvl = 8; RM[4].state = 'ghost'; step(1 / 60); const g = CRYPT.group; if (g && g.mem.some(a => SLT.inSlots(a))) {split = true; break}}
 ok(!split, 'with one member unable to go, none of them is drafted');
 ok(SLT.slotted().log.some(e => e.kind === 'council' && /not all of/.test(e.parts.map(p => typeof p === 'string' ? p : '').join(''))), 'the log says they stayed together');
-// an agent party is asked, not drafted
-for (const x of RM) link(x, 'waiting'); reset(); field(); for (const a of others) a.lvl = 8; SLT.slotted().cool = {};
+// an agent party is never asked and never drafted (#826): the leader's own proposal is the road
+SIM.setRunnerLinks(hostLinks); for (const x of RM) link(x, 'waiting'); reset(); field(); for (const a of others) a.lvl = 8; SLT.slotted().cool = {};
 let prop = null; for (let k = 0; k < 400 && !prop; k++) {reset(); field(); for (const a of others) a.lvl = 8; step(1 / 60); prop = C.openProps().find(q => q.kind === 'crypt'); if (CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))) break}
-ok(prop && !(CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))), `an agent-played Fellowship gets a proposal instead of a draft: "${prop && prop.details}"`);
+ok(!prop && !(CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))), 'a background muster opens no vote for an agent-played Fellowship and takes none of them');
 reset(); field();
+{const r = act(C.leaderOfF(), 'propose', {kind: 'crypt', details: 'Down we go'}); ok(r.ok, 'the leader\'s own proposal goes'); prop = C.openProps().find(q => q.kind === 'crypt')}
 for (const a of SLT.slotHeroes(SLT.slotted())) if (!prop.votes[a.id]) act(a, 'vote', {proposal_id: prop.id, vote: 'yes', reason: 'Together.'});
 ok(prop.status === 'passed' && CRYPT.group && SLT.slotHeroes(SLT.slotted()).every(a => CRYPT.group.mem.includes(a) && a.cryptOk), `they vote yes and set out together (${prop.result})`);
 step(1 / 60); step(1 / 60);
