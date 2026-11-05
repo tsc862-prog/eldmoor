@@ -9,9 +9,10 @@
 import {U} from './tile.js';
 import {CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
-import {TOWN_STYLES,TOWN_PIECES,TOWN_REF,WALL_PIECES,townStyle} from '../data/townart.js';
+import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle} from '../data/townart.js';
 import {assetPixels,onAssets} from './assets.js';
-import {drawHouse,drawCryptMouth} from './pieceart.js';
+import {drawHouse,drawCryptMouth,sketchPiece} from './pieceart.js';
+import {FLAT,TOWN} from './palette.js';
 
 // Hook table (artcheck: every id here is in the manifest and every manifest entry hooked to this module is here). A piece
 // is 'building:<style>-<piece>', but the straight wall is a seamless patch generated like a ground tile ('tile:<style>-wall').
@@ -36,11 +37,6 @@ export function pieceImage(id){if(imgC.has(id))return imgC.get(id);
 // ---- the plan: every piece with its box in tiles ----
 // Turns: 0 as drawn (a north wall, outside up), 1 a quarter turn clockwise (east), 2 south, 3 west.
 const SIDE_ROT={N:0,E:1,S:2,W:3};
-// A layout box's centre in the town (TOWN_REF, gate east) mapped through the town's gate side and size like the world's
-// spots (world/gen.js spotAt); the box keeps its size and the image stays upright.
-function placeBox(c,[bx,by,bw,bh]){const fx=(bx+bw/2)/(TOWN_REF[0]-1),fy=(by+bh/2)/(TOWN_REF[1]-1),w=c.w-1,h=c.h-1,g=c.gateSide||'E';
-  const p=g==='E'?[c.x0+fx*w,c.y0+fy*h]:g==='W'?[c.x0+(1-fx)*w,c.y0+fy*h]:g==='S'?[c.x0+fy*w,c.y0+fx*h]:[c.x0+fy*w,c.y0+(1-fx)*h];
-  return [p[0]-bw/2,p[1]-bh/2,bw,bh]}
 // The pieces of town c in drawing order: walls, gate, buildings (back to front). Each {id, box:[x,y,w,h] tiles, rot}.
 const planC=new Map();
 export function townPlan(c){let P=planC.get(c);if(P)return P;P=[];const st=townStyle(c),id=p=>pieceId(st,p);
@@ -52,7 +48,7 @@ export function townPlan(c){let P=planC.get(c);if(P)return P;P=[];const st=townS
   {const g=c.gateTiles,xs=g.map(v=>v[0]),ys=g.map(v=>v[1]),side=c.gateSide||'E',along=side==='E'||side==='W';
     const gx=Math.min(...xs),gy=Math.min(...ys);
     P.push({id:id('gate'),box:along?[gx,gy-1,1,g.length+2]:[gx-1,gy,g.length+2,1],rot:SIDE_ROT[side]})}
-  const bs=TOWN_PIECES.map(p=>({id:id(p.piece),piece:p.piece,box:placeBox(c,p.box),rot:0}));
+  const bs=(c.buildings||[]).map(b=>({id:id(b.piece),piece:b.piece,box:b.draw||b.box,rot:0})); // the plan is world data (c.buildings, gen.js planBuildings, #793)
   bs.sort((a,b)=>(a.box[1]+a.box[3])-(b.box[1]+b.box[3])||a.box[0]-b.box[0]);
   P.push(...bs);planC.set(c,P);return P}
 // Landmark pieces: every crypt mouth over its rock patch, and every lair's nest over its inner disc, turned so its
@@ -88,6 +84,11 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
     if(!hits(Math.min(c.x0-2,c.x0-1),c.y0-2,Math.max(c.x0+13,c.x1+2),Math.max(c.y0+9,c.y1+2),x0,y0,x1,y1))continue;
     // generated pieces first (walls, gate, buildings), each where its asset is loaded
     for(const p of townPlan(c)){if(!boxHits(p.box,x0,y0,x1,y1))continue;const img=pieceImage(p.id);if(!img)continue;if(p.piece)base(ctx,p.box);put(ctx,img,p.box,p.rot)}
+    // the smithy, chapel, inn and notice board where no asset drew them (#795): the pieces are solid ground now, so they
+    // stand as the sketch the art pipeline starts from, in the town style's flat palette, and the town's smoke and lamps have a home
+    {const st=townStyle(c),col={...FLAT[st],stone:TOWN[st].stone};
+     for(const b of c.buildings||[]){if(b.piece==='auction'||b.piece==='hall'||drawn(c,b.piece))continue;const d=b.draw||b.box,bx=d[0]*T,by=d[1]*T;
+       if(!boxHits(d,x0,y0,x1,y1))continue;sketchPiece((x,y,w,h,k)=>{ctx.fillStyle=k;ctx.fillRect(bx+x,by+y,w,h)},b.piece,col)}}
     // procedural: auction house (faction roof, gold sign) and the hall where no asset drew them, then the gate banners
     // and graveyard stones; drawn relative to the town's top-left corner exactly as before slice 3
     const f=FAC[c.fac],ox=(c.x0-2)*T,dy=(c.y0-2)*T;
