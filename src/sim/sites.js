@@ -1,7 +1,7 @@
 // DM-made dungeon sites (issue #69, slice 1). The DM raises a site with the create_site lever (sim/levers.js; the DM agent's
 // flat tool create_site, sim/dmagent.js): a barrow, fortress, temple, mine, den or ruin in a region, at a level clamped to the
 // region's band. It appears as a real marker on the map (S.places, kind 'site', never terrain), is discovered when a hero
-// comes near, entered by a company (enter_site: a solo goes down at once, a company votes like a Crypt call), played room by
+// comes near, entered by a company (enter_site: a solo goes down at once, a company votes as for the Crypt), played room by
 // room at the Table through the dungeon crawl (sim/crawl.js, #65/#441; the abstract roll when no agent of the company has the
 // say or Table mode is off), and ends cleared (a ruin marker, a timeline entry, the boss's guaranteed epic) or collapsed
 // (left too long). Uncleared sites grow more dangerous every few days. Nothing here runs until the lever is pulled: S.sites
@@ -26,6 +26,7 @@
 import {rnd,clamp,hash} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
 import {tiles,I,ZONES,REGIONS,CITY,CRYPT,zoneAt,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {EPICS,DG_EPICS} from '../data/items.js';
 import {baseId,ELITE_TEMPLATE} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
@@ -264,7 +265,7 @@ function clearSite(s,g,L,share){S.sites.stats.clears++;const who=gd(g.name||'The
 function rollSite(g,s){const n=g.mem.length,avg=g.mem.reduce((t,a)=>t+a.lvl+a.gear*.3,0)/n;
   const pw=avg+(g.mem.some(a=>CLS[a.cls]&&CLS[a.cls].heal)?2.5:0)+(g.mem.some(a=>a.cls==='Warrior')?1.5:0)+Math.min(n,5)*.6+Math.max(0,n-5)*.3;
   const need=s.band[1]+s.grow+1+(s.raid?SITE.RAID_NEED:0),ok=rnd()<clamp((pw-need)/8,.15,.92);
-  for(const a of g.mem){a.hidden=false;a.x=s.x+(rnd()-.5)*1.5;a.y=s.y+.5+rnd()*.6}
+  for(const a of g.mem){a.hidden=false;Object.assign(a,standAt(s.x+(rnd()-.5)*1.5,s.y+.5+rnd()*.6))}
   const ph=s.raid?(ok?SITE.PHASES.length:Math.floor(rnd()*(SITE.PHASES.length+1))):0;
   for(let i=0;i<ph;i++)log(gd(s.boss),SITE.PHASES[i].say);
   if(ok){siteEnd(g,'clear');return}

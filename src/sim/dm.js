@@ -36,6 +36,7 @@
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPT,ZPTS,zoneAt,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {homeOf} from '../data/races.js';
 import {tm} from '../data/traits.js';
@@ -547,7 +548,7 @@ function spawnFoes(adv,a,sc,foe){const mem=members(adv),lo=Math.min(...mem.map(b
   // The bestiary fills the fight (sim/encounterbuilder.js): one species of the region, levels within one of the weakest hero,
   // a count the scene's range and the party's budget settle. Standard foes only; a named foe is the scene's one special.
   const enc=buildEncounter(THEME_OF[adv.tpl]||'den',z,lo,mem.length,{n:[nmin,nmax],lvlBand:[Math.max(1,lo-1),lo+1],mono:true,variants:false}),type=enc.foes.length?enc.foes[0].type:Object.keys(MOBS).find(k=>MOBS[k].z===z)||Object.keys(MOBS)[0];
-  const put=(m,i)=>{const ang=i*2.3+rnd(),r=.9+rnd()*1.2;m.x=at.x+Math.cos(ang)*r;m.y=at.y+Math.sin(ang)*r;m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};m.adv=adv.id;m.dest=null;m.target=null;adv.foes.push(m.id)};
+  const put=(m,i)=>{const ang=i*2.3+rnd(),r=.9+rnd()*1.2;Object.assign(m,standAt(at.x+Math.cos(ang)*r,at.y+Math.sin(ang)*r));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};m.adv=adv.id;m.dest=null;m.target=null;adv.foes.push(m.id)};
   adv.foes=adv.foes.filter(id=>{const m=S.mobs.find(x=>x.id===id);return m&&m.alive&&!m.gone});
   let i=0;
   if(foe.named){const k=adv.data.beastType&&MOBS[adv.data.beastType]&&MOBS[adv.data.beastType].z===z?adv.data.beastType:type; // raised through the named_foe lever (sim/levers.js)

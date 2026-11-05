@@ -66,7 +66,7 @@ export function renderDmLog(){if(!list)return;
   if(sig===seen)return;if(held(list))return;seen=sig;
   if(bar){const wb=bar.querySelector('[data-dm="wishes"]'),n=wishN();if(wb){const t='Wishes'+(n?' '+n:'');if(wb.textContent!==t)wb.textContent=t}}
   if(filter==='wishes'){if(chip)chip.hidden=true;list.replaceChildren();const W=(S.dmAgent&&S.dmAgent.wishes)||[];
-    if(!W.length)list.append(el('li','dm','No wishes yet. The DM agent may leave a note for the builders about a tool it wished it had (3 a game day).'));
+    if(!W.length)list.append(el('li','dm','Wishes: none yet. The DM agent may leave a note for the builders about a tool it wished it had (3 a game day).'));
     for(const w of W){const li=el('li','tl dmrow');li.append(el('time',null,'D'+w.day+' '+w.clock),el('span','badge b-dm','WISH'),el('span','tx dmtx',w.tool+': '+w.what+' Why: '+w.why+' Moment: '+w.moment));list.append(li)}return}
   if(filter==='notes'){if(chip)chip.hidden=true;list.replaceChildren();renderDmNotes(list);return} // the notes viewer instead of the log (#155)
   if(chip){chip.replaceChildren();if(advId!=null){chip.hidden=false;chip.append('Adventure: '+advTitle(advId)+' ');const x=el('button',null,'show all');x.dataset.dmclear='1';chip.append(x)}else chip.hidden=true}
