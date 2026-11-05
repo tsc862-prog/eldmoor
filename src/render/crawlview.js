@@ -1,10 +1,6 @@
 // The crawl as it is played (#742, the render slice of #140's named positions): in the dungeon view's room in progress,
-// each member stands where its act puts it, the foes stand at their den, and every round plays back as beats.
-//   crawlSpots(m, i, spec?)  the named spots of chamber i of interior m, in tiles (feet): {stair, back, front, flankL, flankR,
-//                            cover, den} each {id, x, y, u, v}, plus {ax, ay} (the unit step from the way in toward the den),
-//                            {px, py} (across it, toward flankR), half (half the room across), len (way in to far side) and
-//                            coverName ('reeds' in a wet room). Pure and cached.
-//   spotFor(k, j)            the spot an act sends its actor to (ACT_SPOT; j: the actor's place among this round's strikers)
+// each member and foe stands on the tile the sim gives it (#744), and every round plays back as beats.
+//   crawlSpots(m, i, spec?)  the named spots of chamber i of interior m (sim/roomgrid.js roomSpots, #744)
 //   crawlView(m, st, now)    once a frame: who stands where (walking toward their spot), the beats queued and playing,
 //                            the damage pops; returns the frame's view
 //   crawlLight(ctx, G, v)    the lit pool on the party and a dimmer one on the den, a flare where a blow lands (additive)
@@ -12,17 +8,15 @@
 //                            names, the beats (lunge, hit flash, shake on a 20, a stumble on a 1, rings), the pops
 //   crawlSummary(v)          the last round's summary line, for under the room once its beats have played
 //   foeAt(m, st, wx, wy)     the foe under world-unit point (wx, wy) as the last frame drew it (the hover detail)
-// Spots come from the room box and its way in (the door from the corridor before it, the stair for the first chamber): the
-//   axis runs from the way in to the far side (the dais in the boss chamber), u along it 0..1 and v across it -1..1. A room spec
-//   may carry `spots: {front: {u, v}, ...}` (optional, world spec) to move one; the ids are the ones #744 will put in the crawl.
-// Acts to spots: guard and hold to the front; strike beside the foe (first striker left, second right, the rest front); ward,
-//   heal, read, potion and an item to the back; scout to cover (the reeds in a wet room, behind a pillar where one stands);
-//   retreat to the stair; stabilize beside the companion who lies bleeding; nothing yet in this room: the back.
+// Where everyone stands is the sim's (#744): cr.pos holds a tile of the room's grid per member and foe (sim/crawl.js), set on
+//   entering the room and moved by the acts; the view walks each one to its tile. The spots, their names and which act goes
+//   where live in sim/roomgrid.js.
 // Read-only on the sim: st.party, st.crawl (the live crawl: foes, i), st.scene (its Table scene: ids, acts, beats, phase,
 //   summary). Foe blows are not beats in a crawl (sim/crawl.js strikeBack), so they are read from the members' HP falling.
 //   Nothing here touches the sim or its dice; the clock is the page's (`now`, seconds), so seeded hashes cannot move.
 import {U as T} from './tile.js';
 import {IT} from '../world/interior.js';
+import {roomSpots,roomGrid,spotAt} from '../sim/roomgrid.js';
 import {TABLE} from '../sim/table.js';
 import {maxHp} from '../sim/heroes.js';
 import {isDown} from '../sim/downed.js';
@@ -32,56 +26,21 @@ import {classColor,DISP} from '../core/colors.js';
 import {MARK,DUNGEON as D} from './palette.js';
 import {drawConditions} from './conditions.js';
 
-export const SPOT_IDS=['stair','back','front','flankL','flankR','cover','den'];
-// Where each spot lies on the room's axis (u: 0 the way in, 1 the far wall) and across it (v: -1 left, 1 right, facing the den).
-const SPOT_UV={stair:[0,0],back:[.16,0],front:[.5,0],flankL:[.74,-.9],flankR:[.74,.9],cover:[.38,-.96],den:[.86,0]};
-export const ACT_SPOT={guard:'front',hold:'front',strike:'strike',ward:'back',heal:'back',read:'back',potion:'back',scout:'cover',retreat:'stair',stabilize:'downed'};
-export const spotFor=(k,j=0)=>{const s=ACT_SPOT[k]||(k&&k.startsWith('use:')?'back':null);return s==='strike'?(j===0?'flankL':j===1?'flankR':'front'):s};
-
-// ---- the spots of a chamber ----
-const walkable=t=>t===IT.FLOOR||t===IT.WATER||t===IT.DAIS||t===IT.RUG||t===IT.DOOR;
-const spotCache=new Map();
-// The way in to chamber i: the door whose far side is the corridor from the chamber before it (the stair for the first).
-function wayIn(m,i){const r=m.rooms[i];if(i===0&&m.entry)return {x:m.entry.x+.5,y:m.entry.y+.5};const want=2*i-1;
-  for(let y=Math.max(0,r.y-2);y<Math.min(m.h,r.y+r.h+2);y++)for(let x=Math.max(0,r.x-2);x<Math.min(m.w,r.x+r.w+2);x++){const k=y*m.w+x;
-    if(m.tiles[k]!==IT.DOOR||m.reg[k]!==2*i)continue;
-    for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const X=x+dx,Y=y+dy;if(X<0||Y<0||X>=m.w||Y>=m.h)continue;const q=Y*m.w+X;if(m.reg[q]===want&&m.tiles[q]===IT.HALL)return {x:x+.5,y:y+.5}}}
-  return {x:r.cx,y:r.y+.5}}
-// The tile at (x, y) if it can be stood on inside the room, else the nearest one that can (a cave cut into a site's chamber).
-function onFloor(m,r,x,y){const ok=(X,Y)=>X>=r.x&&Y>=r.y&&X<r.x+r.w&&Y<r.y+r.h&&walkable(m.tiles[Y*m.w+X]);
-  const tx=Math.floor(x),ty=Math.floor(y-.3);if(ok(tx,ty))return null;
-  for(let d=1;d<6;d++)for(let j=-d;j<=d;j++)for(let i=-d;i<=d;i++){if(Math.max(Math.abs(i),Math.abs(j))!==d)continue;if(ok(tx+i,ty+j))return {x:tx+i+.5,y:ty+j+.8}}
-  return null}
-export function crawlSpots(m,i,spec){const key=m.seed+':'+m.w+'x'+m.h+':'+i+(spec&&spec.spots?':'+JSON.stringify(spec.spots):'');let o=spotCache.get(key);if(o)return o;
-  const r=m.rooms[i];if(!r)return null;const E0=wayIn(m,i);
-  // the way in, pulled just inside the room; the far side: the dais in a boss chamber, else across the room from the way in
-  const cl=(x,y)=>({x:Math.max(r.x+.6,Math.min(r.x+r.w-.6,x)),y:Math.max(r.y+.9,Math.min(r.y+r.h-.15,y))});
-  const E=cl(E0.x,E0.y),C={x:r.cx,y:r.cy+.4},F=r.boss?{x:r.cx,y:r.y+2.6}:cl(2*C.x-E.x,2*C.y-E.y);
-  const A=r.boss?cl(r.cx,r.y+r.h-.15):E; // the boss chamber is squared up to its dais: the party forms below it, whichever door they came in by
-  let ax=F.x-A.x,ay=F.y-A.y,L=Math.hypot(ax,ay);if(L<.5){ax=0;ay=1;L=Math.max(1,r.h-1.2)}else{ax/=L;ay/=L}
-  const px=-ay,py=ax,half=Math.max(.6,Math.abs(px)*(r.w/2-.7)+Math.abs(py)*(r.h/2-.6)); // across: toward flankR (the den's right, seen from the way in)
-  const sp=spec&&spec.spots||{};o={ax,ay,px,py,half,len:L,wet:!!r.water,room:i,coverName:r.water?'reeds':'cover'};
-  for(const id of SPOT_IDS){const own=sp[id],u=own&&own.u!=null?own.u:SPOT_UV[id][0],v=own&&own.v!=null?own.v:SPOT_UV[id][1];
-    let p=id==='stair'&&!own?{x:E.x,y:E.y}:cl(A.x+ax*L*u+px*half*v,A.y+ay*L*u+py*half*v);const f=onFloor(m,r,p.x,p.y);if(f)p=f;o[id]={id,x:p.x,y:p.y,u,v}}
-  if(!r.water&&!sp.cover){const c=o.cover;let pil=null,bd=3; // beside a pillar on the cover's side of the room, if one stands near
-    for(const q of m.props){if(q.kind!=='pillar'||q.x<r.x||q.x>=r.x+r.w||q.y<r.y||q.y>=r.y+r.h)continue;if(((q.x+.5-r.cx)*px+(q.y+.5-r.cy)*py)*c.v<=0)continue;
-      const d=Math.hypot(q.x+.5-c.x,q.y+.5-c.y);if(d<bd){bd=d;pil=q}}
-    if(pil){const f=onFloor(m,r,pil.x+.5,pil.y+1.75);o.cover={id:'cover',x:f?f.x:pil.x+.5,y:f?f.y:Math.min(r.y+r.h-.15,pil.y+1.75),u:c.u,v:c.v}}}
-  spotCache.set(key,o);return o}
+export {SPOT_IDS,ACT_SPOT,spotFor,roomSpots as crawlSpots} from '../sim/roomgrid.js'; // the spots moved to the sim with #744
 
 // ---- the live view: positions, beats, pops (state kept here, reset when the crawl or the room changes) ----
 const SPEED=3.4;          // tiles a second a member walks to its spot
 const BEAT={strike:.8,blow:.7,save:.6,ring:.6,other:.45}; // seconds a beat plays at 1x
 const HOLD_S=2.2;         // seconds the last round's summary stays on a room the party has just left
 const POPS=24,pops=[];for(let k=0;k<POPS;k++)pops.push({on:false,x:0,y:0,txt:'',col:'',t0:0});
-const heroes=new Map();   // id -> {x, y, tx, ty, k, j, round, hp, pend, moved, face, seen, placed, spot, down, flash, stumble}
+const heroes=new Map();   // id -> {x, y, tx, ty, hp, pend, moved, face, seen, placed, spot, down, flash, stumble}
 const foes=[];            // per foe index: {x, y, tx, ty, hp, pend, drop, flash, shake, alive, placed}
 const queue=[];           // beats to play: {k, id, res, n, foe, dmg, dur, t0, p, hit, crit, fumble, kill, tgt, popped}
-const V={live:false,crawl:null,foes:null,scene:null,seen:0,room:-1,dkey:'',last:-1,summary:'',sumSc:null,sumAt:-1,spots:null,play:null,fr:{},cnt:{},party:[],cold:true,enter:false,flL:{x:0,y:0},flR:{x:0,y:0}};
+const V={live:false,crawl:null,foes:null,scene:null,seen:0,room:-1,dkey:'',last:-1,summary:'',sumSc:null,sumAt:-1,spots:null,play:null,party:[],cold:true,enter:false};
 const drawn=[]; // the foes' boxes as the last frame drew them, world units {f, x0, y0, x1, y1}
 function pop(x,y,txt,col,now){let p=pops[0];for(const q of pops){if(!q.on){p=q;break}if(q.t0<p.t0)p=q}p.on=true;p.x=x;p.y=y;p.txt=txt;p.col=col;p.t0=now}
 function reset(){heroes.clear();foes.length=0;queue.length=0;V.seen=0;V.summary='';V.sumSc=null;V.sumAt=-1;V.foes=null;V.scene=null;V.play=null;for(const p of pops)p.on=false}
-const hero=a=>{let h=heroes.get(a.id);if(!h){h={x:0,y:0,tx:0,ty:0,k:'',j:0,round:-1,hp:a.hp,pend:0,moved:-9,face:1,seen:false,placed:false,spot:null,down:false,flash:0,stumble:0};heroes.set(a.id,h)}return h};
+const hero=a=>{let h=heroes.get(a.id);if(!h){h={x:0,y:0,tx:0,ty:0,hp:a.hp,pend:0,moved:-9,face:1,seen:false,placed:false,spot:null,down:false,flash:0,stumble:0};heroes.set(a.id,h)}return h};
 const nameOf=f=>f.name||foeKind(f.type).name;
 // The first foe standing (counting the blows still to be shown), as the sim strikes it (sim/crawl.js liveFoes(cr)[0]).
 function frontFoe(){for(let k=0;k<foes.length;k++)if(foes[k].alive)return k;return -1}
@@ -109,7 +68,7 @@ export function crawlView(m,st,now){const cr=st.crawl,on=!!(cr&&st.phase==='craw
   V.live=true;
   if(!hold&&(V.crawl!==cr||st.cur!==V.room||st.dkey!==V.dkey||gap>.75)){V.cold=gap>.75;V.enter=!V.cold;reset();V.crawl=cr;V.room=st.cur;V.dkey=st.dkey}
   const room=V.room,dt=Math.min(.1,Math.max(0,gap));V.last=now;
-  const spots=V.spots=crawlSpots(m,room,st.roomSpec);if(!spots){V.live=false;return V}
+  const spots=V.spots=roomSpots(m,room,st.roomSpec);if(!spots){V.live=false;return V}
   if(!hold)V.party=st.party;const party=V.party,from=queue.length;
   if(!hold){
     // foes: a new set (a new room) starts at the den; HP that fell is held back for the strike that caused it
@@ -127,28 +86,14 @@ export function crawlView(m,st,now){const cr=st.crawl,on=!!(cr&&st.phase==='craw
     settleFoeHits(from);
     // the round's summary, shown once its beats have played
     if(sc&&sc.phase==='outcome'&&sc.summary&&V.sumSc!==sc){V.summary=sc.summary;V.sumSc=sc;V.sumAt=-1}
-    // the act each member chose (a pre-answer counts), kept for the room's later rounds until a new one
-    let j=0;
-    if(sc)for(const id of sc.ids){const x=sc.acts[id];if(!x)continue;const h=heroes.get(id);if(!h)continue;if(x.k==='strike'){if(h.k!=='strike'||h.round!==sc.id)h.j=j;j++}h.k=x.k;h.round=sc.id}}
+  }
   if(V.sumAt<0&&!queue.length&&V.summary)V.sumAt=now;
-  const R=m.rooms[room],clX=x=>Math.max(R.x+.55,Math.min(R.x+R.w-.55,x)),clY=y=>Math.max(R.y+.85,Math.min(R.y+R.h-.12,y));
-  // foes at the den, spread across it; the one a guard draws steps toward the front
-  const sc=V.scene,drawnOn=!!sc&&sc.ids.some(id=>sc.acts[id]&&(sc.acts[id].k==='guard'||sc.acts[id].k==='hold'));
-  const nF=foes.length,gapF=nF>1?Math.min(1.25,Math.max(.75,(spots.half*2-2.2)/(nF-1))):0,lead=frontFoe(),den=spots.den;
-  for(let k=0;k<nF;k++){const F=foes[k],off=(k-(nF-1)/2)*gapF,lag=k&1?.28:0,pull=drawnOn&&k===lead&&F.alive?.2:0;
-    F.tx=clX(den.x-spots.ax*spots.len*pull+spots.px*off+spots.ax*lag);F.ty=clY(den.y-spots.ay*spots.len*pull+spots.py*off+spots.ay*lag)}
-  // the flanks stand just beyond the ends of the foes' line (the room's own flank spots when no foe stands)
-  {const sh=(nF-1)/2*gapF+1.05,FL=V.flL,FR=V.flR;FL.x=clX(den.x-spots.px*sh-spots.ax*.35);FL.y=clY(den.y-spots.py*sh-spots.ay*.35);FR.x=clX(den.x+spots.px*sh-spots.ax*.35);FR.y=clY(den.y+spots.py*sh-spots.ay*.35)}
-  // who goes to which spot, then each one's place among those sharing it (spread across the room's axis)
-  const cnt=V.cnt,idx=V.fr;for(const s in cnt)cnt[s]=0;for(const s in idx)idx[s]=0;
-  for(const a of party){const h=hero(a),lying=isDown(a)&&!h.pend;h.down=lying;const s=lying?(h.placed?null:'back'):spotFor(h.k,h.j)||'back';h.spot=s;if(s&&s!=='downed')cnt[s]=(cnt[s]||0)+1}
-  for(const a of party){const h=hero(a),s=h.spot;if(!s)continue;
-    if(s==='downed'){let d=null;for(const b of party)if(b!==a&&isDown(b)){d=heroes.get(b.id);break}
-      if(d&&d.placed){h.tx=clX(d.x+spots.px*.8);h.ty=clY(d.y+spots.py*.8+.15)}else{h.tx=spots.back.x;h.ty=spots.back.y}continue}
-    const P=nF&&s==='flankL'?V.flL:nF&&s==='flankR'?V.flR:spots[s],n=cnt[s],k=idx[s]=(idx[s]||0)+1,off=(k-1-(n-1)/2)*1.05,lag=n>1?(k&1?.2:-.2):0;
-    h.tx=clX(P.x+spots.px*off+spots.ax*lag);h.ty=clY(P.y+spots.py*off+spots.ay*lag)}
+  // who stands where: the sim's tiles (a room just entered has none yet: the party at its way in, the foes at the den)
+  const G=roomGrid(m,room,st.roomSpec),C=V.crawl,P=C&&C.pos&&C.posR===room?C.pos:null,feet=(p,o)=>{o.tx=G.ox+p.x+.5;o.ty=G.oy+p.y+.8};
+  for(let k=0;k<foes.length;k++){const F=foes[k],p=P&&P['f'+k];if(p)feet(p,F);else{F.tx=spots.den.x;F.ty=spots.den.y}}
+  for(const a of party){const h=hero(a),p=P&&P[a.id];h.down=isDown(a)&&!h.pend;if(p){feet(p,h);h.spot=spotAt(G,p.x,p.y)||'open'}else if(!h.placed){h.tx=spots.stair.x;h.ty=spots.stair.y;h.spot='stair'}}
   // walk: a view that has just opened puts everyone in place at once; a new room has the party come in by its way in
-  for(const a of party){const h=hero(a);if(!h.spot&&h.placed)continue;
+  for(const a of party){const h=hero(a);
     if(!h.placed){h.placed=true;if(V.enter){h.x=spots.stair.x;h.y=spots.stair.y}else{h.x=h.tx;h.y=h.ty}}
     if(h.down)continue;const dx=h.tx-h.x,dy=h.ty-h.y,d=Math.hypot(dx,dy),s=SPEED*dt;
     if(d>.02){if(d<=s){h.x=h.tx;h.y=h.ty}else{h.x+=dx/d*s;h.y+=dy/d*s}h.moved=now;if(Math.abs(dx)>.05)h.face=dx>0?1:-1}}

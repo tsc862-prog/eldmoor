@@ -76,10 +76,9 @@ export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
 // of the same tool and args (the retry gets that answer, or joins the call still pending, instead of asking the page again).
 // The page sends a beat every few seconds (src/ui/player-bridge.js); a page silent for PAGE_SILENT_MS is busy (its thread blocked).
 export const LATE_MS = 30000, LATE_MAX_MS = 5 * 60000, PAGE_SILENT_MS = 5000;
-// A `wait` the page still holds when WAIT_MS runs out (a wait at an answered Table scene holds until the table settles, up to
-// src/sim/player-host.js WAIT_SCENE_MS, longer than WAIT_MS and the runners' 90 s tool time-out) is not offline: the page is
-// there, the table has not settled. The runner is told to wait again, and that wait joins the one still held.
-export const HELD_WAIT = {ok: true, waited_min: 0, held: true, why: 'still waiting: the table has not settled yet; call wait again to keep waiting (the world is not offline)'};
+// A `wait` the page has not answered when WAIT_MS runs out (src/sim/player.js holds one at most PK.WAIT_REAL_MS, so a slow page) is
+// not offline. The turn ends here (turn_over, #868: nobody keeps a Claude slot for a wait) and pacing starts the next one.
+export const HELD_WAIT = {ok: true, waited_min: 0, held: true, turn_over: true, why: 'the game has not answered this wait yet; your turn is over: end it here, you will be woken when something needs you (the world is not offline)'};
 export const DM_VOICE_MS = 10000; // the longest a voice call counts as pending without its answer (#682)
 export const DM_WAIT_MAX = 25000; // the longest long poll of table_call / npc_call / ruling_call {wait_ms} (#680; src/sim/player-host.js DM_WAIT.MAX)
 // What an agent hears while the game page is away (#399): a pause in the world, not advice to a human ("Press Agent ...", which
@@ -461,7 +460,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (path === '/play/pace') {const id = hero;
         if (id == null) return send(400, {ok: false, error: 'pace needs the hero id'});
         const holder = heldBy(id, rid); if (holder) return send(409, refusedSeat(id, holder));
-        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.queued != null ? {queued: !!a.queued, ...(typeof a.why === 'string' ? {why: a.why.slice(0, 12)} : {})} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
+        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.held ? {held: true} : a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.queued != null ? {queued: !!a.queued, ...(typeof a.why === 'string' ? {why: a.why.slice(0, 12)} : {})} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000)), ...(Number(a.hearWake) > 0 ? {hearWake: Math.min(1440, Number(a.hearWake))} : {})};
         let r; try {r = await be.call(id, 'pace', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
         return send(200, r && typeof r === 'object' ? r : {ok: false, error: 'no answer'})}
       if (path === '/play/narrate') {const id = resolve(hero);

@@ -82,6 +82,9 @@ r = await call('say', {text: 'Ale first, then the road.'}); ok(r.ok && a.bubble 
 // whisper and emote (#627): reach, limits, refusals; only the target hears the words
 {const SP = await import('../src/sim/spatial.js'), other = S.agents.find(x => x !== a && !x.player && x.state !== 'dead' && x.fac === a.fac);
   a.playRate = []; r = await call('emote', {text: 'Kerin spits in the fire'}); ok(r.ok && r.emoted === 'Kerin spits in the fire' && a.bubble && /spits in the fire/.test(a.bubble.text), 'emote shows a bubble and returns the act');
+  a.playRate = []; r = await call('emote', {text: 'Kerin spits in the fire'}); ok(!r.ok && /already did that/.test(r.error), 'the same emote again is refused: ' + r.error);
+  a.playRate = []; r = await call('emote', {text: 'spits in the fire.'}); ok(!r.ok && /already did that/.test(r.error), 'a near copy is refused too');
+  {const sp = await import('../src/sim/spatial.js'), me = {x: a.x, y: a.y}, far = S.agents.filter(x => x !== a && Math.hypot(x.x - a.x, x.y - a.y) < 12 && !x.hidden); a.x = 1; a.y = 1; sp.rebuild(); a.playRate = []; r = await call('emote', {text: 'stares at the sky'}); ok(r.ok && r.act === false && r.seen_by.length === 0 && /no one is near/.test(r.note), 'an unseen emote is ok but act:false'); a.x = me.x; a.y = me.y; sp.rebuild()}
   a.playRate = []; r = await call('emote', {text: 'x'.repeat(130)}); ok(!r.ok && /Too long/.test(r.error), 'a long emote is refused');
   a.playRate = []; r = await call('emote', {text: '   '}); ok(!r.ok, 'an empty emote is refused');
   a.playRate = []; r = await call('whisper', {to: 'Nobody Here', text: 'psst'}); ok(!r.ok && /Nobody called/.test(r.error), 'whisper to nobody near is refused');
@@ -668,7 +671,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   ok(r.ok && r.going === 'going to ' + ground + ' to hunt' && h.pq.length === 2 && h.pq[0].kind === 'move' && h.pq[1].kind === 'hunt', `hunt {where: "${ground}"} from town walks there first: ${r.going || r.error}`);
   ok(h.playOrder && h.playOrder.kind === 'hunt' && h.playOrder.n === 2, 'the hunt order is remembered for autopilot');
   let hunted = false;
-  for (let i = 0; i < 60 * 600 && !hunted; i++) {step(1 / 60); if (h.state === 'dead') break; const c0 = h.pq && h.pq[0]; hunted = !!(c0 && c0.kind === 'hunt' && c0.k0 != null && h.pq.length === 1 && h.state !== 'town')}
+  for (let i = 0; i < 60 * 600 && !hunted; i++) {if (h.state !== 'dead' && h.state !== 'downed') h.hp = maxHp(h); /* fixture: the walk out tests the order, not the road's mobs */ step(1 / 60); if (h.state === 'dead') break; const c0 = h.pq && h.pq[0]; hunted = !!(c0 && c0.kind === 'hunt' && c0.k0 != null && h.pq.length === 1 && h.state !== 'town')}
   ok(hunted, `${h.name} walked out and is hunting (${h.state}, in ${ZONES[zoneAt(h.x, h.y)]})`);
   P.markPlayer(h, false); paused = false;
 }

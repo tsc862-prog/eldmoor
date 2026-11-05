@@ -4,11 +4,13 @@
 // uses timers, so the world keeps stepping while a `wait` is pending.
 import {playerAct,waitOver,finishWait,turnStart,turnEnd,lookSnap} from './player.js';
 import {paceCheck,paceIdle,paceBrief,PACE} from './pace.js';
+import {worldHeld} from './prep.js';
 import {reflectDone} from './reflect.js';
-import {markQueued,sceneDue} from './scenewait.js';
+import {markQueued,sceneDue,tableRest,restText,AWAY_TEXT} from './scenewait.js';
 import {S} from './state.js';
 import {companyOf,leaderOf,inSlots,partySlotted,slotKeyOf} from './company.js';
 import {sceneOf} from './scenes.js';
+import {worldAtTable} from './table.js';
 import {dmAct} from './dmagent.js';
 
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -19,14 +21,14 @@ export async function hostCall(heroId,tool,args,{poll=100,nap=sleep,now=()=>Date
   if(tool==='pace')return hostPace(heroId,args,{poll,nap,now});
   const r=playerAct(heroId,tool,args||{});
   if(!r||!r.pending)return r;
-  const p=r.pending,t0=now(),me=S.agents.find(x=>x.id===Number(heroId)),sc=me&&sceneOf(me),held=sc&&sc.acts&&sc.acts[me.id]?sc:null;
-  // #687: a wait at a scene this member has already answered holds until the table settles (or something needs it, or the
-  // wait's game minutes pass), at most WAIT_SCENE_MS, instead of returning 0 minutes at the real-time cap again and again.
-  const settled=()=>held&&(sceneOf(me)!==held||held.phase==='outcome'||held.phase==='done');
-  for(;;){if(settled()){const out=finishWait(p,false);out.why='the table settled';if(held.summary)out.scene_outcome=held.summary;return out} // the scene's end first (its result event would end the wait too)
-    if(waitOver(p))return finishWait(p,false);
-    if(now()-t0>=(held?WAIT_SCENE_MS:p.realMs))return finishWait(p,true);await nap(poll)}}
-export const WAIT_SCENE_MS=240000; // the longest a wait holds at a scene already answered (the table's live wait plus a queued extra)
+  const p=r.pending,t0=now(),me=S.agents.find(x=>x.id===Number(heroId));
+  // #868: a wait that can pass no time ends the turn at once, at the start or the moment a scene stops it, so nobody holds a model
+  // slot while the table waits for someone else (a hold here deadlocked the table, and #687's looped 0-minute waits are the runner's
+  // to end: the result says turn_over). A member whose own scene is due gets the wait back at once with table_waits.
+  for(;;){const rest=restOf(me);if(rest){me.tableRest=true;return finishWait(p,false,rest)}
+    if(waitOver(p)||(me&&sceneDue(me)))return finishWait(p,false);
+    if(now()-t0>=p.realMs)return finishWait(p,true);await nap(poll)}}
+const restOf=a=>!a||a.state==='dead'||sceneDue(a)?null:tableRest(a)?restText(a):worldAtTable()?AWAY_TEXT:null;
 
 // Runner pacing (issue #126, sim/pace.js): not a game tool (MCP and /play/call never offer it; the relay
 // sends it from POST /play/pace). Resolves when the hero's next turn should start, or after realMs
@@ -34,12 +36,14 @@ export const WAIT_SCENE_MS=240000; // the longest a wait holds at a scene alread
 export async function hostPace(heroId,args,{poll=100,nap=sleep,now=()=>Date.now()}={}){
   const p=args&&typeof args==='object'?args:{},me=()=>S.agents.find(x=>x.id===Number(heroId));
   if(p.brief){const r=paceBrief(heroId,{self:!!p.self}),a=me();if(r&&r.ok&&a&&a.playFresh){a.playFresh=false;lookSnap(a)}return r} // the state header for a turn prompt, at once; the one a runner reads after its wake is the agent's view of the world (#240; the relay's after-turn brief for the behavior log is not)
+  if(p.held){const a=me();if(!a||a.kind!=='hero')return {ok:false,gone:true,error:'No such hero.'};if(a.state==='dead')return {ok:false,dead:true,error:a.name+' is dead.'};if(!a.player)return {ok:false,gone:true,error:a.name+' is no longer agent-played.'};return {ok:true,held:worldHeld()||null}} // the first turn of a run asks whether the start gate or the DM's prep still holds the world (#770)
   if(p.queued!=null){const a=me();return a?markQueued(a,!!p.queued,p.why):{ok:false,gone:true,error:'No such hero.'}} // the runner: this member's scene answer is queued behind other work (#515)
   if(p.reflected!=null){const a=S.agents.find(x=>x.id===Number(heroId));return a&&a.player?reflectDone(a,String(p.reflected),p.wrote):{ok:false,error:'not agent-played'}} // a reflection closed (#179)
   const t0=now(),rm=Number(p.realMs),realMs=Math.min(PACE.REAL_MAX,Number.isFinite(rm)&&rm>=0&&p.realMs!==null?rm:PACE.REAL_MS);
   const q={since:Number.isFinite(Number(p.since))&&p.since!==null?Number(p.since):paceIdle(heroId,null).since,minutes:p.minutes,wake:p.wake==='now'||p.wake==='must'?p.wake:'all',reflect:!!p.reflect};
   turnEnd(me()); // a runner asking when to go next has ended its turn: autopilot may start things again (#240)
-  for(;;){const r=paceCheck(heroId,q);if(r){const a=me();if(r.ok&&r.wake&&a){turnStart(a);a.playFresh=true}return r} // a wake opens the next turn
+  {const a=me(),n=Number(p.hearWake);if(a){if(n>0)a.playHearGap=Math.min(1440,n);else if(a.playHearGap!=null)delete a.playHearGap}} // the runner's AGENT_HEAR_WAKE_MIN (#787); unset: the game's PK.HEAR_WAKE
+  for(;;){const r=paceCheck(heroId,q);if(r){const a=me();if(r.ok&&r.wake&&a){turnStart(a);a.playFresh=true;delete a.tableRest}return r} // a wake opens the next turn
     if(now()-t0>=realMs)return paceIdle(heroId,q.since);await nap(poll)}}
 
 // The DM's voice calls, long-polled (#680): table_call, npc_call and ruling_call with {wait_ms} (up to DM_WAIT.MAX) are held

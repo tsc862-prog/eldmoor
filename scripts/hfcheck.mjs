@@ -6,6 +6,8 @@
 // /health, its own limiter), the agent loop (tools, JSON-actions fallback), the runner start checks, the mind
 // tables, and a real `agent-player.mjs --provider huggingface` run against a headless world.
 // Usage: npm run hfcheck
+import {dmMindCases} from './dm-mind-cases.mjs';
+import {schemaFill, toolsProblem, isDmTurn, dmTurnMessage} from './mock-dm.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync} from 'node:fs';
@@ -27,11 +29,12 @@ let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const TOKEN = 'hf_testtoken1234567890';
-const L8 = 'meta-llama/Llama-3.1-8B-Instruct', Q7 = 'Qwen/Qwen2.5-7B-Instruct', NOSCHEMA = 'org/no-schema', NOTOOLS = 'org/no-tools', NOCOST = 'org/no-cost';
+const L8 = 'meta-llama/Llama-3.1-8B-Instruct', Q7 = 'Qwen/Qwen2.5-7B-Instruct', NOSCHEMA = 'org/no-schema', NOTOOLS = 'org/no-tools', NOCOST = 'org/no-cost', PRICEY = 'org/pricey';
 const CURATED = [L8, Q7, NOSCHEMA, NOTOOLS, NOCOST], COST = 0.000004;
 const seen = [], st = {mode: 'ok', rateLeft: 0};
 const answer = f => {const p = f && f.properties || {};
   if (p.choice) return {choice: p.choice.enum[0], crypt: false, reason: 'The fen keeps its counsel.', line: 'Hold.'};
+  if (p.text) return schemaFill(f); // a DM voice
   if (p.long) return {long: 'I remember the fen.'}; if (p.crypt) return {crypt: true, reason: 'Why not.'}; return {line: 'Mud and patience.'}};
 const server = http.createServer((req, res) => {
   const send = (code, o, h = {}) => {res.writeHead(code, {'content-type': 'application/json', ...h}); res.end(JSON.stringify(o))};
@@ -46,13 +49,15 @@ const server = http.createServer((req, res) => {
     const rf = body.response_format;
     if (body.model === NOSCHEMA && rf && rf.type === 'json_schema') return send(400, {error: {message: 'response_format json_schema is not supported by this provider'}});
     if (body.model === NOTOOLS && body.tools) return send(400, {error: {message: 'Tool use is not supported for this model'}});
-    const usage = {prompt_tokens: 800, completion_tokens: 15, total_tokens: 815, ...(body.model === NOCOST ? {} : {estimated_cost: COST})};
+    const tp = toolsProblem(body); if (tp) return send(400, {error: {message: tp}});
+    const usage = {prompt_tokens: 800, completion_tokens: 15, total_tokens: 815, ...(body.model === NOCOST ? {} : {estimated_cost: body.model === PRICEY ? .011 : COST})};
     const reply = (message, finish = 'stop') => send(200, {id: 'x', object: 'chat.completion', model: body.model, usage, choices: [{index: 0, finish_reason: finish, message}]});
     if (rf && rf.type === 'json_schema') return reply({role: 'assistant', content: JSON.stringify(answer(rf.json_schema.schema))});
     if (rf && rf.type === 'json_object') {
       const sys = body.messages[0] && body.messages[0].content || '', m = /matching this JSON schema: (.*)$/s.exec(sys);
       return reply({role: 'assistant', content: JSON.stringify(m ? answer(JSON.parse(m[1])) : {tool: 'end', args: {}, narration: 'The hero waited.'})});
     }
+    if (isDmTurn(body)) {const m = dmTurnMessage(body); return reply(m, m.tool_calls ? 'tool_calls' : 'stop')}
     const n = body.messages.filter(m => m.role === 'tool').length;
     if (body.tools && n < 1) return reply({role: 'assistant', content: null, tool_calls: [{id: 'call_1', type: 'function', function: {name: 'status', arguments: '{}'}}]}, 'tool_calls');
     reply({role: 'assistant', content: 'The hero looked about.'});
@@ -173,6 +178,15 @@ console.log('npm run agent -- --provider huggingface (mock router, headless worl
   const nt = start(['scripts/agent-player.mjs', '--url', BASE, '--hero', String(hB.id), '--provider', 'huggingface', '--model', L8, '--max-turns', '1', '--new'], {e: {...env, HF_TOKEN: ''}}); const c2 = await nt.done;
   ok(c2 === 1 && /No HF_TOKEN/.test(nt.out()), 'no token: refused with the steps to create one');
   world.p.kill(); for (const k of kids) try {k.kill()} catch {}
+  // the DM on the router (#824), and the two models that need the loop's fallbacks
+  await dmMindCases({provider: 'huggingface', model: L8, env, ok, port: port + 200, seen, pricey: {model: PRICEY, budget: .04}});
+  {const P = port + 210, B = `http://127.0.0.1:${P}`, w = start(['scripts/play-headless.mjs', '--port', String(P), '--dm', '--agents', '0', '--quiet', '--no-behavior', '--no-mirror', '--speed', '4', '--world', join(tmp, 'dmworld.json')], {wait: /^\[play\] headless world at /m});
+    await w.until;
+    const a = start(['scripts/dm-agent.mjs', '--url', B, '--provider', 'huggingface', '--model', NOCOST, '--max-turns', '1', '--cadence', '5']), ca = await a.done, oa = a.out();
+    ok(ca === 0 && /reports no price/.test(oa) && /cost unknown \(model not in the price table\)/.test(oa) && /cost unknown for org\/no-cost, counted/.test(oa), 'a DM on a model with no estimated_cost says the budget cannot limit it' + (ca === 0 ? '' : '\n' + oa.slice(-1200)));
+    const b = start(['scripts/dm-agent.mjs', '--url', B, '--provider', 'huggingface', '--model', NOTOOLS, '--max-turns', '1', '--cadence', '5']), cb = await b.done, ob = b.out();
+    ok(cb === 0 && /JSON-action mode/.test(ob), 'a DM on a model with no tool support plays through the JSON actions' + (cb === 0 ? '' : '\n' + ob.slice(-1200)));
+    w.p.kill()}
   try {rmSync(tmp, {recursive: true, force: true})} catch {}
 }
 server.close();

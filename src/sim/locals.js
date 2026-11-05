@@ -61,7 +61,7 @@ function reason(p,a,c){const role=p.role;
     if(h)return {topic:'job',text:'There is work posted at the gate that might suit you: '+(ADVENTURES[h.tpl].name||h.tpl)+'. Come, I will tell you what I know.'}}
   const g=a.goal;
   if(g&&!g.done&&g.type==='avenge'&&g.target&&['innkeeper','bard','drover','captain'].includes(role))
-    return {topic:'oath',text:'You have the look of one who hunts '+g.target+'. I have heard talk of it; come and ask me.'};
+    return {topic:'oath',text:g.offered?'I have heard talk of '+g.target+' on the roads; come and ask me, if it means anything to you.':'You have the look of one who hunts '+g.target+'. I have heard talk of it; come and ask me.'}; // a thread is not told back as their oath (#800)
   const z=huntZone(a),E=ELITES[z];
   if(E&&E.name&&['innkeeper','bard','drover','hermit'].includes(role))
     return {topic:'rumour',text:'Hold a moment, traveller. They say '+E.name+' prowls '+ZONES[z]+'. Few who meet it come home whole.'};
