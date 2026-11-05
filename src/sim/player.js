@@ -839,7 +839,7 @@ function heroDoing(a,b){const t=b.target&&alive(b.target)?(b.target===a?'you':fo
 function heroLook(a,b){const self=b===a,o={ok:true,kind:'hero',name:b.name,...(titleOf(b)?{known_as:styled(b)}:{}),who:raceOf(b).name+' '+b.cls+', level '+b.lvl,
     faction:FAC[b.fac].name+(self?'':b.fac===a.fac?' (your side)':' (the other side: they may attack you)'),looks:HURT(b.hp,maxHp(b)),...(woundLook(b)?{wound:woundLook(b)}:{}),doing:heroDoing(a,b)};
   if(b.guild)o.guild='<'+b.guild.tag+'> '+b.guild.name;
-  if(inSlots(b)&&slotKeyOf(b)){const L={tank:'Tank',healer:'Healer'}[slotKeyOf(b)]||'DPS';o.fellowship='of the Fellowship ('+L+')'}
+  if(inSlots(b)&&slotKeyOf(b))o.fellowship='of the Fellowship';
   const w=SLOTS.map(k=>b.slots&&b.slots[k]).filter(Boolean).map(gearWord);o.wears=w.length?w:'plain clothes, no gear to speak of';
   if(self){o.note='This is you. status has your numbers, inventory your pack.';return o}
   o.distance=r1(dist(a,b))+' tiles';const ties=[];
