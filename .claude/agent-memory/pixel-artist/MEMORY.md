@@ -18,3 +18,4 @@
 - [Image to image](img2img.md) — #763 owner decision: art from procedural init, layout contract, real Gradio facts, local Space test
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
 - [Whole-map marks](entitylod.md) — #729 lod.js: threshold, pawns plus 1:1 creature sprites, sheet warm-up, probe in a junction worktree
+- [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps

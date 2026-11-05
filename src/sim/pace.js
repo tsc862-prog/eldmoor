@@ -6,6 +6,8 @@
 //   'soft'       something happened that the agent has not read yet (an urgent event such as an
 //                arrival or a vote, a party line, the narrator, a person speaking to the hero);
 //   'heartbeat'  `minutes` of game time passed since `since` with nothing of the sort.
+// A hero resting at an open scene (#868: it answered, or the DM still sets it) takes only what must be answered until it settles;
+// one whose wait was turned back there (a.tableRest) is woken once the table has settled (soft: it may read how it went).
 // With wake:'now' only the first kind counts (the runner's minimum real-time gap has not passed yet); with
 // wake:'must' only a choice or a table scene (e.w=3), which must be answered in time (answers carry must:true).
 // paceBrief: the state header a runner puts on every local turn prompt (the coordinator's live bug: a
@@ -16,7 +18,8 @@
 import {S,clockStr} from './state.js';
 import {swornOf,threadText,askOpen} from './oath.js'; // the hero's own oath, or the thread its past offers (#800)
 import {wakeLevel,mostNews} from './notify.js';
-import {tableView,optionsFor} from './table.js';
+import {tableView,optionsFor,worldAtTable} from './table.js';
+import {tableRest} from './scenewait.js'; // answered and waiting for the table (#868)
 import {sceneOf} from './scenes.js';
 import {heardLines,metNames} from './talk.js';
 import {maxHp} from './heroes.js';
@@ -62,10 +65,11 @@ export function paceCheck(id,{since=null,minutes=240,wake='all',reflect=false}={
   if(tv&&!tv.acted&&tv.phase!=='outcome'&&tv.waiting_for!=='the DM')return out('now','a scene at the table: '+tv.scene,true); // not while the DM sets it (#682)
   const seen=a.playEvSeen||0,sleeping=asleep(a);let soft=null,now=null; // a sleeper's agent gets no soft turns and no heartbeat: only wake events (#178)
   for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=3)return out('now',e.text,true);if(l===2&&!now)now=e;if(l===1&&!soft&&!sleeping)soft=e}
-  if(wake==='must')return null;
+  if(wake==='must'||tableRest(a))return null;
   if(now)return out('now',now.text);
   if(wake==='now')return null;
   if(soft)return out('soft',soft.text);
+  if(a.tableRest&&!sleeping&&!worldAtTable())return out('soft','the table settled');
   if(reflect){const r=reflectDue(a);if(r)return out('soft','a moment to reflect: '+r.why)}
   if(!sleeping&&S.gameMin>=from+m)return out('heartbeat',m+' game minutes passed');
   return null}

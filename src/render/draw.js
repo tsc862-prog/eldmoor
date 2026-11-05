@@ -9,12 +9,12 @@
 //   free camera ('map'): sc = fit * zoom, zoom one of ZOOMS; camX/camY is the view
 //     centre in world px, clamped so the view never leaves the map (at zoom 1 that
 //     pins it to the map centre, exactly the old whole-map view).
-//   follow: sc = max(fit*2.6, canvas/FOLLOW_VIEW) and the centre eases to the hero.
+//   follow: sc = max(fit*2.6, canvas/(followTiles(canvas)*T), art-snapped) and the centre eases to the hero.
 //   A wheel, drag or minimap click in follow mode drops to the free camera at the
 //   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
 import {W,H,LAVA} from '../world/tiles.js';
-import {U as T,ART,PROC_SCALE,HEAD,FOLLOW_TILES} from './tile.js';
+import {U as T,ART,PROC_SCALE,HEAD,followTiles} from './tile.js';
 import {OUTPOSTS} from '../world/map.js';
 import {outpostsView} from '../sim/outposts.js';
 import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
@@ -48,8 +48,6 @@ const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are place
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null,hover:null,icons:true}; // hover, icons: the hovered hero and the Intent icons switch in Settings (#534, render/purposefx.js)
-// Follow view shows about FOLLOW_TILES (29) tiles across the screen.
-const FOLLOW_VIEW=FOLLOW_TILES*T;
 const BOSS_HEAD=SPR.boss[0].length*PROC_SCALE+6; // Kragmaw's nameplate height over its feet
 // The facing of each entity for a generated sheet (0 down, 1 left, 2 right, 3 up), from how it last moved.
 const FACE=new WeakMap();
@@ -65,7 +63,9 @@ const ENTS=[],ESPR=[],EG=[],EGF=[],ESW=[],ESH=[],EPX=[],byY=(a,b)=>a.y-b.y; // t
 let cvRef=null;const listeners=[];
 export function onCamChange(fn){listeners.push(fn)}
 const changed=()=>{for(const f of listeners)f(cam)};
-const followScale=()=>cvRef?Math.max(cam.fit*2.6,cvRef.width/FOLLOW_VIEW):cam.fit*2.6;
+// Whole art pixels where it costs under a quarter step, so the generated art stays sharp (art px per unit is ART).
+const snapArt=sc=>{const a=sc*ART,r=Math.round(a);return Math.abs(a-r)<.3&&r>=1?r/ART:sc};
+const followScale=()=>cvRef?Math.max(cam.fit*2.6,snapArt(cvRef.width/(followTiles(cvRef.width)*T))):cam.fit*2.6;
 // 'fellow' view (#68): cam.frame() (set by ui/controls.js) returns {x,y,w,h} in tiles framing the Fellowship, or null.
 const framed=()=>cam.view==='fellow'&&typeof cam.frame==='function'?cam.frame():cam.view==='region'&&typeof cam.regionFrame==='function'?cam.regionFrame():null; // 'region' view (#430): cam.regionFrame() frames the picked region
 const frameScale=f=>cvRef?clamp(Math.min(cvRef.width/((f.w+8)*T),cvRef.height/((f.h+6)*T)),cam.fit,followScale()):cam.fit*2.6;
@@ -121,11 +121,12 @@ export function createRenderer(cv,screenEl){
   // A label may carry other heights to try before it is dropped (alt, world y) and a dark plate behind it (pl): a Table
   // scene's people stack instead of vanishing and stay readable at night (#471). RES: screen boxes kept clear (bubbles).
   const LQ=[],POOL=[],BOX=[],RES=[];
-  function lab(t,x,y,col,css,pri,alt,pl){const n=LQ.length,L=POOL[n]||(POOL[n]={});L.t=t;L.x=x;L.y=y;L.col=col;L.css=css;L.pri=pri;L.i=n;L.alt=alt||null;L.pl=!!pl;LQ.push(L)}
+  function lab(t,x,y,col,css,pri,alt,pl,up){const n=LQ.length,L=POOL[n]||(POOL[n]={});L.t=t;L.x=x;L.y=y;L.col=col;L.css=css;L.pri=pri;L.i=n;L.alt=alt||null;L.pl=!!pl;L.up=up||0;LQ.push(L)}
   function flushLabels(sc){LQ.sort((a,b)=>b.pri-a.pri||a.i-b.i);BOX.length=0;for(const v of RES)BOX.push(v);RES.length=0;
     for(const L of LQ){const s=L.css*cam.dpr;ctx.font=s+'px VT323, monospace';const w=ctx.measureText(L.t).width,sx=L.x*sc+cam.offX;
-      for(let j=-1;j<(L.alt?L.alt.length:0);j++){const y=j<0?L.y:L.alt[j],sy=y*sc+cam.offY;
-        const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12;let hit=false;
+      // a bunched crowd stacks upward in whole plate heights (L.up tries) instead of piling; scene labels try their alt heights (#842)
+      for(let j=-1;j<(L.alt?L.alt.length:L.up);j++){const y=j<0?L.y:L.alt?L.alt[j]:L.y-(j+1)*(s*1.02/sc),sy=y*sc+cam.offY;
+        const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12+(L.up?1:0);let hit=false;
         for(let k=0;k<BOX.length;k+=4)if(BOX[k]<x1&&BOX[k+2]>x0&&BOX[k+1]<y1&&BOX[k+3]>y0){hit=true;break}
         if(hit)continue;BOX.push(x0,y0,x1,y1);
         if(L.pl){ctx.fillStyle='rgba(8,10,20,.82)';ctx.fillRect((x0-cam.offX)/sc,(y0-1-cam.offY)/sc,(x1-x0)/sc,(y1-y0+3)/sc)}
@@ -285,24 +286,26 @@ export function createRenderer(cv,screenEl){
     //   close: the selected hero, Fellowship, Kragmaw, elites, wary or hostile folk, then other heroes;
     //   townsfolk and friendly strangers only when near (zoom 4 or a follow camera).
     const LM=MARGIN*4,near=close&&(following()||sc>=cam.fit*3.5),inMap=(y,css)=>{const s=css*cam.dpr/sc;return clamp(y,s*.9,H*T-s*.25)};
+    const LS=Math.max(22,Math.min(28,Math.round(cv.height/cam.dpr/36))); // hero name size follows the pane, never under about 11 px of capitals (#842)
     LQ.length=0;
     if(!close){
       for(const[t,x,y]of LABELS)if(inView(x*T,y*T,LM)){const town=TOWNS.has(t);lab(t,x*T,inMap(y*T,town?13:15),town?TEXT.place:TEXT.region,town?13:15,town?6:3)}
-      if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-HEAD,MARK.sel,13,10); // the followed hero is named at any zoom
+      if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-HEAD,MARK.sel,16,10,null,true); // the followed hero is named at any zoom
       if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))lab('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,TEXT.elite,12,5);
       for(const L of LANDMARKS){if(L.kind!=='crypt'||!L.mouth||!inView(L.x*T,L.y*T,LM))continue; // every crypt, labelled just above its mouth
         const g=CRYPT&&L.name===CRYPT.name&&CRYPT.group&&CRYPT.group.phase==='inside'?CRYPT.group:null;
         lab(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
     else{
       if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))lab(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14,7);
-      const fel=slotted()?new Set(Object.values(slotted().slots).map(String)):null,lh=14*cam.dpr/sc;
+      const lh=14*cam.dpr/sc;
       if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
         const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),y=a.y*T-HEAD-condLift(a,cam);
         if(inCut&&a.bubble&&a.bubble.life>0&&bubbleVisible(a,S))continue; // its bubble names it already: one label per member
         if(inCut){lab(a.name,a.x*T,y,inSlots(a)?classColor(a.cls):FAC[a.fac].color,14,inSlots(a)?9:8,[y-lh*1.05,a.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
-        lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14,a===sel?10:fel&&fel.has(String(a.id))?8:dead?1:4)}
+        const mate=!dead&&inSlots(a); // a company member is always named: big, class colour, a plate, stacked when bunched (#842)
+        lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:mate?classColor(a.cls):dead?TEXT.dead:FAC[a.fac].color,mate||a===sel?LS:LS-4,a===sel?10:mate?8:dead?1:4,null,mate||a===sel,mate?6:0)}
       for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,slotted(),S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
         lab(toneName(p,t),p.x*T,p.y*T-HEAD-condLift(p,cam),t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
       for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-HEAD-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
@@ -313,10 +316,11 @@ export function createRenderer(cv,screenEl){
       if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
         ctx.save();ctx.strokeStyle=MARK.party;ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
       for(const a of mem){if(!inView(a.x*T,a.y*T,40)||(cut&&cut.members.includes(a)))continue;const col=classColor(a.cls); // in a Table scene the ring and the class-coloured name mark them (#471) // a member's marker: its class colour (one palette, core/colors.js)
-        const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-HEAD-(close?16:15)*px1-m-condLift(a,cam);
+        if(close)continue; // up close the plate is in the class colour: no diamond to pile (#842)
+        const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-HEAD-15*px1-m-condLift(a,cam);
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
-        if(!close)lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,13,a===sel?10:7)}}
+        lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,16,a===sel?10:7,null,true,3)}}
     flushLabels(sc);ph(5);
     if(close){drawBubbles(ctx,S,cam,drawText);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
