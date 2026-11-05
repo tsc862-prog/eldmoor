@@ -433,7 +433,16 @@ button.frrh:hover,button.frrh:focus-visible{border-bottom-color:var(--gold)}
 .pfhpt{position:absolute;inset:0;font-size:14px;line-height:12px;text-align:center;color:#fff;text-shadow:1px 1px 0 #000;font-variant-numeric:tabular-nums}
 .pfdo,.pftg,.pfrep{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pftg{color:#ffb060}
-.pftg:empty,.pfrep:empty,.pfchips:empty{display:none}
+.pfdo{min-height:17px}
+/* fixed-height slots: the frame row is the same height in every state (#843) */
+.pfsl{position:relative;overflow:hidden}
+.pfsl1{height:17px}.pfsl2{height:15px}
+.pfsl>*{position:absolute;left:0;right:0;top:0}
+.pfsl1>.pfdown{background:inherit;height:17px}
+.pfsl1>.pfdown:not([hidden])~*,.pfsl1>.pfdown:not([hidden]){z-index:1}
+.pfsl2>.pfchips{flex-wrap:nowrap;overflow:hidden}
+.pfchips:not(:empty)~.pfrep{display:none}
+.pffoot{min-height:15px}
 .pfchips{display:flex;flex-wrap:wrap;gap:3px}
 .chip{font-family:var(--px);font-size:6px;padding:2px 3px;border:1px solid currentColor;letter-spacing:.04em;white-space:nowrap}
 .chip.c-good{color:#9ad0ff} .chip.c-bad{color:var(--red)} .chip.c-dim{color:var(--dim)} .chip.c-crypt{color:#c58cff} .chip.c-warn{color:var(--amber)} .chip.c-oath{color:var(--gold)}
@@ -457,7 +466,7 @@ button.runbtn.off{opacity:.55}
   .pf{font-size:14px;padding:3px 4px}
   .pfport{width:20px;height:24px}
   .pfname{font-size:7px}
-  .pftg,.pfrep,.pfchips{display:none}
+  .pfsl{display:none}
 }
 /* the World group: the world panels, folded under one heading while a Fellowship rides */
 .worldgrp{border-style:dashed}
@@ -624,6 +633,13 @@ button.tbtn.danger{border-color:var(--red)}
 .dmseat .dmnotes{margin-left:auto}
 .dmfdo{color:#d9c27a;overflow-wrap:anywhere}
 .dmfdo:empty,.dmfstg:empty{display:none}
+/* calm (#848): one line while the seat is healthy; counters and the runner line behind Details, everything on an alert */
+.dmfsum{margin-left:auto}
+.dmfmore{font-size:6px;padding:2px 4px}
+.dmf.calm .dmfdo,.dmf.calm .dmfact,.dmf.calm .dmffol,.dmf.calm .dmfstg{display:none}
+.dmf.calm .dmffull{flex-direction:row;align-items:center;flex-wrap:wrap;gap:3px 10px}
+.dmf.calm .dmffoot{margin-left:0}
+.dmf:not(.calm) .dmfsum{display:none}
 .dmfact,.dmffol,.dmfstg{color:var(--dim);overflow-wrap:anywhere}
 .dmffoot{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .dmfrun{min-width:0;flex:1 1 auto}
@@ -948,3 +964,31 @@ button.tnmore{align-self:flex-start}
 .tnd{color:var(--dim);font-size:16px;flex:none}
 .tnl{margin:4px 0 0;padding-left:18px;font-size:18px;line-height:1.15;color:#d8d4c4;overflow-wrap:anywhere}
 .tnl li{margin:2px 0}
+
+/* #847: the setup and title pages at wide widths. Scoped to .setup and .title; narrow widths keep the grid. */
+.sprofd>summary{cursor:pointer;list-style:revert}
+.sprofd>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.sprofd[open]>summary{margin-bottom:4px}
+.sprofd .sprofs{margin-bottom:4px}
+.ssum{font-family:var(--mono);font-size:20px;color:var(--gold);overflow-wrap:anywhere}
+.setup .sfinal{position:sticky;bottom:-28px;z-index:2;margin:0 -2px;border-color:var(--gold)}
+@media (min-width:2200px){
+  .setup{padding:20px 40px 0}
+  .setup .spage{zoom:1.5;max-width:none;gap:10px}
+  .setup .shead{display:flex;align-items:baseline;gap:20px;flex-wrap:wrap}
+  .setup .shead h2{margin:0}
+  .setup .scards{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .setup .sgrid{grid-template-columns:repeat(5,minmax(0,1fr))}
+  .setup .spresets .mini{font-size:9px}
+  .setup .sfinal{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:24px;row-gap:4px;align-items:center;padding:8px 14px}
+  .setup .sfinal>.ssum,.setup .sfinal>.srelay,.setup .sfinal>.srun,.setup .sfinal>.sprobs,.setup .sfinal>.sseatnote,.setup .sfinal>.sbad{grid-column:1}
+  .setup .sfinal>.sbtns,.setup .sfinal>.sconfirm{grid-column:2;grid-row:1/span 3}
+  .setup .sfinal .sbtns .mini{font-size:11px;padding:14px 22px}
+  .setup .sfinal .srelay{font-size:inherit}
+  .setup .sfinal{bottom:0}
+  .title{padding:40px 60px}
+  .title .tnews .tnread{width:auto;padding:8px 14px}
+  .title .tpage{zoom:1.6;max-width:1500px;margin-top:6vh;display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);column-gap:40px;align-content:start}
+  .title .tpage>*{grid-column:1}
+  .title .tpage>.tnews{grid-column:2;grid-row:1/span 7;align-self:start}
+}

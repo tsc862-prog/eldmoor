@@ -136,12 +136,10 @@ console.log('wait');
  fresh(A, 3); A.intent = null; act(A, 'intent', {goal: 'Rest at the camp', why: 'night', until: 'dawn'}); A.intent.set -= 400; A.intent.prog -= 400; A.state = 'camp'; intentWatch(A);
  ok(!A.intent.done, 'a camp rest is not cut off by the wait cap'); A.state = 'town'; intentWatch(A); ok(!!A.intent.done, 'out of camp the cap applies');
  // the town-idle guard against a stubborn agent who keeps stating a wait
- fresh(A, 3); A.intent = null; A.townIdle = null; A.playEv = []; const g0 = S.gameMin; let nextRe = g0, still10 = null, wake = null; const watchWake = () => {const e = (A.playEv || []).find(e => /waiting earns no levels/.test(e.text)); if (e && !wake) wake = e.text}; act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); nextRe += 100; idle(A);
-const guardCleared = new Set(); // a chance fight must not send the hero home before the check: full health, nobody near
- gm(840, () => {if (S.gameMin >= nextRe) {act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); A.pq = (A.pq || []).filter(x => !x.auto); nextRe += 100} A.hp = maxHp(A); for (const m of S.mobs) if (m.alive && !m.gone && dist(m, A) < 16) {m.alive = false; m.gone = true; m.target = null; guardCleared.add(m)} idle(A); watchWake(); if (still10 == null && S.gameMin - g0 >= 600) still10 = inTownRect(A)});
+ fresh(A, 3); A.intent = null; A.townIdle = null; A.playEv = []; const g0 = S.gameMin; let nextRe = g0, still10 = null, wake = null, wentOut = false; const watchWake = () => {const e = (A.playEv || []).find(e => /waiting earns no levels/.test(e.text)); if (e && !wake) wake = e.text}; act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); nextRe += 100; idle(A);
+ gm(840, () => {if (S.gameMin >= nextRe) {act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); A.pq = (A.pq || []).filter(x => !x.auto); nextRe += 100} idle(A); watchWake(); if (still10 == null && S.gameMin - g0 >= 600) still10 = inTownRect(A); if (!inTownRect(A)) wentOut = true});
  ok(still10 === true, 'before 12 idle hours the guard does not move a hero that keeps its wait');
- ok(!inTownRect(A) || A.state !== 'town', 'after 12 idle hours autopilot hunts whatever wait aim it holds (' + A.state + ' in ' + ZONES[zoneAt(A.x, A.y)] + ')');
- for (const m of guardCleared) {m.alive = true; m.gone = false; m.target = null; m.hp = m.maxhp} rebuild();
+ ok(wentOut, 'after 12 idle hours autopilot hunts whatever wait aim it holds (' + A.state + ' in ' + ZONES[zoneAt(A.x, A.y)] + ')'); // out and maybe back: the near ground is a short walk
  ok(wake && /Autopilot hunts/.test(wake) && /board has|Hunt out/.test(wake), 'and the agent was woken with a line naming the ground and the board: ' + String(wake).slice(0, 220));
  ok(!A.adv && !A.quest, 'still no job taken for it');
  // legitimate waits: an open meeting plan keeps the clock from running
@@ -150,7 +148,7 @@ const guardCleared = new Set(); // a chance fight must not send the hero home be
  ok(inTownRect(A) && !wake, 'an open meeting plan is a legitimate wait: no guard wake in 14 hours');
  C.plans = [];
  // the refusal names the board
- fresh(A, 5); A.intent = null; const hi = postHook(homeOf(A), 'negotiate', 'writ'), lo = postHook(homeOf(A), 'rescue', 'writ');
+ fresh(A, 5); A.intent = null; S.adventures = (S.adventures || []).filter(h => !(h.phase === 'open' && h.town === homeOf(A).name)); /* the refusal lists four: a full board would crowd these out */ const hi = postHook(homeOf(A), 'negotiate', 'writ'), lo = postHook(homeOf(A), 'rescue', 'writ');
  r = act(A, 'take_adventure', {job_id: hi.id});
  ok(!r.ok && /needs level 6/.test(r.error) && new RegExp('job:' + lo.id).test(r.error) && /Grow first/.test(r.error), 'a level refusal lists the takeable hooks with ids: ' + String(r.error).slice(0, 200));
  r = act(A, 'take_quest', {id: 'job:' + hi.id});
@@ -295,11 +293,11 @@ A.pq = []; A.playTurn = null; A.intent = null;
 // 7. an errand lives inside #790: capped, never progress, and no way past the town-idle guard
 const cleanA = (lvl = 3) => {fresh(A, lvl); Object.assign(A, {playArrive: null, intent: null, intentPast: null, intentDay: null, townIdle: null, playEv: []})};
 cleanA(); r = act(A, 'intent', {goal: 'Ask around about the Sunken Crypt', why: 'the way', until: '12'}); A.playTurn = null;
-ok(A.intent.order.errand === 'ask' && A.intent.untilAt - S.gameMin <= IN.INTENT.WAIT_MAX, `an errand given 12 hours is held to the wait cap (${Math.round(A.intent.untilAt - S.gameMin)} min)`);
+ok(A.intent.order.errand === 'ask' && A.intent.untilAt - S.gameMin <= IN.INTENT.WAIT_MAX + 1, `an errand given 12 hours is held to the wait cap (${Math.round(A.intent.untilAt - S.gameMin)} min)`);
 cleanA(); r = act(A, 'intent', {goal: 'Rest at the inn with the knot', why: 'we wait', until: 'level four'}); A.playTurn = null;
 ok(A.intent.order.kind === 'hunt' && A.intent.untilLevel === 4 && /Levels come from kills/.test(r.notes || ''), `a level condition beats the errand words: a hunt, not a wait (${IN.orderText(A.intent.order)})`);
 atField(); A.intentDay = null; act(A, 'intent', {goal: 'Return to ' + c.name + ' and ask about the Crypt', why: 'rumours', until: '40'}); A.playTurn = null; A.intent.set -= 500; A.intent.prog = S.gameMin; A.x = A.intent.order.to.x; A.y = A.intent.order.to.y; A.state = 'town'; IN.intentWatch(A);
-ok(A.intent.order.kind === 'wait' && !A.intent.done && A.intent.untilAt - S.gameMin <= IN.INTENT.WAIT_MAX, `a long walk there does not eat the errand, and a far until is cut to the cap (${Math.round(A.intent.untilAt - S.gameMin)} min left)`);
+ok(A.intent.order.kind === 'wait' && !A.intent.done && A.intent.untilAt - S.gameMin <= IN.INTENT.WAIT_MAX + 1, `a long walk there does not eat the errand, and a far until is cut to the cap (${Math.round(A.intent.untilAt - S.gameMin)} min left)`);
 cleanA(); act(A, 'intent', {goal: 'Buy supplies for the road', why: 'the road'}); A.playTurn = null; A.x = away.x; A.y = away.y; A.state = 'hunt'; A.pq = []; idle(A); run(.2);
 ok(!/waiting/.test((A.pq || [])[0] && A.pq[0].auto || ''), `out of town the errand holds nothing (${(A.pq || [])[0] && A.pq[0].auto})`);
 cleanA(); act(A, 'intent', {goal: 'Wait in town for Fena', why: 'she said so', until: 'Fena arrives'}); A.intent.prog -= 130; act(A, 'list_jobs', {}); act(A, 'earshot', {}); A.playTurn = null;

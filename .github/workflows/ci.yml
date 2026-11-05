@@ -50,6 +50,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
       - {name: World spec snapshot check, run: npm run worldcheck}
       - {name: Passability layer check, run: npm run passablecheck}
+      - {name: Paths check, run: npm run pathcheck}
       - {name: Save/load round trip, run: npm run savecheck}
       - {name: init() reset, run: npm run initcheck}
       - {name: Downed and death saves, run: npm run downcheck}
@@ -187,6 +188,8 @@ jobs:
       - {name: Brain policy and relay (mock model), run: npm run braincheck}
       - {name: Table mode and staged scenes, run: npm run tablecheck}
       - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
+      - {name: Talk guard (introductions and repeats; refused talk counted), run: npm run talkcheck}
+      - {name: Companies initiate the Crypt and raids, run: npm run initiatecheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: DM rumours and names for deeds (seed_rumour and bestow), run: npm run rumourcheck}
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}
