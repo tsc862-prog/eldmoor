@@ -38,7 +38,7 @@ export const MARK={
 };
 
 // Light: warm torch and fire light added in the night pass; the night itself.
-export const LIGHT={night:[8,10,40],torch:[255,170,70],lava:[255,110,40],crypt:[120,230,170]};
+export const LIGHT={night:[10,14,60],nightA:.62,dusk:[150,36,120],dawn:[170,64,104],torch:[255,170,70],lava:[255,110,40],crypt:[120,230,170]};
 
 // Ground colour per biome and the darker forest shade on top of it, for the minimap and
 // anything else that needs one colour per tile. Keyed by biome name (gen.js BIOMES), never by

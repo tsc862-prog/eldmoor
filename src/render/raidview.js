@@ -23,7 +23,7 @@ import {MOBS} from '../data/mobs.js';
 import {FAC} from '../data/factions.js';
 import {maxHp} from '../sim/heroes.js';
 import {interiorTexture} from './interior.js';
-import {sprite,outlined,heroSprite,SPR} from './sprites.js';
+import {sprite,outlined,sceneFigure,sceneCreature,drawFigure,SPR} from './sprites.js';
 import {BOSS_PAL,RAID,MARK,TEXT,UI} from './palette.js';
 import {classColor} from '../core/colors.js';
 import {drawConditions} from './conditions.js';
@@ -171,12 +171,15 @@ export function drawArena(ctx,box,m,st,now,dpr=1){
       ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y-2,w*.36,5,0,0,7);ctx.fill();
       ctx.save();ctx.translate(x,0);if((b.e.face||-1)>0)ctx.scale(-1,1);ctx.drawImage(s,-w/2,y-h,w,h);ctx.restore();hit('boss',x-w/2,y-h,w,h);
       if(b.e.eff)drawConditions(ctx,null,PS,b.e,x,y,y-h,now);continue}
-    if(o.a){const a=o.a,s=heroSprite(a,false,a.moving?Math.floor(now*6+a.id)&1:0),os=outlined(s),x=Math.round(o.x*T),y=Math.round(o.y*T),cc=classColor(a.cls);
+    if(o.a){const a=o.a,s=sceneFigure(a,b&&b.x<o.x?-1:1,a.moving?1+(Math.floor(now*6+a.id)&1):0),x=Math.round(o.x*T),y=Math.round(o.y*T),cc=classColor(a.cls);
       ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y-1,5,1.5,0,0,7);ctx.fill();
       ctx.strokeStyle=FAC[a.fac]?FAC[a.fac].color:cc;ctx.globalAlpha=.7;ctx.lineWidth=px1;ctx.beginPath();ctx.ellipse(x,y-1,6.5,2.4,0,0,7);ctx.stroke();ctx.globalAlpha=1;
-      ctx.save();ctx.translate(x,0);if(b&&b.x<o.x)ctx.scale(-1,1);ctx.drawImage(os,-Math.floor(s.width/2)-1,y-s.height-1);ctx.restore();
-      const top=y-s.height;bar(ctx,x-6,top-4,12,2,o.share,o.share<.3?'#e0584a':o.share<.6?'#e0b040':'#58c070','#142a1c');hit(a.id,x-s.width/2-1,top-4,s.width+2,s.height+4);
+      drawFigure(ctx,s,x,y);
+      const top=y-s.h;bar(ctx,x-6,top-4,12,2,o.share,o.share<.3?'#e0584a':o.share<.6?'#e0b040':'#58c070','#142a1c');hit(a.id,x-s.w/2-1,top-4,s.w+2,s.h+4);
       if(a.eff)drawConditions(ctx,null,PS,a,x,y,top-5,now);continue}
+    {const e=o.e,G=sceneCreature(e.type,b&&b.x>o.x?1:-1,0),x=Math.round(o.x*T),y=Math.round(o.y*T); // a generated creature sheet when there is one (#862)
+      if(G){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y-1,G.w/2,1.6,0,0,7);ctx.fill();ctx.drawImage(G.img,G.sx,G.sy,G.sw,G.sh,x+G.ox,y+G.oy,G.dw,G.dh);
+        bar(ctx,x-6,y-G.h-4,12,2,o.share,RAID.add,'#2a1012');hit(o.id,x-G.w/2,y-G.h-4,G.w,G.h+4);continue}}
     const e=o.e,M=MOBS[e.type];if(!M||!SPR[M.spr])continue;const s=sprite(e.type+fr,SPR[M.spr][fr],M.col),os=outlined(s),x=Math.round(o.x*T),y=Math.round(o.y*T);
     ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y-1,s.width/2,1.6,0,0,7);ctx.fill();ctx.drawImage(os,x-Math.floor(s.width/2)-1,y-s.height-1);
     bar(ctx,x-6,y-s.height-4,12,2,o.share,RAID.add,'#2a1012');hit(o.id,x-s.width/2,y-s.height-4,s.width,s.height+4)}
