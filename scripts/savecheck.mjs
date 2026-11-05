@@ -4,6 +4,7 @@
 // running and that snapshot() after restore deep-equals the one before.
 // Usage: npm run savecheck
 // Internal: node scripts/savecheck.mjs --restore <file>   (the child phase)
+import './seed-first.mjs'; // before the sim loads: its import-time dice are fixed, so the seeded run repeats (#888)
 import {mkTmp} from './tmp.mjs';
 import {writeFileSync, readFileSync, mkdtempSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';

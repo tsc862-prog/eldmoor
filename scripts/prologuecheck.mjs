@@ -5,8 +5,9 @@
 //   - 'none', a world with no setup, a solo, and a world with no host are exactly today's opening (nothing raised, nothing stored)
 //   - a save mid-prologue restores into it; a finished one never plays again
 //   - the DM frames the rooms and silence is filled; heroes never read what is behind the place
-// Usage: npm run prologuecheck.  --stats N sound|weak: N mock-company runs, one line of numbers each and a summary (balance reports);
+// Usage: npm run prologuecheck (Eldmoor); ELDMOOR_WORLD=stepping npm run prologuecheck (npm run prologuecheck:stepping = --world stepping, #721's six towns: every hall gets a mouth in its own region, a clear walk from the gate).  --stats N sound|weak: N mock-company runs, one line of numbers each and a summary (balance reports);
 // --stats N weak [alt]: alt plays the rows a second company takes; weak the same with minds that pick a random legal act half the time (a poor player, not the reflex's sound play).
+{const w = process.argv.indexOf('--world'); if (w > 0) process.env.ELDMOOR_WORLD = process.argv[w + 1]}
 let seed = 0x9e3779b9 ^ (Number(process.env.PROLOGUE_SEED) || 922);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const SIM = await import('../src/sim/index.js');
@@ -14,7 +15,10 @@ const {init, step, S, snapshot, restore, setRunnerLinks, defaultSetup, cleanSetu
 const SLT = await import('../src/sim/company.js');
 const T = await import('../src/sim/table.js');
 const {PROLOGUES, PROLOGUE_DEFAULT} = await import('../src/data/prologues.js');
-const {CITY} = await import('../src/world/map.js');
+const {CITY, ZONES, zoneAt} = await import('../src/world/map.js');
+const {mouthNear, PRO} = await import('../src/sim/prologue.js');
+const {clearLine} = await import('../src/sim/path.js');
+const WORLD = process.env.ELDMOOR_WORLD || 'eldmoor';
 const {SITE_THEMES} = await import('../src/data/sites.js');
 const {species} = await import('../src/sim/crawl.js');
 const {GOODS} = await import('../src/data/items.js');
@@ -22,7 +26,7 @@ const {beginPrep, endPrep} = await import('../src/sim/prep.js');
 
 let fails = 0, n = 0; const ok = (c, m) => {n++; if (!c) {fails++; console.log('FAIL: ' + m)}};
 const hosted = () => setRunnerLinks(() => 'none');
-const world = (o = {}, seedN = 7, fac = 0) => {T.TABLE.mode = 'auto'; T.TABLE.speed = 1; hosted(); init({setup: cleanSetup({...defaultSetup(seedN, 'eldmoor', fac), ...o})})};
+const world = (o = {}, seedN = 7, fac = 0) => {T.TABLE.mode = 'auto'; T.TABLE.speed = 1; hosted(); init({setup: cleanSetup({...defaultSetup(seedN, WORLD, fac), ...o})})};
 const tick = () => step(1 / 60);
 // Run until f() or the budget ends: reflexes answer at once, so a scene takes a few real seconds of ticks.
 const until = (f, max = 60000) => {for (let i = 0; i < max; i++) {if (f()) return true; tick()} return !!f()};
@@ -73,12 +77,26 @@ ok(pickRow(CITY[0].name, CITY[0].fac, new Set(PROLOGUES.filter(r => r.towns && r
   ok(F.prologue.phase === 'below' && s.group && s.group.crawl, 'the company is below');
   let home = false; ok(until(() => {home = home || kindOpen('homecoming'); return !F.prologue}, 400000), 'the delve ends'); ok(home, 'the homecoming scene played');
   ok(lives().length, 'someone came home');
+  ok(lives().every(a => a.lore && Object.values(a.lore.c).some(e => e.fought)), 'the crawl taught every survivor the creatures it fought (#188 lore, as in the open)');
+  if (s.state === 'cleared') {const key = 'n:' + PROLOGUES.find(r => r.id === s.prologue).boss; ok(lives().some(a => a.lore.c[key] && a.lore.c[key].killed), 'and whoever struck the keeper down knows the name')}
   const g = CITY.find(c => c.name === hall).gate; ok(lives().every(a => Math.hypot(a.x - g.x, a.y - g.y) < 6), 'the company stands at the hall gate');
   ok(!lives().some(a => (a.epics || []).length), 'no epic'); ok(!S.opening, 'the opening is spent');
   ok(JSON.stringify(lives().map(a => a.playEv || [])).includes('first move is yours'), 'the leader is told the first move');
   if (s.state === 'cleared') {const p = S.places.find(x => x.id === s.place); ok(p && p.kind === 'ruin' && p.until == null, 'the ruin stays')}
 }
 
+// ---- every town (the world's own towns: a new town gets a mouth or no delve, never a bad one) ----
+{ for (const c of CITY) {
+    world({hall: c.name}, 31, c.fac); const F = SLT.slotted(); ok(F.hall === c.name, c.name + ': the company founds its hall there');
+    const m = mouthNear(c), g = c.gate || c.qg; ok(m, c.name + ': a mouth stands near its gate'); if (!m) continue;
+    ok(zoneAt(m.x, m.y) === zoneAt(g.x, g.y), c.name + ': in its own region'); ok(clearLine(g, m), c.name + ': a clear walk from the gate (no river or wall between)');
+    ok(Math.hypot(m.x - g.x, m.y - g.y) <= 12 + PRO.FAR + 1, c.name + ': within the longest walk');
+    ok(until(() => kindOpen('opening'), 2000), c.name + ': session zero opens'); const s = S.sites && S.sites.list.find(x => x.prologue);
+    ok(s && F.prologue && F.prologue.town === c.name && Math.hypot(s.x - m.x, s.y - m.y) < 1, c.name + ': the delve is raised at that mouth');
+    ok(until(() => kindOpen('crawl'), 20000) && F.prologue && F.prologue.phase === 'below', c.name + ': the company goes down');
+    ok(until(() => !F.prologue, 400000), c.name + ': the delve ends'); const gt = c.gate || c.qg; ok(lives().every(a => Math.hypot(a.x - gt.x, a.y - gt.y) < 8), c.name + ': home at its own gate');
+  }
+}
 // ---- off ----
 { world({prologue: 'none'}); ok(!prologueOn() && S.setup.prologue === 'none', 'none is stored'); ok(until(() => kindOpen('opening'), 2000), 'none: session zero opens');
   ok(!S.sites && !SLT.slotted().prologue, 'none: nothing raised'); ok(T.openScenes().find(x => x.kind === 'opening').ctx.setting === 'tavern', 'none: it plays in the hall');
@@ -93,7 +111,7 @@ ok(pickRow(CITY[0].name, CITY[0].fac, new Set(PROLOGUES.filter(r => r.towns && r
   beginPrep('opening'); endPrep('done'); const CS = SLT.companies(), withP = CS.filter(C => C.prologue), solos = CS.filter(C => SLT.isSolo(C));
   ok(withP.length === 2, 'each pair of an apart world gets one (' + withP.length + ')'); ok(new Set(withP.map(C => C.prologue.row)).size === 2, 'each its own row'); ok(!solos.some(C => C.prologue), 'a solo keeps its short opening');
 }
-{ setRunnerLinks(a => a.player ? 'connected' : 'none'); const s0 = cleanSetup(applyPreset('pairs-and-solo', defaultSetup(9))); s0.heroes[0].start = {town: 'home', region: 'Mirefen'}; s0.heroes[1].start = {town: 'home', region: 'Mirefen'}; init({setup: s0});
+{ setRunnerLinks(a => a.player ? 'connected' : 'none'); const s0 = cleanSetup(applyPreset('pairs-and-solo', defaultSetup(9))); const far = ZONES[ZONES.length > 2 ? 2 : 1]; s0.heroes[0].start = {town: 'home', region: far}; s0.heroes[1].start = {town: 'home', region: far}; init({setup: s0});
   beginPrep('opening'); endPrep('done'); const C = SLT.companies().find(x => SLT.members(x).some(a => a.lvl > 3)); ok(C && !C.prologue, 'a seasoned group keeps the start it chose');
 }
 // ---- the table goes away before they go down ----
