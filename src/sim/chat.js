@@ -81,8 +81,9 @@ export function chatTick(dt){
   for(const a of S.agents){if(a.chatCd>0)a.chatCd-=dt;
     if(a.bubble){a.bubble.life-=dt;if(a.bubble.life<=0)a.bubble=null}}
   for(const p of S.parties){
-    const out=p.mem.filter(b=>b.state==='hunt'||b.state==='follow'||b.state==='fight');
-    if(out.length<2){p.chatT=0;continue}
+    let n=0;for(const b of p.mem)if(afield(b))n++; // #730: count first; the list is built only when banter is due
+    if(n<2){p.chatT=0;continue}
     p.chatT=(p.chatT||0)+dt;if(p.chatT<BANTER)continue;p.chatT=0;
-    say(out[Math.floor(r()*out.length)],'banter',{zone:p.zone})}}
+    const out=p.mem.filter(afield);say(out[Math.floor(r()*out.length)],'banter',{zone:p.zone})}}
+const afield=b=>b.state==='hunt'||b.state==='follow'||b.state==='fight';
 export const worldMuted=()=>S.worldVoice==='dm';

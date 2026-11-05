@@ -63,7 +63,7 @@ const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className
 export const hn=a=>{const s=el('span','hn f'+a.fac,styled(a));s.dataset.hid=a.id;return s};
 const meter=(cls,frac)=>{const m=el('div','meter '+cls);const i=document.createElement('i');i.style.width=clamp(frac*100,0,100)+'%';m.append(i);return m};
 // Render chronicle-style parts (strings, heroes, {t,c} spans) into a node.
-const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p)node.append(el('span',p.c||'',p.t))}};
+const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p){const sp=el('span',p.c||'',p.t);if(p.dg){sp.dataset.dungeon=p.dg;sp.classList.add('dgname');sp.title='Open the dungeon view';sp.setAttribute('role','button');sp.tabIndex=0}node.append(sp)}}}; // p.dg: a DM-made site's name opens its dungeon view (#642)
 // Zone index from a number or a zone name; -1 when unknown.
 const zoneIdx=z=>typeof z==='number'?z:ZONES.indexOf(z);
 
@@ -306,6 +306,7 @@ export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k'
   li.append(e.courier?' sends word: ':e.whisper?': ':none?' calls out, but no one is near: ':e.party?' shouts: ':': ',e.text);
   if(e.by==='scripted'&&e.trigger==='npc')li.append(el('span','dm chscr',' scripted'));
   if(e.comp)li.append(el('span','dm chscr',' DM voice'+(e.by==='scripted'?' · scripted':''))); // a companion of an agent company, voiced by the DM (#764); the watcher only // the scripted DM's townsfolk, not the DM agent's words (#540)
+  if(e.opt!=null)li.append(el('span','dm chopt',' ('+(e.rfx?'reflex: ':'')+String(e.opt).replace(/^use:/,'use ')+')')); // the act this table line went with (#734)
   if(n>1)li.append(el('span','dm chx',' ×'+n));
   if(e.party&&!e.courier&&e.heard&&e.heard.length)li.append(el('span','dm chheard',' ('+e.heard.join(', ')+')'));return li}
 // The same speaker saying the same thing on the same channel back to back shows once with a count.

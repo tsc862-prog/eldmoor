@@ -314,11 +314,14 @@ export function shade(t,tx,ty,px,py){
 export const CH=Math.max(8,Math.round(1024/TILE));
 export const CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
 const chunks=new Map();
+// Bumped whenever cached chunks are thrown away, so a renderer holding a copy of them (draw.js's still-camera terrain
+// cache, #716) knows to redraw it.
+export let chunkGen=0;
 // Whether any terrain asset is loaded (then chunks are painted at TILE, else at U). Refreshed when assets change.
 let artOn=null;
 const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
 export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
-onAssets(()=>{chunks.clear();planKey=-1;artOn=null}); // a tile asset arrived (or the index changed): repaint on the next request
+onAssets(id=>{if(id&&/^portrait:/.test(id))return;chunks.clear();chunkGen++;planKey=-1;artOn=null}); // a tile asset arrived (a face is not terrain, #710) (or the index changed): repaint on the next request
 
 // Cached canvas for chunk (cx,cy): min(CH,W-cx*CH) by min(CH,H-cy*CH) tiles at k pixels a tile (TILE, or U with no
 // terrain asset). c.uw and c.uh give its size in world units (tiles * U), which is what the renderer scales it to.

@@ -54,7 +54,7 @@ ok(actionLog(a, {n: 2}).length === 2 && actionLog(a, {kinds: ['kill']}).length =
 // damage taken from a hero strike (duel path)
 b.hp = maxHp(b); HE.strike(a, b); b.hp = maxHp(b);
 const hb = actionLog(b, {kinds: ['hurt']});
-ok(hb.length >= 1 && hb[hb.length - 1].target === a.name && hb[hb.length - 1].amount > 0, 'hurt records the source: ' + (hb[0] && hb[0].target));
+ok(hb.length >= 1 && hb[hb.length - 1].who === a.name && hb[hb.length - 1].target === b.name && hb[hb.length - 1].amount > 0, 'hurt names the attacker as who and the victim as target: ' + (hb[0] && hb[0].who));
 
 // a mob bite on a hero through the real mob loop
 // (checked after the other cases, below)
@@ -93,6 +93,15 @@ for (const s of fights(a, 20)) {
 const v = live().find(x => x !== a && x !== b && x !== f);
 const mv = mob(); mv.x = v.x; mv.y = v.y; AL.actHurt(v, mv, 5); HE.slay(v, mv); // the death itself (agentDie would down a full-health hero, #626)
 ok(actionLog(v, {kinds: ['death']}).length === 1 && fightSummary(v).result === 'died', 'death recorded and the fight settles as died');
+
+// a companion's kill reads as a win, a broken-off fight is not a flight
+const w1 = live().find(x => x !== a && x !== b && x !== f && x !== v) || a;
+const mw = mob(); AL.actHurt(w1, mw, 3); S.gameMin += 5; AL.actNote(w1, 'xp', null, 19); S.gameMin += 40;
+ok(fightSummary(w1).result === 'won', 'a fight won by a party mate (shared xp) reads won: ' + fightSummary(w1).result);
+const mo = mob(); AL.actHurt(w1, mo, 3); S.gameMin += 40;
+ok(fightSummary(w1).result === 'over', 'a fight that ended with the foe alive reads over, not fled: ' + fightSummary(w1).result);
+AL.actHurt(w1, mo, 3); AL.actFlee(w1);
+ok(fightSummary(w1).result === 'fled', 'a flee reads fled');
 
 // caps
 const z = live().find(x => x !== a && x !== b && x !== f && x !== v) || a;
