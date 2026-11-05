@@ -43,7 +43,7 @@ import {S,clockStr,dayNo} from './state.js';
 import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
-import {route,doorAt} from './path.js'; // the way a walk goes (#794)
+import {route,doorAt,clearLine} from './path.js'; // the way a walk goes (#794)
 import {partyMates,leaderOf,leaveParty} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {whisperTo,emoteAct} from './aside.js'; // whisper and emote (#627)
@@ -129,6 +129,7 @@ export const PK={
   RETREAT:.45,       // hunt command ends below this share of max HP (scaled by the retreat trait)
   WARY_FLEE:.22,     // autopilot (#487): break off a fight below this share (scaled by the flee trait), as scripted heroes do
   WARY_OUT:.5,       // autopilot: break off sooner, below this share, from a creature it would not have picked (one that jumped it)
+  BREAK_RANK:5,     // #934: a threat rank (lore.js) the fight reflex will not stand to: certain death, one or two blows from full health
   WARY_UP:2,        // autopilot hunts creatures at most this many levels above the hero (scripted: 1, but they hunt in parties)
   REST_CLEAR:6,      // autopilot rests out in the field only with no creature this close; else it walks home to heal
   ROAM:3,            // autopilot: legs walked on a ground with no prey it can take before it ranges across the whole ground
@@ -194,7 +195,7 @@ const creatureNear=(a,r)=>nearMobs(a.x,a.y,r).some(m=>m.alive&&!m.gone&&!m.hidde
 // it. Nothing of this reaches the agent: it is the hero's own judgement while it carries on alone.
 function waryPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y)),gz=cmd.ground;let best=null,bs=1e9;
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a))continue;const d=dist(a,m);if(d>R)continue;
-    if(m.target!==a){if(m.elite||m.named||m.lvl>a.lvl+PK.WARY_UP||feared(a,m)||m.spared>S.gameMin)continue;if(gz!=null&&MOBS[m.type]&&MOBS[m.type].z!==gz)continue}
+    if(m.target!==a){if(m.elite||m.named||m.lvl>a.lvl+PK.WARY_UP||feared(a,m)||m.spared>S.gameMin)continue;if(gz!=null&&MOBS[m.type]&&MOBS[m.type].z!==gz)continue;if(!clearLine(a,m))continue}
     const s=d-(cmd.prey&&keyOf(m)===cmd.prey?4:0)-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
   if(best)sight(a,best);return best}
 
@@ -282,6 +283,8 @@ const gAlly=(a,who,ctx)=>{if(ctx.hit&&ctx.hit!==true)return ctx.hit;const w=Stri
   const L=(ctx.list||(a.party?a.party.mem:[a])).filter(b=>b.state!=='dead'&&b.state!=='ghost'&&dist(a,b)<=sightOf(a));
   if(w&&w!=='weakest_ally')return L.find(b=>b.name.toLowerCase().split(' ')[0]===w.split(' ')[0])||null;
   let low=null;for(const b of L)if(!low||b.hp/maxHp(b)<low.hp/maxHp(low))low=b;return low};
+// The agent chose to stand (#934): a fight order, the creature it named as prey, or its own flee_below. Reflexes keep out of those.
+const standsTo=(m,cmd)=>!!cmd&&(cmd.kind==='fight'||cmd.stand||!!cmd.prey&&keyOf(m)===cmd.prey);
 const gOnce=(a,r,k,gap)=>{const g=gambitRec(a,true);const t=g.once[k+r.id];if(t!=null&&S.gameMin-t<gap)return false;g.once[k+r.id]=S.gameMin;return true};
 defineGambits({
   conds:{
@@ -291,10 +294,12 @@ defineGambits({
     no_quest_in_focus:a=>!questLog(a).focus,
     quest_target_in_sight:a=>{const q=a.quest;if(!q||q.have>=q.need)return false;const R=sightOf(a);return nearMobs(a.x,a.y,R).some(m=>m.alive&&!m.gone&&!m.hidden&&m.type===q.type&&dist(a,m)<=R)},
     node_ready:(a,w)=>{if(inTown(a)||cityAt(a))return false;const p=pickNode(a,w.kind||'',sightOf(a));return !!(p&&p.node&&canGather(a,p.node).ok)},
-    // the flee mark of the fight reflex, as before #617: PK.FLEE, the hunt order's flee_below, autopilot's wary marks (#487)
+    // the flee mark of the fight reflex, as before #617: PK.FLEE, the hunt order's flee_below, autopilot's wary marks (#487);
+    // and what the hero knows it faces (#934): certain death at once, more than it can handle at PK.WARY_OUT, unless the agent chose this fight
     past_flee_mark:(a,w,ctx)=>{const m=ctx&&ctx.m,cmd=ctx&&ctx.cmd;if(!m)return false;
+      const r=standsTo(m,cmd)?null:perceived(a,m);if(r!=null&&r>=PK.BREAK_RANK)return true;
       const wary=a.playIdle||cmd&&cmd.wary,wv=(m.lvl>a.lvl+PK.WARY_UP||m.elite||m.named?PK.WARY_OUT:PK.WARY_FLEE)*tm(a,'flee');
-      const fb=cmd&&cmd.flee!=null?(wary?Math.max(cmd.flee,wv):cmd.flee):wary?wv:PK.FLEE;return a.hp<maxHp(a)*fb}},
+      const fb=cmd&&cmd.flee!=null?(wary?Math.max(cmd.flee,wv):cmd.flee):wary?wv:PK.FLEE;return a.hp<maxHp(a)*(r!=null&&r>=LORE.FEAR?Math.max(fb,PK.WARY_OUT):fb)}},
   acts:{
     // ---- in a fight ----
     heal:(a,t,ctx)=>{if(!CLS[a.cls].heal)return null;const r=ctx.rule;
@@ -529,11 +534,13 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
     if(isStorm(a.zone)&&!cmd.stormSaid){cmd.stormSaid=true;ev(a,'A storm rolls over '+ZONES[a.zone]+'.',true)}
     if(cmd.wary&&isStorm(a.zone)){done(a,'A storm over '+ZONES[a.zone]+': the hunt ends.');return true} // autopilot (#487) heads home next
     if(cmd.auto&&turnHeld(a)){a.moving=false;a.dest=null;return true} // autopilot's hunt picks no new prey while the agent's turn is open (#240)
-    // the ground it hunts on (autopilot goes back there, #466); a wary hunt (#487) keeps to its ground and its prey to what the hero can take
-    const gz=cmd.wary&&cmd.ground!=null&&ZPTS[cmd.ground]&&ZPTS[cmd.ground].length?cmd.ground:a.zone;
+    // the ground it hunts on (autopilot goes back there, #466): where the order was given or walked to, so a chase does not carry the hunt
+    // into the next land (#934); a wary hunt (#487) also keeps its prey to what the hero can take
+    if(cmd.ground==null)cmd.ground=a.zone;
+    const gz=ZPTS[cmd.ground]&&ZPTS[cmd.ground].length?cmd.ground:a.zone;
     a.scan-=dt;if(a.scan<=0){a.scan=.5;const m=cmd.wary?waryPrey(a,cmd):pickPrey(a,cmd);if(m){a.target=m;a.state='fight';a.dest=null;a.playGround=gz;cmd.dry=0;return true}}
     // a wary hunt that walked PK.ROAM legs without finding prey it can take ranges across its whole ground for the next one
-    if(!a.dest||cmd.wary&&gz!==a.zone&&zoneAt(a.dest.x,a.dest.y)!==gz){const far=cmd.wary&&(cmd.dry||0)>=PK.ROAM;a.dest=zonePoint(gz,far?null:a);if(far)cmd.dry=0}
+    if(!a.dest||gz!==a.zone&&zoneAt(a.dest.x,a.dest.y)!==gz){const far=cmd.wary&&(cmd.dry||0)>=PK.ROAM;a.dest=zonePoint(gz,far?null:a);if(far)cmd.dry=0}
     if(moveTo(a,a.dest.x,a.dest.y,dt,1.8)){a.dest=null;if(cmd.wary)cmd.dry=(cmd.dry||0)+1}return true}
   if(cmd&&cmd.kind==='crypt'){if(dist(a,CRYPT)>=2.2){moveTo(a,CRYPT.x,CRYPT.y+.6,dt,2.4);return true}a.moving=false;const t=soloCrypt(a,cmd);if(t)done(a,t);return true} // a solo's go_crypt at the mouth (#826)
   if(cmd&&cmd.kind==='gather'){const t=gatherCmd(a,dt,cmd,moveTo);if(t)done(a,t);return true} // walk to the node, work it, try (sim/gather.js, #257)
@@ -543,12 +550,15 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
   if(!turnHeld(a)){const r=reflexPick(a,{field:true,town:false});if(r){a.pq=Array.isArray(r)?r:[r];ev(a,r.why||'Your pack is full of loot; heading home to sell.',true);delete r.why}} // the pack reflex: the hero's sell_loot gambits (#617)
   return true}
 
+// Still walking up to a creature that is not on the hero (#934): it lets its hunt go if the creature moved out of a straight line (the way
+// round is the bridge, and the next land), or if the hero now knows what it is. An order to fight it, or an adventure's foe, goes on.
+const letGo=(a,m,cmd)=>{if(m.target===a||standsTo(m,cmd)||advOf(a))return false;const r=perceived(a,m);return r!=null&&r>=PK.BREAK_RANK||!clearLine(a,m)};
 function fight(a,dt,cmd){const m=a.target,mh=maxHp(a);a.cd-=dt;
   if(!m||m.kind!=='mob'||!m.alive||m.gone){a.target=null;a.state=cmd&&cmd.kind==='move'?cmd.legs[0]?cmd.legs[0].st:'hunt':'hunt';
     if(cmd&&cmd.kind==='fight'){done(a,m&&!m.alive?'Slew '+(m.elite?m.name:'the '+mobName(m))+'.':'The fight is over.')}
     return true}
   const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
-  if(d>r){moveTo(a,m.x,m.y,dt,2.4);return true}a.moving=false;
+  if(d>r){if(letGo(a,m,cmd)){a.target=null;a.state='hunt';a.dest=null;return true}moveTo(a,m.x,m.y,dt,2.4);return true}a.moving=false;
   if(!m.target)m.target=a;
   // The hero's fight gambits (#617), every moment in order. The class preset is the old fixed sequence: the class heal
   // (priestHeal), a blow when the weapon is ready, the pack's reflex (sim/inv.js fightAid), and the flee mark (past_flee_mark).
@@ -560,7 +570,7 @@ function flee(a,reflex){const t=a.target,c=homeOf(a);
   a.pq=[{kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'return'}],last:'town',label:c.name,flee:true}];
   if(t&&t.kind==='hero'&&(a.state==='duel'||a.state==='assist')){if(t.target===a&&t.state==='duel'){t.state='hunt';t.target=null}a.target=null;a.state='return'}
   else{if(t&&t.target===a)t.target=null;a.target=null;a.state='return';if(t&&t.kind==='mob')fleeCheck(a,t)}
-  actFlee(a);pop(a.x,a.y-.8,'FLEE','#ffb060');ev(a,(reflex?'Your nerve breaks at '+pct(a.hp,maxHp(a))+'% HP: ':'')+'Fled toward '+c.name+'.',true);
+  actFlee(a);pop(a.x,a.y-.8,'FLEE','#ffb060');ev(a,(reflex?a.hp>=maxHp(a)*PK.WARY_OUT?'You will not stand against that: ':'Your nerve breaks at '+pct(a.hp,maxHp(a))+'% HP: ':'')+'Fled toward '+c.name+'.',true);
   say(a,'flee',{mob:t&&t.kind==='mob'?mobName(t):'them'})}
 
 const alive=t=>t&&(t.kind==='mob'?t.alive&&!t.gone:t.state!=='dead');
@@ -1226,7 +1236,7 @@ const T={
     const n=Math.min(10,Math.max(1,Math.round(Number(count)||3))),fl=flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100));
     // what the hero chooses (#188): a creature it knows by name, or whatever is around that it has not learned to fear
     let pk=null;if(prey!=null&&String(prey).trim()&&!/^(any|anything|around|whatever.*)$/i.test(String(prey).trim())){pk=preyKey(a,prey);need(pk,'You know of no creature called "'+clean(prey,40)+'". Hunt what is around (no prey), or learn its name first (fight one, look, ask around).')}
-    const what=n+' kill'+(n>1?'s':'')+(pk?' ('+clean(prey,40)+' only)':' (whatever is around that you do not fear)'),hunt={kind:'hunt',n,prey:pk||undefined,flee:fl};
+    const what=n+' kill'+(n>1?'s':'')+(pk?' ('+clean(prey,40)+' only)':' (whatever is around that you do not fear)'),hunt={kind:'hunt',n,prey:pk||undefined,flee:fl,stand:flee_below!=null||undefined};
     if(w){need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
       need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first, or hunt with no where once it is over.');
       const gl=()=>{const L=huntGrounds(a).slice(0,3);return L.length?' Hunting grounds you know: '+L.join(', ')+'.':''};
@@ -1235,7 +1245,7 @@ const T={
       const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);if(g.stopped){a.pq=[{kind:'move',legs:g.p.legs,last:'hunt',label:g.p.label}];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
         return {ok:true,going:g.p.label,stops_short:true,warning:g.p.warn,hunting:'not yet: you stop at the edge first',apart:apartNote(a,g.p)||undefined}}
       const p=g.p; // #465
-      const z=ZONES.indexOf(p.label);
+      const z=ZONES.indexOf(p.label);if(z>=0)hunt.ground=z; // the region named is the ground, wherever the walk ends (#934)
       if(z>=0&&fieldState(a)&&!inTown(a)&&!cityAt(a)&&zoneAt(a.x,a.y)===z){a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;return {ok:true,hunting:what+' in '+ZONES[z],note:'You are already in '+ZONES[z]+'.'}}
       a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label},hunt];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
       const r={ok:true,going:'going to '+p.label+' to hunt',hunting:what+' once there',distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))},rt=routeFacts(a,p);if(rt)r.route=rt;if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r}

@@ -18,7 +18,8 @@ import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {bond} from './bonds.js';
 import {CITY,ZONES,zoneFor,zoneAt,dist} from '../world/map.js';
-import {solidAt,standAt} from '../world/passable.js';
+import {solidAt,standAt,nearestOpen} from '../world/passable.js';
+import {clearLine} from './path.js';
 import {ELITES,MOBS} from '../data/mobs.js';
 import {hash} from '../core/rng.js';
 import {log} from './chronicle.js';
@@ -242,7 +243,8 @@ function recruit(C,fac,cls){const i=S.recruits.findIndex(r=>r.fac===fac&&r.cls==
 
 // ---- founding, joining, leaving ----
 // Where the i-th of n stands around a point: two rows, a tile and a half apart, in order. No dice.
-export function spreadAt(p,i,n){const cols=Math.ceil(n/2),q={x:p.x+(i%cols-(cols-1)/2)*1.5,y:p.y+(i<cols?-.7:.7)};return solidAt(q.x,q.y)?standAt(q.x,q.y,2):q} // not on a building (#793)
+export function spreadAt(p,i,n){const cols=Math.ceil(n/2),q={x:p.x+(i%cols-(cols-1)/2)*1.5,y:p.y+(i<cols?-.7:.7)};if(!solidAt(q.x,q.y))return q;
+  return nearestOpen(q.x,q.y,2,o=>clearLine(p,o))||(solidAt(p.x,p.y)?standAt(q.x,q.y,2):p)} // not on a building (#793), nor over a river from the rest (#934: a mouth on the bank stood one hero in the next land)
 // A new world's company stands in its hall (#771): a setup's members come from their peoples' home towns, and an opening
 // scene takes only those in shouting range. Members already all inside the hall town stay exactly where they are (a
 // single-people company builds the world of before), so this rolls no dice. Returns those who came from another town;
