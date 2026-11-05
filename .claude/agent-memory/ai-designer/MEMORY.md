@@ -79,6 +79,7 @@
 - [PvP mercy #657](pvp_mercy.md) — mercy.js: downs not kills, finish/spare odds, life-debts, bled = no credit, finish = guild grudge
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
+- [Fight log #773](fight_log_773.md) — hurt who=attacker; won via shared xp; over vs fled
 - [Gambit cap 30 #779](gambit_cap_30.md) — MAX 30, a.gambitWrote counts hero-written rules and use_ability ones for the report
 - [Watch clock and DM downed call #655](watch_clock_downcall.md) — WATCH_TICK 20 gated on Table Off+agent+hasLinks, kin wake per save, downcall.js non-blocking DM call
 - [Wounds and tending #656](wounds_tending.md) — wounds.js leaf, who tends, priest is the existing NPC, scripted rest rules, balance read

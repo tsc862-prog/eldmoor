@@ -169,8 +169,21 @@ export function portraitPixels(a,mode=''){
 
 // A cached canvas per look (the key carries everything the pixels depend on). Browser only.
 const cache=new Map();
+// The head of a generated hero sheet (#862): sprites.js registers a function that gives the hero's front, standing frame
+// ({img, sx, sy, fw, fh}) or null while no sheet is loaded; a living face then crops from it, else it is the pixel face
+// below. (A hook, not an import, so Node can still read portraitPixels without the sprite module.)
+let headSrc=null;
+export function setHeadSource(fn){headSrc=fn}
 export function portraitKey(a,mode=''){return [a.id,a.name,a.race||'',a.cls,a.fac,a.skin||'',a.hair||'',slotKeyOf(a)==='tank'?'T':'',mode].join('|')}
-export function portrait(a,mode=''){const k=portraitKey(a,mode);let c=cache.get(k);if(c)return c;
-  const px=portraitPixels(a,mode);c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
-  for(let i=0;i<px.length;i++){if(!px[i])continue;x.fillStyle=px[i];x.fillRect(i%W,(i/W)|0,1,1)}
+// A W x H crop of the frame's head and shoulders at one art pixel per face pixel (the frames then show at 2x like the
+// pixel faces), centred on the frame and starting a pixel above the crown, over the faction-tinted backdrop.
+function headCrop(a,G){const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  const f=FAC[a.fac]||FAC[0];x.fillStyle=mix(BG,f.color,.16);x.fillRect(0,0,W,H);
+  const t=document.createElement('canvas');t.width=G.fw;t.height=G.fh;const tx=t.getContext('2d');tx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,0,0,G.fw,G.fh);
+  const d=tx.getImageData(0,0,G.fw,G.fh).data;let top=0;for(;top<G.fh;top++){let hit=false;for(let i=0;i<G.fw;i++)if(d[(top*G.fw+i)*4+3]>8){hit=true;break}if(hit)break}
+  x.imageSmoothingEnabled=false;x.drawImage(t,Math.floor((G.fw-W)/2),Math.max(0,top-1),W,H,0,0,W,H);return c}
+export function portrait(a,mode=''){const G=!mode&&headSrc?headSrc(a):null,k=portraitKey(a,mode)+(G?'|sheet':'');let c=cache.get(k);if(c)return c;
+  if(G)c=headCrop(a,G);
+  else{const px=portraitPixels(a,mode);c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+    for(let i=0;i<px.length;i++){if(!px[i])continue;x.fillStyle=px[i];x.fillRect(i%W,(i/W)|0,1,1)}}
   if(cache.size>200)cache.clear();cache.set(k,c);return c}
