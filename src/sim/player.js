@@ -18,7 +18,7 @@
 //     (moveTo, strike, findMob, priestHeal from heroes.js). Reflexes keep the hero alive
 //     when the agent is slow or silent: defend when attacked (mobs pull the hero into a
 //     fight as they do anyone), flee below FLEE HP, go home when the bag is full and idle.
-//   - Crypt groups and raid musters do not draft an agent hero (it goes where it is told);
+//   - Crypt groups and raid musters never take an agent hero: it goes by its company's vote or its own go_crypt / join_raid (#826);
 //     scripted heroes pulling it into their party are turned down unless it asked to join.
 //   - Adventures are only taken through take_adventure (never auto-picked at the gate);
 //     while one runs, the DM (sim/dm.js) leads the hero between scenes and asks for scene
@@ -40,7 +40,7 @@ import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../dat
 import * as D from '../data/adventures.js';
 import {PLAYER_TOOLS} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
-import {soloFor,companyOf,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
+import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
 import {route,doorAt} from './path.js'; // the way a walk goes (#794)
@@ -72,7 +72,8 @@ import {reflexMay,agentLive,hasLinks} from './runlink.js';
 import {notEnglish} from './lang.js';
 import {fileWish,wishInvite} from './wish.js'; // a note for the people who build the game (#663)
 const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
-import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote} from './council.js';
+import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote,soloCrypt,greenWarn} from './council.js';
+import {joinRaid} from './boss.js'; // a solo's join_raid (#826)
 import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sightings.js';
 import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH,openPlans} from './reach.js';
 import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
@@ -115,6 +116,7 @@ import {aidOrder,aidView,DOWN} from './downed.js'; // help a downed companion: s
 import {tendBy,tendBlock,chapelTend,woundLook,woundsView} from './tend.js'; // wounds: tend, the chapel priest (#656)
 import {wounded} from './wounds.js';
 import {histNote} from './persona.js';
+import {raiseScore,growthTick,growthText} from './abilities.js';
 onSafetyChange((a,before,after,why)=>histNote(a,'gambits',before,after,why)); // a safety rule changed: the persona history says so (#617)
 
 // ---- knobs ----
@@ -401,14 +403,14 @@ export const isPlayer=a=>!!(a&&a.player);
 // Returns true when it handled the step; false hands it to updAgent (duels, assists, regroups,
 // ghosts, a consented crypt or raid, following a party leader, and the DM-led legs of an adventure).
 export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
-  watch(a);intentWatch(a);townGuard(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
+  growthTick(a);watch(a);intentWatch(a);townGuard(a);noticeHeroes(a); // sight events (#570); aim progress progress toward the stated aim (#535)
   // A Fellowship member whose runner is gone, once the owner said go on (or with no host at all: the headless sim,
   // play-headless before a runner claims it): its reflexes play it whole, the scripted rules, until a runner holds
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
   if(inSlots(a)&&reflexMay(a)){a.playIdle=false;a.playDoing='reflexes (no runner)';return false}
-  // Drafts the agent did not ask for: a crypt group or a raid muster. Step back out.
-  if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a call to '+CRYPT.name+' (you go only where you choose).')}
-  if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Turned down a raid muster on Kragmaw.')}
+  // A guard: a hero in a group it never chose steps back out (#826: with a host the musters leave agent heroes out; a no-host world still reaches this).
+  if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Stepped back from a group for '+CRYPT.name+' (you go only where you choose).')}
+  if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Stepped back from a raid on Kragmaw (you go only where you choose).')}
   if(a.party&&!a.partyOk&&!partySlotted(a.party)){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')} // the Fellowship's own party is always theirs
   const adv=advOf(a);
   // Autopilot (issue #126): no command and no action for PK.IDLE game minutes, outside an adventure or a scene.
@@ -512,6 +514,7 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
     // a wary hunt that walked PK.ROAM legs without finding prey it can take ranges across its whole ground for the next one
     if(!a.dest||cmd.wary&&gz!==a.zone&&zoneAt(a.dest.x,a.dest.y)!==gz){const far=cmd.wary&&(cmd.dry||0)>=PK.ROAM;a.dest=zonePoint(gz,far?null:a);if(far)cmd.dry=0}
     if(moveTo(a,a.dest.x,a.dest.y,dt,1.8)){a.dest=null;if(cmd.wary)cmd.dry=(cmd.dry||0)+1}return true}
+  if(cmd&&cmd.kind==='crypt'){if(dist(a,CRYPT)>=2.2){moveTo(a,CRYPT.x,CRYPT.y+.6,dt,2.4);return true}a.moving=false;const t=soloCrypt(a,cmd);if(t)done(a,t);return true} // a solo's go_crypt at the mouth (#826)
   if(cmd&&cmd.kind==='gather'){const t=gatherCmd(a,dt,cmd,moveTo);if(t)done(a,t);return true} // walk to the node, work it, try (sim/gather.js, #257)
   if(cmd){done(a,'Cannot '+cmd.kind+' here.');return true}
   // idle reflex: a full bag goes home to be sold
@@ -566,6 +569,7 @@ function doingText(a,adv,cmd){
   if(cmd){if(cmd.kind==='move')return (cmd.flee?'Fleeing to ':'Walking to ')+cmd.label;
     if(cmd.kind==='hunt')return 'Hunting in '+ZONES[zoneAt(a.x,a.y)]+' ('+Math.max(0,cmd.n-(cmd.k0==null?0:a.kills-cmd.k0))+' to go)';
     if(cmd.kind==='rest')return 'Resting';
+    if(cmd.kind==='crypt')return 'At the mouth of '+CRYPT.name;
     if(cmd.kind==='gather')return 'Gathering at a '+String(cmd.label||'node').toLowerCase();
     if(cmd.kind==='fight')return 'Closing on a foe';
     if(cmd.kind==='follow'){const f=followLine(a);return f?f[0].toUpperCase()+f.slice(1):'Following '+cmd.name}}
@@ -703,6 +707,9 @@ function dangerWords(a,z){let gw;const n=ZONES[z],known=knowsPlace(a,n),b=bandOf
     +(lw?' What you know: '+lw:'')+(tw&&known&&tw.startsWith(n)?' The townsfolk said: "'+tw+'"':'')+((gw=guideWords(a,z))?' '+gw:'')+' Hardcore: one life.'}
 const forceYes=f=>f===true||/^(yes|true|1|force)$/i.test(String(f==null?'':f).trim());
 // Check a planned walk. Returns {p} to go as planned (p.warn may be set), {p, stopped} with the walk cut at the edge, or {refuse}.
+// Who may give the Crypt and raid orders (#826): a solo, free to walk. A company of two or more puts it to the vote.
+function soloOrder(a,kind){need(a.state!=='camp',campBlock(a)||'You are camped.');need(legal.includes(a.state),'You cannot go now ('+a.state+').');need(!['fight','duel','assist'].includes(a.state),'You are in a fight. flee() first.');
+  const C=companyOf(a);need(C,'Only a company of one or more goes there (you ride with none).');need(isSolo(C),'You ride with a company: put it to them with propose {kind: "'+kind+'"}.')}
 function guardWalk(a,p,force){const dz=dangerAhead(a,p.legs);if(!dz)return {p};const n=ZONES[dz.z],known=knowsPlace(a,n),words=dangerWords(a,dz.z);
   const D=a.playDare;if(forceYes(force)||D&&D.z===dz.z&&S.gameMin-D.t<=TP.DARE_MIN){p.warn=(p.warn?p.warn+' ':'')+'You go on into '+(known?n:'the land ahead')+' knowing the danger: '+words;return {p}}
   a.playDare={z:dz.z,t:S.gameMin};const again=' To go on anyway, make the same call again (or add force: "yes").';
@@ -833,7 +840,7 @@ function heroDoing(a,b){const t=b.target&&alive(b.target)?(b.target===a?'you':fo
 function heroLook(a,b){const self=b===a,o={ok:true,kind:'hero',name:b.name,...(titleOf(b)?{known_as:styled(b)}:{}),who:raceOf(b).name+' '+b.cls+', level '+b.lvl,
     faction:FAC[b.fac].name+(self?'':b.fac===a.fac?' (your side)':' (the other side: they may attack you)'),looks:HURT(b.hp,maxHp(b)),...(woundLook(b)?{wound:woundLook(b)}:{}),doing:heroDoing(a,b)};
   if(b.guild)o.guild='<'+b.guild.tag+'> '+b.guild.name;
-  if(inSlots(b)&&slotKeyOf(b)){const L={tank:'Tank',healer:'Healer'}[slotKeyOf(b)]||'DPS';o.fellowship='of the Fellowship ('+L+')'}
+  if(inSlots(b)&&slotKeyOf(b))o.fellowship='of the Fellowship';
   const w=SLOTS.map(k=>b.slots&&b.slots[k]).filter(Boolean).map(gearWord);o.wears=w.length?w:'plain clothes, no gear to speak of';
   if(self){o.note='This is you. status has your numbers, inventory your pack.';return o}
   o.distance=r1(dist(a,b))+' tiles';const ties=[];
@@ -933,7 +940,7 @@ const T={
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
       oath:a.goal&&!a.goal.offered?a.goal.text+(a.goal.done?' (kept)':a.goal.sworn&&a.goal.sworn.words?'':' ('+(a.goal.progress||0)+'/'+a.goal.need+')'):null,...(threadOf(a)?{thread:threadText(a)}:{}),vow:a.vow?a.vow.text+' ('+vowLeft(a)+' game days left)':null,
       quest:q?(MOBS[q.type].q||q.type)+': kill '+q.need+' '+MOBS[q.type].pl+' in '+ZONES[MOBS[q.type].z]+' ('+q.have+'/'+q.need+')'+(q.have>=q.need?' - done, turn it in at home':''):null,
-      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
+      abilities:abilityView(a).filter(r=>r.learned).map(abilityLine),score_growth:growthText(a),specialisation:specOf(a)?specOf(a).name+': '+specOf(a).desc:a.lvl>=SPEC_LVL?'CHOOSE NOW with choose_specialisation: '+specChoices(a).map(x=>x.name+' ('+x.desc+')').join(' | '):'paths open at level '+SPEC_LVL,guild:a.guild?'<'+a.guild.tag+'> '+a.guild.name:null,kills:a.kills,honor:a.honor};
     if(wounded(a))r.wounds=woundsView(a);
     if(a.party)r.party=a.party.mem.filter(b=>b!==a).map(b=>b.name+' (id '+b.id+', '+b.cls+' L'+b.lvl+(dist(a,b)<=sightOf(a)?', '+pct(b.hp,maxHp(b))+'% HP':', out of sight')+')'+(a.party.leader===b?' leads':''));
     if(a.party&&a.party.leader===a)r.party_lead=true;
@@ -967,6 +974,7 @@ const T={
     return {ok:true,result:r.text,hp:pct(a.hp,maxHp(a))+'%',cooldown_s:M.cd}},
   combat_log(a,{n}){const k=Math.max(1,Math.min(10,Math.round(Number(n))||3)),fs=fights(a,k);
     return {ok:true,fights:fs.map(f=>({...f,minutes_ago:Math.round(S.gameMin-f.end)})),recent:actionLog(a,{n:12}).map(e=>({min_ago:Math.round(S.gameMin-e.t),kind:e.kind,target:e.target,name:e.name,amount:e.amount,crit:e.crit||undefined}))}},
+  raise_score(a,{score,why}){const r=raiseScore(a,score,why);need(r.ok,r.error);return {ok:true,result:r.text,value:r.value}},
   choose_specialisation(a,{path}){const key=String(path==null?'':path).toLowerCase().replace(/[^a-z]/g,'');
     const id=specChoices(a).find(x=>x.id===key||x.name.toLowerCase().replace(/[^a-z]/g,'')===key);
     const err=specBlock(a);need(!err,err);need(id,'Not a path for a '+a.cls+'. Yours: '+specChoices(a).map(x=>x.name).join(', ')+'.');
@@ -1279,6 +1287,14 @@ const T={
   places:(a,x)=>placesList(a,x||{}), // #414: known places, nearest first
   inspect:(a,x)=>inspectView(a,x||{}), // #425: one person, creature or item, as the hero perceives it
   enter_site:(a,x)=>enterSiteTool(a,x||{}), // #69: a DM-made dungeon site (sim/sites.js)
+  // #826: a solo has nobody to vote with, so the Crypt and a raid are direct orders; a company of two or more votes (propose)
+  go_crypt(a,{join,force}){soloOrder(a,'crypt');const p0=plan(a,CRYPT.name);if(p0.error)throw new Rule(p0.error);
+    const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // the danger edge holds as for any walk (#465)
+    if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label}];if(!g.stopped)a.pq.push({kind:'crypt',join:forceYes(join),label:CRYPT.name});if(a.state==='follow')a.state='hunt';a.dest=null;
+    const r={ok:true,going:p.label,note:g.stopped?'You stop short of the mouth.':'You walk to the mouth and go down'+(forceYes(join)?', with the group gathering there if one has room':'')+'. Every chamber is a scene at the table, and you are alone in them.'};
+    const w=greenWarn(companyOf(a),'crypt');if(w)r.warning=w.trim();if(p.warn)r.warning=(r.warning?r.warning+' ':'')+p.warn;if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;return r},
+  join_raid(a){soloOrder(a,'raid');need(S.boss.alive,'Kragmaw is not in its lair now.');need(S.raidOn[a.fac],'Nobody of your people is raiding Kragmaw now. You can only fall in with a muster that is out; the town criers tell of them (read_chronicle).');
+    const w=greenWarn(companyOf(a),'raid');joinRaid(a);return {ok:true,joined:'the raid on Kragmaw',note:'You ride for the lair with the muster. You break off when badly hurt; until then the raid is your whole order.',...(w?{warning:w.trim()}:{})}},
   examine:(a,x)=>examineView(a,x||{},sightOf(a)), // #525: a closer look at a marked place, landmark or sign; read only
   search(a,x){need(['hunt','town','travel','follow','camp'].includes(a.state),'You cannot search now ('+a.state+'). Not in a fight, a dungeon or on the road home.');
     const r=searchAct(a,x||{},sightOf(a));if(r.ok===false)return r;
@@ -1403,7 +1419,7 @@ const T={
     const sh=shoutAim(a);if(sh){r.shouted=sh.heard_by.length?'heard by '+sh.heard_by.join(', '):'no one was near enough to hear';if(sh.too_far)r.too_far=sh.too_far}
     return r},
 };
-const AID_BREAK=new Set(['move_to','hunt','follow','fight','flee','rest','gather','enter_site','lead_to','take_adventure']); // orders that end helping a downed hero (#658)
+const AID_BREAK=new Set(['move_to','hunt','follow','fight','flee','rest','gather','enter_site','go_crypt','join_raid','lead_to','take_adventure']); // orders that end helping a downed hero (#658)
 // The downed of your side in sight (#658): a companion or any hero of your faction lying at zero health, nearest first.
 function downedInSight(a){const R=sightOf(a);return nearHeroes(a.x,a.y,R).filter(b=>b!==a&&b.kind==='hero'&&b.state==='downed'&&b.fac===a.fac&&!b.hidden&&dist(a,b)<=R).sort(byDist(a))}
 const downedList=a=>{const L=downedInSight(a);return L.length?'Down in sight: '+L.slice(0,5).map(b=>b.name+' (id '+b.id+', '+Math.round(dist(a,b))+' tiles'+(b.down&&b.down.stable?', stable':', bleeding')+')').join(', ')+'.':'No one of your side lies downed in sight.'};
@@ -1446,7 +1462,7 @@ function secondBreak(a,P,reason){const had=P.votes[a.id]&&P.votes[a.id].v==='yes
   return {ok:true,proposal:propText(P),status:P.status,your_vote:had?'yes (you had already said yes)':'yes (counted on the open proposal #'+P.id+')',
     note:P.status==='open'?'The proposal to break camp was already open, so your call counts as a yes. The leader settles it when all have voted.':P.result}}
 function propText(P){const v=Object.keys(P.votes||{}).length;return '#'+P.id+' '+P.kind+': '+P.details+' (by '+P.byName+', '+v+' vote'+(v===1?'':'s')+(P.status!=='open'?', '+P.result:'')+')'}
-function cmdText(c){if(c.kind==='move')return (c.flee?'flee to ':'walk to ')+c.label;if(c.kind==='hunt')return 'hunt ('+c.n+' kills)';if(c.kind==='rest')return 'rest until '+Math.round(c.until)+' game-min';if(c.kind==='fight')return 'fight #'+c.id;if(c.kind==='follow')return 'follow '+c.name+(c.until!=null?' until '+Math.round(c.until)+' game-min':'');return c.kind}
+function cmdText(c){if(c.kind==='crypt')return 'go down into '+c.label;if(c.kind==='move')return (c.flee?'flee to ':'walk to ')+c.label;if(c.kind==='hunt')return 'hunt ('+c.n+' kills)';if(c.kind==='rest')return 'rest until '+Math.round(c.until)+' game-min';if(c.kind==='fight')return 'fight #'+c.id;if(c.kind==='follow')return 'follow '+c.name+(c.until!=null?' until '+Math.round(c.until)+' game-min':'');return c.kind}
 // A pack entry by name (#412, give): case-insensitive, exact name first, then a consumable kind ("potion") or a
 // partial name; "2 rations" or "all rations" also sets the count. Copied inventory text ("Redroot Draught x3 (...)") reads too.
 // Returns {index, all, name, count?} or {error} listing the matches (with pack indexes) or what the pack holds.

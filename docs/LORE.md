@@ -169,6 +169,8 @@ tiers), and an oath whose target dies first is void and re-sworn.
 
 Every hero carries six ability scores and ten skills (`src/data/abilities.js`, `src/sim/abilities.js`). The six scores are the only attributes in Eldmoor: items do not carry stats of their own, they add to scores (see Equipment).
 
+**Growth** (levels 5, 10, 15, 20, cap 20): a scripted hero gains +1 to its class's primary score and half the time +1 to the secondary. A hero played by an agent chooses where its one point goes (`raise_score`, with a reason that enters its story); if it says nothing within a game day, or its runner is gone, the class default is taken for it.
+
 **Scores** (3-18 at recruitment: roll 4d6, drop the lowest, six times; the best go to the class's primary then secondary, the rest fall where they fall; modifier = floor((score - 10) / 2)):
 
 | Score | Short | Means |
@@ -793,6 +795,10 @@ herbs or ore buys them at the auction house.
 Name check (2026-11-02): all of the above pass; no franchise proper nouns, no duplicates inside canon. Nits: "Fenmire"
 sits one letter-shuffle from the zone Mirefen (kept as the cook's joke, but never use it as a place name); Rimebloom and
 Rimeblood differ by one syllable (plant and potion, kept); "Shaghorn Horn" repeats itself, acceptable as a trade-name.
+
+## Beasts of the yard and field, and town life (issue #795)
+
+Ambient animals that are not creatures of the bestiary: nothing fights them and nobody hunts them. Town yards keep chickens, dogs, cats and goats; the open country keeps deer and hares (meadow, highland, tundra; the tundra hare is white), and crows and gulls (gulls by water). Hares and deer bolt from a hero and come home; birds take wing and glide back later. A few trees hold roosting birds that burst out when a hero passes. Each town's gate is flanked by two guards in a tabard of the town's colours, a third walks the wall opposite, the smithy's forge smokes through the working day, the inn's hearth at breakfast and from the afternoon, stalls open in the plaza in market hours (shut in rain and at night), lamps are lit at dusk and a pennant flies over the hall. No new named people or places.
 
 ## Townsfolk
 Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
