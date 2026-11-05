@@ -11,7 +11,8 @@ import {CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle} from '../data/townart.js';
 import {assetPixels,onAssets} from './assets.js';
-import {drawHouse,drawCryptMouth} from './pieceart.js';
+import {drawHouse,drawCryptMouth,sketchPiece} from './pieceart.js';
+import {FLAT,TOWN} from './palette.js';
 
 // Hook table (artcheck: every id here is in the manifest and every manifest entry hooked to this module is here). A piece
 // is 'building:<style>-<piece>', but the straight wall is a seamless patch generated like a ground tile ('tile:<style>-wall').
@@ -83,6 +84,11 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
     if(!hits(Math.min(c.x0-2,c.x0-1),c.y0-2,Math.max(c.x0+13,c.x1+2),Math.max(c.y0+9,c.y1+2),x0,y0,x1,y1))continue;
     // generated pieces first (walls, gate, buildings), each where its asset is loaded
     for(const p of townPlan(c)){if(!boxHits(p.box,x0,y0,x1,y1))continue;const img=pieceImage(p.id);if(!img)continue;if(p.piece)base(ctx,p.box);put(ctx,img,p.box,p.rot)}
+    // the smithy, chapel, inn and notice board where no asset drew them (#795): the pieces are solid ground now, so they
+    // stand as the sketch the art pipeline starts from, in the town style's flat palette, and the town's smoke and lamps have a home
+    {const st=townStyle(c),col={...FLAT[st],stone:TOWN[st].stone};
+     for(const b of c.buildings||[]){if(b.piece==='auction'||b.piece==='hall'||drawn(c,b.piece))continue;const d=b.draw||b.box,bx=d[0]*T,by=d[1]*T;
+       if(!boxHits(d,x0,y0,x1,y1))continue;sketchPiece((x,y,w,h,k)=>{ctx.fillStyle=k;ctx.fillRect(bx+x,by+y,w,h)},b.piece,col)}}
     // procedural: auction house (faction roof, gold sign) and the hall where no asset drew them, then the gate banners
     // and graveyard stones; drawn relative to the town's top-left corner exactly as before slice 3
     const f=FAC[c.fac],ox=(c.x0-2)*T,dy=(c.y0-2)*T;

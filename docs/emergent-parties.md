@@ -172,11 +172,11 @@ Owner decision 7: an agent hero may invite scripted heroes into its company.
 members and companions of that company present when it was made (as today, `P.absent`; companions vote by reflex
 at once); `leaderOfF()` -> `leaderOf(C)`. Quorum: the votes of those present, majority of votes cast, the leader
 breaks a tie. A **solo** has no one to ask: `propose` is refused with "You ride alone: decide and act
-(take_adventure; lead_to is move_to for you)", except `break_camp`. A company of one agent and companions
+(take_adventure, go_crypt, join_raid; lead_to is move_to for you)", except `break_camp`. A company of one agent and companions
 proposes normally (the companions vote by reflex). `PROP_KINDS` gains `expel`, `merge`, `invite` (optional: a
 member asks the company before inviting a stranger; a leader may `invite` without it). `NEED_ALL` (crypt, raid)
-means the whole **company** together, so a company of 2 may answer a Crypt call with three background heroes
-filling the group (today `unitDraft` already fills from `pool`). **No level gate** (section 10): a crypt or raid
+means the whole **company** together. A company initiates the Crypt or a raid (#826): a company of 2 goes down as two,
+and its raid muster fills from the pool (`unitDraft`). **No level gate** (section 10): a crypt or raid
 proposal is never refused for level.
 
 **Reach** (`sim/reach.js`): every function takes the company: `together(members(C), leaderOf(C))`,
