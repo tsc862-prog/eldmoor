@@ -21,7 +21,7 @@ const answer = f => {const p = f && f.properties || {};
 const PLAN = [['status'], ['rest', {minutes: '20'}], ['fly'], ['wait', {minutes: 20}]];
 
 export async function startMockOpenAI() {
-  const st = {mode: 'ok', rateLeft: 0}, seen = [], problems = [], auths = [];
+  const st = {mode: 'ok', rateLeft: 0, cached: 0}, seen = [], problems = [], auths = [];
   const server = http.createServer((req, res) => {
     const send = (code, o, h = {}) => {res.writeHead(code, {'content-type': 'application/json', ...h}); res.end(JSON.stringify(o))};
     auths.push(req.headers.authorization || '');
@@ -46,7 +46,7 @@ export async function startMockOpenAI() {
       }
       const tp = toolsProblem(body); if (tp) return send(400, {error: {message: tp, type: 'invalid_request_error'}});
       const sp = body.response_format && body.response_format.type === 'json_schema' && strictProblem(body.response_format.json_schema.schema); if (sp) return send(400, {error: {message: 'Invalid schema for response_format: ' + sp, type: 'invalid_request_error'}});
-      const usage = {prompt_tokens: 1000, completion_tokens: 20, total_tokens: 1020};
+      const usage = {prompt_tokens: 1000, completion_tokens: 20, total_tokens: 1020, ...(st.cached ? {prompt_tokens_details: {cached_tokens: st.cached}} : {})}; // st.cached (#728)
       const reply = (message, finish = 'stop') => send(200, {id: 'chatcmpl-mock', object: 'chat.completion', model: body.model + '-2026-01-01', usage, choices: [{index: 0, finish_reason: finish, message}]});
       if (st.mode === 'refusal') return reply({role: 'assistant', content: null, refusal: "I can't help with that."});
       if (st.mode === 'length') return reply({role: 'assistant', content: '{"choice":"Thorn'}, 'length');
@@ -66,5 +66,5 @@ export async function startMockOpenAI() {
     });
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  return {url: `http://127.0.0.1:${server.address().port}/v1`, seen, problems, auths, set: (mode, n = 0) => {st.mode = mode; st.rateLeft = n}, close: () => server.close()};
+  return {url: `http://127.0.0.1:${server.address().port}/v1`, seen, problems, auths, set: (mode, n = 0) => {st.mode = mode; st.rateLeft = n}, setCached: n => {st.cached = n}, close: () => server.close()};
 }

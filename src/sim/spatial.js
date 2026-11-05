@@ -27,8 +27,6 @@ import {S} from './state.js';
 
 export const CELL=4,SLACK=1.5;
 const CW=Math.ceil(W/CELL)+1,CH=Math.ceil(H/CELL)+1; // +1 so a position exactly at W or H still has a cell
-const heroCells=[],mobCells=[],usedH=[],usedM=[]; // used*: indices of the cells filled by the last rebuild
-for(let i=0;i<CW*CH;i++){heroCells.push([]);mobCells.push([])}
 
 export let USE_INDEX=true;
 export const setIndex=on=>{USE_INDEX=!!on};
@@ -39,12 +37,18 @@ export const spatialStats={cells:CW*CH,heroes:0,mobs:0,queries:0,candidates:0,re
 
 const cx=x=>{const c=Math.floor(x/CELL);return c<0?0:c>=CW?CW-1:c};
 const cy=y=>{const c=Math.floor(y/CELL);return c<0?0:c>=CH?CH-1:c};
+// A grid: per cell an array that only grows plus a fill count n[i]; used lists the cells filled since the last clear.
+// #730: clearing resets the counts instead of truncating the arrays (truncating freed and regrew them every step);
+// slots past a cell's count keep stale entries that nothing reads.
+function grid(){const cells=[],n=new Int32Array(CW*CH),used=[];for(let i=0;i<CW*CH;i++)cells.push([]);
+  return {cells,n,used,clear(){for(let k=0;k<used.length;k++)n[used[k]]=0;used.length=0},
+    add(e){const i=cy(e.y)*CW+cx(e.x);if(!n[i])used.push(i);cells[i][n[i]++]=e}}}
+const HG=grid(),MG=grid(); // heroes and mobs, rebuilt at the top of every step
 
 export function rebuild(){
-  for(const i of usedH)heroCells[i].length=0;for(const i of usedM)mobCells[i].length=0;usedH.length=0;usedM.length=0;
-  let nh=0,nm=0;
-  for(const a of S.agents){if(a.state==='dead')continue;const i=cy(a.y)*CW+cx(a.x),c=heroCells[i];if(!c.length)usedH.push(i);c.push(a);nh++}
-  for(const m of S.mobs){if(!m.alive||m.gone)continue;const i=cy(m.y)*CW+cx(m.x),c=mobCells[i];if(!c.length)usedM.push(i);c.push(m);nm++}
+  HG.clear();MG.clear();let nh=0,nm=0;
+  for(const a of S.agents){if(a.state==='dead')continue;HG.add(a);nh++}
+  for(const m of S.mobs){if(!m.alive||m.gone)continue;MG.add(m);nm++}
   spatialStats.heroes=nh;spatialStats.mobs=nm;spatialStats.rebuilds++;LOD.tick++}
 
 // #433: dist(a,b)<=r with a box test first. Math.hypot is never smaller than |dx| or |dy|, so anything outside
@@ -52,19 +56,45 @@ export function rebuild(){
 export const within=(a,b,r)=>{const dx=a.x-b.x;if(dx>r||dx<-r)return false;const dy=a.y-b.y;if(dy>r||dy<-r)return false;return Math.hypot(dx,dy)<=r};
 const P={x:0,y:0};
 const byId=(a,b)=>a.id-b.id;
-function query(cells,all,x,y,r,pred){spatialStats.queries++;P.x=x;P.y=y;const out=[];
+function query(G,all,x,y,r,pred){spatialStats.queries++;P.x=x;P.y=y;const out=[];
   if(!USE_INDEX){for(const e of all){spatialStats.candidates++;if((!pred||pred(e))&&dist(P,e)<=r)out.push(e)}return out}
   const x0=cx(x-r-SLACK),x1=cx(x+r+SLACK),y0=cy(y-r-SLACK),y1=cy(y+r+SLACK);
-  for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++){const c=cells[j*CW+i];
-    for(let k=0;k<c.length;k++){const e=c[k];spatialStats.candidates++;if((!pred||pred(e))&&within(P,e,r))out.push(e)}}
+  const cells=G.cells,N=G.n;
+  for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++){const c=cells[j*CW+i],n=N[j*CW+i];
+    for(let k=0;k<n;k++){const e=c[k];spatialStats.candidates++;if((!pred||pred(e))&&within(P,e,r))out.push(e)}}
   if(out.length>1)out.sort(byId);return out}
 
 // Living heroes within r tiles of (x,y), id-ascending. pred(e) is an optional extra filter.
-export const nearHeroes=(x,y,r,pred)=>query(heroCells,S.agents,x,y,r,pred);
+export const nearHeroes=(x,y,r,pred)=>query(HG,S.agents,x,y,r,pred);
 // Alive mobs within r tiles of (x,y), id-ascending.
-export const nearMobs=(x,y,r,pred)=>query(mobCells,S.mobs,x,y,r,pred);
+export const nearMobs=(x,y,r,pred)=>query(MG,S.mobs,x,y,r,pred);
+// #730: the closest living hero strictly within r of (x,y) for which pred(e) holds, ties to the lowest id: exactly
+// what walking nearHeroes(x,y,r) in id order and keeping the first strictly smaller distance (bd starting at r) picks,
+// without building the list. The distance is within()'s Math.hypot(x-e.x,y-e.y), the value dist({x,y},e) gives.
+export function nearestHero(x,y,r,pred){spatialStats.queries++;let best=null,bd=r;
+  const take=e=>{spatialStats.candidates++;const dx=x-e.x;if(dx>r||dx<-r)return;const dy=y-e.y;if(dy>r||dy<-r)return;
+    if(!pred(e))return;const d=Math.hypot(dx,dy);if(d<bd||(d===bd&&best&&e.id<best.id)){bd=d;best=e}};
+  if(!USE_INDEX){for(const e of S.agents)take(e);return best}
+  const x0=cx(x-r-SLACK),x1=cx(x+r+SLACK),y0=cy(y-r-SLACK),y1=cy(y+r+SLACK);
+  for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++){const c=HG.cells[j*CW+i],n=HG.n[j*CW+i];for(let k=0;k<n;k++)take(c[k])}
+  return best}
 // Heroes then mobs, each id-ascending.
 export const nearAll=(x,y,r,pred)=>nearHeroes(x,y,r,pred).concat(nearMobs(x,y,r,pred));
+
+// #730: a second hero grid taken on demand (snapHeroes), for a pass that runs late in step() and moves no hero: the
+// residents' greetings in npcsTick. The step grid above was built before the heroes acted and misses heroes made mid-step,
+// so such a pass cannot use it (see the note on npcs.js greet); this one is taken when the pass starts, from every hero
+// in S.agents (dead ones too: callers keep all their own filters). heroesAround(x,y,r) then returns exactly the heroes a
+// walk over S.agents with within(a,{x,y},r) would accept, in S.agents order (id-ascending), using current positions;
+// cells are scanned SLACK beyond r all the same. Module-level scratch only, never on S.
+const SG=grid();let snapOn=false;
+export function snapHeroes(){SG.clear();for(const a of S.agents)SG.add(a);snapOn=true}
+export const dropSnap=()=>{snapOn=false};
+export function heroesAround(x,y,r){P.x=x;P.y=y;const out=[];
+  if(!snapOn||!USE_INDEX){for(const a of S.agents)if(within(a,P,r))out.push(a);return out}
+  const x0=cx(x-r-SLACK),x1=cx(x+r+SLACK),y0=cy(y-r-SLACK),y1=cy(y+r+SLACK);
+  for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++){const c=SG.cells[j*CW+i],n=SG.n[j*CW+i];for(let k=0;k<n;k++)if(within(c[k],P,r))out.push(c[k])}
+  if(out.length>1)out.sort(byId);return out}
 
 // #433 level of detail, OFF by default: it changes results (mob wander draws from the gameplay RNG, greeting
 // rolls move to other steps), so seeded worlds only match main with it off. On (setLod(true), or
@@ -74,4 +104,4 @@ export const LOD={on:typeof process!=='undefined'&&!!(process.env&&process.env.E
 export const setLod=on=>{LOD.on=!!on};
 // Any living hero indexed in a cell within r tiles of (x,y) (cells only, no distance test: a cheap "is anyone about").
 export function heroCellsNear(x,y,r){const x0=cx(x-r),x1=cx(x+r),y0=cy(y-r),y1=cy(y+r);
-  for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++)if(heroCells[j*CW+i].length)return true;return false}
+  for(let j=y0;j<=y1;j++)for(let i=x0;i<=x1;i++)if(HG.n[j*CW+i])return true;return false}

@@ -9,12 +9,16 @@
 - [Towns and landmarks](towns.md) — #177 slice 3: townart.js pieces, faction styles in data/townart.js, wall is tile kind, Node raster check
 - [Site dungeon view](sitesview.md) — #642 themed site interiors, per-dungeon keys, staging a site crawl shot
 - [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes
+- [Frame-time probe](perfprobe.md) — #716 npm run perfprobe, A/B with --base and --speeds 0 (the box is noisy), whole-map fixes and what is left
+- [Art post-processing](artpost.md) — stripes were grid multiples, autotile raws were wrong subject; fundamental() and the piece check
 - [Sprite sheets](spritesheets.md) — #711 post-sheet.mjs: figures from the full image (no pixel grid), layout/key rejection, staging a sheets shot
 - [Page stall](pagestall.md) — #736 watchdog, relay late-answer keep; the refusals were held waits, not the dungeon view
 - [Art batch review](artreview.md) — reviewing a generated batch: scratch pipeline, reprocess --dir, why pixel-xl fails autotiles/sheets/ground
 - [Building recipe](buildingrecipe.md) — #763 flat palette + style gate for buildings, art:preview required before accept, ume-flux switch
 - [Crawl as played](crawlview.md) — #742 spots per chamber, act->spot, beats from sc.beats + HP drops, close-up framing, staging beats
 - [Image to image](img2img.md) — #763 owner decision: art from procedural init, layout contract, real Gradio facts, local Space test
+- [Town life](townlife.md) — #795 render-only critters/smoke/stalls/guards, deco entities, staging
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
 - [LPC landmarks](lpclandmarks.md) — #836 crypt mouth and lair from LPC castlewalls/lavarock, landmark shot staging, C: full gotcha
+- [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
