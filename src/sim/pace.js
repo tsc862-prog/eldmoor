@@ -6,6 +6,8 @@
 //   'soft'       something happened that the agent has not read yet (an urgent event such as an
 //                arrival or a vote, a party line, the narrator, a person speaking to the hero);
 //   'heartbeat'  `minutes` of game time passed since `since` with nothing of the sort.
+// A hero resting at an open scene (#868: it answered, or the DM still sets it) takes only what must be answered until it settles;
+// one whose wait was turned back there (a.tableRest) is woken once the table has settled (soft: it may read how it went).
 // With wake:'now' only the first kind counts (the runner's minimum real-time gap has not passed yet); with
 // wake:'must' only a choice or a table scene (e.w=3), which must be answered in time (answers carry must:true).
 // paceBrief: the state header a runner puts on every local turn prompt (the coordinator's live bug: a
@@ -16,7 +18,8 @@
 import {S,clockStr} from './state.js';
 import {swornOf,threadText,askOpen} from './oath.js'; // the hero's own oath, or the thread its past offers (#800)
 import {wakeLevel,mostNews} from './notify.js';
-import {tableView,optionsFor} from './table.js';
+import {tableView,optionsFor,worldAtTable} from './table.js';
+import {tableRest} from './scenewait.js'; // answered and waiting for the table (#868)
 import {sceneOf} from './scenes.js';
 import {heardLines,metNames} from './talk.js';
 import {maxHp} from './heroes.js';
@@ -44,6 +47,7 @@ import {leaderFor} from './council.js';
 import {woundLine} from './tend.js';
 import {worldHeld} from './prep.js'; // the world held before play (#559)
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
+import {growthText} from './abilities.js'; // a waiting score point (#714)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -63,10 +67,11 @@ export function paceCheck(id,{since=null,minutes=240,wake='all',reflect=false}={
   if(tv&&!tv.acted&&tv.phase!=='outcome'&&tv.waiting_for!=='the DM')return out('now','a scene at the table: '+tv.scene,true); // not while the DM sets it (#682)
   const seen=a.playEvSeen||0,sleeping=asleep(a);let soft=null,now=null; // a sleeper's agent gets no soft turns and no heartbeat: only wake events (#178)
   for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=3)return out('now',e.text,true);if(l===2&&!now)now=e;if(l===1&&!soft&&!sleeping)soft=e}
-  if(wake==='must')return null;
+  if(wake==='must'||tableRest(a))return null;
   if(now)return out('now',now.text);
   if(wake==='now')return null;
   if(soft)return out('soft',soft.text);
+  if(a.tableRest&&!sleeping&&!worldAtTable())return out('soft','the table settled');
   if(reflect){const r=reflectDue(a);if(r)return out('soft','a moment to reflect: '+r.why)}
   if(!sleeping&&S.gameMin>=from+m)return out('heartbeat',m+' game minutes passed');
   return null}
@@ -88,7 +93,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),road:roadSight(a,TRAFFIC.BRIEF),earshot:earshotLine(a),hold:S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold.rule:null,insight:sightLine(a),roads:roadsLine(a),way:wayNow(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
-    quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
+    growth:growthText(a),quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}),...(toldLine(a)?{told:toldLine(a)}:{}), // stories it told of its past round the fire (#571): keep them straight // the hero's own persona (#409): one line for the header, a signature, and on request the full text
     ...gatherBrief(a), // gather: session zero waits for the whole company (#771)
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
