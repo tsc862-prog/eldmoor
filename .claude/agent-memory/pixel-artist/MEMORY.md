@@ -21,3 +21,4 @@
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
 - [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
+- [LPC town buildings](lpcbuildings.md) — #833 cutter, rise rule, north-door inn, shared Vite port trap

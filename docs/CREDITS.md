@@ -9,7 +9,7 @@ by `npm run art:packs` into `assets/packs/<set>/`, which is gitignored: only the
 
 | Set | Author | Licence | Link | Used |
 | --- | --- | --- | --- | --- |
-| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions |
+| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions; town buildings |
 | Universal LPC Spritesheet Character Generator (layers) | per layer, below | CC-BY-SA 3.0 (each layer also offered under the licences listed below) | https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator | the hero sheets (seven classes by six peoples) |
 | Ninja Adventure | pixel-boy | CC0 1.0 | https://pixel-boy.itch.io/ninja-adventure-asset-pack | not fetched (itch needs a browser click) |
 | Kenney Tiny Town, Tiny Dungeon, Roguelike/RPG pack | Kenney (kenney.nl) | CC0 1.0 | https://kenney.nl/assets | reviewed, not used (does not fit) |
@@ -22,6 +22,15 @@ CC0 needs no credit; Kenney is listed anyway.
 tiles `grass.png`, `dirt.png` and `water.png` by Leana Zimmerman (Sharm), CC-BY-SA 3.0 (also GPL 3.0 and OGA-BY 3.0), from
 the 2012 Liberated Pixel Cup base assets (https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles).
 The cut pieces are derivative works and stay under CC-BY-SA 3.0. The script is `scripts/art/packcut.mjs`.
+
+## LPC town buildings
+
+`building:lpc-<style>-<piece>` (stone and timber: auction house, smithy, hall, chapel, notice board, inn) are laid up by
+`scripts/art/packcut-buildings.mjs` from parts of the LPC base tiles, recoloured to the town palettes: `house.png`, `bridges.png`
+and `signs.png` by Leana Zimmerman (Sharm), and `castle_outside.png` by Daniel Armstrong (HughSpectrum), CC-BY-SA 3.0 (also GPL
+3.0; Sharm's also OGA-BY 3.0), from the 2012 Liberated Pixel Cup base assets
+(https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles). The buildings are derivative works and
+stay under CC-BY-SA 3.0.
 
 ## LPC hero sheets
 

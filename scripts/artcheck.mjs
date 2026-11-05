@@ -872,4 +872,21 @@ async function townProbe(){
   {const L=LP.find(p=>p.id==='landmark:lair');if(L)ok(L.rot===({W:0,N:1,E:2,S:3}[L.L.opening]||0),`the lair's nest faces its mouth (${L.L.opening}, ${L.rot} quarter turns)`)}
   for(const id of mine)A.setAssetPixels(id,null);
   ok(same(render(),off),'fixtures removed: the procedural towns and landmarks are back, pixel for pixel');
+  // the buildings cut from the LPC kits (#833): every committed one fits the plans of this world, credits its set, and stands
+  // only over ground nobody walks; the renderer draws one only on the footprint and door it was cut for, and it may stand
+  // taller than its box (the rise is the image, and the chunk tests must follow it)
+  {const idx=JSON.parse(readFileSync(new URL('../assets/index.json',import.meta.url),'utf8')).assets,bad=[];let n=0;
+    for(const c of CITY)for(const b of c.buildings){const a=idx[`building:lpc-${D.townStyle(c)}-${b.piece}@${RT}`];if(!a){bad.push(`${c.name}: no cut ${b.piece}`);continue}n++;
+      if(a.source!=='lpc-base'||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
+      if(a.foot[0]!==b.box[2]||a.foot[1]!==b.box[3]||a.door[0]!==b.door[0]-b.box[0]||a.door[1]!==b.door[1]-b.box[1])bad.push(`${c.name}: ${a.id} cut for ${a.foot} door ${a.door}`);
+      if(a.w!==b.box[2]*RT)bad.push(`${a.id}: ${a.w} wide on a ${b.box[2]} tile footprint`);
+      const rise=Math.ceil(a.h/RT-b.box[3]);for(let j=1;j<=rise;j++)for(let i=0;i<b.box[2];i++){const tx=b.box[0]+i,ty=b.box[1]-j;
+        if(ty>c.y0&&!c.buildings.some(q=>tx>=q.box[0]&&tx<q.box[0]+q.box[2]&&ty>=q.box[1]&&ty<q.box[1]+q.box[3]))bad.push(`${c.name}: ${a.id} rises over walkable ${tx},${ty}`)}}
+    ok(n>0&&!bad.length,`${n} buildings of this world have an LPC cut that fits their footprint and door, credited, rising over nothing walkable`+(bad.length?': '+bad.slice(0,4).join('; '):''));
+    const c=CITY[0],b=c.buildings.find(q=>q.piece==='hall'),id=`building:lpc-${D.townStyle(c)}-hall`,w=b.box[2]*RT,h=(b.box[3]+1)*RT,hex=new Array(w*h).fill('#123456');
+    const lay=(foot,door)=>{A.setAssetPixels(id,{w,h,hex});Object.assign(A.assetEntry(id),{foot,door,spots:{flag:[w/2,4]}})};
+    lay([b.box[2],b.box[3]],[b.door[0]-b.box[0],b.door[1]-b.box[1]]);const cut=render(),top=(b.box[1]-1)*U,halls=CITY.filter(t=>D.townStyle(t)===D.townStyle(c)).map(t=>t.buildings.find(q=>q.piece==='hall').box),d3=diffs(cut,off,(x,y)=>halls.some(q=>x>=q[0]&&x<q[0]+q[2]&&y>=q[1]-1&&y<q[1]+q[3]));
+    ok(d3.n>0&&!d3.out&&Math.abs(TA.pieceSpot(c,b,'flag')[1]-(top+4*U/RT))<1e-6,`a cut hall stands on its footprint and rises one tile over the wall behind it (${d3.n} pixels), and says where its flag goes`);
+    lay([b.box[2]+1,b.box[3]],[0,0]);ok(same(render(),off)&&TA.pieceSpot(c,b,'flag')===null,'a cut made for another footprint is not stretched: the procedural form stays');
+    A.setAssetPixels(id,null);ok(same(render(),off),'and with no cut the procedural town is back, pixel for pixel')}
   ok(!Tr.terrainArt()&&mapHash()===m0,`${process.env.ELDMOOR_WORLD||'eldmoor'}: chunks back on the procedural grid, the map hash never moved`)}
