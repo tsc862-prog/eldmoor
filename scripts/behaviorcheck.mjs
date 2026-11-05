@@ -37,13 +37,23 @@ const {zoneFor, zonePoint, ZONES, zoneAt, CITY} = await import('../src/world/map
 const {homeOf} = await import('../src/data/races.js');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
-const {behaviorLog, FILES} = await import('./behavior-log.mjs');
+const {behaviorLog, FILES, staleClaim} = await import('./behavior-log.mjs');
 const {reportTurn} = await import('./behavior-turn.mjs');
 const {writeReport, readJsonl} = await import('./behavior-report.mjs');
 const {createRelay} = await import('./relay.mjs');
 
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+// #838: the stale-claim words. Passing mentions of a fight are not claims; a present-tense claim is.
+{
+  const town = {state: 'town', place: 'Highgate'}, field = {state: 'hunt', place: 'Thornvale'};
+  ok(staleClaim('Tamod led the Covenant back to Highgate and waited safely inside the walls rather than risk a night fight.', town, town) === null, 'stale-claim: "rather than risk a night fight" is not a claim (#838)');
+  ok(staleClaim('Sorris made it back to Highgate badly hurt and headed for the inn rather than risk another fight.', town, town) === null, 'stale-claim: "rather than risk another fight" is not a claim (#838)');
+  ok(staleClaim('The party voted to return in daylight to finish the four remaining boars and fight only the wounded ones.', town, town) === null, 'stale-claim: a plan is not a claim');
+  ok(staleClaim('The boar fight ended with my HP full.', field, field) === null, 'stale-claim: a finished fight is not a claim');
+  ok(!!staleClaim('A Bristleback Boar has ambushed our camp in Thornvale. I will prepare to defend the party against this threat. Let me strike at it now.', field, field), 'stale-claim: the Marald line is still caught (#838)');
+  ok(!!staleClaim('It seems we are currently engaged in a fight with the Webspinner.', field, field), 'stale-claim: "currently engaged in a fight" is still caught');
+}
 const WORLD = 'check-world', DIR = join(process.env.BEHAVIOR_DIR, WORLD);
 const lines = f => readJsonl(DIR, FILES[f]);
 console.log('\nEldmoor behaviorcheck: behavior logs for the watcher (issue #129)\n');
@@ -104,6 +114,7 @@ for (let i = 1; i <= 3; i++) ok(await turn(A.id, 'mock-A', {provider: 'ollama', 
 for (let i = 4; i <= 6; i++) await turn(A.id, 'mock-A', {provider: 'ollama', model: 'qwen2.5:14b', turn: i, brief: brief(A), tools: [{name: 'hunt', ok: false, error: 'Not done: hunt needs "n"'}, {name: 'move_to', ok: false, error: 'Not done: unknown place', refused: false}], narration: `Turn ${i}: ${A.name} tries something new each time ${i}.`, seconds: 3});
 await turn(B.id, 'mock-B', {provider: 'ollama', model: 'llama3.1:8b', turn: 1, brief: brief(B), tools: [{name: 'look', ok: true}], narration: '我们去城里休息一下，然后再出发。', seconds: 6});
 await turn(B.id, 'mock-B', {provider: 'ollama', model: 'llama3.1:8b', turn: 2, brief: brief(B), tools: [{name: 'status', ok: true}], narration: `${B.name} strikes the wolf again, blades clashing in a desperate battle. Key: ${KEY}`, seconds: 5});
+await turn(B.id, 'mock-B', {provider: 'ollama', model: 'llama3.1:8b', turn: 3, brief: brief(B), tools: [{name: 'emote', ok: true}], narration: `${B.name} poses with his cloak flaring.`, seconds: 2, flags: ['repeat-act']}); // #801: the runner saw the same emote as last turn
 const stolen = await turn(A.id, 'mock-B', {provider: 'ollama', model: 'llama3.1:8b', turn: 99, tools: [], narration: 'FORGED LINE FOR A'});
 ok(!stolen, 'a runner cannot write a turn line for a hero another runner holds (#123)');
 const dmc = await post('/play/claim', {role: 'dm', runner: 'mock-dm', provider: 'anthropic', model: 'claude-sonnet-5-5'});
@@ -161,13 +172,13 @@ server.close(); BR.setFetch(null);
 const turns = lines('turn'), anomalies = lines('anomaly'), world = lines('world'), decisions = lines('decision');
 const kinds = new Set(anomalies.map(a => a.kind));
 console.log(`  .. logged ${turns.length} turns, ${decisions.length} decisions, ${world.length} digests, ${anomalies.length} anomalies: ${[...kinds].sort().join(', ')}`);
-ok(turns.length === 9, `9 turn lines (6 for A, 2 for B, 1 for the DM; none forged): ${turns.length}`);
+ok(turns.length === 10, `10 turn lines (6 for A, 3 for B, 1 for the DM; none forged): ${turns.length}`);
 ok(!turns.some(t => /FORGED/.test(t.narration)), 'no forged line in turns.jsonl');
 ok(turns.filter(t => t.seat === 'hero:' + A.id).every(t => t.after && t.after.state), 'hero turn lines carry the state after the turn (from the game)');
 ok(turns.some(t => t.seat === 'dm' && t.cost === .012), 'the DM turn line carries its cost');
-const want = ['no-aim', 'no-memories', 'no-tool-calls', 'repeated-narration', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
+const want = ['no-aim', 'no-memories', 'no-tool-calls', 'repeated-narration', 'repeated-act', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
 for (const k of want) ok(kinds.has(k), `anomaly logged: ${k}`);
-ok(world.length >= 6 && world.every(w => Array.isArray(w.members) && w.members.length === 5), `${world.length} hourly digests with the five members`);
+ok(world.length >= 6 && world.every(w => Array.isArray(w.members) && (w.members.length === 5 || (w.deaths || []).length > 0 && w.members.length >= 4)), `${world.length} hourly digests with the five members (one short in the hour a member fell)`);
 const lastW = world[world.length - 1] || {};
 ok(lastW.members && lastW.members.every(m => m.mind && m.state && m.hp != null && m.lvl && m.idleMin != null), 'digest members carry mind, state, HP, level and idle time');
 ok(lastW.members && lastW.members.some(m => m.id === A.id && m.link), 'digest members carry the relay link state');
@@ -195,6 +206,7 @@ ok(/Memories written per member per game day/.test(md) && new RegExp('\| ' + A.n
 ok(world.some(w => w.intents && w.intents[A.name] >= 1) && anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id !== A.id) && !anomalies.some(x => x.kind === 'no-aim' && x.hero && x.hero.id === A.id), 'digests count aims stated per hero; no-aim flags the silent ones, not A (#535)');
 ok(/Aims stated \(intent\) per hero per game day/.test(md) && new RegExp('\| ' + A.name + ' \|[^\n]*\| [1-9]').test(md), 'report: aims stated per hero per game day');
 ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the last world digest');
+ok(/## Cost/.test(md) && /Turns by wake reason/.test(md) && rep.cost && rep.cost.total.turns > 0, 'report has a Cost section from the turn lines (#799)');
 // ---- per company (issue #460): the digest names every company, its size, minds and deaths; members carry their company ----
 {const FC = SLT.slotted().id, wc = world.filter(w => Array.isArray(w.companies));
   ok(wc.length === world.length && wc.every(w => w.companies.some(c => c.id === FC && c.fellowship && c.size >= 1 && c.minds >= 1 && Number.isInteger(c.deaths))), 'every digest lists the companies: the Fellowship\'s with its size, minds and deaths this hour (#460)');
@@ -216,6 +228,16 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   ok(r3[7] === '4' && r3[8] === '25%' && r3[9] === 'Wren', `a solo: its member's agent turns and empty share (${r3.join(' | ')})`);
   ok(Array.isArray(rc.companies) && rc.companies.length === 3, 'buildReport returns the per-company data');}
 
+// ---- 6a. rules the heroes wrote themselves (issue #779): the digest's per-hero count reaches the report ----
+{
+  const GD = join(ROOT, 'gambitwrote', 'mock'); const {mkdirSync: mkg} = await import('node:fs'); mkg(GD, {recursive: true});
+  const gt = Date.parse('2026-11-01T10:00:00Z');
+  writeFileSync(join(GD, FILES.world), [1, 2].map(h => JSON.stringify({ts: new Date(gt + h * 60000).toISOString(), gameMin: 60 * h, members: [],
+    gambits: {Hale: {acts: 2, edits: 3 * h, noFlee: false, own: true, wrote: 2 * h, wroteAb: h - 1}, Ivo: {acts: 1, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}}})).join('\n') + '\n');
+  const rg = writeReport(join(ROOT, 'gambitwrote'), 'mock'), gmd = readFileSync(rg.file, 'utf8');
+  ok(/rules written \/ with abilities/.test(gmd) && /\| Hale \|[^\n]*\| 4 \/ 1 \|/.test(gmd) && /\| Ivo \|[^\n]*\| 0 \/ 0 \|/.test(gmd), 'report: rules each hero wrote itself and how many name use_ability (latest total, not summed)');
+}
+
 // ---- 6b. the mind comparison (issue #280) on mock logs: two members on qwen, one on Claude, a death, writing calls ----
 {
   const MD = join(ROOT, 'minds', 'mock'); const {mkdirSync} = await import('node:fs'); mkdirSync(MD, {recursive: true});
@@ -225,6 +247,7 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   for (let h = 1; h <= 6; h++) W2.push({ts: ts(h * 60), gameMin: 600 + h * 60, fellowship: {name: 'The Mock Band', minds: 'agent'},
     members: [mem(1, 'Ann', 'tank', h === 3 ? 20 : 100, h % 2 ? 'agent' : 'autopilot', 'ollama', 'qwen2.5:14b'), mem(2, 'Bo', 'healer', 100, 'agent', 'anthropic', 'claude-haiku-5-5'),
       ...(h <= 4 ? [mem(3, 'Cy', 'dps1', 90, 'scripted', 'ollama', 'qwen2.5:14b')] : [])],
+    gambits: {Ann: {acts: 1, edits: h, noFlee: false, own: true, wrote: Math.min(h, 3), wroteAb: h >= 3 ? 1 : 0}, Bo: {acts: 0, edits: 0, noFlee: false, own: false, wrote: 0, wroteAb: 0}},
     table: {opened: 1, agentTurns: 2, reflexTurns: h === 2 ? 1 : 0}, votes: {agent: 2, reflex: 0}, deaths: h === 5 ? [{name: 'Cy', lvl: 3, cls: 'Rogue', cause: 'slain by a Bristleback Boar ' + KEY2, agent: true}] : []});
   const turnL = (id, name, prov, model, i, o) => ({ts: ts(i * 10), seat: 'hero:' + id, hero: i % 3 ? {id, name} : null, provider: prov, model, turn: i, tools: o.tools || [{name: 'look', ok: true}], calls: (o.tools || [1]).length,
     narration: 'SECRET-NARRATION-' + name + ' ' + KEY2, seconds: o.s, tokensIn: o.tin ?? 1000, tokensOut: 50, cacheRead: prov === 'anthropic' ? 3000 : null, cacheWrite: prov === 'anthropic' ? 200 : null, cost: o.cost ?? 0, flags: o.flags || []});
@@ -238,13 +261,14 @@ ok(/## World/.test(md) && md.includes(SLT.slotted().name), 'report shows the las
   const rm = writeReport(join(ROOT, 'minds'), 'mock'), mmd = readFileSync(rm.file, 'utf8'), sec = (mmd.split('## Mind comparison')[1] || '').split('## World')[0];
   const rowOf = n => (sec.split('\n').find(l => l.startsWith('| ' + n + ' |')) || '').split('|').slice(1, -1).map(s => s.trim());
   const ann = rowOf('Ann'), bo = rowOf('Bo'), cy = rowOf('Cy');
-  ok(/## Mind comparison/.test(mmd) && ann.length === 23 && bo.length === 23 && cy.length === 23, 'report has a Mind comparison table with a row per member (#280)');
+  ok(/## Mind comparison/.test(mmd) && ann.length === 24 && bo.length === 24 && cy.length === 24, 'report has a Mind comparison table with a row per member (#280)');
   ok(ann[2] === 'ollama/qwen2.5:14b' && ann[3] === '10' && ann[4] === '2' && ann[5] === '1' && ann[6] === '1', `Ann on qwen: 10 turns (unnamed lines named from the digests), 2 empty, 1 failed, 1 Table answer: ${ann.slice(2, 7).join(' ')}`);
   ok(ann[7] === '-' && ann[8] === '-' && ann[9] === '-' && ann[12] === '-', 'a member with no decisions shows "-", not zero');
   ok(/2 by anthropic\/claude-haiku-5-5 \(1 failed\)/.test(ann[10]) && !sec.split('\n').some(l => l.startsWith('| Ann | tank | anthropic')), 'the relay writing Ann\'s sheet is folded into her row, not shown as her mind');
   ok(ann[11] === '5 / 9 s' && ann[16] === '6 (3, 0)' && ann[17] === '1', `Ann: turn seconds p50/p90, digest hours with autopilot, one close call: ${ann[11]} | ${ann[16]} | ${ann[17]}`);
   ok(bo[2] === 'anthropic/claude-haiku-5-5' && bo[7] === '4' && bo[8] === '1' && bo[9] === '2' && bo[12] === '500 / 9000 ms' && bo[15] === '$0.0400' && bo[13] === '16000 / 200' && bo[14] === '12000' && ann[14] === '-', `Bo on Claude: 4 decisions, 1 rejected, 2 fallbacks, decision ms p50/p90, cost: ${bo.slice(7, 16).join(' | ')}`);
-  ok(cy[3] === '-' && cy[16] === '4 (0, 4)' && /died: slain by a Bristleback Boar/.test(cy[19]) && ann[18] === '1' && bo[18] === '1' && cy[18] === '0', `deaths survived and lifetimes from the digests: Ann ${ann[18]}, Bo ${bo[18]}, Cy ${cy[19]}`);
+  ok(cy[3] === '-' && cy[16] === '4 (0, 4)' && /died: slain by a Bristleback Boar/.test(cy[20]) && ann[18] === '1' && bo[18] === '1' && cy[18] === '0', `deaths survived and lifetimes from the digests: Ann ${ann[18]}, Bo ${bo[18]}, Cy ${cy[20]}`);
+  ok(ann[19] === '3 / 1' && bo[19] === '0 / 0' && cy[19] === '-', `rules written / with abilities: the latest total from the digests, not a sum, and "-" for a member with no data (#779): ${ann[19]} | ${bo[19]} | ${cy[19]}`);
   ok(/\| ollama\/qwen2\.5:14b \| 2 \| 10 \| 2 \(20%\) \| 1 \(10%\) \|/.test(sec) && /\| anthropic\/claude-haiku-5-5 \| 2 \| 4 \|/.test(sec), 'overall per mind: qwen 10 turns 20% empty, Claude Haiku 4 turns');
   ok(/12 by the agent, 1 by reflex/.test(sec), 'overall Table turns by agent vs reflex from the digests');
   ok(!mmd.includes(KEY2) && sec.includes('[redacted]') && !sec.includes('SECRET-'), 'the comparison redacts keys and shows no narration or DM text');

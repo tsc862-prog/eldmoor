@@ -16,6 +16,7 @@
 //           region, line, over, overAt, why, end:'days'|'dismissed'|'company'|'fell'}
 import {S} from './state.js';
 import {dist,zoneAt,ZONES,LANDMARKS} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
 import {makeHero,seedLevel} from './heroes.js';
 import {PARTY,companyOf,members,soloFor,slotParty,campaign} from './company.js';
@@ -103,7 +104,7 @@ export function hire(a,{npc,days}={}){
   a.gold-=cost;p.purse=(p.purse||0)+cost;
   const h=makeHero(A.fac,cls,null,1);
   h.name=p.name;if(p.race)h.race=p.race;if(p.skin)h.skin=p.skin;if(p.hair)h.hair=p.hair;
-  seedLevel(h,lvl);h.gold=0;h.x=a.x+(a.face||1)*.6;h.y=a.y;
+  seedLevel(h,lvl);h.gold=0;Object.assign(h,standAt(a.x+(a.face||1)*.6,a.y));
   h.state=a.state==='town'?'town':'hunt';
   const z=zoneAt(p.x,p.y),region=ZONES[z]||'the wilds';
   h.hire={npc:p.id,npcName:full(p),role:R.kind,kind:p.role,by:a.id,cid:A.id,days:n,wage,paid:cost,t:Math.round(S.gameMin),until:Math.round(S.gameMin+n*DAY),

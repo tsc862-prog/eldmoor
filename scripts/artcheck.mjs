@@ -47,11 +47,13 @@ import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,uti
 import {tmpdir} from 'node:os';
 import {join,dirname} from 'node:path';
 import {deflateSync} from 'node:zlib';
-import {ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf,sizeOf,tierKey,normKey,splitKey,keyFile,loadQueue,tierCfg,TILE,TIERS,nextCheck} from './art/lib.mjs';
+import {sha256,ROOT,ASSETS,loadManifest,loadIndex,validateManifest,checkHooks,checkIndex,fileOf,sizeOf,tierKey,normKey,splitKey,keyFile,loadQueue,tierCfg,TILE,TIERS,nextCheck} from './art/lib.mjs';
 import {runLoop} from './art/daily.mjs';
+import {summarize,render,staleIncoming,IN_GAME_KINDS} from './art/review.mjs';
+import {reviewFixture} from './art/fixtures.mjs';
 import {decodePng,encodePng,pngSize} from './art/png.mjs';
 import {resolvePalette,hexToRgb,downscale} from './art/post.mjs';
-import {postProcess,detectGrid,expandPalette,colorCount} from './art/post-texture.mjs';
+import {postProcess,detectGrid,expandPalette,colorCount,pieceStats,pieceOf} from './art/post-texture.mjs';
 
 let fails=0;const ok=(c,m)=>{if(c)console.log('  ok  '+m);else{fails++;console.log('  FAIL '+m)}};
 const man=loadManifest();
@@ -95,7 +97,18 @@ const pixelArt=(size=1024,block=8,{off=3,seed=7,flat=false}={})=>{let r=seed>>>0
   return {w:size,h:size,data:d}};
 // A transition answer: pixel-art green ground above, grey-brown stone below. A prop answer: a textured blob on white.
 const twoGrounds=()=>{const a=pixelArt(),b=pixelArt(1024,8,{seed:11});for(let y=512;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4;a.data[o]=b.data[o+1];a.data[o+1]=b.data[o+1]*.85;a.data[o+2]=b.data[o+1]*.75}return a};
+// Corner and inner answers: B (stone) fills a quarter disc at the bottom right (corner), or everything but a quarter disc at the top left (inner).
+const discGrounds=inner=>{const a=pixelArt(),b=pixelArt(1024,8,{seed:11});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){const inDisc=inner?x*x+y*y>=520*520:(1023-x)**2+(1023-y)**2<520*520;
+  if(inDisc){const o=(y*1024+x)*4;a.data[o]=b.data[o+1];a.data[o+1]=b.data[o+1]*.85;a.data[o+2]=b.data[o+1]*.75}}return a};
 const propArt=()=>{const a=pixelArt(1024,8,{seed:13});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++)if((x-512)**2+(y-560)**2>360**2){const o=(y*1024+x)*4;a.data[o]=a.data[o+1]=a.data[o+2]=255}return a};
+// A structured answer (2026-11-03 ice, mud, snow, swamp): 8 px cells of mild noise with a dark mortar cell every mx-th column
+// and my-th row, the cell after it a half shade, so the lines sit on every 3rd cell and a multiple of the real period (24)
+// scores as high as the period itself.
+const wallArt=(size=1024,block=8,{off=3,mx=3,my=3,seed=5}={})=>{let r=seed>>>0;const rnd=()=>((r=(r*1664525+1013904223)>>>0)/4294967296);
+  const n=Math.ceil(size/block)+1,d=new Uint8Array(size*size*4),cells=[];for(let i=0;i<n*n;i++)cells.push(rnd());
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){const cx=Math.floor((x-off)/block)+1,cy=Math.floor((y-off)/block)+1,t=cells[Math.max(0,cy)*n+Math.max(0,cx)],o=(y*size+x)*4,
+    k=((cx%mx===0)?.4:(cx%mx===1)?.8:1)*((cy%my===0)?.4:(cy%my===1)?.8:1)*(.93+t*.07);d[o]=170*k;d[o+1]=150*k;d[o+2]=120*k;d[o+3]=255}
+  return {w:size,h:size,data:d}};
 // Town answers (slice 3): a wall or gate is grey stone blocks with mortar; a building a roof band over a wall with a door, on white.
 const stoneArt=()=>{const a=pixelArt(1024,8,{seed:17});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4,g=a.data[o+1],m=(y%64<8)||((x+((y>>6)&1)*64)%128<8),v=m?50:90+g*.6;a.data[o]=v;a.data[o+1]=v*.95;a.data[o+2]=v*1.05}return a};
 const houseArt=()=>{const a=stoneArt();for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4;if(x<160||x>864||y<160||y>900){a.data[o]=a.data[o+1]=a.data[o+2]=255;continue}
@@ -114,6 +127,15 @@ const houseArt=()=>{const a=stoneArt();for(let y=0;y<1024;y++)for(let x=0;x<1024
 {const grass=man.assets.find(a=>a.id==='tile:grass'),gpal=resolvePalette(grass.palette,PAL).colors,src=pixelArt();
   const g=detectGrid(src);ok(g.found&&Math.abs(g.x.s-8)<=.25&&Math.abs(g.y.s-8)<=.25,`the model's pixel grid is found (${g.x.s}x${g.y.s}, offset ${g.x.o})`);
   const g2=detectGrid(pixelArt(1024,8.5,{off:0,seed:9}));ok(g2.found&&Math.abs(g2.x.s-8.5)<=.25,`a fractional grid too (${g2.x.s})`);
+  // the 2026-11-03 stripes: a structured image's lines sit on multiples of the real period, the pick used to land on 24 and the tile was cut from a 43 px native image scaled up
+  {const wall=wallArt(),was=detectGrid(wall,4,false),now=detectGrid(wall,4);
+    ok(was.x.s>8&&was.y.s>8,`regression fixture: the first period found on a wall is a multiple of the real one (${was.x.s}x${was.y.s})`);
+    ok(now.x.s===8&&now.y.s===8,`the real pixel size is found under the multiples (${now.x.s}x${now.y.s})`);
+    const wt=postProcess(wall,{...grass,post:{...grass.post,minColors:2}},gpal,PAL.MARK.outline);ok(/^12[78]x12[78]$/.test(wt.notes.native)&&wt.notes.grid==='8x8',`the wall tile is cut from the 128 px native image, no scaled-up stripes (${wt.notes.native})`);
+    const was2=postProcess(wall,{...grass,post:{...grass.post,minColors:2,fundamental:false}},gpal,PAL.MARK.outline);ok(!/^12[78]x12[78]$/.test(was2.notes.native),'post.fundamental false keeps the old pick (so an accepted tile can stay as it was)');
+    const g16=detectGrid(pixelArt(1024,16,{seed:3}));ok(g16.x.s===16&&g16.y.s===16,`a true 16 px grid stays 16 (${g16.x.s}x${g16.y.s})`);
+    const holes=pixelArt(1024,8,{seed:3});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){if((x-3+64)%64<8&&y>40){const o=(y*1024+x)*4;holes.data[o]=holes.data[o+1]=holes.data[o+2]=20}}
+    const gh=detectGrid(holes);ok(gh.x.s===8&&gh.y.s===8,`a few strong lines do not move the grid (${gh.x.s}x${gh.y.s})`)}
   // the first real run's failure: the whole image voted down to 16 px came out 1-2 colours
   const old=downscale(src,16,16,gpal,'mode');ok(colorCount(old)<=2,`regression fixture: the old area vote gives ${colorCount(old)} colour(s)`);
   const t=postProcess(src,grass,gpal,PAL.MARK.outline),t2=postProcess(src,grass,gpal,PAL.MARK.outline);
@@ -127,6 +149,21 @@ const houseArt=()=>{const a=stoneArt();for(let y=0;y<1024;y++)for(let x=0;x<1024
   {const w=expandPalette(['#3f8a3a','#2a6e2c'],PAL.TIER_SHADES[32].minPalette,PAL.TIER_SHADES[32].factors),w64=expandPalette(['#3f8a3a','#2a6e2c'],PAL.TIER_SHADES[64].minPalette,PAL.TIER_SHADES[64].factors);
     ok(w.length===PAL.TIER_SHADES[32].minPalette&&w64.length>w.length&&w.slice(2).every(c=>PAL.shadesOf('#3f8a3a').includes(c)||PAL.shadesOf('#2a6e2c').includes(c)),`the tiers widen a palette with the palette module's shades (${w.length} at 32, ${w64.length} at 64)`)}
   {const t64=postProcess(src,grass,gpal,PAL.MARK.outline,{tier:64,hint:8});ok(t64.w===64&&t64.h===64,`the 64 tier crops ${t64.w}x${t64.h} from the same model image`)}}
+// Transition pieces (2026-11-03: four of five autotiles were a scene or a wall, the fifth random blotches; all came out as noise).
+// The dual grid wants A on top and B below (edge), B in the bottom-right quarter (corner), A in the top-left quarter (inner).
+{const {fixtures}=await import('./art/fixtures.mjs'),F=fixtures(man,32),bad=[];let n=0;
+  for(const [id,im] of Object.entries(F))if(id.startsWith('autotile:')){n++;const st=pieceStats(im,pieceOf(id));if(!st.ok)bad.push(`${id} ${JSON.stringify(st)}`)}
+  ok(n>=20&&!bad.length,`every drawn fixture piece (${n}: edges, corners, inner corners) passes the piece check`+(bad.length?': '+bad.join('; '):''));
+  const edge=man.assets.find(a=>a.id==='autotile:grass-road'),epal=resolvePalette(edge.palette,PAL).colors;
+  const rej=(img,e=edge)=>{try{postProcess(img,e,epal,PAL.MARK.outline);return null}catch(err){return err}};
+  const a=rej(pixelArt()),b=rej(propArt()),c=rej(stoneArt());
+  ok(a&&a.kind==='flat'&&/not an edge piece/.test(a.message),'one ground all over is not an edge piece: '+(a&&a.message));
+  ok(b&&b.kind==='flat'&&c&&c.kind==='flat','a blob on white and a stone wall are not edge pieces either (rejected like a flat one: raw kept, redrawn later)');
+  ok(!rej(twoGrounds()),'a real two-ground answer (green above, stone below) passes');
+  const cor=man.assets.find(a=>a.id==='autotile:grass-road-corner'),mid=twoGrounds();
+  ok(rej(mid,cor)&&rej(mid,cor).kind==='flat','the same top-and-bottom answer is not a corner piece (B must be in the bottom-right quarter only)');
+  ok(!rej(pixelArt(),{...edge,post:{...edge.post,shape:false}}),'post.shape false skips the piece check');
+  ok(pieceOf('autotile:fen-ash')==='edge'&&pieceOf('autotile:fen-ash-corner')==='corner'&&pieceOf('autotile:fen-ash-inner')==='inner','piece kind comes from the id')}
 {const e={kind:'sprite',size:[16,16],post:{transparent:true,outline:true}},pal=['#3f8a3a','#2a6e2c','#45923c'];
   const a=postProcess(synth(256,256),e,pal,PAL.MARK.outline),b=postProcess(synth(256,256),e,pal,PAL.MARK.outline);
   ok(a.w===16&&a.h===16,'a sprite is scaled to 16x16');ok(Buffer.from(a.data).equals(Buffer.from(b.data)),'deterministic');
@@ -223,10 +260,10 @@ try{
   // the building recipe (#763): a prompt that asks for the flat look gets a flat top-down house in its style's flat palette
   const FB=await import('./art/fixtures-buildings.mjs'),flatOf=s=>encodePng(FB.flatBuilding(PAL.FLAT[s],[96,64]));
   const FX=await import('./art/fixtures.mjs'),sheetOf=id=>encodePng(FX.sheetArt(man.assets.find(a=>a.id===id)));
-  const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt()),hero:sheetOf('sprite:hero-warrior'),beast:sheetOf('sprite:mob-wolf'),
+  const MOCK={tile:img,two:encodePng(twoGrounds()),corner:encodePng(discGrounds(false)),inner:encodePng(discGrounds(true)),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt()),hero:sheetOf('sprite:hero-warrior'),beast:sheetOf('sprite:mob-wolf'),
     'flat-stone':flatOf('stone'),'flat-timber':flatOf('timber'),'flat-crypt':flatOf('crypt'),'flat-lair':flatOf('lair')},
     flatKind=pr=>/limestone/.test(pr)?'flat-stone':/tarred timber/.test(pr)?'flat-timber':/crypt/.test(pr)?'flat-crypt':/dragon's nest/.test(pr)?'flat-lair':null,
-    mockKind=pr=>/character sprite sheet/.test(pr)?'hero':/creature sprite sheet/.test(pr)?'beast':/town wall|town gate/.test(pr)?'stone':/thick black outline/.test(pr)&&flatKind(pr)?flatKind(pr):/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/transition tile/.test(pr)?'two':'tile';
+    mockKind=pr=>/character sprite sheet/.test(pr)?'hero':/creature sprite sheet/.test(pr)?'beast':/town wall|town gate/.test(pr)?'stone':/thick black outline/.test(pr)&&flatKind(pr)?flatKind(pr):/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/rounded quarter circle/.test(pr)?(/in the top-left corner/.test(pr)?'inner':'corner'):/transition tile|upper half is/.test(pr)?'two':'tile';
   const srv=http.createServer((req,res)=>{let body='';req.on('data',c=>body+=c);req.on('end',()=>{
     const u=new URL(req.url,'http://x');S.headers.push(req.headers);
     if(req.method==='GET'&&u.pathname.startsWith('/api/models/')){S.lookups++;const id=u.pathname.slice(12);res.setHeader('content-type','application/json');
@@ -319,6 +356,39 @@ try{
     writeFileSync(join(out,fileOf(man.assets[0].id)),encodePng(synth(8,8)));
     const {errs}=checkIndex(man,out);ok(errs.some(x=>/stray\.png is not in/.test(x))&&errs.some(x=>/8x8, manifest says/.test(x))&&errs.some(x=>/sha256 differs/.test(x)),'stray file, wrong size and changed file are caught')}
 
+  // --- free sets (#789): the index takes source and license, the cutter builds our dual-grid pieces, a pack-covered id is not generated
+  {const {pieces}=await import('./art/packcut.mjs'),{licenceOk}=await import('./art/lpc-heroes.mjs'),{jobsFor}=await import('./art/daily.mjs'),{PACKS,SETS}=await import('./art/packs.mjs');
+    const solid=(c,w=32,h=32)=>{const d=new Uint8Array(w*h*4);for(let i=0;i<w*h;i++){d[i*4]=c[0];d[i*4+1]=c[1];d[i*4+2]=c[2];d[i*4+3]=255}return {w,h,data:d}};
+    // an island like LPC's: 3x3 tiles, opaque from 8 px in, transparent around; a hole sheet: 2x2 tiles, a transparent 16 px hole
+    const island=(()=>{const im=solid([200,0,0],96,96);for(let y=0;y<96;y++)for(let x=0;x<96;x++)if(x<8||y<8||x>=88||y>=88)im.data[(y*96+x)*4+3]=0;return im})();
+    const hole=(()=>{const im=solid([200,0,0],64,64);for(let y=24;y<40;y++)for(let x=24;x<40;x++)im.data[(y*64+x)*4+3]=0;return im})();
+    const ps=pieces(solid([0,200,0]),island,{im:hole,b:solid([0,200,0])}),at=(im,x,y)=>im.data[(y*im.w+x)*4];
+    ok(Object.values(ps).every(p=>p.w===32&&p.h===32),'the cutter makes 32x32 edge, corner and inner pieces');
+    ok(at(ps.edge,16,2)===0&&at(ps.edge,16,29)===200,'edge: the ground on top and the island below (boundary through the middle)');
+    ok(at(ps.corner,2,2)===0&&at(ps.corner,29,29)===200,'corner: the island only in the bottom-right quarter');
+    ok(licenceOk('CC-BY-SA 3.0, GPL 3.0')&&licenceOk('OGA-BY 3.0')&&licenceOk('OGA-BY 3.0+, GPL 3.0, CC-BY 4.0')&&licenceOk('CC0')&&!licenceOk('GPL 3.0')&&!licenceOk('CC-BY-NC 4.0')&&!licenceOk(''),'the hero cutter takes a layer only when CC-BY-SA 3.0, OGA-BY 3.0 or CC0 is offered');
+    const dir=join(tmp,'pack-assets');mkdirSync(join(dir,'tile','32'),{recursive:true});const g=man.assets.find(e=>e.id==='tile:grass'),png=encodePng(synth(...sizeOf(g)));writeFileSync(join(dir,'tile','32','grass.png'),png);
+    const entry={id:'tile:grass',kind:'tile',file:'tile/32/grass.png',w:sizeOf(g)[0],h:sizeOf(g)[1],sha256:sha256(png),tier:32,source:'lpc-base',license:'CC-BY-SA 3.0'};
+    writeFileSync(join(dir,'index.json'),JSON.stringify({version:1,assets:{'tile:grass@32':entry}}));
+    mkdirSync(join(dir,'packs','lpc-base'),{recursive:true});writeFileSync(join(dir,'packs','lpc-base','stray.png'),png); // the packs folder is never an asset
+    ok(!checkIndex(man,dir).errs.length,'an index entry with source and license passes, and assets/packs is not walked for strays');
+    writeFileSync(join(dir,'index.json'),JSON.stringify({version:1,assets:{'tile:grass@32':{...entry,license:undefined}}}));
+    ok(checkIndex(man,dir).errs.some(x=>/names no license/.test(x)),'an entry from a set with no license is refused');
+    writeFileSync(join(dir,'index.json'),JSON.stringify({version:1,assets:{'tile:grass@32':entry}}));
+    ok(!jobsFor(man,loadIndex(dir),loadQueue(dir)).some(j=>j.e.id==='tile:grass'),'an id a pack covers is skipped by the generator');
+    ok(Object.values(SETS).every(x=>x.licence&&x.link&&x.author)&&PACKS.endsWith('packs'),'every set names its licence, author and link');
+    // a sheet of a people (#789): an index-only entry with no manifest row passes its own checks; the renderer picks people, then class, then nothing
+    {const sd=join(tmp,'people-assets');mkdirSync(join(sd,'sprite','32'),{recursive:true});const sp=encodePng(synth(96,192));writeFileSync(join(sd,'sprite','32','hero-warrior-ashfolk.png'),sp);
+      const ent={id:'sprite:hero-warrior-ashfolk',kind:'sprite',file:'sprite/32/hero-warrior-ashfolk.png',w:96,h:192,sha256:sha256(sp),tier:32,source:'lpc-generator',license:'CC-BY-SA 3.0'};
+      writeFileSync(join(sd,'index.json'),JSON.stringify({version:1,assets:{'sprite:hero-warrior-ashfolk@32':ent}}));
+      ok(!checkIndex(man,sd).errs.length,'an index-only people sheet (no manifest row) passes when it names its source and license');
+      writeFileSync(join(sd,'index.json'),JSON.stringify({version:1,assets:{'sprite:hero-warrior-ashfolk@32':{...ent,license:undefined}}}));
+      ok(checkIndex(man,sd).errs.some(x=>/names no license/.test(x)),'and is refused without a license');
+      const SPR=await import('../src/render/sprites.js'),AS=await import('../src/render/assets.js'),px=AS.pixelsOf(96,192,new Uint8Array(96*192*4));
+      AS.setAssetPixels('sprite:hero-warrior',px);AS.setAssetPixels('sprite:hero-warrior-ashfolk',px);
+      ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior-ashfolk'&&SPR.heroSheetId('Warrior','tarrow')==='sprite:hero-warrior'&&SPR.heroSheetId('Warrior')==='sprite:hero-warrior'&&SPR.heroSheetId('Mage','ashfolk')==='sprite:hero-mage'&&SPR.heroSheetId('Nobody','ashfolk')===null,'the renderer takes the people sheet of a hero, else the class sheet, else the procedural sprite');
+      AS.setAssetPixels('sprite:hero-warrior',null);AS.setAssetPixels('sprite:hero-warrior-ashfolk',null);ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior','and falls back when the sheets leave (ids are re-read when assets change)')}}
+
   // --- daily.mjs: quota-driven, resumable, into incoming/<date>/ for review
   {const dir=join(tmp,'assets'),logP=join(tmp,'art.log'),days=['2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07','2026-11-08','2026-11-09','2026-11-10'];let d=0;
     const daily=(a=[],extra)=>node('daily.mjs',['--dir',dir,'--log',logP,...a],extra),Q=()=>JSON.parse(readFileSync(join(dir,'queue.json'),'utf8'));
@@ -346,6 +416,30 @@ try{
     // review: accept some, reject one; --now on the same day runs again and redraws the rejected one with a new seed
     r=await node('accept.mjs',['--dir',dir,'--list']);ok(/waiting for review \(10\)/.test(r.s),'art:accept --list shows what waits');
     r=await node('accept.mjs',['--dir',dir,'tile:grass','tile:snow']);ok(r.code===0&&checkIndex(man,dir).count===2&&!checkIndex(man,dir).errs.length,'accepted assets move into assets/ and the index (artcheck passes)');
+    // art:review (#712): per kind counts, spend, what is missing, stale inbox entries hidden, in-game kinds flagged for a preview
+    {const q0=Q(),w0=Object.keys(q0.incoming).length,rv=await node('review.mjs',['--dir',dir,'--log',logP,'--json']);let js=null;try{js=JSON.parse(rv.s)}catch{}
+      ok(rv.code===0&&js&&js.waiting===w0&&js.stale.length===0&&js.rows.find(x=>x.kind==='tile').accepted===2,'art:review counts what waits and what is accepted per kind');
+      ok(js&&js.rows.every(x=>x.missing.length===x.manifest-x.accepted-x.waiting.length)&&/Spend:/.test((await node('review.mjs',['--dir',dir,'--log',logP])).s),'art:review: missing = manifest - accepted - waiting; prints spend');
+      const qs=JSON.parse(JSON.stringify(q0));qs.incoming['tile:grass@32']={date:Object.values(q0.incoming)[0].date,file:'tile/32/grass.png'};
+      qs.incoming['building:stone-inn@32']={date:'2026-01-01',file:'building/32/stone-inn.png'};qs.rejected['sprite:hero-mage@32']=2;qs.failed['prop:rock-meadow-1@32']={tries:1,why:'HTTP 500',at:'x'};qs.stats={sprite:{made:3,flat:1,failed:0}};
+      const sm=summarize({man,idx:loadIndex(dir),q:qs,logText:'',tier:32}),txt=render(sm);
+      ok(staleIncoming(qs,loadIndex(dir)).join()==='tile:grass@32'&&sm.waiting===w0+1,'art:review skips inbox ids already in assets/index.json');
+      ok(sm.preview.some(x=>x.kind==='building'&&x.keys.includes('building:stone-inn@32'))&&IN_GAME_KINDS.join()==='building,landmark,sprite'&&/needs an in-game preview first/.test(txt)&&/rejected/.test(txt)&&/prop:rock-meadow-1@32: HTTP 500/.test(txt)&&sm.rows.find(x=>x.kind==='sprite').rejected===2&&sm.rows.find(x=>x.kind==='sprite').flat===1,'art:review flags buildings, landmarks and sprites for an in-game preview and shows rejects and failures with why');
+      const w=JSON.parse(JSON.stringify(q0));w.incoming['tile:grass@32']=qs.incoming['tile:grass@32'];writeFileSync(join(dir,'queue.json'),JSON.stringify(w));
+      r=await node('accept.mjs',['--dir',dir,'--list']);ok(r.s.includes('waiting for review ('+w0+')')&&r.s.includes('already in assets/index.json, skipped: tile:grass@32'),'art:accept --list skips ids already in the index');
+      writeFileSync(join(dir,'queue.json'),JSON.stringify(q0))}
+    // art:review on a fixture inbox (#712): slices, days, sheet per day, accept line without in-game kinds, --json; and an empty tree
+    {const RF=reviewFixture(),rd=join(tmp,'review-assets'),w=(f,t)=>{mkdirSync(dirname(join(rd,f)),{recursive:true});writeFileSync(join(rd,f),t)};
+      const base=loadIndex(dir);base.assets={'tile:grass@32':base.assets['tile:grass@32']||{id:'tile:grass',tier:32}};w('index.json',JSON.stringify(base));
+      for(const f of RF.files)w(f,'<html></html>');utimesSync(join(rd,'incoming/2026-11-02/sheet.html'),new Date(1e12),new Date(1e12));utimesSync(join(rd,'incoming/2026-11-02/sheet-2.html'),new Date(2e12),new Date(2e12));
+      w('queue.json',JSON.stringify(RF.queue));
+      const rj=await node('review.mjs',['--dir',rd,'--log',join(tmp,'none.log'),'--json']);let j=null;try{j=JSON.parse(rj.s)}catch{}
+      const sl=n=>j&&j.slices.find(x=>x.name===n),dnew=j&&j.days.find(x=>x.date==='2026-11-02'),dold=j&&j.days.find(x=>x.date==='2026-10-30');
+      ok(j&&j.slices.map(x=>x.name).join()==='terrain,towns,sprites,portraits,scene,props'&&sl('terrain').waiting===2&&sl('towns').waiting===1&&sl('sprites').waiting===1&&sl('props').waiting===0&&sl('terrain').accepted===1,'art:review --json: counts per priority slice (terrain, towns, sprites, portraits, scene, props)');
+      ok(dnew&&dnew.sheet==='assets/incoming/2026-11-02/sheet-2.html'&&dold&&dold.sheet==='assets/incoming/2026-10-30/sheet.html'&&j.days[0].date==='2026-11-02','art:review: the newest contact sheet per day, newest day first');
+      ok(dnew.accept==='npm run art:accept -- tile:snow@32'&&dnew.preview.join()==='building:stone-inn@32,sprite:hero-mage@32'&&dold.accept==='npm run art:accept -- prop:tree-meadow-1@32'&&j.stale.join()==='tile:grass@32','art:review: the accept line keeps buildings, landmarks and sprites out (listed as needing an in-game preview); stale ids skipped');
+      const rt=await node('review.mjs',['--dir',rd,'--log',join(tmp,'none.log')]);ok(/ready to accept: npm run art:accept -- tile:snow@32/.test(rt.s)&&/needs an in-game preview first, NOT in the line above (.*art:preview.*): building:stone-inn@32 sprite:hero-mage@32/.test(rt.s)&&/prop:rock-meadow-1@32: HTTP 500/.test(rt.s),'art:review text: ready line, preview warning, failures with why');
+      const re=await node('review.mjs',['--dir',join(tmp,'no-such-assets'),'--log',join(tmp,'none.log')]);ok(re.code===0&&/nothing waiting/.test(re.s),'art:review with no assets/incoming and no queue prints "nothing waiting"')}
     r=await node('accept.mjs',['--dir',dir,'--reject','tile:mud']);q=Q();ok(r.code===0&&q.rejected['tile:mud@32']===1&&!q.incoming['tile:mud@32'],'a rejected asset leaves the queue for a redraw');
     r=await node('accept.mjs',['--dir',dir,'tile:nope']);ok(r.code===2,'accepting an unknown id is refused');
     const p5=P0();r=await daily(['--now','--date',days[d]]);q=Q();

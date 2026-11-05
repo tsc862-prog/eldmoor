@@ -6,7 +6,7 @@
 //   3. `npm run agent` end to end on a headless world: `ctx` on the turn line, a roll at the roll point, the old file in old/, the new
 //      session told to read its journal, standing orders and persona block and claim unchanged; held back while a scene is open.
 //   4. `npm run fellowship`: every member rolls, the run record counts it. 5. `npm run dm`: the DM rolls at its own point and re-reads
-//      its notes. 6. A "fresh" line on stdin rolls at the next safe moment. 7. AGENT_HEAR_WAKE_MIN. 8. The report's context table.
+//      its notes. 2b. A wait with turn_over ends the turn with no further model call, through the real /mcp route (#868). 6. A "fresh" line on stdin rolls at the next safe moment. 7. AGENT_HEAR_WAKE_MIN. 8. The report's context table.
 // Sessions go to a temporary folder (AGENT_LOGS, CLAUDE_CONFIG_DIR), never to logs/agents/ or the owner's ~/.claude.
 import http from 'node:http';
 import {spawn} from 'node:child_process';
@@ -76,7 +76,7 @@ function mockApi() {
       if (req.url.includes('count_tokens')) {res.writeHead(200, {'content-type': 'application/json'}); return res.end('{"input_tokens":1000}')}
       const j = JSON.parse(b), tail = j.messages.slice(-2).flatMap(x => Array.isArray(x.content) ? x.content : [{type: 'text', text: x.content}]), isResult = tail.some(x => x.type === 'tool_result'); // the CLI adds its budget line after the result
       const summary = tail.some(x => x.type === 'text' && /summary of the conversation|detailed summary|summarize/i.test(x.text)); // a compaction: it carries the tools too, and wants words
-      const tool = (j.tools || []).map(t => t.name).find(n => /__(status|dm_status)$/.test(n)) || null;
+      const tool = (j.tools || []).map(t => t.name).find(n => (m.toolRe || /__(status|dm_status)$/).test(n)) || null;
       const sys = typeof j.system === 'string' ? j.system : (j.system || []).map(x => x.text).join('\n');
       const text = JSON.stringify(j.messages), userText = j.messages.filter(x => x.role === 'user').flatMap(x => Array.isArray(x.content) ? x.content : [{type: 'text', text: x.content}]).filter(x => x.type === 'text').map(x => x.text).join('\n');
       m.calls.push({n: m.calls.length + 1, sys, chars: text.length, msgs: j.messages.length, tool: !!tool, isResult, userText, model: j.model});
@@ -125,6 +125,38 @@ async function cliTurn(env, prompt, resume, seen) {
   ok(seen.boundary && seen.boundary.post_tokens < 20000, 'and the conversation shrinks to a summary');
 }
 
+// ---------------------------------------------------------------- 2b. the real CLI ends a turn at the table (#868)
+// A wait that comes back with turn_over stops the query from the PostToolUse hook: through the relay's real /mcp route, no model call
+// after it, a result with its cost, and the session resumes. An ordinary wait lets the model carry on.
+console.log('the real CLI: a wait with turn_over ends the turn with no further model call');
+{
+  const {attachPlay, HELD_WAIT} = await import('./relay-mcp.mjs'), {tableHooks, WAIT_TOOL} = await import('./pacing.mjs');
+  let answer = null; const asked = [];
+  const be = {call: async (id, tool) => {asked.push(tool); return answer}, dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes: [{id: 1, name: 'Mock', alive: true}]})};
+  const srv = http.createServer((q, s) => {s.writeHead(404); s.end('{}')}); attachPlay(srv, {backend: be, log: () => {}});
+  await new Promise(r => srv.listen(0, '127.0.0.1', r)); const mcpUrl = `http://127.0.0.1:${srv.address().port}/mcp?hero=1`;
+  api.toolRe = /__wait$/; api.ctx = () => 3000;
+  const run = async (resume, over) => {const seen = [], before = api.calls.length; let id = resume, res = null;
+    const q = query({prompt: 'turn', options: {model: 'claude-haiku-5-5', systemPrompt: 'You keep the road.', resume, mcpServers: {eldmoor: {type: 'http', url: mcpUrl, headers: {'X-Eldmoor-Hero': '1'}, timeout: 30000}}, tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [], maxTurns: 3, cwd: tmp, env: base,
+      hooks: tableHooks({idle: on => seen.push(on), onOver: () => {seen.push('over'); over && over()}})}});
+    for await (const m of q) {if (m.type === 'system' && m.subtype === 'init') id = m.session_id; else if (m.type === 'result') res = m}
+    return {id, res, seen, calls: api.calls.length - before}};
+  ok(WAIT_TOOL === 'mcp__eldmoor__wait', 'the hook matches the wait tool as the runners name it');
+  answer = {ok: true, waited_min: 30, why: 'time passed'};
+  const plain = await run();
+  ok(plain.calls === 2 && !plain.seen.includes('over'), `an ordinary wait: the model gets its next call, as it did (${plain.calls} model calls)`);
+  answer = {ok: true, waited_min: 0, turn_over: true, why: 'Your answer is in; the table has not settled. Your turn is over: end it here.', table: {scene: 'Trouble on the road'}};
+  const m0 = api.calls.length, end = await run(plain.id);
+  ok(end.calls === 1 && end.seen.join() === 'true,false,over', `turn_over: one model call (the wait itself), none after it (${end.calls}); idle on and off: ${end.seen.join()}`);
+  ok(end.res && end.res.subtype === 'success' && end.res.total_cost_usd > 0, `the turn ends as a success with its cost (${end.res && end.res.subtype}, $${end.res && end.res.total_cost_usd}), so the budget counts it`);
+  answer = {...HELD_WAIT}; const held = await run(end.id);
+  ok(held.calls === 1 && held.seen.includes('over'), 'the relay\'s held answer ends the turn the same way');
+  answer = {ok: true, waited_min: 10, why: 'time passed'}; const again = await run(held.id);
+  ok(again.id === held.id || again.calls >= 1, 'the session resumes on the next turn');
+  ok(api.calls[m0 + 1].msgs > api.calls[m0].msgs, `and carries the turn that ended (${api.calls[m0].msgs} -> ${api.calls[m0 + 1].msgs} messages)`);
+  api.toolRe = null; srv.close();
+}
+
 // ---------------------------------------------------------------- 3. the hero runner end to end
 const envDir = join(tmp, 'envdir'); (await import('node:fs')).mkdirSync(envDir); writeFileSync(join(envDir, '.env'), ''); // --env: never the owner's .env
 const childEnv = {...process.env, ...base, AGENT_LOGS: tmp, AGENT_MODEL: 'claude-haiku-5-5', DM_MODEL: 'claude-sonnet-5-5', AGENT_REFLECT: '0'};
@@ -171,7 +203,8 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   const n0 = (run.out().match(/\| ctx 85k/g) || []).length;
   ok(await until(() => (run.out().match(/\| ctx 85k/g) || []).length > n0), 'with the table open the next turn plays on');
   ok(!/session rolled/.test(run.out()) && readSess(hero.id).sessionId === sid && !oldFiles().length, 'and nothing rolls mid-scene, past the roll point or not');
-  const since = api.calls.length; px.table = false; api.ctx = () => 26000;
+  // the size stays 85k until a fresh session starts: a turn in flight as the table closes must not report the small size, or nothing is left to roll
+  const since = api.calls.length; px.table = false; let small = false; api.ctx = c => {if (c.tool && !c.isResult && c.msgs <= 2) small = true; return small ? 26000 : 85000};
   ok(await until(() => /\[session rolled: 85k tokens\]/.test(run.out())), 'the table closed, the next turn rolls: [session rolled: 85k tokens]');
   const s2 = await until(() => {const s = readSess(hero.id); return s && s.sessionId && s.sessionId !== sid ? s : null});
   ok(s2 && s2.rolls === 1 && s2.system === orders && s2.runner && s2.runner.model === 'claude-haiku-5-5' && s2.turns >= 3, 'the session file has a new session, the same standing orders and mind, the turns counted on, one roll');
@@ -192,7 +225,8 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
 // A resume after an update: a long session with no size kept rolls before it is paid for.
 {
   const s = readSess(hero.id); delete s.ctx; s.turns = 44; writeFileSync(join(tmp, 'agents', hero.id + '.json'), JSON.stringify(s)); api.ctx = () => 26000;
-  const run = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1']);
+  // one turn only: a reflection due at dusk would rightly hold the roll back, and this case is about the old session
+  const run = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1', '--no-reflect']);
   await run.done;
   ok(/\[session rolled: size not kept, 44 turns\]/.test(run.out()), 'a long session from before this fix rolls on its first turn, before a call is paid for at the old size');
 }

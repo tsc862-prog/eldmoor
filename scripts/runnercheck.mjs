@@ -75,16 +75,18 @@ console.log('runner routes (fake children)');
 {
   const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
   const heroes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(id => ({id, name: 'H' + id, alive: true}));
-  let dmSeat = true; // the game's DM seat (#66): a DM runner starts only while it is open
-  const be = {call: async () => ({ok: true}), dmCall: async t => t === 'table_call' ? {ok: true, call: {id: 1, kind: 'frame', seconds_left: 8}} : {ok: true}, narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat})}; // a frame call waits for the DM's voice (#682)
+  let dmSeat = true, dmPrep = null; // the game's DM seat (#66): a DM runner starts only while it is open; dmPrep: the page's prep report (#733)
+  const be = {call: async () => ({ok: true}), dmCall: async t => t === 'table_call' ? {ok: true, call: {id: 1, kind: 'frame', seconds_left: 8}} : {ok: true}, narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat, ...(dmPrep ? {dmPrep} : {})})}; // a frame call waits for the DM's voice (#682)
   const kids = [];
   const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 40000 + kids.length; k.cmd = cmd; k.args = args; k.opts = opts; k.got = '';
     k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d; if (exitOnStop && /stop/.test(d)) setTimeout(() => k.emit('exit', 0), 5)}});
     k.kill = () => {k.killed = true; setTimeout(() => k.emit('exit', null), 5)}; kids.push(k); return k};
   let exitOnStop = false; // a runner that releases its heroes and leaves on the stop line (the real ones do)
-  const mk = async (enabled, extra = {RUNNER_CLAUDE_MAX: '10'}) => {const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
+  let voiceBusy = false; // #868: the DM's voice busy for one test
+  const mk = async (enabled, extra = {RUNNER_CLAUDE_MAX: '10'}, over = {}) => {const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
     const play = attachPlay(server, {backend: be, log: () => {}});
-    const sup = attachRunners(server, {play, enabled, log: () => {}, spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', ...extra}});
+    if (over.log) {const busy = play.dmVoiceBusy; play.dmVoiceBusy = () => voiceBusy || (busy ? busy() : false)}
+    const sup = attachRunners(server, {play, enabled, log: () => {}, spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', ...extra}, ...over});
     await new Promise(r => server.listen(0, '127.0.0.1', r)); return {server, sup, base: `http://127.0.0.1:${server.address().port}`}};
 
   const off = await mk(false);
@@ -250,6 +252,123 @@ console.log('runner routes (fake children)');
     ok(z.ok && Date.now() - t < 500, 'once the DM has answered, a slot is leased at once');
     await req(sl.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: z.lease}})}
   sl.sup.killAll(); sl.server.close();
+  // #733: the DM seat's own slot (RUNNER_DM_SLOTS, outside RUNNER_CLAUDE_MAX) and heroes held while the DM prepares
+  {const {DM_SLOTS} = await import('./runners.mjs');
+    ok(DM_SLOTS === 1, 'one DM slot by default');
+    const ds = await mk(true, {RUNNER_CLAUDE_MAX: '3', RUNNER_SCENE_SLOTS: '0'}), realDm = RUNNER_KINDS.dm.script; RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs';
+    for (const id of [1, 2, 3, 4]) await req(ds.base, '/play/runner/start', {method: 'POST', body: {hero: id, provider: 'anthropic'}, origin: PAGE});
+    await req(ds.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic'}, origin: PAGE});
+    const hl = []; for (const id of [1, 2, 3]) hl.push(await req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:' + id}}));
+    let t = Date.now(); const h4 = req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:4'}});
+    const d1 = await req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'dm'}}), dWait = Date.now() - t;
+    g = await req(ds.base, '/play/runner');
+    ok(hl.every(x => x.ok) && d1.ok && d1.dm === true && dWait < 500 && g.claude.used === 3 && g.claude.dmSlots === 1 && g.claude.dmUsed === 1 && g.claude.waiting === 1,
+      `three hero turns hold every Claude slot and a fourth waits, yet the DM's request is served at once from its own slot (${dWait} ms; used ${g.claude.used}/${g.claude.slots}, DM ${g.claude.dmUsed}/${g.claude.dmSlots})`);
+    await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'dm', lease: d1.lease}});
+    g = await req(ds.base, '/play/runner');
+    ok(g.claude.dmUsed === 0 && g.claude.used === 3, 'the DM gives its slot back after the turn; the hero slots are untouched');
+    await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: hl[0].lease}}); const h4r = await h4;
+    ok(h4r.ok, 'the waiting hero gets the slot a hero turn released');
+    for (const x of [hl[1], hl[2], h4r]) await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero', lease: x.lease}});
+    // the DM prepares the table: a hero's request waits, the DM's is served
+    dmPrep = {state: 'running', kind: 'opening', calls: 0, max_calls: 20};
+    t = Date.now(); let got = null; const hp = req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:2'}}).then(x => {got = x; return x});
+    await sleep(600); g = await req(ds.base, '/play/runner');
+    const dp = await req(ds.base, '/play/runner/slot', {method: 'POST', body: {key: 'dm'}});
+    ok(got === null && g.claude.used === 0 && dp.ok && dp.dm, 'while the DM prepares, a hero runner leases no Claude slot (its request waits) and the DM still gets its own');
+    dmPrep = {state: 'done', kind: 'opening', calls: 4, max_calls: 20, why: 'done'}; const hpr = await hp;
+    ok(hpr.ok && Date.now() - t < 3000, `once the prep is over the hero's request is served (${Date.now() - t} ms)`);
+    await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:2', lease: hpr.lease}});
+    await req(ds.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'dm', lease: dp.lease}}); dmPrep = null;
+    // the runner's own lines (takeClaudeSlot): the DM names its slot, a hero names the prep
+    const {takeClaudeSlot} = await import('./pacing.mjs');
+    const fake = answers => {let i = 0; return async () => ({status: 200, json: async () => answers[Math.min(i++, answers.length - 1)]})};
+    let lines = []; let rel = await takeClaudeSlot('http://x', l => lines.push(l), {key: 'dm', fetchImpl: fake([{ok: false, busy: true, dm: true, dmSlots: 1, slots: 3}, {ok: true, lease: 'D9', dm: true}])}); rel();
+    ok(lines.some(l => /waiting for the DM slot/.test(l)) && !lines.some(l => /waiting for a Claude slot/.test(l)) && lines.some(l => /got a DM slot/.test(l)), 'the DM runner line says DM slot, not waiting for a Claude slot: ' + lines.join(' / '));
+    lines = []; rel = await takeClaudeSlot('http://x', l => lines.push(l), {key: 'hero:1', fetchImpl: fake([{ok: false, busy: true, prep: true, slots: 3}, {ok: true, lease: 'L9'}])}); rel();
+    ok(lines.some(l => /the DM prepares the table/.test(l)), 'a hero runner held by the prep says so: ' + lines.join(' / '));
+    RUNNER_KINDS.dm.script = realDm; ds.sup.killAll(); ds.server.close();
+    // RUNNER_DM_SLOTS=0: no slot of its own; the DM queues in the hero pool as before #733
+    const d0 = await mk(true, {RUNNER_CLAUDE_MAX: '1', RUNNER_DM_SLOTS: '0'}); RUNNER_KINDS.dm.script = 'scripts/mock-ollama.mjs';
+    for (const id of [1, 2]) await req(d0.base, '/play/runner/start', {method: 'POST', body: {hero: id, provider: 'anthropic'}, origin: PAGE});
+    await req(d0.base, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic'}, origin: PAGE});
+    const a1 = await req(d0.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:1'}});
+    const order = []; const w2 = req(d0.base, '/play/runner/slot', {method: 'POST', body: {key: 'hero:2'}}).then(x => {order.push('hero'); return x});
+    await sleep(100); const wd = req(d0.base, '/play/runner/slot', {method: 'POST', body: {key: 'dm'}}).then(x => {order.push('dm'); return x});
+    await sleep(100); await req(d0.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:1', lease: a1.lease}});
+    const w2r = await w2; ok(w2r.ok && order[0] === 'hero', 'with RUNNER_DM_SLOTS=0 the DM has no slot of its own: it queues in the hero pool as before (the hero asked first)');
+    await req(d0.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'hero:2', lease: w2r.lease}}); const wdr = await wd;
+    ok(wdr.ok && !wdr.dm, 'then the DM, from the hero pool');
+    RUNNER_KINDS.dm.script = realDm; d0.sup.killAll(); d0.server.close()}
+  // #868: one slot kept for scenes, leases listed and reclaimed, nothing granted to a request that went away
+  {const {SCENE_SLOTS, SLOT_LOST_MS, SLOT_MAX_MS, DM_FIRST_MS} = await import('./runners.mjs'), {takeClaudeSlot, withClaudeSlot} = await import('./pacing.mjs');
+    const lines = [], clock = {t: 1e6}, L = (s, key, x = {}) => req(s.base, '/play/runner/slot', {method: 'POST', body: {key, ...x}}), R = (s, x) => req(s.base, '/play/runner/slot/release', {method: 'POST', body: {key: 'x', lease: x.lease}});
+    const ss = await mk(true, {RUNNER_CLAUDE_MAX: '3', RUNNER_DM_SLOTS: '0'}, {log: s => lines.push(s), now: () => clock.t});
+    ok(SCENE_SLOTS === 1, 'one slot kept for scene answers by default');
+    for (const id of [1, 2, 3, 4, 5]) await req(ss.base, '/play/runner/start', {method: 'POST', body: {hero: id, provider: 'anthropic'}, origin: PAGE});
+    const a = await L(ss, 'hero:1', {member: 'Ann', ticket: 't-a'}), b = await L(ss, 'hero:2');
+    let done3 = null; const c = L(ss, 'hero:3').then(x => {done3 = x; return x}); await sleep(120);
+    g = await req(ss.base, '/play/runner');
+    ok(a.ok && b.ok && done3 === null && g.claude.used === 2 && g.claude.waiting === 1 && g.claude.sceneSlots === 1, `free turns stop one short of the cap: two run, the third waits (used ${g.claude.used} of ${g.claude.slots})`);
+    let t = Date.now(); const s4 = await L(ss, 'hero:4', {scene: true}); g = await req(ss.base, '/play/runner');
+    ok(s4.ok && Date.now() - t < 500 && g.claude.used === 3, `a scene request takes the kept slot at once (${Date.now() - t} ms), and the three in use are RUNNER_CLAUDE_MAX`);
+    const s5w = L(ss, 'hero:5', {scene: true}); await sleep(100); g = await req(ss.base, '/play/runner');
+    ok(g.claude.used === 3 && g.claude.waiting === 2, 'a second scene request waits: nothing passes the cap');
+    await R(ss, s4); const s5 = await s5w; g = await req(ss.base, '/play/runner');
+    ok(s5.ok && done3 === null && g.claude.used === 3, 'the freed slot goes to the scene ahead of the free turn that asked first');
+    await R(ss, s5); await sleep(60); g = await req(ss.base, '/play/runner');
+    ok(done3 === null && g.claude.used === 2, 'and with no scene waiting the kept slot stays free: the free turn still waits');
+    await R(ss, b); const cr = await c;
+    ok(cr.ok, 'a free turn ending lets the next free turn in');
+    // leases are listed
+    clock.t += 40000; await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, idle: true, tools: 0}}); g = await req(ss.base, '/play/runner');
+    const la = g.claude.leases.find(x => x.id === a.lease);
+    ok(la && la.key === 'hero:1' && la.member === 'Ann' && la.age_s === 40 && la.idle === true && la.scene === false && g.claude.leases.length === 2, 'GET /play/runner lists each lease: ' + JSON.stringify(la));
+    await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, tools: 3}}); g = await req(ss.base, '/play/runner');
+    ok(g.claude.leases.find(x => x.id === a.lease).idle === false, 'a new tool call clears idle');
+    // a lease nobody beats for is reclaimed; one that beats stays
+    clock.t += 60000; await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, tools: 3}});
+    clock.t += SLOT_LOST_MS - 60000 + 1000; const probe = await L(ss, 'hero:2'); g = await req(ss.base, '/play/runner');
+    ok(g.claude.leases.some(x => x.id === a.lease) && !g.claude.leases.some(x => x.id === cr.lease) && lines.some(l => /reclaimed: no heartbeat for \d+ s/.test(l)), 'a lease with no heartbeat is reclaimed with a log line, a beating one stays: ' + lines.filter(l => /reclaimed/.test(l)).join(' / '));
+    const lost = await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:3', lease: cr.lease}});
+    ok(lost.lost === true, 'a holder of a reclaimed lease hears it lost it');
+    await R(ss, probe);
+    // a live holder with no tool call for SLOT_MAX_MS: told, and only then is the slot free again
+    for (let i = 0; i < 9; i++) {clock.t += 70000; await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, tools: 3}})}
+    clock.t += 80000; const over = await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: a.lease, tools: 3}}); g = await req(ss.base, '/play/runner');
+    ok(over.lost === true && g.claude.used === 0 && lines.some(l => /reclaimed: no tool call for 1\d min/.test(l)), `no tool call for ${SLOT_MAX_MS / 60000} min: reclaimed with a log line, the holder told: ` + over.why);
+    const live = await L(ss, 'hero:1'); for (let i = 0; i < 12; i++) {clock.t += 70000; const k = await req(ss.base, '/play/runner/slot/beat', {method: 'POST', body: {key: 'hero:1', lease: live.lease, tools: i + 1}}); if (k.lost) ok(false, 'a long turn that keeps calling tools lost its slot')}
+    g = await req(ss.base, '/play/runner'); ok(g.claude.leases.length === 1, 'a long turn that keeps calling tools keeps its slot (14 minutes)'); await R(ss, live);
+    // a grant nobody received
+    clock.t += 1000; const tk = await L(ss, 'hero:2', {ticket: 't-b'}); const cancel = await req(ss.base, '/play/runner/slot/cancel', {method: 'POST', body: {key: 'hero:2', ticket: 't-b'}}); g = await req(ss.base, '/play/runner');
+    ok(tk.ok && cancel.ok && g.claude.used === 0 && lines.some(l => /returned: its request was given up/.test(l)), 'a request given up after its grant was sent: the ticket returns the slot at once');
+    // an aborted request while it sat in the DM's-voice delay, and one in the queue
+    ss.sup; const ac = new AbortController();
+    const held = fetch(ss.base + '/play/runner/slot', {method: 'POST', headers: {'content-type': 'application/json', origin: PAGE}, body: JSON.stringify({key: 'hero:4'}), signal: ac.signal}).catch(() => null);
+    voiceBusy = true; // the mock's voice is busy for this request onward (the next one sits in the delay)
+    const held2c = new AbortController(), held2 = fetch(ss.base + '/play/runner/slot', {method: 'POST', headers: {'content-type': 'application/json', origin: PAGE}, body: JSON.stringify({key: 'hero:5'}), signal: held2c.signal}).catch(() => null);
+    await sleep(200); held2c.abort(); await held2; await held; await sleep(DM_FIRST_MS + 200); voiceBusy = false; g = await req(ss.base, '/play/runner');
+    const hold = g.claude.leases.filter(x => x.key === 'hero:5');
+    ok(hold.length === 0, `a request aborted during the DM's-voice delay gets no lease (the leak of #868; used ${g.claude.used})`);
+    for (const x of g.claude.leases) await req(ss.base, '/play/runner/slot/release', {method: 'POST', body: {key: x.key, lease: x.id}});
+    const f1 = await L(ss, 'hero:1'), f2 = await L(ss, 'hero:2'), qac = new AbortController();
+    const q = fetch(ss.base + '/play/runner/slot', {method: 'POST', headers: {'content-type': 'application/json', origin: PAGE}, body: JSON.stringify({key: 'hero:3'}), signal: qac.signal}).catch(() => null);
+    await sleep(100); qac.abort(); await q; await sleep(60); await R(ss, f1); await sleep(60); g = await req(ss.base, '/play/runner');
+    ok(g.claude.used === 1 && g.claude.waiting === 0, 'a request aborted in the queue never gets the slot that frees'); await R(ss, f2);
+    ss.sup.killAll(); ss.server.close();
+    // the runner's side
+    const calls = [], fk = script => {let i = 0; return async (u, o) => {const b = JSON.parse(o.body), p = u.replace('http://x', ''); calls.push({p, b}); if (/cancel|release|beat/.test(p)) return {status: 200, json: async () => p.endsWith('beat') ? beatAns : {ok: true}};
+      const x = script[Math.min(i++, script.length - 1)]; if (x instanceof Error) throw x; return {status: 200, json: async () => x}}}; let beatAns = {ok: true};
+    const tout = Object.assign(new Error('timed out'), {name: 'TimeoutError'});
+    let rel = await takeClaudeSlot('http://x', () => {}, {key: 'hero:1', member: 'Ann', tools: () => 7, fetchImpl: fk([tout, {ok: true, lease: 'L1'}]), beatMs: 20});
+    ok(calls.filter(c => c.p === '/play/runner/slot').length === 2 && calls.some(c => c.p.endsWith('cancel')) && calls.find(c => c.p === '/play/runner/slot').b.member === 'Ann' && calls.find(c => c.p === '/play/runner/slot').b.ticket, 'a slot request that timed out is cancelled and asked again, never run without a lease');
+    await sleep(70); const bt = calls.filter(c => c.p.endsWith('beat')); ok(bt.length >= 2 && bt[0].b.lease === 'L1' && bt[0].b.tools === 7, `the holder beats while it holds the lease (${bt.length} beats, its tool count on them)`);
+    rel.idle(true); await sleep(10); ok(calls.filter(c => c.p.endsWith('beat')).some(c => c.b.idle === true), 'release.idle tells the supervisor'); rel(); const nb = calls.length; await sleep(60);
+    ok(calls.length === nb + 0 || calls.slice(nb).every(c => !c.p.endsWith('beat')), 'a released lease stops beating');
+    let lostN = 0; beatAns = {ok: false, lost: true, why: 'no tool call for 10 min'}; const say = []; rel = await takeClaudeSlot('http://x', s => say.push(s), {key: 'hero:1', fetchImpl: fk([{ok: true, lease: 'L2'}]), beatMs: 15, onLost: () => lostN++}); await sleep(70);
+    ok(lostN === 1 && say.some(s => /took this Claude slot back/.test(s)), 'a holder told it lost its slot ends the turn, once: ' + say.join(' / ')); rel(); beatAns = {ok: true};
+    let ran = 0; const r0 = await withClaudeSlot('http://x', async () => {ran++; return true}, () => {}, {key: 'hero:1', stopped: () => true, fetchImpl: fk([{ok: true, lease: 'L3'}])});
+    ok(ran === 0 && r0 === false, 'a runner told to stop runs no turn on the way out (it would run with no lease)')}
   // six minds: the Fellowship's five as hero runners and the DM start together, whatever the caps
   {for (const h of heroes) h.fellow = h.id <= 5;
     const six = await mk(true, {RUNNER_CLAUDE_MAX: '1', RELAY_MAX_RUNNERS: '2'}), n2 = kids.length;
@@ -344,11 +463,11 @@ console.log('a slow page: late answers kept for the retry, held waits, page busy
   ok(calls().length === before + 1, 'past lateMs the kept answer is gone and the page is asked again'); ws.say({type: 'result', id: calls().at(-1).id, result: {ok: true}}); await p5;
   // 5. a wait the live page still holds (an answered Table scene) is not offline
   r = await be.call(1, 'wait', {minutes: 10});
-  ok(r.ok === true && r.held === true && !r.offline && r.why === HELD_WAIT.why, 'a wait still held by a live page answers "still waiting", not offline');
+  ok(r.ok === true && r.held === true && r.turn_over === true && !r.offline && r.why === HELD_WAIT.why, 'a wait a live page has not answered yet ends the turn (turn_over), not offline');
   const w0 = calls().length, p6 = be.call(1, 'wait', {minutes: 10}); await sleep(20);
   ok(calls().length === w0, 'the next wait joins the one the page still holds');
-  ws.say({type: 'result', id: calls().filter(m => m.tool === 'wait').at(-1).id, result: {ok: true, waited_min: 0, why: 'the table settled'}}); r = await p6;
-  ok(r.ok && r.why === 'the table settled', 'and gets the table\'s end when it comes');
+  ws.say({type: 'result', id: calls().filter(m => m.tool === 'wait').at(-1).id, result: {ok: true, waited_min: 30, why: 'time passed'}}); r = await p6;
+  ok(r.ok && r.why === 'time passed', 'and gets the page\'s own answer when it comes');
   // 6. a silent page (no beat) is page busy, and is told so
   clearInterval(beat); await sleep(1050);
   r = await be.call(1, 'wait', {minutes: 5});
@@ -408,6 +527,119 @@ console.log('company runners (fake children, #460)');
   s = await req(B, '/play/runner/stop', {method: 'POST', body: {kind: 'company', company: 7}});
   ok(s.status === 200 && s.runner.state === 'stopping' && k.got === 'stop\n', 'Stop <company> stops the company runner');
   server.close();
+}
+
+// ---------------------------------------------------------------- 2c. budget stops (#807), fake children
+console.log('budget stops (fake children, #807)');
+{
+  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-bud-'));
+  const heroes = [{id: 1, name: 'Ann', alive: true, company: 7, size: 2, lead: true}, {id: 2, name: 'Bo', alive: true, company: 7, size: 2}, {id: 3, name: 'Cy', alive: true, company: 8, size: 1}, {id: 5, name: 'Fi', alive: true, company: 12, size: 2, lead: true}, {id: 6, name: 'Gu', alive: true, company: 12, size: 2}, {id: 9, name: 'Ivo', alive: true, company: 13, size: 1}, {id: 11, name: 'Kit', alive: true, company: 14, size: 1}];
+  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes, dm: true, worldId: 'w1'})};
+  const kids = [];
+  const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 60000 + kids.length; k.args = args; k.got = '';
+    k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d}});
+    k.kill = () => {setTimeout(() => k.emit('exit', null), 5)}; kids.push(k); return k};
+  const host = async () => {const server = http.createServer((q, r) => {r.writeHead(404); r.end('{}')}), play = attachPlay(server, {backend: be, log: () => {}}), lines = [];
+    const sup = attachRunners(server, {play, enabled: true, log: l => lines.push(l), spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '10'}});
+    await new Promise(r => server.listen(0, '127.0.0.1', r)); return {server, play, sup, lines, B: `http://127.0.0.1:${server.address().port}`}};
+  const A = await host(), {B, sup} = A;
+  const start = (body, origin = PAGE) => req(B, '/play/runner/start', {method: 'POST', body: {provider: 'anthropic', ...body}, origin});
+  const say = (k, l) => k.stdout.emit('data', Buffer.from(l + '\n'));
+  const look = async key => (await req(B, '/play/runner')).runners.find(r => r.key === key);
+  const events = () => readFileSync(join(tmp, 'runners', 'events.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  const active = () => JSON.parse(readFileSync(sup.activeFile, 'utf8'));
+  const RN = await import('../src/ui/runners.js');
+
+  // a hero runner ends on its own budget: stopped, marked, logged, and nothing starts it again
+  let s = await start({hero: 3, by: 'owner'}); const kc = kids[0], n0 = kids.length;
+  say(kc, '[turn 83] 1 tool calls | turn $0.0175 | run $1.0067 | session $2.4588 | error_max_budget_usd');
+  say(kc, '[agent] stopped after 83 turns this session (budget reached); this run $1.0067, session $2.4588.');
+  kc.emit('exit', 0); await sleep(10);
+  let v = await look('hero:3');
+  ok(v.state === 'stopped' && v.budgetSpent === true && v.endWhy === 'budget reached' && v.by === 'owner', `a hero runner that spent its budget reads stopped, marked, with why and who started it (${v.state}, ${v.endWhy}, by ${v.by})`);
+  for (let i = 0; i < 3; i++) sup.adopt();
+  ok(kids.length === n0 && !active().runners.length && active().spent.some(x => x.key === 'hero:3' && x.cost === 1.0067), 'a budget stop is not adopted, leaves the active list and is kept as spent');
+  // the alert names the spend and the price of another start
+  ok(RN.reasonOf(v, null) === 'budget spent: $1.01 of $1.00', 'the alert names the spend: ' + RN.reasonOf(v, null));
+  ok(RN.costNote('fellowship') === ' · another $2.00' && RN.anotherText(RN.startCost('hero', 3)) === 'another $1.00', 'and what another start costs: ' + RN.costNote('fellowship'));
+  // the stop reason is logged: the runner's log, and events.jsonl for reports
+  ok(/stopped \(exit 0\) \| why budget reached, \$1\.01 of \$1\.00/.test(readFileSync(join(tmp, 'runners', 'hero-3.log'), 'utf8')) && /\| by owner/.test(readFileSync(join(tmp, 'runners', 'hero-3.log'), 'utf8')), 'the runner log says who started it and why it ended, with the spend');
+  {const e = events().filter(x => x.key === 'hero:3');
+    ok(e.some(x => x.event === 'start' && x.by === 'owner' && x.budget === 1) && e.some(x => x.event === 'end' && x.why === 'budget reached' && x.cost === 1.0067 && x.budget === 1 && x.exit === 0 && x.world === 'w1'), 'events.jsonl has the start with who asked and the end with why and how much')}
+
+  // the owner's click brings it back; a spent seat's start is told apart in the log
+  s = await start({hero: 3, by: 'owner'}); const kc2 = kids[kids.length - 1];
+  ok(s.status === 200 && !(await look('hero:3')).budgetSpent && !active().spent, 'the owner\'s click starts it again, and it is no longer spent');
+  ok(events().some(x => x.event === 'start' && x.key === 'hero:3' && x.by === 'owner' && x.afterBudget === 1.0067), 'the log shows that start came after a budget stop');
+  s = await start({hero: 9, by: 'owner'}, 'http://evil.example'); ok(s.status === 403, 'another origin is still refused');
+  s = await req(B, '/play/runner/start', {method: 'POST', body: {hero: 9, by: 'owner', provider: 'anthropic'}, origin: null});
+  ok(s.status === 200 && s.runner.by === 'local', 'only the page may say "owner": a local tool logs as local');
+  const k9 = kids[kids.length - 1]; say(k9, '[agent] stopped after 1 turns this session (5 empty or failed turns); this run $0.01.'); k9.emit('exit', 0); await sleep(10);
+  v = await look('hero:9'); ok(v.endWhy === '5 empty or failed turns' && !v.budgetSpent, 'another way to end is logged as itself, not as a budget stop');
+  say(kc2, '[agent] stopped from the game: releasing the hero and stopping'); await req(B, '/play/runner/stop', {method: 'POST', body: {hero: 3}}); kc2.emit('exit', 0); await sleep(10);
+  ok(events().some(x => x.event === 'end' && x.key === 'hero:3' && x.by === 'owner' && /stopped by owner/.test(x.why)), 'a stop from the page is logged as the owner\'s');
+
+  // a crash: not a budget stop, and the seats that restart themselves still do. A crash with the hero alive starts nothing, as
+  // before (the supervisor has no crash restart since #691); the hero's heir does.
+  s = await start({hero: 11, provider: 'ollama', model: 'mock-heir:1b', by: 'owner'}); const kk = kids[kids.length - 1];
+  kk.stderr.emit('data', Buffer.from('TypeError: boom\n')); heroes[6] = {...heroes[6], alive: false}; kk.emit('exit', 1); await sleep(10);
+  v = await look('hero:11'); ok(v.state === 'crashed' && v.endWhy === 'crash' && !v.budgetSpent && events().some(x => x.event === 'end' && x.key === 'hero:11' && x.why === 'crash' && x.exit === 1), 'a crash is logged as a crash, not a budget stop');
+  heroes.push({id: 12, name: 'Lem', alive: true, succeeds: 11, company: 15, size: 1});
+  let got = sup.adopt(), kl = kids[kids.length - 1];
+  ok(got.includes('hero:12') && kl.args.includes('mock-heir:1b'), 'a crash still restarts its seat: the heir of a crashed runner\'s fallen hero gets a runner');
+  ok(events().some(x => x.event === 'start' && x.key === 'hero:12' && x.by === 'adopt'), 'and the log says adopt started it, not the owner');
+
+  // a heir still gets a seat when the runner ended for any other reason (above, and #460's check); not when it was out of money
+  s = await start({hero: 9, by: 'owner'}); const k92 = kids[kids.length - 1], n1 = kids.length;
+  say(k92, '[turn 9] x | run $1.0100 | session $1.01'); say(k92, '[agent] stopped after 9 turns this session (budget reached); this run $1.01.');
+  heroes[5] = {...heroes[5], alive: false}; k92.emit('exit', 0); await sleep(10);
+  heroes.push({id: 10, name: 'Jo', alive: true, succeeds: 9, company: 16, size: 1});
+  ok(!sup.adopt().length && kids.length === n1 && A.lines.some(l => /Jo: no hero runner: Ivo spent its budget/.test(l)) && events().some(x => x.event === 'no-restart' && x.by === 'adopt' && x.hero === 10), 'a heir of a runner that ended on its budget gets none; the refusal is logged');
+
+  // a company runner on budget: the first member let go marks it at once; none of its members gets a hero runner, even one who leaves
+  s = await start({kind: 'company', company: 7, by: 'owner'}); const ko = kids[kids.length - 1], rid = hostname() + ':' + ko.pid + ':company', n2 = kids.length;
+  for (const id of [1, 2]) await req(B, '/play/claim', {method: 'POST', body: {hero: id, runner: rid, provider: 'anthropic', model: 'claude-haiku-5-5'}, origin: null});
+  await look('company:7'); sup.adopt();
+  say(ko, '[08:07:47] [Bo] [turn 9] x | turn $0.20 | member $0.60 | run $2.2545 of $2.0000'); say(ko, '[08:07:48] [Bo] done (budget reached): 6 turns, 1 at the table, $0.3716');
+  await req(B, '/play/release', {method: 'POST', body: {hero: 2, runner: rid}, origin: null});
+  v = await look('company:7');
+  ok(v.state !== 'stopped' && v.budgetSpent === true && !active().runners.some(x => x.key === 'company:7' || x.kind === 'company') && active().spent.some(x => x.key === 'company:7'), `a company runner is out of budget from its first member's "done" while another plays on (${v.state}), and is off the active list`);
+  heroes[1] = {...heroes[1], company: 9, size: 1}; heroes[0] = {...heroes[0], size: 1};
+  ok(!sup.adopt().length && kids.length === n2 && A.lines.some(l => /Bo: no hero runner:/.test(l)), 'a member who leaves that company gets no hero runner');
+  say(ko, '[08:07:50] [Ann] done (budget reached): 8 turns, 2 at the table, $0.51'); await req(B, '/play/release', {method: 'POST', body: {hero: 1, runner: rid}, origin: null}); ko.emit('exit', 0); await sleep(10);
+  ok(!sup.adopt().length && kids.length === n2, 'and when it ends none of its members gets one');
+  v = await look('company:7'); ok(v.state === 'stopped' && v.endWhy === 'budget reached' && Math.abs(v.cost - 2.2545) < 1e-9, 'it ends as a budget stop with the spend: $' + v.cost);
+
+  // a member leaving a company on a live budget keeps its seat
+  s = await start({kind: 'company', company: 12, by: 'owner'}); const kf = kids[kids.length - 1], rf = hostname() + ':' + kf.pid + ':company';
+  for (const id of [5, 6]) await req(B, '/play/claim', {method: 'POST', body: {hero: id, runner: rf, provider: 'anthropic', model: 'claude-haiku-5-5'}, origin: null});
+  await look('company:12'); say(kf, '[turn 1] x | run $0.2000 of $2.0000'); heroes[4] = {...heroes[4], company: 17, size: 1};
+  await req(B, '/play/release', {method: 'POST', body: {hero: 6, runner: rf}, origin: null});
+  got = sup.adopt(); ok(got.includes('hero:6'), 'a member who leaves a company on a live budget still gets a hero runner');
+
+  // the DM: a budget stop survives a relay restart; resume starts neither it nor anything spent, and the page still sees why
+  s = await start({kind: 'dm', by: 'owner'}); const kd = kids[kids.length - 1];
+  say(kd, '[turn 3] x | turn $0.05 | run $1.0100 | session $1.01'); say(kd, '[dm] stopped after 3 turns this session (budget reached); this run $1.01, session $1.01.'); kd.emit('exit', 0); await sleep(10);
+  ok(active().spent.some(x => x.key === 'dm' && x.cost === 1.01), 'a DM on budget is kept as spent');
+  await sup.shutdown(300); A.server.close(); const n3 = kids.length;
+  const C = await host(), r = await C.sup.resume({waitMs: 2000, pollMs: 20, settleMs: 10, heroWaitMs: 50});
+  ok(!r.resumed.includes('dm') && !r.resumed.includes('company:7') && !r.resumed.includes('hero:9') && kids.slice(n3).every(k => !/dm-agent|--company 7/.test(k.args.join(' '))), 'resume brings back no runner that spent its budget, the open DM seat included: ' + JSON.stringify(r.resumed));
+  ok(r.skipped.some(x => x.what === 'dm' && /budget/.test(x.why)) && C.lines.some(l => /DM agent spent its budget \(\$1\.01\): not started/.test(l)), 'and says so');
+  v = (await req(C.B, '/play/runner')).runners.find(x => x.key === 'dm');
+  ok(v && v.state === 'stopped' && v.budgetSpent && v.cost === 1.01 && v.budget === 1 && RN.reasonOf(v, null) === 'budget spent: $1.01 of $1.00', 'after the restart the page still reads the budget stop: ' + (v && RN.reasonOf(v, null)));
+  s = await req(C.B, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'anthropic', by: 'owner'}, origin: PAGE});
+  ok(s.status === 200 && s.runner.by === 'owner', 'the owner can still start it');
+  // a world reset forgets them: a new world's DM is not held back by the old world's spend
+  await req(C.B, '/play/runner/stop-all', {method: 'POST', body: {}, origin: PAGE}).then(() => {});
+  ok(!JSON.parse(readFileSync(C.sup.activeFile, 'utf8')).spent, 'a world reset clears the spent list');
+  // the DM's chosen mind (#824): --resume-runners starts it on the same provider and model, any provider
+  kids[kids.length - 1].emit('exit', 0); await sleep(10); // the DM the owner started above leaves
+  s = await req(C.B, '/play/runner/start', {method: 'POST', body: {kind: 'dm', provider: 'huggingface', model: 'meta-llama/Llama-3.3-70B-Instruct', budget: 2, by: 'setup'}, origin: PAGE});
+  ok(s.status === 200, 'a DM on a Hugging Face model starts' + (s.status === 200 ? '' : ': ' + s.error));
+  await C.sup.shutdown(300); C.server.close(); const n4 = kids.length, D = await host(), r4 = await D.sup.resume({waitMs: 2000, pollMs: 20, settleMs: 10, heroWaitMs: 50});
+  const a4 = (kids.slice(n4).find(k => /dm-agent/.test(k.args.join(' '))) || {args: []}).args.join(' ');
+  ok(r4.resumed.includes('dm') && /--provider huggingface/.test(a4) && /--model meta-llama\/Llama-3\.3-70B-Instruct/.test(a4) && /--budget 2/.test(a4), 'resume starts it with the provider, model and budget chosen: ' + a4);
+  D.sup.killAll(); await sleep(20); D.server.close();
 }
 
 // ---------------------------------------------------------------- 3. end to end

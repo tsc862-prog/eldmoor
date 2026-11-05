@@ -11,6 +11,7 @@
 // character-builder; lines by lore-keeper. Canon: docs/LORE.md, "Townsfolk".
 import {pickA} from '../core/rng.js';
 import {CITY,CRYPT,ZONES,dist} from '../world/map.js';
+import {solidAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {RACES,racesOf,raceName} from '../data/races.js';
 import {ELITES} from '../data/mobs.js';
@@ -57,7 +58,8 @@ function gateIn(c){const [[ax,ay],[bx,by]]=c.gateTiles,g=c.gateSide,x=(ax+bx)/2+
   return g==='E'?{x:x-1.3,y}:g==='W'?{x:x+1.3,y}:g==='S'?{x,y:y-1.3}:{x,y:y+1.3}}
 // A stroll point for the bard: within 1.3 tiles of the square, inside the walls.
 function strollPt(p,c){const a=r()*6.283,d=.4+r()*.9;
-  return{x:Math.min(c.x1-.3,Math.max(c.x0+1.3,p.post.x+Math.cos(a)*d)),y:Math.min(c.y1-.3,Math.max(c.y0+1.3,p.post.y+Math.sin(a)*d))}}
+  const q={x:Math.min(c.x1-.3,Math.max(c.x0+1.3,p.post.x+Math.cos(a)*d)),y:Math.min(c.y1-.3,Math.max(c.y0+1.3,p.post.y+Math.sin(a)*d))};
+  return solidAt(q.x,q.y)?{x:p.post.x,y:p.post.y}:q} // never into a building (#793); the draws above are unchanged
 
 // Build the roster once: every town staffs its roles (or all roles) with people of
 // its own race. Names come from the shared race pool, so no hero ever shares one.

@@ -1,0 +1,35 @@
+{
+  "about": "Deterministic layer choices for the LPC hero sheets (#789): one sheet per class and people (data/races.js; `@head` is the people's head family, `@hair` its hair colour, and `skin` the LPC body and head skin, each picked by eye as the nearest to the people's first skin and hair colour in data/races.js; Warband peoples are green, Concord peoples human tones), composed by scripts/art/lpc-heroes.mjs from the Universal LPC Spritesheet Character Generator's layers. `def` is a sheet_definitions name, `variant` its colour or material, `tint` recolours that layer to the faction key ramp (the tabard). Frames: generator walk rows (8 up, 9 left, 10 down, 11 right) in our order down, left, right, up; columns 0 (stand), 3 and 7 (the two stride poses); crop is the top-left of the 32x48 window in the 64x64 frame.",
+  "frames": {"rows": [10, 9, 11, 8], "cols": [0, 3, 7], "crop": [16, 15]},
+  "peoples": {
+    "hallowan":  {"head": "human", "skin": "light",        "hair": "light brown"},
+    "tarrow":    {"head": "human", "skin": "amber",        "hair": "chestnut"},
+    "skerrin":   {"head": "human", "skin": "light",        "hair": "black"},
+    "ashfolk":   {"head": "orc",   "skin": "pale_green",   "hair": "black"},
+    "mirekin":   {"head": "human", "skin": "zombie_green", "hair": "raven"},
+    "thornhide": {"head": "human", "skin": "olive",        "hair": "dark brown"}},
+  "fallbackPeople": "hallowan",
+  "classes": {
+    "Warrior":     {"body": "male",   "skin": "light", "layers": [
+      {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "charcoal"}, {"def": "feet_boots", "variant": "black"},
+      {"def": "torso_clothes_longsleeve", "variant": "red", "tint": true}, {"def": "hat_helmet_kettle", "variant": "steel"}, {"def": "weapon_sword_arming", "variant": "steel"}]},
+    "Mage":        {"body": "female", "skin": "light", "layers": [
+      {"def": "body"}, {"def": "@head"}, {"def": "feet_boots", "variant": "brown"}, {"def": "torso_clothes_robe", "variant": "red", "tint": true},
+      {"def": "hair_long", "variant": "@hair"}, {"def": "weapon_magic_gnarled", "variant": "medium"}]},
+    "Hunter":      {"body": "male",   "skin": "light", "layers": [
+      {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "brown"}, {"def": "feet_boots", "variant": "leather"},
+      {"def": "torso_clothes_shortsleeve", "variant": "red", "tint": true}, {"def": "hat_hood_cloth", "variant": "forest"}, {"def": "quiver", "variant": "quiver"}, {"def": "weapon_ranged_bow_normal", "variant": "medium"}]},
+    "Priest":      {"body": "female", "skin": "light", "layers": [
+      {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "white"}, {"def": "feet_boots", "variant": "tan"},
+      {"def": "torso_clothes_longsleeve", "variant": "red", "tint": true}, {"def": "hair_ponytail", "variant": "@hair"}, {"def": "weapon_blunt_mace", "variant": "mace"}]},
+    "Rogue":       {"body": "male",   "skin": "light", "layers": [
+      {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "black"}, {"def": "feet_boots", "variant": "black"},
+      {"def": "torso_clothes_vest", "variant": "red", "tint": true}, {"def": "hat_hood_cloth", "variant": "charcoal"}, {"def": "weapon_sword_dagger", "variant": "dagger"}]},
+    "Skald":       {"body": "male",   "skin": "light", "layers": [
+      {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "navy"}, {"def": "feet_boots", "variant": "brown"},
+      {"def": "torso_clothes_longsleeve", "variant": "red", "tint": true}, {"def": "hair_long", "variant": "@hair"}, {"def": "weapon_sword_rapier", "variant": "rapier"}]},
+    "Wildspeaker": {"body": "female", "skin": "light", "layers": [
+      {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "forest"}, {"def": "feet_boots", "variant": "walnut"},
+      {"def": "torso_clothes_tunic", "variant": "red", "tint": true}, {"def": "hair_braid", "variant": "@hair"}, {"def": "weapon_magic_simple", "variant": "simple"}]}
+  }
+}

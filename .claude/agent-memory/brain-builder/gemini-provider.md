@@ -14,7 +14,7 @@ Gemini landed as provider `google` (label "Gemini", tag `<model> · google`) in 
 - Free tier: costFn returns 0, costKnown true; paid tier prices from PRICES. Runners keep a budget (never reached on free).
 - Limiter: `makeLimiter({rpm})` spaces starts (RELAY_GOOGLE_RPM); `rateLimitOf` now returns null for `kind: 'quota'` (fixes HF/OpenAI quota 429s being retried for writing kinds).
 - Thought signatures: compat tool_calls carry `extra_content.google.thought_signature`; chat() keeps it, toOpenAI sends it back, local-agent keeps it in turnMsgs and drops it when pushing to L.history (`noSig`). Do not strip in `strip` (it maps turnMsgs too). 400 naming thought_signature -> onBadRequest flattens calls to text.
-- DM: `DM_PROVIDERS` has google; it rides the Ollama DM branch (`gem` flag) with the adapter from openaiRunner, voices on the same model with 8 s budgets, paidLine cost lines. openai/huggingface still have no DM runner.
+- DM: rides the Ollama DM branch (`gem` flag) with the adapter from openaiRunner, voices on the same model with 8 s budgets, paidLine cost lines; openai and huggingface too since #824, see [[dm-every-mind]].
 - fellowship.mjs: each compat member keeps its own adapter `m.ad` (the old shared `openaiChat` was last-one-wins across providers).
 - googlecheck pitfalls: the mock answers the DM's turn by checking `tools` for `dm_status`; keep the mock's 400 bad-key as an array to cover the unwrap.
 

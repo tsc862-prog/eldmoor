@@ -199,6 +199,7 @@ export const canPause=()=>tableOn()&&TABLE.speed<=1;
 // (S.pauseAll, saved with the world; absent = off, so older saves and seeded worlds are untouched). One company: always.
 export const pauseAll=()=>!!S.pauseAll;
 export function setPauseAll(on){if(on)S.pauseAll=true;else delete S.pauseAll}
+export const worldAtTable=()=>allScenes().some(sc=>sc.pause&&!sc.resolved&&stopsWorld(sc)); // a scene holds the whole world now (#868)
 export const stopsWorld=sc=>{if(!sc||!sc.pause||S.pauseAll)return !!(sc&&sc.pause);const F=followed();return !F||sceneCompany(sc)===F};
 // #148: do these members' agents (or the owner, for an absent runner) have the say? Then the moment waits.
 export const agentsDecide=L=>L.some(a=>a&&a.player&&a.state!=='dead'&&!reflexMay(a));
@@ -381,8 +382,9 @@ function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFo
   sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(spot?{spot}:{}),...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{})}); // an item used (#360): {item, on, ok, effect, healed?}
   const first=!(sc.rd>1);sc.beats[sc.beats.length-1].rd=sc.rd||1;
   {const H=dmOf(sc),K=kindOf(sc);if(H&&H.onBeat&&!together(sc)&&(first||(K&&K.everyBeat)))H.onBeat(sc,sc.beats[sc.beats.length-1])} // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
-  if(act.line&&a.state!=='dead'){const e=speak(a,act.line,'table',!a.player);if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
-  else if(reflexMay(a)&&first)voice(sc,a,act.k); // a member whose runner is gone acts (and speaks) by reflex (#148)
+  const ok=act.k==='a'||act.k==='b'?clean(o.text,40):act.k; // the act a line goes with, for the watcher's Chat (#734)
+  if(act.line&&a.state!=='dead'){const e=lineTag(sc,speak(a,act.line,'table',!a.player),ok,act.by!=='agent');if(a.player)agentLine(a,e)} // an agent's own line; a silent agent's reflex acts without a word
+  else if(reflexMay(a)&&first)voice(sc,a,act.k,ok); // a member whose runner is gone acts (and speaks) by reflex (#148)
   if(first)remember(a,'table',sc.title+': I chose to '+o.text.charAt(0).toLowerCase()+o.text.slice(1)+(res?' ('+res+')':'')+'.')}
 const LINES={strike:['Now, while it turns!','Hit it together.','Mine. Leave this one to me.'],guard:['Here! Look at me!','On me. Get behind.','Come on, then.'],
   heal:['Hold still. Breathe.','Not yet. Not today.','Stay with us.'],retreat:['Back! Fall back!','Not like this. Go.','I am done in. Pull back.'],
@@ -391,12 +393,14 @@ const LINES={strike:['Now, while it turns!','Hit it together.','Mine. Leave this
   yes:['Aye.'],no:['No. Not this.'],steady:['Easy. We have seen worse.'],aid:['Let me see that wound.']};
 // A scripted member's line: the model voices it in persona when the relay is on and the world is
 // paused (said in the moment, never cached); otherwise a plain line.
-function voice(sc,a,k){const pool=LINES[k];if(!pool||a.hidden)return;const text=pool[Math.floor(r()*pool.length)],C=sceneCompany(sc);
+// A table line tagged for the watcher's Chat (#734): which scene (company:id) and which act it went with. Write-only.
+const lineTag=(sc,e,k,rfx)=>{if(e){e.scene=true;e.sk=sc.company+':'+sc.id;e.opt=k;if(rfx)e.rfx=1}return e};
+function voice(sc,a,k,ok=k){const pool=LINES[k];if(!pool||a.hidden)return;const text=pool[Math.floor(r()*pool.length)],C=sceneCompany(sc);
   if(sc.pause&&a.brain&&C&&C.ai&&S.brainOn!==false&&sayOk(a)){const sid=sc.id,cid=sc.company;
     askRelay('say',snapshotFor(a,'say',{trigger:'table',ctx:{scene:sc.title,kind:sc.kind,choice:k}}),Math.min(TABLE.turnMs,4000)).then(j=>{
       const T=sceneFor(companyById(cid)),still=T&&T.id===sid&&living(a)&&!a.hidden;const t=j&&cleanLine(j.line);
-      if(still)speak(a,t||text,'table',!!t)}).catch(()=>{});return}
-  speak(a,text,'table')}
+      if(still)lineTag(sc,speak(a,t||text,'table',!!t),ok,1)}).catch(()=>{});return}
+  lineTag(sc,speak(a,text,'table'),ok,1)}
 
 function apply(sc,a,act){if(act.k==='attempt')return ATT?ATT.apply(sc,a,act):'nothing came of it'; // a free action, ruled by the DM (#522)
   if(EXTRA[sc.kind])return EXTRA[sc.kind].apply(sc,a,act);const f=foeOf(sc),k=act.k;
@@ -525,8 +529,16 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
   if(COMBAT[sc.kind]){for(const a of mem)tickRound(a);const f=foeOf(sc);if(f)tickRound(f); // a round has passed: ability cooldowns and round-long effects run down
     if(rounds(sc))for(const e of [...mem,...sceneFoes(sc)])clearRounds(e)} // conditions and round-counted effects end with the scene (#296)
   for(const a of mem){notify(a,'The scene ends: '+sc.title+'. '+tail,true);if(sc.ids.includes(a.id)&&sc.kind!=='crawl')moment(a,'scene',sc.title)} // reflection moment (#179)
+  sceneRecord(sc,tail);
   {const H=dmOf(sc);if(H&&H.done)H.done(sc)}
   for(const f of enders){try{f(sc)}catch(e){}}}
+// The watcher's record of a closed scene (#734): its header, the frame the members heard, each member's first act and the
+// result, so the Chat tab can show a scene as one exchange. Write-only: nothing in the sim reads S.tableLog (no RNG).
+function sceneRecord(sc,tail){const L=S.tableLog||(S.tableLog=[]),c=sc.ctx||{};
+  L.push({key:sc.company+':'+sc.id,company:sc.company,kind:sc.kind,title:sc.title,frame:clean(framedText(sc),600),at:sc.at,end:Math.round(S.gameMin),where:sceneWhere(sc),ids:sc.ids.slice(),
+    ...(c.prop!=null?{prop:c.prop}:{}),acts:sc.beats.filter(b=>b.by!=='foe'&&b.by!=='cond'&&(b.rd||1)===1).map(b=>({id:b.id,name:b.name,k:b.k==='a'||b.k==='b'?clean(b.text,40):b.k,by:b.by,said:!!b.line})),result:tail});
+  if(L.length>60)L.shift()}
+export const sceneFrame=sc=>sc?framedText(sc):''; // the frame as the members heard it, for the watcher's Chat (#734)
 // Who was brought back and who still lies down when a scene ends (#654).
 function downTail(sc){const ups=[...new Set(sc.up||[])].map(byId).filter(b=>living(b)&&!isDown(b)).map(b=>b.name),dn=downIn(sc);
   return (ups.length?' '+ups.join(' and ')+(ups.length>1?' are':' is')+' back on their feet.':'')+(dn.length?' '+dn.map(b=>b.name+(b.down.stable?' lies stable':' still bleeds')).join('; ')+'.':'')}
@@ -623,7 +635,7 @@ export function tableTick(){if(STG&&S.staged)STG.tick(); // a staged cast walks 
 setProposeHook(P=>{const C=propCompany(P)||companyOf(byId(P.by))||slotted(),L=memOf(C);if(voteRefusal(C))return false;if(agentsDecide(L))requestDrop('a vote: '+P.details); // #148: 3x/8x drop to 1x at a decision
   if(!holdOk(L))return false;const by=byId(P.by);
   if(sceneFor(C)){if(P.src==='pair'&&!C.tableQ&&atTable(C)){C.tableQ={kind:'decision',title:'Put to the party: '+P.details,frame:[gd('The other company'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],ctx:{prop:P.id},at:Math.round(S.gameMin)};return true}return false} // a merge's second scene waits its turn (#500)
-  const sc=open('decision','Put to the party: '+P.details,[by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id},C);
+  const sc=open('decision','Put to the party: '+P.details,[P.caller?gd(P.caller):by||gd('The party'),' puts it to the party: ',gd(P.details),'. Everyone votes.'],{prop:P.id},C);
   if(sc)for(const id in P.votes)if(sc.ids.includes(+id))sc.acts[id]={k:P.votes[id].v,line:P.votes[id].reason||'',by:P.votes[id].by==='reflex'?'reflex':'agent'}; // a vote already cast counts as that member's turn
   if(sc&&sc.wk)for(const id of sc.ids)hush(byId(id),e=>e.text.includes('vote('+P.id+',')); // the scene wakes them once the DM has set it (#682), not the proposal
   return !!sc});
