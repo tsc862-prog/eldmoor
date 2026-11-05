@@ -63,7 +63,7 @@ const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className
 export const hn=a=>{const s=el('span','hn f'+a.fac,styled(a));s.dataset.hid=a.id;return s};
 const meter=(cls,frac)=>{const m=el('div','meter '+cls);const i=document.createElement('i');i.style.width=clamp(frac*100,0,100)+'%';m.append(i);return m};
 // Render chronicle-style parts (strings, heroes, {t,c} spans) into a node.
-const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p)node.append(el('span',p.c||'',p.t))}};
+const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p){const sp=el('span',p.c||'',p.t);if(p.dg){sp.dataset.dungeon=p.dg;sp.classList.add('dgname');sp.title='Open the dungeon view';sp.setAttribute('role','button');sp.tabIndex=0}node.append(sp)}}}; // p.dg: a DM-made site's name opens its dungeon view (#642)
 // Zone index from a number or a zone name; -1 when unknown.
 const zoneIdx=z=>typeof z==='number'?z:ZONES.indexOf(z);
 
