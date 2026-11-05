@@ -32,14 +32,16 @@ import {drawCamp,drawCampLight} from './camp.js';
 import {trafficEnts,isTraffic,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
-import {getChunk,CH,CHUNKS_X,CHUNKS_Y} from './terrain.js';
+import {getChunk,CH,CHUNKS_X,CHUNKS_Y,chunkGen} from './terrain.js';
 import {createMinimap} from './minimap.js';
+import {drawWholeMap} from './wholemap.js'; // company rings and name tags in the whole-map view (#844)
 import {syncSpells,drawSpells} from './spellfx.js';
 import {TEXT,MARK,LIGHT,BOSS_PAL} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
 import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
+import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeLight,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
 import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
 const SCENE_LIGHT=[255,232,196]; // the light under a Table scene's people at night (#471)
@@ -55,6 +57,7 @@ function dirOf(e){let f=FACE.get(e);if(!f){f={x:e.x,y:e.y,d:e.face<0?1:2};FACE.s
 const STEP=[1,0,2,0]; // sheet columns of a walk cycle
 // Entities and labels this many world px outside the view are not drawn.
 const MARGIN=48;
+const ENTS=[],ESPR=[],EG=[],EGF=[],ESW=[],ESH=[],EPX=[],byY=(a,b)=>a.y-b.y; // the entity pass's arrays, reused across frames (#716)
 // BOSS_PAL lives in palette.js (#85: the raid arena draws Kragmaw too)
 
 // ---- camera control (module level so the UI and tools can drive it) ----
@@ -111,6 +114,22 @@ export function createRenderer(cv,screenEl){
   new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();initSceneView();
 
   function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
+  // Night tint by the hour: dusk and dawn are saturated (plum, then rose), full night a lifted deep blue, so the ground keeps its detail.
+  const nt=[0,0,0],nc=document.createElement('canvas'),nx=nc.getContext('2d'),NR=4;
+  function nightTint(){const h=(S.gameMin/60)%24,N=LIGHT.night,Wm=h>=12?LIGHT.dusk:LIGHT.dawn;
+    let f=h>=21||h<5?1:h>=12?(h-18)/3:(7-h)/2;f=clamp(f,0,1);f=f*f*(3-2*f);
+    for(let i=0;i<3;i++)nt[i]=Math.round(Wm[i]+(N[i]-Wm[i])*f);return nt}
+  function punch(x,y,r,a){const g=nx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,'rgba(0,0,0,'+a+')');g.addColorStop(.55,'rgba(0,0,0,'+a*.55+')');g.addColorStop(1,'rgba(0,0,0,0)');nx.fillStyle=g;nx.fillRect(x-r,y-r,r*2,r*2)}
+  function nightPass(sc,dk,sel,inView){
+    const w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR);if(nc.width!==w||nc.height!==h){nc.width=w;nc.height=h}
+    const c=nightTint();nx.setTransform(1,0,0,1,0,0);nx.globalCompositeOperation='source-over';nx.clearRect(0,0,w,h);
+    nx.fillStyle='rgba('+c[0]+','+c[1]+','+c[2]+','+(Math.pow(dk/.55,.5)*LIGHT.nightA)+')';nx.fillRect(0,0,w,h);
+    nx.globalCompositeOperation='destination-out';
+    const k=sc/NR,ox=cam.offX/NR,oy=cam.offY/NR; // light radii are in world units
+    let n=0;const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;punch(x*k+ox,y*k+oy,r*k,a*Math.min(1,dk/.4))};
+    for(const m of S.mobs){if(m.alive&&!m.hidden)lit(m,17,.6,6)}
+    for(const a of S.agents){if(a.hidden||a.state==="dead")continue;if(a===sel||a.company!=null)lit(a,a===sel?48:40,.95,7);else lit(a,28,.8,7)}
+    ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(nc,0,0,w,h,0,0,cv.width,cv.height);ctx.imageSmoothingEnabled=false}
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
   // A thin disposition ellipse at the feet (close zoom only), the same colours as the UI.
   function dispoRing(x,y,w,d){ctx.strokeStyle=(DISP[d]||DISP.neutral).color;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
@@ -119,32 +138,49 @@ export function createRenderer(cv,screenEl){
   // A label may carry other heights to try before it is dropped (alt, world y) and a dark plate behind it (pl): a Table
   // scene's people stack instead of vanishing and stay readable at night (#471). RES: screen boxes kept clear (bubbles).
   const LQ=[],POOL=[],BOX=[],RES=[];
-  function lab(t,x,y,col,css,pri,alt,pl){const n=LQ.length,L=POOL[n]||(POOL[n]={});L.t=t;L.x=x;L.y=y;L.col=col;L.css=css;L.pri=pri;L.i=n;L.alt=alt||null;L.pl=!!pl;LQ.push(L)}
+  function lab(t,x,y,col,css,pri,alt,pl,up){const n=LQ.length,L=POOL[n]||(POOL[n]={});L.t=t;L.x=x;L.y=y;L.col=col;L.css=css;L.pri=pri;L.i=n;L.alt=alt||null;L.pl=!!pl;L.up=up||0;LQ.push(L)}
   function flushLabels(sc){LQ.sort((a,b)=>b.pri-a.pri||a.i-b.i);BOX.length=0;for(const v of RES)BOX.push(v);RES.length=0;
     for(const L of LQ){const s=L.css*cam.dpr;ctx.font=s+'px VT323, monospace';const w=ctx.measureText(L.t).width,sx=L.x*sc+cam.offX;
-      for(let j=-1;j<(L.alt?L.alt.length:0);j++){const y=j<0?L.y:L.alt[j],sy=y*sc+cam.offY;
-        const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12;let hit=false;
+      // a bunched crowd stacks upward in whole plate heights (L.up tries) instead of piling; scene labels try their alt heights (#842)
+      for(let j=-1;j<(L.alt?L.alt.length:L.up);j++){const y=j<0?L.y:L.alt?L.alt[j]:L.y-(j+1)*(s*1.02/sc),sy=y*sc+cam.offY;
+        const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12+(L.up?1:0);let hit=false;
         for(let k=0;k<BOX.length;k+=4)if(BOX[k]<x1&&BOX[k+2]>x0&&BOX[k+1]<y1&&BOX[k+3]>y0){hit=true;break}
         if(hit)continue;BOX.push(x0,y0,x1,y1);
         if(L.pl){ctx.fillStyle='rgba(8,10,20,.82)';ctx.fillRect((x0-cam.offX)/sc,(y0-1-cam.offY)/sc,(x1-x0)/sc,(y1-y0+3)/sc)}
         drawText(L.t,L.x,y,L.col,L.css);break}}}
   // A radial light of colour c=[r,g,b] and strength a at world (x,y), radius r (lighter pass).
   function glow(x,y,r,c,a){const g=ctx.createRadialGradient(x,y,0,x,y,r),k=c[0]+','+c[1]+','+c[2];g.addColorStop(0,'rgba('+k+','+a+')');g.addColorStop(1,'rgba('+k+',0)');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
-  function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()}
+  function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()} // a traffic walker's shadow, filled at once (#856)
 
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
   // pixels so neighbouring chunks never show a seam at fractional scales.
-  function drawTerrain(sc){ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;const cs=CH*T;
+  // A still camera (the whole map, a region view, a parked free camera) draws the terrain from one canvas at the
+  // screen's resolution (#716): the chunks are copied into it once the view has held for a frame, and it is redrawn
+  // when the view, the canvas size or the chunks change. A moving camera draws the chunks directly, as before.
+  let tKey='',tPrev='',tCache=null,tReady=false;
+  function drawTerrain(sc){ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;
+    const key=cv.width+'|'+cv.height+'|'+sc+'|'+cam.offX+'|'+cam.offY+'|'+chunkGen;
+    if(key===tKey&&tReady){ctx.drawImage(tCache,0,0);return}
+    if(key!==tPrev){tPrev=key;tReady=false;paintChunks(ctx,sc);return} // the view moved: draw directly and see if it holds
+    if(!tCache||tCache.width!==cv.width||tCache.height!==cv.height){tCache=document.createElement('canvas');tCache.width=cv.width;tCache.height=cv.height}
+    const tc=tCache.getContext('2d');tc.setTransform(1,0,0,1,0,0);tc.clearRect(0,0,tCache.width,tCache.height);tc.imageSmoothingEnabled=false;
+    paintChunks(tc,sc);tKey=key;tReady=true;ctx.drawImage(tCache,0,0)}
+  function paintChunks(ctx,sc){const cs=CH*T;
     const i0=Math.max(0,Math.floor(-cam.offX/sc/cs)),i1=Math.min(CHUNKS_X-1,Math.floor((cv.width-cam.offX)/sc/cs));
     const j0=Math.max(0,Math.floor(-cam.offY/sc/cs)),j1=Math.min(CHUNKS_Y-1,Math.floor((cv.height-cam.offY)/sc/cs));
     for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const c=getChunk(i,j);
       const x0=Math.round(cam.offX+i*cs*sc),y0=Math.round(cam.offY+j*cs*sc),x1=Math.round(cam.offX+(i*cs+c.uw)*sc),y1=Math.round(cam.offY+(j*cs+c.uh)*sc); // c.uw/uh: the chunk in world units, whatever its resolution
       ctx.drawImage(c,0,0,c.width,c.height,x0,y0,x1-x0,y1-y0)}}
 
+  // Frame phases for scripts/perfprobe.mjs (#716): off (one null check a phase) unless the probe sets
+  // globalThis.__drawPhases={on:true,ms:Float64Array(8),n:0}; then each phase's milliseconds add up in ms[i].
+  // 0 camera+terrain, 1 ground layers (encounters, places, camp, spells), 2 entities (gather, sort, draw), 3 bolts and
+  // weather, 4 night, lights and spells in the air, 5 labels and Fellowship markers, 6 bubbles, floating text and the minimap.
+  let PH=null;const ph=i=>{if(PH){const t=performance.now();PH.ms[i]+=t-PH.t;PH.t=t}};
   let blink=0;
-  function draw(){
-    trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
-    if(drawSceneView(performance.now()/1000))return; // an indoor scene map covers the world too (#431)
+  function draw(){PH=globalThis.__drawPhases&&globalThis.__drawPhases.on?globalThis.__drawPhases:null;if(PH){PH.t=performance.now();PH.n++}
+    trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
+    if(drawSceneView(performance.now()/1000)){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');return} // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
     const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height));
@@ -163,7 +199,7 @@ export function createRenderer(cv,screenEl){
     const vx0=cam.camX-vw/2,vy0=cam.camY-vh/2,vx1=vx0+vw,vy1=vy0+vh;
     const inView=(x,y,m)=>x>vx0-m&&x<vx1+m&&y>vy0-m&&y<vy1+m;
     if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
-    drawTerrain(sc);
+    drawTerrain(sc);ph(0);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
@@ -180,36 +216,55 @@ export function createRenderer(cv,screenEl){
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
     drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite,outlined,dispoRing}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
     drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
+    let lt=performance.now();if(!cut){lifeBegin(S,cam,lt/1000);lifeGround(ctx)} // the ambient life of the map (#795): render only
+    lifeStats.acc=performance.now()-lt;
     if(!cut)drawPurposeGround(ctx,S,cam,{drawText,blink}); // the followed or hovered hero's road, tether or wait line, under the entities
     if(cut)drawSceneRings(ctx,cam,cut); // who is in the scene: a ring at their feet (#431)
-    const fxNow=performance.now()/1000;syncSpells(fx,fxNow,inView);drawSpells(ctx,0,close,inView,fxNow); // spell effects on the ground: rings, roots, briars (#374)
+    const fxNow=performance.now()/1000;syncSpells(fx,fxNow,inView);drawSpells(ctx,0,close,inView,fxNow);ph(1); // spell effects on the ground: rings, roots, briars (#374)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
-    const ents=[];
-    for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ents.push(m);
-    for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ents.push(a);
-    for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ents.push(p);
-    if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ents.push(boss);
-    if(close&&!cut)trafficEnts(S,inView,MARGIN,ents); // road traffic, skipped at whole-map zoom
-    ents.sort((a,b)=>a.y-b.y);
-    for(const e of ents){
-      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
-      const fr=e.moving?Math.floor(blink*6+e.id)%2:0;
+    ENTS.length=0;
+    for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ENTS.push(m);
+    for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
+    for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
+    if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
+    lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;
+    if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS); // road traffic, skipped at whole-map zoom (#856)
+    ENTS.sort(byY);
+    // Pass 1 (#716): each entity's sprite (or generated sheet frame), size and x, and the shadows in one path a frame (the
+    // living at full alpha, ghosts in a second path at theirs) instead of one fill per entity. Shadows now all sit under
+    // every sprite, which is where they belong anyway.
+    const nE=ENTS.length;
+    ctx.fillStyle=MARK.shadow;ctx.beginPath();
+    for(let i=0;i<nE;i++){const e=ENTS[i],ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',fr=e.moving?Math.floor(blink*6+e.id)%2:0;
+      if(e.kind==='deco'||isTraffic(e)){ESPR[i]=null;continue} // drawn whole in pass 2, with their own shadow
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
       else if(e.kind==='npc')s=npcSprite(e,e.moving?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
       else if(e.state==='dead')s=sprite('grave'+e.fac,SPR.grave[0],{G:'#8a8a96',F:'#3a3a46',B:FAC[e.fac].dark});
-      else s=heroSprite(e,e.state==='ghost',fr);
-      const px=Math.round((e.x+(e.kind==='npc'&&e.state==='home'&&!e.moving?((e.id%3)-1)*.6:0))*T),py=Math.round(e.y*T),live=e.state!=='dead'; // townsfolk at home stand on one wall column a tile apart (sim homeAt): stagger them over three lanes so the sprites do not stack (#701)
+      else s=heroSprite(e,ghost,fr);
       // a generated sheet (#177) for a living hero or creature, else the procedural sprite scaled to the same height
-      const G=live&&e.state!=='ghost'&&(e.kind==='hero'||e.kind==='mob')?sheetFrame(e,dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
-      const sw=G?G.fw/ART:s.width*PROC_SCALE,sh=G?G.fh/ART:s.height*PROC_SCALE;
+      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob')?sheetFrame(e,dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
+      let F=null;if(G){F=EGF[i]||(EGF[i]={img:null,sx:0,sy:0,fw:0,fh:0});F.img=G.img;F.sx=G.sx;F.sy=G.sy;F.fw=G.fw;F.fh=G.fh} // sheetFrame hands back one shared object
+      ESPR[i]=s;EG[i]=F;ESW[i]=G?G.fw/ART:s.width*PROC_SCALE;ESH[i]=G?G.fh/ART:s.height*PROC_SCALE;
+      // townsfolk at home stand on one wall column a tile apart (sim homeAt): stagger them over three lanes so the sprites do not stack (#701)
+      const px=EPX[i]=Math.round((e.x+(e.kind==='npc'&&e.state==='home'&&!e.moving?((e.id%3)-1)*.6:0))*T);
+      if(live&&!ghost){const py=Math.round(e.y*T),w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7)}}
+    ctx.fill();
+    let ghosts=false;ctx.beginPath();
+    for(let i=0;i<nE;i++){const e=ENTS[i];if(e.kind!=='hero'||e.state!=='ghost')continue;const px=EPX[i],py=Math.round(e.y*T),w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7);ghosts=true}
+    if(ghosts){ctx.globalAlpha=.6;ctx.fill();ctx.globalAlpha=1}
+    // Pass 2: the sprites in y order, and what rides on each. A mirrored sprite sets the transform once instead of
+    // save/translate/scale/restore.
+    const tf=ctx.getTransform();
+    for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=Math.round(e.y*T),live=e.state!=='dead';
+      if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);continue} // critters, stalls and guards (townlife.js)
+      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
-      if(live)shadow(px,py,sw);
       if(close&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
       if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);
-      else{const o=worldSprite(s,live),ow=live?1/ART:0; // living entities get the dark outline, one art pixel wide
-        ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);
-        ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-ow,py-sh-ow,o.width/ART,o.height/ART);ctx.restore()}
+      else{const o=worldSprite(s,live),ow=live?1/ART:0,x0=-Math.floor(s.width/2)*PROC_SCALE-ow; // living entities get the dark outline, one art pixel wide
+        if(e.face<0){ctx.setTransform(-tf.a,0,0,tf.d,tf.e+px*tf.a,tf.f);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);ctx.setTransform(tf)} // mirrored about px
+        else ctx.drawImage(o,px+x0,py-sh-ow,o.width/ART,o.height/ART)}
       ctx.globalAlpha=1;
       const top=py-sh;
       // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
@@ -221,16 +276,23 @@ export function createRenderer(cv,screenEl){
       if(e.kind==='hero'&&!cut)drawIntentIcon(ctx,S,cam,e,px,top,sw,close); // the intent icon at the right shoulder (#534)
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     }
+    ph(2);
     // effects: bolts leave a short fading trail; the boss's breath ring
     for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;if(!inView(p.x0*T,p.y0*T,96))continue;ctx.fillStyle=p.col;
         for(let k=2;k>=0;k--){const tk=Math.max(0,t-k*.12),x=(p.x0+(p.x1-p.x0)*tk)*T,y=(p.y0+(p.y1-p.y0)*tk)*T;ctx.globalAlpha=k?.25*(3-k):1;ctx.fillRect(Math.round(x),Math.round(y),k?2:3,2)}
         ctx.globalAlpha=1}
       if(p.type==='ring'){if(!inView(p.x*T,p.y*T,96))continue;ctx.strokeStyle='rgba(255,140,40,'+p.life+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x*T,p.y*T,(1-p.life/.6)*72+8,0,7);ctx.stroke()}}
     // weather sits on the ground, so it goes under the night: fog no longer brightens midnight
-    drawWeather(ctx,S,cam,blink);
+    lt=performance.now();if(!cut)lifeAir(ctx,blink);lifeStats.acc+=performance.now()-lt;
+    drawWeather(ctx,S,cam,blink);ph(3);
     // night: a blue wash, then light added back (lighter): lava fields glow, torches flicker,
     // crypt mouths breathe a faint green, the camp fire (camp.js)
-    const dk=darkness();if(dk>0){const N=LIGHT.night;ctx.fillStyle='rgba('+N[0]+','+N[1]+','+N[2]+','+dk+')';if(cut&&cut.edge)ctx.fillRect(vx0,vy0,vw,vh);else ctx.fillRect(0,0,W*T,H*T); // an outdoor scene's arena past the edge darkens too
+    const dk=darkness();if(dk>0){
+      // The night is a low-resolution light map (a quarter of the screen): the wash is laid at the hour's tint, then a soft hole is cut
+      // under each company member, the followed hero and (fainter) every other hero and foe in view, so people stay in colour and
+      // the dark stays dark everywhere else. One small canvas, a handful of gradients, one scaled blit a frame.
+      nightPass(sc,dk,sel,inView);
+      ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);
       ctx.globalCompositeOperation='lighter';
       const lg=lavaGlow(!S.boss.alive);ctx.globalAlpha=dk*.65;ctx.imageSmoothingEnabled=true;ctx.drawImage(lg,0,0,W,H,0,0,W*T,H*T);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1;
       const now=performance.now()/1000;
@@ -238,33 +300,36 @@ export function createRenderer(cv,screenEl){
         glow(L.x*T,L.y*T,r*(L.big?1:.94+.06*fl),LIGHT.torch,dk*.7*fl)}
       for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,40))glow(x,y,26,LIGHT.crypt,dk*(.35+.1*Math.sin(now*1.3)))}
       drawCampLight(ctx,S,dk,inView);
+      lt=performance.now();if(!cut)lifeLight(ctx,glow,dk,LIGHT);lifeStats.acc+=performance.now()-lt;
       if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-HEAD/2,22*PROC_SCALE*.75,SCENE_LIGHT,dk*.6); // a Table scene's people keep a pool of light at night (#471)
       ctx.globalCompositeOperation='source-over'}
-    drawSpells(ctx,1,close,inView,fxNow); // spell effects in the air, over the night wash: they carry their own light (#374)
+    drawSpells(ctx,1,close,inView,fxNow);ph(4); // spell effects in the air, over the night wash: they carry their own light (#374)
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
     // that would overlap a placed label is dropped, so a crowd shows its most important names.
     //   far (zoom < 2): regions (pale, larger), towns and landmarks (gold), Fellowship names.
     //   close: the selected hero, Fellowship, Kragmaw, elites, wary or hostile folk, then other heroes;
     //   townsfolk and friendly strangers only when near (zoom 4 or a follow camera).
     const LM=MARGIN*4,near=close&&(following()||sc>=cam.fit*3.5),inMap=(y,css)=>{const s=css*cam.dpr/sc;return clamp(y,s*.9,H*T-s*.25)};
+    const LS=Math.max(22,Math.min(28,Math.round(cv.height/cam.dpr/36))); // hero name size follows the pane, never under about 11 px of capitals (#842)
     LQ.length=0;
     if(!close){
       for(const[t,x,y]of LABELS)if(inView(x*T,y*T,LM)){const town=TOWNS.has(t);lab(t,x*T,inMap(y*T,town?13:15),town?TEXT.place:TEXT.region,town?13:15,town?6:3)}
-      if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-HEAD,MARK.sel,13,10); // the followed hero is named at any zoom
+      if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-HEAD,MARK.sel,16,10,null,true); // the followed hero is named at any zoom
       if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))lab('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,TEXT.elite,12,5);
       for(const L of LANDMARKS){if(L.kind!=='crypt'||!L.mouth||!inView(L.x*T,L.y*T,LM))continue; // every crypt, labelled just above its mouth
         const g=CRYPT&&L.name===CRYPT.name&&CRYPT.group&&CRYPT.group.phase==='inside'?CRYPT.group:null;
         lab(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
     else{
       if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))lab(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14,7);
-      const fel=slotted()?new Set(Object.values(slotted().slots).map(String)):null,lh=14*cam.dpr/sc;
+      const lh=14*cam.dpr/sc;
       if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
         const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),y=a.y*T-HEAD-condLift(a,cam);
         if(inCut&&a.bubble&&a.bubble.life>0&&bubbleVisible(a,S))continue; // its bubble names it already: one label per member
         if(inCut){lab(a.name,a.x*T,y,inSlots(a)?classColor(a.cls):FAC[a.fac].color,14,inSlots(a)?9:8,[y-lh*1.05,a.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
-        lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:dead?TEXT.dead:FAC[a.fac].color,14,a===sel?10:fel&&fel.has(String(a.id))?8:dead?1:4)}
+        const mate=!dead&&inSlots(a); // a company member is always named: big, class colour, a plate, stacked when bunched (#842)
+        lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:mate?classColor(a.cls):dead?TEXT.dead:FAC[a.fac].color,mate||a===sel?LS:LS-4,a===sel?10:mate?8:dead?1:4,null,mate||a===sel,mate?6:0)}
       for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,slotted(),S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
         lab(toneName(p,t),p.x*T,p.y*T-HEAD-condLift(p,cam),t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
       for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-HEAD-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
@@ -275,15 +340,18 @@ export function createRenderer(cv,screenEl){
       if(cam.view==='fellow'&&mem.length>1){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of mem){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
         ctx.save();ctx.strokeStyle=MARK.party;ctx.lineWidth=2*px1;ctx.setLineDash([6*px1,4*px1]);ctx.beginPath();ctx.ellipse((x0+x1)/2*T,((y0+y1)/2-.4)*T,((x1-x0)/2+1.6)*T,((y1-y0)/2+1.6)*T,0,0,7);ctx.stroke();ctx.restore()}
       for(const a of mem){if(!inView(a.x*T,a.y*T,40)||(cut&&cut.members.includes(a)))continue;const col=classColor(a.cls); // in a Table scene the ring and the class-coloured name mark them (#471) // a member's marker: its class colour (one palette, core/colors.js)
-        const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-HEAD-(close?16:15)*px1-m-condLift(a,cam);
+        if(close)continue; // up close the plate is in the class colour: no diamond to pile (#842)
+        const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-HEAD-15*px1-m-condLift(a,cam);
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
-        if(!close)lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,13,a===sel?10:7)}}
-    flushLabels(sc);
+        lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,16,a===sel?10:7,null,true,3)}}
+    flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;ph(5);
+    const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
+    if(whole)drawWholeMap(ctx,cam,blink);
     if(close){drawBubbles(ctx,S,cam,drawText);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
-    if(mini)mini.draw(S);
+    if(mini)mini.draw(S);ph(6);
   }
 
   return {draw,resize,screenToWorld,setZoom,zoomAt,panBy,centerOn,stepZoom,currentZoom,onCamChange};

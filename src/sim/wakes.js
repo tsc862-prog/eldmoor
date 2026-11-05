@@ -6,6 +6,8 @@
 import {MOVES,PASSIVES} from '../data/moves.js';
 import {SPEC_LVL} from '../data/classes.js';
 import {notify} from './notify.js';
+import {growthWaiting} from './abilities.js';
+import {GROWTH} from '../data/abilities.js';
 import {foeName} from './lore.js'; // a creature is named only as the hero knows it (#188)
 
 // Update the unread event stored under `key`, else post a new one.
@@ -34,6 +36,7 @@ export function wakeLevelUp(a,maxhp){if(!a.player)return;const L=a.lvl,un=[];
   for(const m of Object.values(MOVES))if(m.cls===a.cls&&!m.spec&&m.lvl===L)un.push('ability '+m.name);
   for(const p of Object.values(PASSIVES))if(p.cls===a.cls&&!p.spec&&p.lvl===L)un.push('passive '+p.name);
   if(L===SPEC_LVL)un.push('a specialisation path is open: choose one with choose_specialisation');
+  const g=growthWaiting(a);if(g&&g.lvl===L)un.push('a score point to place: raise_score {score, why} (brawn, reflex, grit, wits, insight or presence; the class default follows if you wait '+GROWTH.HOLD+' game hours)');
   notify(a,'LEVEL UP: you are level '+L+', HP '+maxhp+(un.length?'. Unlocked: '+un.join('; '):''),0,2)}
 
 export function wakeQuest(a,done){if(!a.player||!a.quest)return;pend(a,'quest','Quest progress: '+a.quest.have+' of '+a.quest.need+' '+(a.quest.type||'')+(done?' - ready to turn in':''),1)}

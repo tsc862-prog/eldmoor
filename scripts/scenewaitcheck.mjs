@@ -290,7 +290,7 @@ console.log('F. three Claude slots, five Claude members and the DM: every vote l
 // scene answer is played, and the member's turn resumes. Here the "query" is a mock that runs until its signal aborts.
 console.log('G. a Claude member mid-turn is aborted at SCENE_GRAB_MS, answers in time, resumes, and nobody is missed');
 {
-  const {sceneGrab, SCENE_GRAB_MS, GRAB_RESUME} = await import('./pacing.mjs');
+  const {sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, grabSpend, GRAB_EST_OUT} = await import('./pacing.mjs');
   ok(SCENE_GRAB_MS === 15000 && /Carry on/.test(GRAB_RESUME), 'the grab is 15 s by default and the resume prompt tells the member to carry on');
   // unit: answered in time -> never fires; stop() ends the poll; a flap resets the clock
   {let d = true, n = 0; const g = sceneGrab({due: () => d, abort: () => n++, ms: 400, every: 50}); await sleep(200); d = false; await sleep(150); d = true; await sleep(250); ok(n === 0 && !g.grabbed(), 'due, then not due, then due again: the clock restarted, nothing fired'); g.stop();
@@ -307,7 +307,16 @@ console.log('G. a Claude member mid-turn is aborted at SCENE_GRAB_MS, answers in
   const grab = sceneGrab({due: () => sceneDue(A), abort: () => ac.abort(), onGrab: () => {grabAt = Date.now() - t0}, ms: 800, every: 100});
   for (const x of [B, ...rest]) sim.playerAct(x.id, 'scene_act', {option: 'press', line: 'Down.'});
   const ticker = setInterval(() => {for (let i = 0; i < 6; i++) sim.step(1 / 60)}, 100); // the table ticks real time, as the page does
+  // #747: the cut query sends no result, so the run budget moves by what the stream reported (assistant usage), else by an estimate
+  const gs = grabSpend(), usage = (id, i, o, cr = 0, cw = 0) => ({type: 'assistant', message: {id, usage: {input_tokens: i, output_tokens: o, cache_read_input_tokens: cr, cache_creation_input_tokens: cw}}});
+  gs.add(usage('m1', 100, 20)); gs.add(usage('m1', 100, 80)); gs.add(usage('m2', 1000, 50, 20000, 3000)); // m1 streamed twice: counted once, its largest figures
+  let spent = 0; const budgetLeft = 1;
   await inFlight; grab.stop();
+  {const c = gs.cost('claude-sonnet-5-5', {sent: 90000}), want = (100 * 2 + 80 * 10 + 1000 * 2 + 20000 * 0.2 + 3000 * 2.5 + 50 * 10) / 1e6; spent += c.usd;
+   ok(c.how === 'reported' && c.calls === 2 && Math.abs(c.usd - want) < 1e-9 && spent > 0 && budgetLeft - spent < budgetLeft, `a grab moves the run total by the reported usage ($${c.usd.toFixed(6)}, two calls, a repeated message counted once)`);
+   const e = grabSpend().cost('claude-sonnet-5-5', {sent: 30000});
+   ok(e.how === 'estimated' && Math.abs(e.usd - (10000 * 2 + GRAB_EST_OUT * 10) / 1e6) < 1e-9, `with nothing reported the estimate is the characters sent at the full input rate plus ${GRAB_EST_OUT} output tokens ($${e.usd.toFixed(6)})`);
+   ok(grabSpend().cost('claude-nope-9', {sent: 3000}).usd > 0 && grabSpend().cost('claude-haiku-5-5', {sent: 3000}).usd < grabSpend().cost('claude-opus-5-5', {sent: 3000}).usd, 'an unpriced model counts as the dearest listed; the price table orders models')}
   ok(aborted === 1 && !failed && grab.grabbed() && grabAt >= 700 && grabAt < 2500, `the mid-turn member's query was aborted once, ${grabAt} ms after its scene was due, and the abort was not counted as a failure`);
   // the structured scene answer, then the turn resumes (a second query)
   const ans = sim.playerAct(A.id, 'scene_act', {option: 'press', line: 'Coming.'}); resumed++;
