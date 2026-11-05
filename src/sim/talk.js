@@ -503,21 +503,29 @@ export const TALK={SAME:.8,LAST:5,HEARD:8,CUT:120};
 const words=s=>new Set(String(s||'').toLowerCase().replace(/[^a-z0-9 ]+/g,' ').split(' ').filter(x=>x.length>2));
 // shared words over the larger set: 1 for the same words in any order
 export function sameness(x,y){const A=words(x),B=words(y);if(!A.size||!B.size)return 0;let n=0;for(const w of A)if(B.has(w))n++;return n/Math.max(A.size,B.size)}
-// "Hello Aelett! I am Gwilett from Wendell's Ford, a Tarrow Rogue ..." : the speaker's own name with an introduction
-export function isIntro(a,text){const t=String(text||''),first=String(a.name||'').split(' ')[0];
-  if(!first||!new RegExp('\\b'+first.replace(/[^\w]/g,'')+'\\b','i').test(t))return false;
-  return /\b(i am|i'm|my name|call me|introduce|nice to meet|pleased to meet)\b/i.test(t)}
+// "Hello Aelett! I am Gwilett from Wendell's Ford, a Tarrow Rogue ..." : an introduction of the speaker (#870). The name must follow the
+// introducing phrase; a bare call sign ("Lurkar here.") or an "I am ready" beside the name is a status line, not an introduction.
+// introMatch(a,text) -> the words that tripped it ("I am Lurkar"), or null.
+export function introMatch(a,text){const t=String(text||''),first=String(a.name||'').split(' ')[0].replace(/[^\w]/g,'');
+  if(first){const m=new RegExp(/\b(?:i am|i['\u2019]m|my name is|they call me|call me|this is)\s+/.source+first+/\b(?!['\u2019]s)/.source,'i').exec(t);if(m)return m[0]}
+  const m=/\b(?:introduce myself|nice to meet you|pleased to meet you|well met)\b/i.exec(t);return m?m[0]:null}
+export const isIntro=(a,text)=>!!introMatch(a,text);
 const byId=id=>S.agents.find(x=>x.id===id)||null;
 export function metIds(a){const h=a.talkHeard||{};return Object.keys(h).map(Number).filter(id=>{const b=byId(id);return b&&b.state!=='dead'&&(b.talkHeard||{})[a.id]})}
 export const metNames=a=>metIds(a).map(id=>byId(id).name);
 export const MSG_SAME='You already said that; say something new or act (propose, vote, lead_to, or answer a question you were asked).';
 export const MSG_INTRO='You have already met your companions; no need to introduce yourself again. Say something new or act (propose, vote, lead_to, or answer a question you were asked).';
+// the refusal names what tripped it, in the game's voice, so the sentence can be fixed rather than the message dropped (#870, #869)
+export const introMsg=w=>'The company has already met this hero, and the line reads as an introduction ("'+w+'"), so it is not spoken. Word the same message without that phrase, say something new, or act (propose, vote, lead_to, or answer a question asked).';
+const refused=(a,k)=>{const R=a.talkNo||(a.talkNo={same:0,intro:0});R[k]++}; // counted for the behavior digest (#870)
 export function lineRefusal(a,text){if(!a||!a.player)return null;
-  if((a.talkSaid||[]).some(s=>sameness(s,text)>=TALK.SAME))return MSG_SAME;
-  if(isIntro(a,text)&&metIds(a).length)return MSG_INTRO;
+  if((a.talkSaid||[]).some(s=>sameness(s,text)>=TALK.SAME)){refused(a,'same');return MSG_SAME}
+  {const w=introMatch(a,text);if(w&&metIds(a).length){refused(a,'intro');return introMsg(w)}}
   return null}
 export function noteSaid(a,text,listeners){if(!a||!a.player)return;spokenAbout(a,text);const L=a.talkSaid||(a.talkSaid=[]);L.push(String(text).slice(0,200));if(L.length>TALK.LAST)L.shift();
-  for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1;noteKnownAt(b,a);noteKnownAt(a,b)}}
+  for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1;noteKnownAt(b,a);noteKnownAt(a,b)}
+  if(saidHook)try{saidHook(a,text,listeners)}catch(e){}} // a companion of its company may answer (#764, sim/compvoice.js)
+let saidHook=null;export function setSaidHook(f){saidHook=typeof f==='function'?f:null}
 export function heardLines(a,n=TALK.HEARD){const cut=t=>t.length>TALK.CUT?t.slice(0,TALK.CUT-1)+'…':t;
   return (a.chat||[]).filter(e=>e.from&&(e.party||e.trigger==='agent'||e.from.kind==='hero'||e.whisper||e.emote)).slice(-n)
     .map(e=>e.t+' '+(e.from===a?'(you)':e.from.name||'?')+(e.party?' [party]':'')+(e.whisper?' [whispered]':'')+': '+(e.emote?'*':'')+cut(String(e.text||''))+(e.emote?'*':''))}

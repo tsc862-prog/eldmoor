@@ -4,12 +4,16 @@
 // turned into an agent, and no hero of the built world is ever scripted.
 // #453: setup v2 ({mode, heroes[]}): together (the default) builds the same world as the v1 setup it migrates from;
 // apart founds one company per group (a solo per hero with none) at its start town; the shape presets.
+// #771: a together company stands in one hall whatever its peoples (the Stepping Lands have two towns a faction), the
+// hall is the setup's choice, an apart group stands together, and a single-people setup is left exactly where it stood.
 // Usage: npm run setupcheck      (internal: --child <seed> [v1|apart] prints a world signature)
+import {DM_PROVIDERS} from './dm-agent.mjs';
+import {checkStart} from './runners.mjs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {init, S, validateSetup, defaultSetup, applyPreset, cleanSetup, snapshot} from '../src/sim/index.js';
 import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
-import {seatCap, seatNote, asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION} from '../src/sim/setup.js';
+import {seatCap, seatNote, asV2, slotsView, slotsOf, planRunners, resolveArchetype, PRESETS, SETUP_VERSION, SETUP_PROVIDERS, hallTowns} from '../src/sim/setup.js';
 import {companies, members} from '../src/sim/company.js';
 import {CITY, REGIONS} from '../src/world/map.js';
 
@@ -44,6 +48,18 @@ if (process.argv[2] === '--facts') {const k = process.argv[3], P = await import(
     arch: !!(pair[0] && pair[0].persona && pair[0].persona.archetype === 'zealot' && pair[1] && pair[0].persona.stances[pair[1].id]),
     logs: Cs.length > 1 && /sets out alone from/.test(JSON.stringify(Cs[Cs.length - 1].log)) && /set out together from/.test(JSON.stringify(Cs[0].log)),
     snapCos: (snapshot().companies || []).length, mining: hs[0] ? P.skillOf(hs[0].a, 'mining') : null})); process.exit(0)}
+
+// #771, in the Stepping Lands (ELDMOOR_WORLD=stepping): prints where a setup's companies stand.
+const PEOPLES = ['ashfolk', 'mirekin', 'mirekin', 'ashfolk', 'thornhide'];
+const peopled = (races, hall) => {const t = defaultSetup(771, 'stepping', 1); races.forEach((r, i) => t.heroes[i].race = r); if (hall) t.hall = hall; return t};
+if (process.argv[2] === '--stand') {const k = process.argv[3], {dist} = await import('../src/world/map.js');
+  const st = k === 'mixed' ? peopled(PEOPLES) : k === 'hall' ? peopled(PEOPLES, 'Murkstead') : k === 'single' ? peopled(PEOPLES.map(() => 'ashfolk')) : k === 'foreign' ? {...defaultSetup(771, 'eldmoor', 1), hall: 'Murkstead'}
+    : (() => {const t = applyPreset('pairs-and-solo', peopled(PEOPLES)); t.heroes[2].start = {town: 'home', region: REGIONS[REGIONS.findIndex(r => r.band && r.band[0] > 1)].name}; return t})();
+  init({setup: cleanSetup(st)});
+  console.log('STAND ' + JSON.stringify({valid: validateSetup(st).join(' | '), setup: S.setup, cos: companies().map(C => {const L = members(C), c = CITY.find(t => t.name === C.hall);
+    return {name: C.name, hall: C.hall, n: L.length, far: Math.max(...L.flatMap(a => L.map(b => dist(a, b)))), inHall: L.every(a => a.x >= c.x0 && a.x <= c.x1 + 1 && a.y >= c.y0 && a.y <= c.y1 + 1),
+      home: L.every(a => a.town === C.hall), town: L.every(a => a.state === 'town'), party: L[0].party ? L[0].party.mem.length : 0, born: L.map(a => a.born || null), story: L.map(a => a.backstory ? JSON.stringify(a.backstory) : ''), log: C.log.map(e => e.parts.map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '').join('')).join(' | ')}})}));
+  process.exit(0)}
 
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
@@ -89,6 +105,15 @@ bad(t => {t.mode = 'apart'; t.heroes[T].group = 1; t.heroes[H].group = 1; t.hero
 {const t = JSON.parse(JSON.stringify(s)); [t.heroes[0], t.heroes[2]] = [t.heroes[2], t.heroes[0]];
  ok(validateSetup(t).length === 0 && slotsOf(t).tank === 2 && slotsOf(t).dps1 === 0, 'together: the five places in any order (the Warrior takes the Tank place wherever it stands)')}
 
+// ---- the hall (#771) ----
+{const st = peopled(PEOPLES, 'Murkstead');
+ ok(hallTowns('stepping', 1).join() === 'Grimhold,Murkstead,Thornteeth' && hallTowns('eldmoor', 1).join() === 'Grimhold', 'the hall picker lists the towns of the faction on the chosen map');
+ ok(validateSetup(st).length === 0 && cleanSetup(st).hall === 'Murkstead', 'a town of the faction is a legal hall, and cleaning keeps it: ' + validateSetup(st).join(' | '));
+ ok(validateSetup({...st, hall: 'Highgate'}).some(x => /hall.*not a town/i.test(x)), 'a town of the other faction is refused as a hall');
+ ok(!('hall' in cleanSetup(s)) && !('hall' in slotsView(cleanSetup(s))), 'no hall chosen: the setup carries none (the old shape)');
+ ok(slotsView(cleanSetup(st)).hall === 'Murkstead' && !('hall' in applyPreset('five-solos', st)) && !('hall' in cleanSetup({...st, mode: 'apart'})), 'the places view keeps the hall; apart has none');
+ ok(applyPreset('last', defaultSetup(2, 'stepping', 1), {last: st}).hall === 'Murkstead' && !('hall' in applyPreset('last', st, {last: defaultSetup(3, 'stepping', 1)})), 'Last used restores the hall, or its absence')}
+
 // ---- v1 -> v2 ----
 {const v1 = chosenV1(4242), c = cleanSetup(v1);
  ok(c.v === 2 && c.mode === 'together' && c.heroes.length === 5 && c.heroes.map(h => h.cls).join() === 'Warrior,Priest,Rogue,Rogue,Rogue' && c.heroes.every(h => h.fac === 1), 'a v1 setup (slots) cleans to v2 together, heroes in place order, the faction on each');
@@ -109,7 +134,10 @@ ok(defaultSetup(1).dm.mode === 'agent' && defaultSetup(1).dm.provider === 'anthr
 {const old = chosenV1(4242); old.dm = {mode: 'scripted'}; const c = cleanSetup(old);
  ok(c.dm.mode === 'agent' && /haiku/.test(c.dm.model) && validateSetup(c).length === 0 && validateSetup(old).some(x => /DM is always an agent/.test(x)), 'an older setup with a scripted DM cleans to the default DM agent (and is refused raw)');
  ok(applyPreset('last', s, {last: old}).dm.mode === 'agent', 'Last used turns a remembered scripted DM into an agent');
- ok(cleanSetup({...old, dm: {mode: 'agent', provider: 'ollama', model: 'qwen2.5:14b'}}).dm.model === 'qwen2.5:14b', 'a chosen DM model survives cleaning')}
+ ok(cleanSetup({...old, dm: {mode: 'agent', provider: 'ollama', model: 'qwen2.5:14b'}}).dm.model === 'qwen2.5:14b', 'a chosen DM model survives cleaning');
+ // #824: the setup page offers every provider for the DM, and the DM runner takes every one (the runs are in openaicheck, hfcheck and googlecheck)
+ for (const provider of SETUP_PROVIDERS) {const model = provider + '-model', c2 = cleanSetup({...old, dm: {mode: 'agent', provider, model}}), j = planRunners(c2).find(r => r.kind === 'dm');
+  ok(validateSetup(c2).length === 0 && j.provider === provider && j.model === model && DM_PROVIDERS.includes(provider) && !checkStart({kind: 'dm', provider, model}, [], {}).error, 'a DM on ' + provider + ' validates, plans its runner and the runner takes it')}}
 {const old = chosenV1(4242); old.slots.dps2.mind = {mode: 'scripted'}; old.slots.dps1.mind = {mode: 'ai', provider: 'ollama', model: 'qwen2.5:14b'};
  const c = cleanSetup(old); ok(c.heroes[D2].mind.mode === 'agent' && /haiku/.test(c.heroes[D2].mind.model) && c.heroes[D1].mind.mode === 'agent' && c.heroes[D1].mind.model === 'qwen2.5:14b' && validateSetup(c).length === 0, 'an older setup with scripted/AI members cleans to agents');
  ok(applyPreset('last', s, {last: old}).heroes[D2].mind.mode === 'agent', 'Last used turns a remembered scripted member into an agent')}
@@ -201,6 +229,23 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  ok(g.sizes === '1,1,1,1,1' && g.heroes.every(h => h.lvl === 1 && h.player && h.town === h.hall), 'five solos: five companies of one, level 1, each at its own start town');
  const p = facts('soloprof'); ok(p.sizes === '1' && p.mining === 1, 'apart: a hero\'s chosen profession is seeded too')}
 
+// ---- standing together (#771): the Stepping Lands, each world in its own process ----
+{const stand = k => {const out = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--stand', k], {encoding: 'utf8', env: {...process.env, ELDMOOR_WORLD: k === 'foreign' ? 'eldmoor' : 'stepping'}}); const m = out.stdout.match(/STAND (.*)/); if (!m) console.error(out.stderr.slice(-800)); return m ? JSON.parse(m[1]) : {cos: [{}]}};
+ const a = stand('mixed'), A = a.cos[0];
+ ok(a.valid === '' && a.cos.length === 1 && A.n === 5 && A.hall === 'Grimhold' && !('hall' in a.setup), 'mixed peoples, together: one company, the hall the Tank\'s home town as ever (' + A.hall + ')');
+ ok(A.inHall && A.far <= 4 && A.home && A.town && A.party === 5, `every member stands in the hall town, within 4 tiles (${A.far && A.far.toFixed(1)}), home there, in state town, one party of five`);
+ ok(A.born.join() === ',Murkstead,Murkstead,,Thornteeth' && /Murkstead, come from|come from Murkstead/.test(A.log), 'those from another town are marked, and the campaign log says where they came from: ' + A.born);
+ ok(A.story[1].includes('Murkstead'), 'the people\'s home town stays in the origin text');
+ const h = stand('hall'), B = h.cos[0];
+ ok(B.hall === 'Murkstead' && B.inHall && B.far <= 4 && B.home && h.setup.hall === 'Murkstead', 'the setup\'s hall: all five start there, and S.setup records it');
+ ok(B.born.join() === 'Grimhold,,,Grimhold,Thornteeth', 'the hall is the setup\'s choice, not the leader\'s people: ' + B.born);
+ const g = stand('single'), G = g.cos[0];
+ ok(G.hall === 'Grimhold' && G.inHall && G.born.every(x => !x) && !/come from/.test(G.log), 'a single-people company is left where it stood: nobody moved, no line');
+ ok(stand('foreign').cos[0].hall === 'Grimhold', 'a remembered hall that is no town of this map falls back to the Tank\'s home town');
+ const p = stand('apart'), [P1, P2] = p.cos;
+ ok(p.valid === '' && P1.n === 2 && P1.far <= 4 && P1.inHall && P1.home, 'apart: a group of two peoples stands in one town (' + P1.hall + ', ' + P1.far.toFixed(1) + ' tiles)');
+ ok(P2.n === 2 && P2.far <= 4 && !P2.town, 'apart: a group seasoned to a region stands together out there too (' + P2.far.toFixed(1) + ' tiles)')}
+
 // Professions per place (#259): validated, cleaned, seeded through learn(), kept for a replacement.
 {const P = await import('../src/sim/professions.js'), {offerReplacement} = await import('../src/sim/company.js'), S2 = (await import('../src/sim/index.js')).S;
  const p = JSON.parse(JSON.stringify(defaultSetup(5)));
@@ -220,4 +265,43 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  ok(r && r.id !== old.id && P.professionsOf(r).map(x => x.id).join() === 'mining,smithing', 'a replacement keeps the choice of the place');
  const sn = JSON.stringify(snapshot()); ok(/"profs":\{"tank":\["mining","smithing"\]/.test(sn), 'the place choice is saved with the world');
 }
+
+// A world with no others (#780): the setup's heroes and nobody else; the setting saved; nothing queued; a death still refilled.
+{const {step, setRunnerLinks, restore, setDmSeat} = await import('../src/sim/index.js'), {slay, maxHp} = await import('../src/sim/heroes.js'), {openingPending, arrivalsView} = await import('../src/sim/arrival.js');
+ const {GOODS} = await import('../src/data/items.js'), {TABLE} = await import('../src/sim/table.js'), {OTHERS} = await import('../src/sim/setup.js');
+ ok(OTHERS.join() === 'full,none' && !('others' in defaultSetup(1)), 'others: full or none, the default says nothing');
+ const none = (seed, shape) => {const q = shape ? applyPreset(shape, defaultSetup(seed, 'eldmoor', 0)) : defaultSetup(seed, 'eldmoor', 0); q.others = 'none'; return q};
+ {const t = none(11); t.others = 'some'; ok(validateSetup(t).some(x => /Other heroes/.test(x)), 'an unknown others is refused')}
+ const c = cleanSetup(none(11)); ok(validateSetup(none(11)).length === 0 && c.others === 'none' && !('others' in cleanSetup(defaultSetup(11))), 'cleanSetup keeps none and leaves a full world\'s setup as it was');
+ ok(slotsView(none(11)).others === 'none' && cleanSetup(slotsView(none(11))).others === 'none', 'a v1 view of it keeps the setting');
+ ok(applyPreset('last', defaultSetup(12), {last: none(11)}).others === 'none' && !('others' in applyPreset('last', none(12), {last: defaultSetup(11)})), 'the last-setup preset carries the setting either way');
+
+ init({setup: c});
+ ok(S.agents.length === 5 && S.agents.every(a => a.player) && SLT.slotHeroes(SLT.slotted()).length === 5, 'together: exactly the five, all agent-played');
+ ok(S.setup.others === 'none' && S.setup.seed === 11 && !!S.setup.dm, 'S.setup keeps the setting beside the record');
+ {const t = S.chronicle.flatMap(e => e.parts.map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '')).join(' '); ok(/empty of banners/.test(t) && !/Infinity/.test(t) && !/already worn/.test(t), 'the opening line says the roads are empty')}
+ {const n = JSON.parse(JSON.stringify(snapshot())); init({}); ok(S.agents.length > 5 && !(S.setup && S.setup.others), 'a world made after it has its roster again'); restore(n); ok(S.setup.others === 'none' && S.agents.length === 5, 'a load keeps the setting')}
+ TABLE.mode = 'off'; let rq = 0, low = 1e9; for (let i = 0; i < 480; i++) {step(1); rq = Math.max(rq, S.recruits.length); for (const n in GOODS) low = Math.min(low, GOODS[n].supply)} // 48 game hours
+ ok(S.GUILDS.length === 0 && S.agents.every(a => !a.guild), 'no guild after 48 game hours');
+ ok(rq === 0, 'no recruit queued');
+ ok(low >= 14 && Object.keys(GOODS).every(n => GOODS[n].supply >= 14), 'the auction house holds its floor: goods never read as sold out, prices at the table\'s base');
+ // a death with runners: the arrival; none queued for the world; the hero is made directly
+ if (S.opening) S.opening.queue.length = 0; // session zero is not what this asks
+ const F = SLT.slotted(), L = SLT.slotHeroes(F), link = x => x.player ? 'connected' : 'none'; setRunnerLinks(link); setDmSeat(true); TABLE.mode = 'auto'; TABLE.speed = 1;
+ for (const a of L) {a.hp = maxHp(a); a.state = 'town'; a.town = F.hall; a.target = null; a.dest = null; a.quest = null}
+ const dead = L[4], n0 = S.agents.length; slay(dead, S.mobs[0]);
+ ok(dead.state === 'dead' && S.recruits.length === 0, 'a member\'s death queues no recruit');
+ for (let i = 0; i < 200 && S.agents.length === n0; i++) step(.2);
+ ok(arrivalsView(F).length === 0 && S.table && S.table.kind === 'arrival' && S.recruits.length === 0, 'it opens an arrival scene at the hall');
+ const nw = S.agents[S.agents.length - 1];
+ ok(S.agents.length === n0 + 1 && nw.player && nw.cls === dead.cls && nw.succeeds === dead.id, 'and the newcomer arrives, agent-played');
+ // the last hero of an apart world: an heir, or the world would be empty; with a host or without
+ setRunnerLinks(null); init({setup: cleanSetup(none(13, 'solo'))}); setDmSeat(true); ok(S.agents.length === 1 && companies().length === 1, 'apart solo: one hero, one company');
+ const s0 = S.agents[0]; slay(s0, S.mobs[0]); step(1);
+ ok(S.agents.filter(a => a.state !== 'dead').length === 1 && S.agents[1].player && S.agents[1].cls === s0.cls && S.agents[1].succeeds === s0.id && S.recruits.length === 0, 'a solo\'s heir comes though nobody runs it: a world with no others never empties');
+ // the flags
+ const flag = (env, args) => spawnSync(process.execPath, ['--input-type=module', '-e', "const {init,S}=await import(process.argv[1]);init(" + (args || '{}') + ");console.log('N='+S.agents.length+' '+(S.setup&&S.setup.others))", new URL('../src/sim/index.js', import.meta.url).href], {encoding: 'utf8', env: {...process.env, ...env}}).stdout.trim();
+ ok(flag({ELDMOOR_OTHERS: 'none'}) === 'N=5 none', 'ELDMOOR_OTHERS=none: ' + flag({ELDMOOR_OTHERS: 'none'}));
+ ok(flag({ELDMOOR_OTHERS: 'full'}) === 'N=28 undefined' && flag({}) === 'N=28 undefined', 'unset or full: the usual roster, no setting written');
+ ok(flag({}, "{others:'none',fellowship:false}") === 'N=0 none', 'no company and no others: an empty world the DM can fill')}
 console.log(fail ? fail + ' FAILED' : 'setupcheck passed'); process.exit(fail ? 1 : 0);

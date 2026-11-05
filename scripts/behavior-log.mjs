@@ -9,6 +9,8 @@
 //                    call as the relay saw it (status, latency, error; writing kinds too)
 //   world.jsonl      a game-side digest every game hour (src/sim/behavior.js), from the page through the
 //                    play bridge or from the headless world directly
+//   wishes.jsonl     wish notes the DM and the heroes leave for the builders (#663: type 'wish', and 'attempt' lines for the
+//                    free actions the DM ruled on); sent by the game with the world digest, never read by an agent or a tool
 //   anomalies.jsonl  detectors, as they fire: here (turns, relay calls) and in the game (src/sim/behavior.js)
 //
 // Rules (issue #123 and the owner's): no keys (every string is scrubbed of key-shaped text, headers are never
@@ -26,7 +28,7 @@ export {similar};
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // AGENT_LOGS moves logs/ for tests (as scripts/agent-sessions.mjs); BEHAVIOR_DIR moves just this folder.
 export const behaviorRoot = (env = process.env) => env.BEHAVIOR_DIR ? env.BEHAVIOR_DIR : join(env.AGENT_LOGS || join(ROOT, 'logs'), 'behavior');
-export const FILES = {turn: 'turns.jsonl', decision: 'decisions.jsonl', world: 'world.jsonl', anomaly: 'anomalies.jsonl'};
+export const FILES = {turn: 'turns.jsonl', decision: 'decisions.jsonl', world: 'world.jsonl', anomaly: 'anomalies.jsonl', wish: 'wishes.jsonl'};
 export const ROTATE = {bytes: 5 * 1024 * 1024, keep: 3};
 // Detector knobs (relay side; the game-side ones are in src/sim/behavior.js BW).
 export const BD = {
@@ -58,8 +60,13 @@ export const cut = (s, n) => {s = String(s == null ? '' : s).replace(/[\u0000-\u
 export const worldName = w => String(w || '').toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '').slice(0, 40) || 'eldmoor';
 // Narration that claims a fight while the game says there is none (the coordinator's #126 bug: a model
 // narrated a fight that ended long ago). brief/after: the hero's state header before and after the turn.
+// #838: a passing mention is not a claim. Only a sentence that says a fight is going on now counts:
+// a present-tense cue, and none of the words of a negation, a plan, a finished fight or a fight someone else is in.
+const NOT_CLAIM = /\b(rather than|instead of|avoid(s|ed|ing)?|without|no (more )?(fight|battle|combat)|not (to )?(fight|risk)|risk(ing)?|after (the|a|our|that)|ended|won|over|finish(ed|es)? (off |the |a )|to (finish|fight|avoid)|only|if|once|before|nearby|have been|had|was|were)\b/i;
+const NOW_CLAIM = /\b(is|are|am|currently|still|now|let me|continues?|continuing|strikes|slashes|clashes|clashing|parries|swings|lunges|fights|battling)\b|\bI (strike|swing|slash|parry)\b/i;
+export const claimsFightNow = text => String(text || '').split(/(?<=[.!?])\s+|\n+/).some(t => FIGHT_WORDS.test(t) && !NOT_CLAIM.test(t) && NOW_CLAIM.test(t));
 export function staleClaim(narration, brief, after, tools = []) {
-  if (!narration || !FIGHT_WORDS.test(narration)) return null;
+  if (!narration || !FIGHT_WORDS.test(narration) || !claimsFightNow(narration)) return null;
   const fighting = b => b && (b.foe || FIGHT_STATES.has(b.state));
   if (!brief && !after) return null;
   if (fighting(brief) || fighting(after) || tools.some(t => FIGHT_TOOLS.has(t.name))) return null;
@@ -76,7 +83,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
   const calls = new Map(); // seat -> [times] for floods
   const decides = [];
   const models = new Map(); // ollama model -> {at, who}
-  const counts = {turn: 0, decision: 0, world: 0, anomaly: 0, dropped: 0};
+  const counts = {turn: 0, decision: 0, world: 0, anomaly: 0, wish: 0, dropped: 0};
   const dirOf = () => join(root, cur);
   function rot(file) {
     try {if (!existsSync(file) || statSync(file).size < rotate.bytes) return;
@@ -119,11 +126,11 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     if (narration && S.narr.some(p => similar(p, narration) >= BD.REPEAT_SIM)) flags.add('repeat');
     if (narration && notEnglish(narration)) flags.add('foreign');
     const stale = rec.brief || rec.after ? staleClaim(narration, rec.brief, rec.after, tools) : null; if (stale) flags.add('stale');
-    S.turns++; if (narration) {S.narr.push(narration); if (S.narr.length > BD.REPEAT_BACK) S.narr.shift()}
+    S.turns++; if (Number.isFinite(rec.ctx)) S.ctx = rec.ctx; if (narration) {S.narr.push(narration); if (S.narr.length > BD.REPEAT_BACK) S.narr.shift()}
     const line = {seat, hero: rec.hero || null, runner: rec.runner || null, provider: rec.provider || null, model: rec.model || null, turn: rec.turn ?? S.turns,
       gameMin: rec.gameMin ?? null, clock: rec.clock || null, wake: rec.wake || null, brief: rec.brief || null, after: rec.after || null,
       tools: tools.map(t => ({name: cut(t.name, 40), ok: !!t.ok, ...(t.ok ? {} : {error: cut(t.error, 140)}), ...(t.refused ? {refused: true} : {})})),
-      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, cost: rec.cost ?? null, ...(Array.isArray(rec.sceneS) && rec.sceneS.length ? {sceneS: rec.sceneS.slice(0, 8).map(Number).filter(Number.isFinite)} : {}), flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
+      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, ...(Number.isFinite(rec.tokensCached) ? {tokensCached: rec.tokensCached} : {}), cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, ...(Number.isFinite(rec.ctx) ? {ctx: rec.ctx} : {}), cost: rec.cost ?? null, ...(Array.isArray(rec.sceneS) && rec.sceneS.length ? {sceneS: rec.sceneS.slice(0, 8).map(Number).filter(Number.isFinite)} : {}), flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
     write('turn', line);
     sawModel(line.provider, line.model, seat);
     // detectors
@@ -131,8 +138,9 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     S.empty = flags.has('empty') ? S.empty + 1 : 0;
     if (S.empty >= BD.EMPTY_RUN && (S.empty === BD.EMPTY_RUN || S.empty % 10 === 0)) anomaly({kind: 'no-tool-calls', seat, hero: rec.hero || null, severity: 'bad', text: `${who}: ${S.empty} turns in a row without a tool call (${line.provider || '?'}/${line.model || '?'})`, evidence: {run: S.empty, turn: line.turn, narration: narration.slice(0, 200)}, force: S.empty === BD.EMPTY_RUN});
     if (flags.has('repeat')) anomaly({kind: 'repeated-narration', seat, hero: rec.hero || null, text: `${who} repeats an earlier narration`, evidence: {turn: line.turn, narration: narration.slice(0, 200)}});
+    if (flags.has('repeat-act')) anomaly({kind: 'repeated-act', seat, hero: rec.hero || null, text: `${who} repeats the same ${tools.filter(t => t.ok).map(t => t.name).slice(-1)[0] || 'act'} as last turn`, evidence: {turn: line.turn, tool: (tools.filter(t => t.ok).slice(-1)[0] || {}).name || null}});
     if (flags.has('foreign')) anomaly({kind: 'not-english', seat, hero: rec.hero || null, text: `${who} answered in another language (${line.model || '?'})`, evidence: {turn: line.turn, narration: narration.slice(0, 120)}});
-    if (stale) anomaly({kind: 'stale-claim', seat, hero: rec.hero || null, severity: 'bad', text: `${who} ${stale}`, evidence: {turn: line.turn, narration: narration.slice(0, 200), state: (rec.after || rec.brief || {}).state || null}});
+    if (stale) anomaly({kind: 'stale-claim', seat, hero: rec.hero || null, severity: (rec.after || rec.brief || {}).state === 'town' ? 'warn' : 'bad', text: `${who} ${stale}`, evidence: {turn: line.turn, narration: narration.slice(0, 200), state: (rec.after || rec.brief || {}).state || null}});
     S.refused = flags.has('refused') ? S.refused + 1 : 0;
     if (S.refused >= BD.REFUSED_RUN) anomaly({kind: 'refused-calls', seat, hero: rec.hero || null, text: `${who}: every tool call failed for ${S.refused} turns in a row (last: ${line.tools.filter(t => !t.ok).map(t => t.name + ': ' + t.error).slice(-1)[0] || '?'})`, evidence: {run: S.refused, refused}});
     if (rec.error && /429|rate.?limit|overloaded|timed? ?out|timeout/i.test(rec.error)) relayFail(cut(rec.error, 80), seat);
@@ -143,7 +151,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     const t = now(); decides.push(t); while (decides.length && t - decides[0] > 60e3) decides.shift();
     if (decides.length > BD.DECIDE_PER_MIN) anomaly({kind: 'request-flood', seat: 'relay', text: `${decides.length} brain-relay requests in the last minute`, evidence: {perMin: decides.length}});
     write('decision', {src: 'relay', kind: d.kind, hero: d.hero || null, provider: d.provider || null, model: d.model || null, ok: !!d.ok, status: d.status || (d.ok ? 200 : null), ms: d.ms ?? null,
-      ...(d.choice != null ? {choice: cut(d.choice, 40)} : {}), ...(d.error ? {error: cut(d.error, 160)} : {})});
+      ...(Number.isFinite(d.cost) ? {cost: d.cost, tokensIn: d.tokensIn ?? null, tokensOut: d.tokensOut ?? null} : {}), ...(d.choice != null ? {choice: cut(d.choice, 40)} : {}), ...(d.error ? {error: cut(d.error, 160)} : {})});
     sawModel(d.provider, d.model, 'minds');
     if (!d.ok && (d.status === 429 || d.status === 504 || d.status >= 500 || /timeout|rate/i.test(d.error || ''))) relayFail(d.status === 429 ? '429 rate limited' : cut(d.error || d.status, 60), d.provider);
   }
@@ -159,7 +167,11 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     if (!rec || typeof rec !== 'object') return false;
     if (kind === 'world') {
       const r = {...rec}; if (Array.isArray(r.members) && links) r.members = r.members.map(m => ({...m, link: links[m.id] || 'none', ...(runners && runners[m.id] ? {runner: runners[m.id]} : {})}));
+      const ctx = {}; for (const [k, v] of seats) if (Number.isFinite(v.ctx)) ctx[k] = v.ctx; if (Object.keys(ctx).length) r.ctx = ctx; // each seat's last prompt size (#787)
       write('world', r); return true}
+    if (kind === 'wish' && (rec.type === 'wish' || rec.type === 'attempt')) { // #663: the text is the agent's own, English-only and capped by the game; the writer scrubs keys
+      const r = {...rec}; for (const k of ['tool', 'what', 'why', 'moment', 'summary', 'place', 'name', 'skill']) if (typeof r[k] === 'string') r[k] = cut(r[k], k === 'what' ? 300 : 200);
+      write('wish', r); return true}
     if (kind === 'anomaly' && typeof rec.kind === 'string') {anomaly({...rec, kind: cut(rec.kind, 40), text: cut(rec.text, 300)}); return true}
     if (kind === 'decision') {write('decision', {...rec, src: 'game'}); if (rec.outcome === 'offline' && /429|rate|timeout|unreachable/i.test(rec.error || '')) relayFail(cut(rec.error, 60), rec.provider); sawModel(rec.provider, rec.model, 'minds'); return true}
     return false;

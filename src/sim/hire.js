@@ -16,6 +16,7 @@
 //           region, line, over, overAt, why, end:'days'|'dismissed'|'company'|'fell'}
 import {S} from './state.js';
 import {dist,zoneAt,ZONES,LANDMARKS} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
 import {makeHero,seedLevel} from './heroes.js';
 import {PARTY,companyOf,members,soloFor,slotParty,campaign} from './company.js';
@@ -103,7 +104,7 @@ export function hire(a,{npc,days}={}){
   a.gold-=cost;p.purse=(p.purse||0)+cost;
   const h=makeHero(A.fac,cls,null,1);
   h.name=p.name;if(p.race)h.race=p.race;if(p.skin)h.skin=p.skin;if(p.hair)h.hair=p.hair;
-  seedLevel(h,lvl);h.gold=0;h.x=a.x+(a.face||1)*.6;h.y=a.y;
+  seedLevel(h,lvl);h.gold=0;Object.assign(h,standAt(a.x+(a.face||1)*.6,a.y));
   h.state=a.state==='town'?'town':'hunt';
   const z=zoneAt(p.x,p.y),region=ZONES[z]||'the wilds';
   h.hire={npc:p.id,npcName:full(p),role:R.kind,kind:p.role,by:a.id,cid:A.id,days:n,wage,paid:cost,t:Math.round(S.gameMin),until:Math.round(S.gameMin+n*DAY),
@@ -120,7 +121,7 @@ export function hire(a,{npc,days}={}){
   chatAct(a,'hires '+full(p)+' for '+n+' day'+(n>1?'s':'')+' ('+cost+' gold)','hire');
   campaign(A,'hire',h,' is hired for '+n+' day'+(n>1?'s':'')+' ('+wage+' gold a day), a '+(R.kind==='guide'?'guide':'blade')+' for the road.');
   log(h,' hires out to ',gd(where(A)),' for '+n+' day'+(n>1?'s':'')+'.');
-  for(const b of members(A))if(b!==h&&b.player){remember(b,'hire',h.name+', a '+p.role+', rides with us for '+n+' day'+(n>1?'s':'')+' ('+wage+' gold a day).');if(b!==a)ev(b,a.name+' hired '+h.name+' for '+n+' day'+(n>1?'s':'')+': a scripted companion who follows, fights and flees by instinct, never leads and never votes.',true)}
+  for(const b of members(A))if(b!==h&&b.player){remember(b,'hire',h.name+', a '+p.role+', rides with us for '+n+' day'+(n>1?'s':'')+' ('+wage+' gold a day).');if(b!==a)ev(b,a.name+' hired '+h.name+' for '+n+' day'+(n>1?'s':'')+': a companion who follows, fights and flees by instinct, never leads and never votes.',true)}
   if(R.kind==='guide')teach(A,h);
   return {ok:true,hired:h.name,role:p.role,as:cls,level:h.lvl,days:n,wage,paid:cost,left:Math.floor(a.gold),until_day:Math.floor(h.hire.until/DAY)+1,
     note:h.name+' rides with '+where(A)+' now for '+n+' day'+(n>1?'s':'')+'. A hire follows the leader, fights and flees by instinct, never leads and never votes; when the days are up, or on dismiss {npc}, they walk home.'+(R.kind==='guide'?' They know the roads of '+region+': places lists them as heard of, and a walk into danger carries their warning.':'')}}
@@ -165,7 +166,7 @@ function mourn(h){const t=h.hire;t.mourned=true;
 const busy=h=>OFFER.FIGHT.includes(h.state)||OFFER.BUSY.includes(h.state);
 // Once a step (sim/index.js, after companionTick): days run out, a hire released elsewhere goes home, the fallen are
 // mourned, a hire in the Fellowship's company joins its party, and a hire that has reached town is a townsperson again.
-export function hireTick(){const hs=S.agents.filter(h=>h.hire&&!h.hire.done);if(!hs.length)return;
+export function hireTick(){let hs=null;for(const h of S.agents)if(h.hire&&!h.hire.done)(hs||(hs=[])).push(h);if(!hs)return; // #730: no list built on the usual step with no hire
   for(const h of hs){const t=h.hire;
     if(t.leverLeft!=null){const e=(S.hireAway||[]).find(e=>e.p.id===t.npc),rec=e&&e.p.lever!=null&&S.levers?S.levers.active.find(x=>x.id===e.p.lever):null;if(rec)rec.until=S.gameMin+t.leverLeft}
     if(h.state==='dead'){if(!t.mourned)mourn(h);continue}

@@ -1,4 +1,5 @@
 - [Brain design](brain-design.md) — decision points, relay protocol, model choice, cost and test approach from issue #40
+- [Budget stop](budget-stop.md) — #807 cause was gate clicks; budgetOut, active.json spent, events.jsonl by/why, price on buttons
 - [Agent player](agent-player.md) — #75/#93 MCP tools, per-hero routing+claims, WS protocol, runner settings, per-hero sessions, cost per turn, playcheck
 - [Fellowship](fellowship.md) — #68 phase A shapes and hooks; phase B council, Table mode, Minds=agents, runner cost per member
 - [Mixed minds](mixed-minds.md) — #97 parts 1+2: adapters, think:false, a.brainCfg, local agent loop, claim runner tags, local latency/tokens
@@ -56,14 +57,34 @@
 - [DM reflexes](dm-reflexes.md) — #561 dmreflex.js heard/alive/gone, no seat-closed paths, fill why slow|gone, dmShare arrival, RNG test pitfall
 - [Scene props](scene-props.md) — #592 sc.props data, examine/search/give_item hooks, cast.item, pitfalls
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
+- [Cost report](cost-report.md) — #799 sources, wake classes, game hours from digests, measured spend and lever evidence
 - [Tool map](tool-map.md) — #640 toolmap.mjs generated tool inventory in hero/DM orders, groups, budget, orderscheck assertions
 - [DM when/watch](dm-when-watch.md) — #635 deferred actions on triggers + DM-chosen wakes: dmwhen.js, run() hook, eventDue watch, test child, pitfalls
 - [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
+- [Wish tool](wish-tool.md) — #663 wish on both seats: outbox->watch->wishes.jsonl, save fields, report section, backslash pitfall
 - [Patch notes](patch-notes.md) — #664 docs/patchnotes/<PR>.md format+lint, rulescheck rule 6/no-notes, launcher last-seen, title What's new
 - [DM undo + flat](dm-undo-flat.md) — #636 undo/dismiss/unstage, ten flat lever tools, D.last, takeBack, caps, test pitfalls
 - [Rumours and titles](rumour-bestow.md) — seed_rumour and bestow DM tools (#637, #638)
+- [Art ZeroGPU Space](art-zerogpu-space.md) — #703 default art provider: Gradio call protocol, overage risk + 36 min cap, quota reset, push endpoints, pins
 - [Runner acted + models](runner-acted-models.md) — #681 sceneDue/answeredScene, #677 OPENAI_MODELS, price sort and labels
 - [Gemini provider](gemini-provider.md) — #672 google id: openaiAdapter hooks, native fallback, free tier cost 0, signatures, error map, DM path
 - [DM voice long-poll](dm-voice-longpoll.md) — #680 wait_ms long polls via hostDm, budget from pickup (callDeadline, +4 s cap), frameMs 8 s, voicecheck numbers
+- [World reset](world-reset-runners.md) — #691 stop-all on reset, exit 75 no restart, resume same world id only, offline wait bound
 - [Scene ready](scene-ready.md) — #682 members held until the DM frame, staggered wakes, hush, DM voice first on Claude slots; test pitfalls
+- [Downed agent side](downed-agent.md) — #658 aid-phase gambits, presets = old reflex, onAid hook, downed reflection, stabilize/tend/carry, heredoc pitfall
 - [Slot and scene](slot-scene.md) — #687 slot wait watches due (scene:true first), queued why + miss cause, wait holds at an answered scene
+- [DM reserved slot](dm-reserved-slot.md) — #733 RUNNER_DM_SLOTS, heroes held during prep, prep clock from first call + HARD_MS, _poll
+- [Scene grab](scene-grab.md) — #737 sceneGrab aborts mid-turn Claude query after 15 s due, resume, queued countdown
+- [Grab cost](grab-cost.md) — #747 grabSpend: aborted scene-grab query cost counted (reported usage else estimate), grab-cost flag
+- [localcheck pacing flake #762](localcheck-pacing-downed.md) — downed-companion urgent event woke the test hero; DOWN.REACH/SEE zeroed in section A; no parallel runs
+- [Companion voice](companion-voice.md) — #764 compvoice.js: companion_call/say, per-listener memory, no-repeat fill, PER_DAY 6, hooks, pitfalls
+- [OpenAI cached cost](openai-cached-cost.md) — #728 PRICES.cached, usage.cached, turn line split, tokensCached, mock setCached
+- [Session size](session-size.md) — #787 roll + compaction net: CLI threshold math, Haiku 100k line, real cost per turn, mock pitfalls
+- [Check flakes](check-flakes.md) — #324/#378 hunt: SAVECHECK_SEED, crawlcheck PARTS, upcheck lock, not reproduced
+- [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons
+- [Repeat act](repeat-act.md) — #801 runner flag: REPEAT_ACTS allowlist, repeated-act anomaly, mock-pose, act:false not counted
+- [DM every mind](dm-every-mind.md) — #824 PROVIDERS one list, compat DM, mindSwitched, budget in waits, fitTools 1024, dm-mind-cases, pitfalls
+- [Role words](role-words.md) — #863 placeWord(cls): class word for a company place, never Tank/Healer/Damage; personacheck guard
+- [Chatbot voice](chatbot-voice.md) — #837 chatbotVoice guard, refusal note, FP count 0/1646, flag plumbing
+- [Slot stall](slot-stall.md) — #868 turn_over + PostToolUse continue:false, scene slot, lease beats/tickets, real leak, measured calls
+- [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check

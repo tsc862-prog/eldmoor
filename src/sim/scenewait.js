@@ -47,6 +47,13 @@ export function missed(sc,a){if(!sc||!a)return;const L=sc.miss||(sc.miss=[]);if(
 // Table seconds the scene had waited on this member when it answered (0 before its turn in a turns scene).
 export function waitedS(sc,a){if(!sc||!a)return 0;const t=sc.all?(sc.w&&sc.w[a.id]?sc.w[a.id].t:0):sc.phase==='turn'&&sc.ids[sc.i]===a.id?sc.t:0;
   return Math.round((Number(t)||0)*10)/10}
+// Resting at the table (#868): the member sits in an open scene that asks nothing of it right now (it has answered, the DM still
+// sets the scene, or its turn has passed). A wait can pass no time for it and must not hold a model slot while the table waits for
+// someone else: the wait comes back at once with turn_over, the runner ends the turn, and pacing wakes it again (src/sim/pace.js).
+export const tableRest=a=>{const sc=sceneOf(a);return !!(sc&&a&&sc.ids.includes(a.id)&&!sc.done&&!sceneDue(a))};
+const REST_TAIL=' Your turn is over: end it here. You will be woken when the table settles or asks you again.';
+export const restText=a=>{const sc=sceneOf(a);return (sc&&sc.acts[a.id]?'Your answer is in; the table has not settled.':heldBack(sc,a)?'The DM is still setting the scene.':'Your part at this table is done for now.')+REST_TAIL};
+export const AWAY_TEXT='The world is paused for a scene at the table.'+REST_TAIL; // a hero outside the scene that stops the world
 // The line a member's tool results carry while its own scene waits, or null.
 export function waitsNote(a,options){if(!sceneDue(a))return null;const sc=sceneOf(a);
   const keys=(options||[]).map(o=>String(o).split(' = ')[0]).filter(Boolean);

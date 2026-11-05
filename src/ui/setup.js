@@ -10,7 +10,7 @@
 import {defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,asV2} from '../sim/index.js';
 import {companies,slotMembers,slotted,SLOT_KEYS} from '../sim/company.js';
 import {S} from '../sim/state.js';
-import {slotsOf,groupsOf,MAX_HEROES,CLASSIC,seatCap,seatNote} from '../sim/setup.js';
+import {slotsOf,groupsOf,MAX_HEROES,CLASSIC,seatCap,seatNote,hallTowns} from '../sim/setup.js';
 import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
@@ -96,6 +96,7 @@ function problems(){const out=validateSetup(st.setup);return out}
 // ---- building the page ----
 function build(){root=el('div','setup');root.id='setup';root.hidden=true;root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-label','New World setup');
   document.body.append(root);
+  root.addEventListener('toggle',e=>{const d=e.target;if(d&&d.classList&&d.classList.contains('sprofd')&&st){(st.profsOpen=st.profsOpen||{})[d.dataset.k]=d.open}},true);
   root.addEventListener('click',onClick);root.addEventListener('change',onChange);root.addEventListener('input',onInput);
   document.addEventListener('keydown',e=>{if(e.key==='Escape'&&root&&!root.hidden&&!st.first)cancel()})}
 const btn=(label,a,extra={},cls='')=>{const b=el('button','mini'+(cls?' '+cls:''),label);b.dataset.a=a;for(const k in extra)b.dataset[k]=extra[k];return b};
@@ -144,12 +145,16 @@ export const archetypeHint=v=>!v?'Their own voice, from the world.':v===ARCHETYP
 const archControls=(k,p)=>field('Archetype',select('arch:'+k,archetypeOptions(),p.archetype||'','Persona archetype for '+heroTitle(k)),el('span','dm sarchnote',archetypeHint(p.archetype)));
 
 // Up to MAX_PROF professions for a place, or none chosen = "let them choose" (the hero picks in play, #259).
-function profControls(k,p){const d=el('div','sfield'),chosen=p.profs||[],row=el('div','sprofs');
-  d.append(el('span','slbl','Professions'));
+function profControls(k,p){const chosen=p.profs||[],row=el('div','sprofs'),det=el('details','sprofd');det.dataset.k=k;if(st.profsOpen&&st.profsOpen[k])det.open=true;
+  det.append(el('summary','slbl','Professions: '+(chosen.length?chosen.map(id=>PROF[id].name).join(', '):'their choice')));
   for(const id of PROF_IDS){const on=chosen.includes(id),full=!on&&chosen.length>=MAX_PROF;
     const b=btn(PROF[id].name,'prof',{slot:k,id},full?'dis':'');b.title=PROF[id].kind+': '+PROF[id].blurb;b.setAttribute('aria-pressed',String(on));if(full)b.disabled=true;row.append(b)}
-  d.append(row,el('div','dm sprofnote',chosen.length?chosen.map(id=>PROF[id].name).join(' and ')+' at skill 1.':'Let them choose (up to '+MAX_PROF+').'));
-  return d}
+  det.append(row,el('div','dm sprofnote',chosen.length?chosen.map(id=>PROF[id].name).join(' and ')+' at skill 1.':'Let them choose (up to '+MAX_PROF+').'));
+  const d=el('div','sfield');d.append(det);return d}
+
+// One line on what Start will build: the company, the DM's mind, the seed.
+function summaryLine(s){const co=together()?(s.name&&s.name.trim()?s.name.trim():'the Fellowship'):s.heroes.length+' hero'+(s.heroes.length===1?'':'es');
+  return co+' · '+(WORLDS_INFO[s.world]||s.world)+' · DM: '+labelOf(s.dm)+' · seed '+(Number.isFinite(s.seed)?s.seed:'?')}
 
 function relayLine(){const s=relayState(),d=el('div','srelay '+s);
   const agentsWanted=plan(st.setup).length>0;
@@ -163,7 +168,7 @@ function runnerSummary(){const pl=plan(st.setup);if(!pl.length)return 'No runner
   const max=relay.runner&&relay.runner.max;
   return 'On Start: '+pl.map(r=>r.kind==='fellowship'?'one Fellowship runner ('+labelOf(r)+')':r.kind==='company'?'one runner for '+r.label+' ('+labelOf(r)+')':r.kind==='dm'?'the DM runner ('+labelOf(r)+')':r.label+' runner ('+labelOf(r)+')').join(', ')+'. '+pl.length+(max?' of '+max+' runners allowed.':' runner'+(pl.length===1?'':'s')+'.')}
 
-function render(){if(!root)return;const s=st.setup,page=el('div','spage');
+function render(){if(!root)return;const s=st.setup,page=el('div','spage'),halls=hallTowns(s.world,s.fac);if(s.hall&&!halls.includes(s.hall))delete s.hall; // another faction or map: back to the default
   const head=el('div','shead');head.append(el('h2',null,'New World'),el('div','dm','Build the world, choose who plays whom, and the heroes are agent-played from the first minute. Nothing changes until you press Start.'));page.append(head);
 
   const sw=el('div','spresets sswitch');sw.setAttribute('role','group');sw.setAttribute('aria-label','How the heroes start');sw.append(el('span','slbl','Start'));
@@ -187,8 +192,10 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   const seed=el('input','sinput');seed.type='number';seed.min=0;seed.step=1;seed.value=String(s.seed);seed.dataset.f='seed';seed.setAttribute('aria-label','Seed');
   const sr=el('div','snamerow');sr.append(seed,btn('Reroll','seedroll',{},'sdice'));wrow.append(field('Seed',sr));
   if(together()){wrow.append(field('Faction',select('fac',FAC.map((f,i)=>[String(i),f.name]),String(s.fac))));
+    if(halls.length>1)wrow.append(field('Hall',select('hall',[['','The Tank\'s home town']].concat(halls.map(n=>[n,n])),s.hall||'','The town where all five start, whatever their peoples')));
     const fn=el('input','sinput');fn.type='text';fn.maxLength=40;fn.placeholder='Fellowship name: chosen for you';fn.value=s.name||'';fn.dataset.f='fname';
     wrow.append(field('Fellowship name',fn))}
+  wrow.append(field('Other heroes',select('others',[['full','The usual roster'],['none','None: the company and whoever the DM brings']],s.others==='none'?'none':'full','Whether the world has background heroes of its own')));
   wsec.append(wrow);page.append(wsec);
 
   const fsec=el('section','ssec');
@@ -199,7 +206,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
   const dsec=el('section','ssec');dsec.append(el('h3',null,'The Dungeon Master'),mindControls('dm',s.dm),
     el('div','dm','The DM is always an agent: its seat opens at once, it prepares the campaign, frames the scenes and pulls levers. The world waits for its runner as for a member; the scripted DM only fills in while it is slow or gone.'));page.append(dsec);
 
-  const fin=el('section','ssec sfinal');fin.append(relayLine(),el('div','dm srun',runnerSummary()));
+  const fin=el('section','ssec sfinal');fin.append(el('div','ssum',summaryLine(s)),relayLine(),el('div','dm srun',runnerSummary()));
   const ps=problems();
   if(ps.length){const ul=el('ul','sprobs');for(const p of ps)ul.append(el('li',null,p));fin.append(ul)}
   {const note=seatNote(s);if(note)fin.append(el('div','dm sseatnote',note))}
@@ -212,7 +219,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage');
     if(ps.length){go.classList.add('off');go.disabled=true}
     row.append(go,btn(st.back?'Back':st.first?'Play the default world':'Cancel','cancel'));fin.append(row)}
   page.append(fin);
-  root.replaceChildren(page)}
+  const top=root.scrollTop;root.replaceChildren(page);root.scrollTop=top}
 
 // Update only the model lists when the relay's answer changes (never under a focused field).
 let lastModelSig='';
@@ -232,6 +239,8 @@ function refreshFinal(){const a=document.activeElement,tag=a&&a.dataset&&a.datas
 
 function onChange(e){const t=e.target;if(!t||!t.dataset||!t.dataset.f)return;const f=t.dataset.f,v=t.value;st.confirm=false;st.error='';
   if(f==='world')st.setup.world=v;
+  else if(f==='others'){if(v==='none')st.setup.others='none';else delete st.setup.others}
+  else if(f==='hall'){if(v)st.setup.hall=v;else delete st.setup.hall}
   else if(f==='fac'){st.setup.fac=+v;for(const h of st.setup.heroes){h.fac=+v;delete h.race;delete h.name}}
   else if(f.startsWith('hfac:')){const k=f.slice(5),h=heroAt(k);h.fac=+v;delete h.race;delete h.name;h.start={town:'home'};if(idx(k)===0)st.setup.fac=+v}
   else if(f.startsWith('start:')){const h=heroAt(f.slice(6)),i=v.indexOf(':');h.start=v==='home'?{town:'home'}:{[v.slice(0,i)]:v.slice(i+1)}}
@@ -334,7 +343,7 @@ export async function afterBoot(){const setup=appliedSetup();if(!setup||bootKind
     for(const j of jobs)j.error='no runner';launch.headline=why+' The world stays paused until they connect.';clearInterval(timer);paintBar();return}
   launch.sent=true;launch.headline='Runners are starting. The world is paused until they all claim their seats.';
   for(const j of jobs){const body={kind:j.kind,provider:j.provider,model:j.model,...(j.kind==='hero'?{hero:heroOf(j).id}:j.kind==='company'?{company:coId(j)}:{})};
-    let r;for(let i=0;i<10;i++){r=await post('/play/runner/start',body);if(r.ok||r.code!==404)break;await sleep(1000)} // the page tells the relay which heroes are agent-played a moment after loading
+    let r;for(let i=0;i<10;i++){r=await post('/play/runner/start',{...body,by:'setup'});if(r.ok||r.code!==404)break;await sleep(1000)} // the page tells the relay which heroes are agent-played a moment after loading
     if(!r.ok)j.error=r.error}
   const failed=jobs.filter(j=>j.error);
   launch.headline=failed.length?failed.length+' of '+jobs.length+' runners did not start. The world stays paused: start the rest from the bar over the map.':'All runners started; the world plays on when they have claimed.';

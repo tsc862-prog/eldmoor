@@ -20,7 +20,7 @@ the hero card ("People: Tarrow of Highgate") and in the recruit line ("A new Ash
 warrior, Kardul, joins <BF> Bloodfang in Grimhold."). Recruits are drawn to keep the living
 roster of each faction roughly even across its peoples, with a nudge toward the classes a
 people favours. Peoples differ in skin and hair, names, home and culture only; stats come
-from class and level. Home towns not yet on the map are reserved names: Cairnmoot, Brinereach (today a hamlet), Murkstead and Thornteeth (today a camp).
+from class and level. Home towns not yet on the Eldmoor map are reserved names: Cairnmoot, Brinereach (today a hamlet), Murkstead and Thornteeth (today a camp). Brinereach and Thornteeth are real towns on the Stepping Lands test continent (see The Stepping Lands).
 
 | People | Faction | Home | Look | Favours | Culture |
 | --- | --- | --- | --- | --- | --- |
@@ -115,6 +115,10 @@ that."), and the hero card lists them.
 | Boastful | Picks fights for the story, and loots for the audience. | 20% more likely to duel; hunts a little longer before selling. |
 
 ## Origins and goals
+A hero who plays by its own mind is given the past and chooses the oath (#800): the origin stays, and the rolled goal is only an
+offered thread, told as the past ("Brunok's family once held the Magma-Tempered Gauntlets. It was lost, and they never stopped
+speaking of it."). Nobody calls it an oath until the hero swears, aloud, in its own words. What follows is the background heroes' way.
+
 Every recruit arrives with a one-sentence backstory (`src/data/origins.js`, filled from the
 living world by `src/sim/goals.js`) and swears an oath: a personal goal they pursue and the
 Chronicle announces when kept ("Pellora has kept the oath: Hollowfang is dead. A new oath:
@@ -164,6 +168,8 @@ tiers), and an oath whose target dies first is void and re-sworn.
 ## Abilities and skills
 
 Every hero carries six ability scores and ten skills (`src/data/abilities.js`, `src/sim/abilities.js`). The six scores are the only attributes in Eldmoor: items do not carry stats of their own, they add to scores (see Equipment).
+
+**Growth** (levels 5, 10, 15, 20, cap 20): a scripted hero gains +1 to its class's primary score and half the time +1 to the secondary. A hero played by an agent chooses where its one point goes (`raise_score`, with a reason that enters its story); if it says nothing within a game day, or its runner is gone, the class default is taken for it.
 
 **Scores** (3-18 at recruitment: roll 4d6, drop the lowest, six times; the best go to the class's primary then secondary, the rest fall where they fall; modifier = floor((score - 10) / 2)):
 
@@ -311,6 +317,9 @@ and is hunted on sight ("spots X, who killed their friend Y, and charges"). The 
 friend swears the death will be paid for. Whoever finally kills the killer has paid the
 blood debt, and the dead hero's friends warm to them. A grudge ends only with the killer.
 
+## Wounds and the chapel (issue #656)
+A hero brought down and brought back carries a lasting wound for days: less health, a slower step and a slower arm. Healers and the fire shorten it. In town the Priest (the Shaman, in Warband towns) dresses wounds at the chapel for a few coins; no one there raises the dead, and no one ever will.
+
 ## Zones
 | Zone | Levels | Description |
 | --- | --- | --- |
@@ -350,6 +359,19 @@ Sample lines:
 - "Vexzar brings the pilgrim safe to the gate of Grimhold... rolls 20. +3 honor and a gift of 19g."
 - "Pellora and party are ambushed by 2 Rookscar bandits on the Mirefen road... rolls 12+3 vs 14. The bandits break and run; 20g in their purses."
 
+## Road traffic
+
+The people between the towns (issue #796). Nobody here fights or has a name of their own: they are presence, seen in passing.
+Carters belong to neither faction and take their loads to any gate; the road is the one place the Concord and the Warband
+buy from each other without a word said.
+
+- **Carts** go by their load: a salt cart, a grain cart, an ale cart, a timber cart, a wool cart, a hide cart, a pelt cart, a silk
+  cart, a moss cart. The last five carry what the auction house trades (Hoar Wool, Thick Hide, Wolf Pelt, Silk Bundle, Fen Moss).
+- **Travellers** on foot: a pedlar, a pilgrim, a tinker, a drover, a road courier, a wandering minstrel. They also walk to the
+  outposts and the dungeon mouths at the ends of the roads, and back. Nobody takes the road to a wyrm's lair for choice.
+- **Guards**: a guard of the town on its gate road, day and night; a watchman of the nearest town on each bridge, by day.
+- A cart that never arrives reads in the Chronicle as "A salt cart never came off the road in Mirefen."
+
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
   - **The stair sign and the captain's word** (#448): the game never turns a company away from the stair for level; the danger is read in the world. A weathered sign is nailed to the stair-post: "Those who went below were tried blades; you are not. Turn back." A hero below Mirefen's band who sees the stair marks the Crypt dangerous in what it knows. The gate captain, asked by a green blade, says: "The Sunken Crypt is not a place for green blades. Those who went down before you were tried, and the stair has kept more of them than the bards admit. Grow first, then go, and go together."
@@ -384,10 +406,14 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 | --- | --- | --- | --- |
 | Highgate | Concord | Hallowan | As in Eldmoor, in the north-west corner. |
 | Cairnmoot | Concord | Tarrow | A cairn-ringed hill market on the western bank of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Brinereach | Concord | Skerrin | A salt-reach fishing town of net-menders on the western bank of the Greywater, south of Cairnmoot. Its name was reserved in "Peoples of Eldmoor". |
 | Grimhold | Warband | Ashfolk | As in Eldmoor, in the south-west corner. |
 | Murkstead | Warband | Mirekin | A stilted salt-boilers' town at the fen margin, west of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Thornteeth | Warband | Thornhide | A bone-carvers' ridge-town in the south-east of the fen country, on the road to the Sunken Crypt. Its name was reserved in "Peoples of Eldmoor". |
 
 - **The Greywater**: the river that divides Lowmark from the fen and the upland.
+- **Brinereach** (Stepping Lands town, Concord, Skerrin home, Lowmark, level 1-5): a salt-reach fishing town of net-menders on the west bank of the Greywater, road to the western hub. Not Eldmoor canon geography.
+- **Thornteeth** (Stepping Lands town, Warband, Thornhide home, Sedgewater, level 4-9): a bone-carvers' ridge-town in the south, roads to Murkstead and the Sunken Crypt. Not Eldmoor canon geography.
 - **The Sunken Crypt of the Stepping Lands** (level 4-9, Sedgewater): the same dungeon name, but the crawl here is three chambers of its own (#309), proving the rooms are data per world. Creatures are the Crypt species (Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens).
   - **The Reed Sump**: a flooded stair-foot choked with dead reeds; Tomb Skitters under the water-mat.
   - **The Salt-Bone Hall**: shelves crusted white with fen salt; a Crypt Shambler and a Bone Archer.
@@ -395,7 +421,7 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 - **The Hollow Cairn** (level 8-13, Cairnwold): placeholder second dungeon. Only the entrance exists today; it has no group runs, boss fight or loot. Its warden, **The Cairn-Warden**, is reserved for the future dungeon.
 - **Brask Ironhorn, the Ram-King of the Cairnwold** (Cairnwold elite, level 15, kin Tundra Shaghorn): a crag-ram with one horn snapped and the other grown into his own shoulder. Placeholder.
 - **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.
-- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth stay reserved.
+- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (see the town table and entries above).
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
@@ -795,6 +821,10 @@ Name check (2026-11-02): all of the above pass; no franchise proper nouns, no du
 sits one letter-shuffle from the zone Mirefen (kept as the cook's joke, but never use it as a place name); Rimebloom and
 Rimeblood differ by one syllable (plant and potion, kept); "Shaghorn Horn" repeats itself, acceptable as a trade-name.
 
+## Beasts of the yard and field, and town life (issue #795)
+
+Ambient animals that are not creatures of the bestiary: nothing fights them and nobody hunts them. Town yards keep chickens, dogs, cats and goats; the open country keeps deer and hares (meadow, highland, tundra; the tundra hare is white), and crows and gulls (gulls by water). Hares and deer bolt from a hero and come home; birds take wing and glide back later. A few trees hold roosting birds that burst out when a hero passes. Each town's gate is flanked by two guards in a tabard of the town's colours, a third walks the wall opposite, the smithy's forge smokes through the working day, the inn's hearth at breakfast and from the afternoon, stalls open in the plaza in market hours (shut in rain and at night), lamps are lit at dusk and a pennant flies over the hall. No new named people or places.
+
 ## Townsfolk
 Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`
 routines). Each is one of the town's own people, named from that people's syllables when the
@@ -966,6 +996,33 @@ Samples:
 - "Halfhorn, terror of the Mirefen drovers, comes out last... rolls 18+3 vs 11. Mireth is ready for it."
 - "Lurken delivers a salt wagon at the Thornvale waymark... rolls 7+2 vs 10. Two crates short. The tallyman docks the pay and does not apologise."
 - "Mireth's party returns from Smoke Out the Mirefen Den with the job done. 40g each, and Mireth takes Fenleather Vestment."
+
+### Goods jobs (issue #720, epic #238)
+
+Not every job is a walk. Some boards ask for goods: crafted by a hero's trade or dug, cut and
+caught with their own hands. No scenes and no party; a hero takes the posting, brings the goods
+to the town that posted it, and is paid at the counter (templates `SUPPLY` in
+`src/data/adventures.js`). The Chronicler files them under "errands" and is dry about it.
+
+| Job | Asks for | Given by | The giver adds |
+| --- | --- | --- | --- |
+| Draughts for the chapel | Redroot Draughts (alchemy) | priest, innkeeper | "The chapel's shelves are bare after the last fever." |
+| Tonics for the sick-room | Marrowmend Tonics (alchemy) | priest | "Bad cuts, and nothing left to knit them." |
+| A blade for the gate | a Tinforged Weapon (smithing) | gate captain, quartermaster | "The watch's steel is notched past mending." |
+| A cowl for the gate | a Wolfhide Cowl (leatherworking) | gate captain | "The winter watch wants something warm for the post on the wall." |
+| Suppers for the road | Spit-Roast Perch (cooking) | innkeeper, quartermaster | "A drover train is in, hungry and not particular." |
+| Wards for the chapel | Scrolls of Hearthward (scribing) | priest, bard | "The chapel hands them to travellers who ask." |
+| Redroot for the herbwives | Redroot Leaf (herbalism) | priest, innkeeper | "The herbwives cannot keep up with the cut." |
+| Ore for the forge | Tin Ore (mining) | smith, quartermaster | "The forge is cold until someone brings it ore." |
+| Sinew for the saddlers | Wolf Sinew (skinning) | quartermaster, smith | "Harness, stitching, and not a strand to be had." |
+| Perch for the inn | River Perch (fishing) | innkeeper | "The kitchen wants them whole and cold." |
+| A Rimebloom patch | Rimebloom (herbalism, band 3) | priest | "A drover saw a patch of it above the tarn, blue in the snow." |
+
+Crafted-goods jobs sometimes pay in the raw stuff the next batch wants (Hearthbloom, Fen Moss, Tin
+Ore, Wolf Sinew, River Perch, Rushpulp); gathering jobs pay gold only. The Rimebloom hook's "the
+tarn" is one of Hoarfell's frozen tarns (see Zones), where Tarn Wights climb out of the ice; the
+priest does not mention that. Titles read like "Three Redroot Draughts for the chapel" or
+"Five Redroot Leaf, fresh".
 
 ## The DM's hand
 The Dungeon Master does not reach into the world freely. It has a short list of levers

@@ -24,6 +24,7 @@
 // In-game channels (#123): the watcher's questLog says who made a job (from); the hero's own view (questsView, the
 // quests tool) never does, and nothing here carries a DM note, a lever reason or a staged scene's reason.
 import {S} from './state.js';
+import {swornOf,threadOf,threadText} from './oath.js'; // sworn oaths, and the thread on offer (#800)
 import {MOBS} from '../data/mobs.js';
 import {ZONES,CRYPT,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
@@ -32,6 +33,7 @@ import {K as DMK,holdAdventure,resumeAdventure} from './dm.js';
 import {ev} from './notify.js';
 import {wakeQuestDone} from './wakes.js'; // finished quests wake the agent (one wake helper, no copy)
 import {inSlots} from './company.js'; // the slotted company (#588)
+import {supplyTick,supplyOf,openAt,supplyId,textOf as supplyText,wantText,rewardText,have as supplyHave,setSupplyDone,SUP} from './supply.js'; // goods jobs (#720)
 
 export const QL={
   MAX:5,        // quests a hero holds at once (oaths and blood debts come on top)
@@ -66,7 +68,7 @@ function killQ(a,q,status,focus){const M=MOBS[q.type]||{},home=homeOf(a).name,z=
     reward:'about '+(4+a.lvl*3)+'g and XP',status,focus,started:q.at,ends:null,from:'quest giver'})}
 
 const jobKind=h=>h.by==='dm-agent'||h.ff?'dm':'board';
-const jobFrom=(h,a)=>h.by==='dm-agent'?'DM agent':h.ff?'scripted DM':h.src==='follow'?'follow-up':h.for===a.id&&h.src==='request'?'a person':h.src==='oath'?'oath board':'town board';
+const jobFrom=(h,a)=>h.by==='dm-agent'?'DM agent':h.ff?'scripted DM':h.src==='follow'?'follow-up':h.for===a.id&&h.src==='request'?'a person':h.src==='oath'&&!(a.goal&&a.goal.offered)?'oath board':'town board';
 const jobTitle=h=>{if(h.title)return h.title;const T=D.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return (T.name||h.tpl)+(th?': '+plain(th):'')+(h.data&&h.data.beast?' ('+h.data.beast+')':'')};
 function payText(a,h){const T=D.ADVENTURES[h.tpl];if(!T||!T.pay)return null;const g=Math.round((6+a.lvl*3)*T.pay.gold*(h.data&&h.data.payMul||1));
   return 'about '+g+'g and XP'+(T.pay.honor?', '+T.pay.honor+' honor':'')+(T.pay.gear>=.35?', maybe gear':'')}
@@ -80,9 +82,16 @@ function jobQ(a,h,status,focus){const T=D.ADVENTURES[h.tpl]||{},on=h.phase==='ac
   return mk({id:jobId(h),kind:jobKind(h),title:jobTitle(h),giver:h.giver?h.giver.name:null,where,objective,progress:on?sceneProgress(h):null,reward:payText(a,h),status,focus,
     started:h.started!=null?h.started:h.phase==='taken'?h.takenAt:h.born,ends:h.started!=null?h.started+DMK.MAX_DAYS*1440:h.until,from:jobFrom(h,a)})}
 
+// A goods job (sim/supply.js, #720): bring crafted or gathered goods to the town that posted it. A taken one is held; one on the
+// board is offered. Kind dm when the DM agent or the scripted DM's Fellowship-first posting made it.
+function supplyQ(a,j,status,focus){return mk({id:supplyId(j),kind:j.by==='dm-agent'||j.ff?'dm':'board',title:supplyText(j),giver:j.giver?j.giver.name:null,where:j.town,
+  objective:wantText(j)+(j.hint?'. '+j.hint:''),progress:{have:Math.min(supplyHave(a,j.want),j.want.n),need:j.want.n},reward:rewardText(j),status,focus,
+  started:j.phase==='taken'?j.takenAt:j.born,ends:j.until,from:j.by==='dm-agent'?'DM agent':j.ff?'scripted DM':'town board'})}
 function oathQ(a,g,status,focus){const where=g.type==='pilgrimCrypt'&&CRYPT?CRYPT.name:g.zone!=null&&typeof g.zone==='number'?ZONES[g.zone]||null:null;
   return mk({id:oathId(g),kind:'oath',title:g.text,giver:null,where,objective:g.text+(g.target?' ('+g.target+')':''),
     progress:g.need>1?{have:Math.min(g.progress||0,g.need),need:g.need}:null,reward:null,status,focus,started:g.at,ends:null,from:'oath'})}
+// An offered thread: not an oath, not held; it waits under offered until the hero swears it (#800).
+const threadQ=(a,g)=>({...oathQ(a,g,'offered',false),title:clip(threadText(a,g),90),objective:clip(threadText(a,g),160),progress:null,from:'your past',sworn:false});
 function vowQ(a,v,status,focus,why){const where=v.about&&v.about.zone!=null?ZONES[v.about.zone]||null:v.kind==='reach'?v.about&&v.about.name:null;
   return mk({id:v.id,kind:'oath',title:v.text,giver:null,where,objective:'Your vow: '+v.text+(why?' ('+why+')':''),progress:null,reward:null,status,focus,started:v.at,ends:v.ends,from:'sworn vow'})}
 function debtQ(a,k,victim,focus){return mk({id:debtId(k.id),kind:'oath',title:'Blood debt: '+k.name,giver:null,where:null,
@@ -97,15 +106,16 @@ export const heldOf=a=>advs().filter(v=>v.phase==='active'&&v.held===a.id);
 export const takenOf=a=>advs().filter(h=>h.phase==='taken'&&h.taker===a.id);
 export const offersOf=a=>advs().filter(h=>h.phase==='open'&&h.for===a.id&&h.town===homeOf(a).name);
 // Quests that count toward QL.MAX.
-export const heldCount=a=>(a.quest?1:0)+(runningOf(a)?1:0)+heldOf(a).length+takenOf(a).length;
+export const heldCount=a=>(a.quest?1:0)+(runningOf(a)?1:0)+heldOf(a).length+takenOf(a).length+supplyOf(a).length;
 
 // The id in focus: a running adventure always (the DM leads it), else what the hero focused (while it still holds
 // it), else the kill quest, else the oath.
 export function focusId(a){const r=runningOf(a);if(r)return jobId(r);
   const f=a.qlog&&a.qlog.focus;if(f&&holds(a,f))return f;
-  if(a.quest)return killId(a.quest);if(a.goal&&!a.goal.done)return oathId(a.goal);return null}
-function holds(a,id){if(a.vow&&a.vow.id===id)return true;if(a.quest&&killId(a.quest)===id)return true;if(a.goal&&!a.goal.done&&oathId(a.goal)===id)return true;
+  if(a.quest)return killId(a.quest);if(swornOf(a))return oathId(a.goal);return null}
+function holds(a,id){if(a.vow&&a.vow.id===id)return true;if(a.quest&&killId(a.quest)===id)return true;if(swornOf(a)&&oathId(a.goal)===id)return true;
   if(/^debt:/.test(id)){const k=hero(Number(id.slice(5)));return !!(a.nemesis&&k&&a.nemesis[k.id]&&alive(k))}
+  if(/^supply:/.test(id))return supplyOf(a).some(j=>supplyId(j)===id);
   const n=parseJob(id);return n!=null&&(heldOf(a).some(v=>v.id===n)||takenOf(a).some(h=>h.id===n))}
 
 // ---- the read API (the dossier's Quest tab, the quests tool) ----
@@ -115,19 +125,22 @@ export function questLog(a){if(!a||a.kind!=='hero')return {active:[],done:[],foc
   if(r)out.push(jobQ(a,r,'active',true));
   for(const v of heldOf(a))out.push(jobQ(a,v,'held',f===jobId(v)));
   for(const h of takenOf(a))out.push(jobQ(a,h,'held',false));
+  for(const j of supplyOf(a))out.push(supplyQ(a,j,'held',f===supplyId(j)));
   if(a.quest)out.push(killQ(a,a.quest,'active',f===killId(a.quest)));
-  if(a.goal&&!a.goal.done)out.push(oathQ(a,a.goal,'active',f===oathId(a.goal)));
+  if(swornOf(a))out.push({...oathQ(a,a.goal,'active',f===oathId(a.goal)),...(a.player?{sworn:true}:{})});
   if(a.vow)out.push(vowQ(a,a.vow,'active',f===a.vow.id));
   let n=0;for(const k in a.nemesis||{}){const x=hero(Number(k));if(!alive(x))continue;if(n++>=QL.DEBTS)break;out.push(debtQ(a,x,a.nemesis[k],f===debtId(x.id)))}
   const rec=tableRec(a);if(rec)out.push(sceneQ(a,rec,'active'));
   out.sort((p,q)=>(q.focus?1:0)-(p.focus?1:0));
   const offered=offersOf(a).map(h=>({...jobQ(a,h,'active',false),status:'offered'}));
+  for(const j of openAt(homeOf(a)))if(j.for===a.id)offered.push({...supplyQ(a,j,'active',false),status:'offered'});
+  if(threadOf(a))offered.push(threadQ(a,a.goal));
   return {active:out,done:(a.qlog&&a.qlog.done||[]).slice(0,QL.DONE).map(unpack),focus:f,offered}}
 
 // The hero's own view (the quests tool): no word of who made a job behind the scenes.
-const KIND_SEEN=q=>q.kind==='oath'?'oath':/^scene:/.test(q.id)?'scene':/^kill:/.test(q.id)?'quest':'job';
+const KIND_SEEN=q=>q.kind==='oath'?(q.sworn===false?'thread':'oath'):/^scene:/.test(q.id)?'scene':/^kill:/.test(q.id)?'quest':'job';
 const hoursTo=m=>m==null?undefined:Math.max(0,Math.round((m-S.gameMin)/60));
-export function seenQ(q){const o={id:q.id,kind:KIND_SEEN(q),title:q.title,status:q.status};if(q.focus)o.focus=true;
+export function seenQ(q){const o={id:q.id,kind:KIND_SEEN(q),title:q.title,status:q.status};if(q.focus)o.focus=true;if(q.sworn!=null)o.sworn=q.sworn;
   if(q.giver)o.giver=q.giver;if(q.where)o.where=q.where;o.objective=q.objective;if(q.progress)o.progress=q.progress.have+'/'+q.progress.need;if(q.reward)o.reward=q.reward;
   if(q.ends!=null&&q.status!=='done'&&q.status!=='failed'&&q.status!=='abandoned'&&q.status!=='expired')o.ends_in_hours=hoursTo(q.ends);return o}
 export function questsView(a){const L=questLog(a),fq=L.active.find(q=>q.focus);
@@ -160,9 +173,14 @@ export function oathDone(a,g,st){push(a,ended(oathQ(a,g,st,false),st))}
 export function debtDone(a,k){const v=a.nemesis&&a.nemesis[k.id];if(!v)return;push(a,ended(debtQ(a,k,v,false),'done'))}
 export function killAbandoned(a,why){if(!a.quest)return;const q=killQ(a,a.quest,'abandoned',false);if(why)q.objective=clip(q.objective+' ('+why+')',160);push(a,ended(q,'abandoned'))}
 export function setFocus(a,id){logOf(a).focus=id}
+// A goods job ended (sim/supply.js calls this through setSupplyDone): filled, or gone cold in the hero's hands.
+export function supplyDone(a,j,st,gold){const q=supplyQ(a,j,st,false);if(st==='done'){q.progress={have:j.want.n,need:j.want.n};q.objective=clip('Done: '+wantText(j),160)}
+  else q.objective=clip(q.objective+' (it went cold before you filled it)',160);push(a,ended(q,st),gold)}
+setSupplyDone(supplyDone);
 
 // ---- once per step (sim/index.js): no dice; only taken jobs, held adventures and staged scenes ----
 export function questTick(){
+  supplyTick();
   let A=S.adventures;if(A&&A.length){
     for(let i=A.length-1;i>=0;i--){const h=A[i];if(h.phase!=='taken')continue;const t=hero(h.taker);
       if(alive(t)&&S.gameMin<=h.until)continue;A.splice(i,1);if(alive(t)){takenGone(t,h,'expired','it went cold before you set out');ev(t,'The job '+jobTitle(h)+' went cold before you set out on it.')}}

@@ -34,6 +34,7 @@
 // p.zone, limited to partyLegal(p) (the legal range of the weakest member, from the leader's
 // home). Followers are never asked for a zone: an AI follower asks only the crypt question
 // (kind 'cryptCall') and logs a token-free 'follow' entry when it leaves with the party.
+import {PROVIDERS,PROVIDER_LABEL} from '../data/providers.js';
 import {ZONES,zoneFor,zoneAt,dist,CRYPT} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {SLOTS} from '../data/items.js';
@@ -88,9 +89,9 @@ export const setFetch=f=>{fetchOverride=f}; // tests only
 // a.brainCfg = {provider, model?, effort?}: the same shape as the agent runner's per-hero settings (#93,
 // sess.runner), so a later provider-neutral runner can read it. No brainCfg = the relay's default
 // (Claude). Saved with the hero. Local providers get longer timeouts and cost nothing.
-export const MIND_PROVIDERS=['anthropic','ollama','openai','huggingface','google'];
+export const MIND_PROVIDERS=PROVIDERS; // the one list (#824)
 export const LOCAL_PROVIDERS={ollama:1};
-export const PROVIDER_LABEL={anthropic:'Claude',ollama:'Local (Ollama)',openai:'OpenAI',huggingface:'Hugging Face',google:'Gemini'};
+export {PROVIDER_LABEL};
 const MODEL_OK=/^[A-Za-z0-9][\w.:\/+-]{0,99}$/;
 export function mindCfg(a){const c=a&&a.brainCfg;if(!c||typeof c!=='object'||!MIND_PROVIDERS.includes(c.provider))return null;
   const o={provider:c.provider};if(typeof c.model==='string'&&MODEL_OK.test(c.model))o.model=c.model;if(c.effort==='low'||c.effort==='medium'||c.effort==='high')o.effort=c.effort;return o}
@@ -142,7 +143,7 @@ export function snapshotFor(a,kind,extra={}){
     combat:combatLine(a), // the five combat totals (sim/stats.js), one short string
     traits:(a.traits||[]).join(', '),origin:clip(a.origin,160),
     scores:topScores(a),skills:(a.prof||[]).join(', '), // ability scores (sim/abilities.js)
-    goal:a.goal?clip(a.goal.text,100)+' ('+a.goal.progress+'/'+a.goal.need+')':'none',
+    goal:a.goal&&!a.goal.offered?clip(a.goal.text,100)+' ('+a.goal.progress+'/'+a.goal.need+')':'none',
     quest:q?(MOBS[q.type].q||q.type)+' '+q.have+'/'+q.need:'none',
     where:ZONES[z]||'the road',weather:weatherName(z),time:dayPart()};
   const mates=partyMates(a);

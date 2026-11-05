@@ -16,15 +16,19 @@
 //             mask kinds: 'all' | 'rect'{x0,y0,x1,y1} | 'west-of-curve' |
 //               'east-of-curve' | 'north-of-curve' | 'south-of-curve' (curve: name) |
 //               'and'{masks} | 'or'{masks} | 'not'{mask}
-//   river     {curve, width} painted as RIVER along the curve; roads bridge it.
+//   river     {curve, width, fords?} painted as RIVER along the curve; roads bridge it. fords: places along it (y on a north-south river) left walkable.
 //   towns     {name, fac, x0, y0, w, h, gate:'E'|'W'|'N'|'S', race, spots, npcs}
 //             WALL border, FLOOR inside, two gate tiles in the middle of the gate
 //             wall; gate point and graveyard are derived from the rect by gen.js.
+//             buildings: (optional) [{piece, box:[x,y,w,h], door:[x,y], serves}] in world tiles;
+//             missing, gen.js lays out the town plan of data/townart.js TOWN_PIECES: each
+//             building is solid except its one door tile, and the spot it `serves` is that door.
 //             spots: interior points as [dx,dy] offsets from x0,y0 where the
 //             townsfolk keep their posts: quartermaster (the auction house, the
 //             heroes' `ah` stop), gate (the gate captain, the quest-giver `qg`
 //             stop), inn, smith, chapel, square. Missing spots get defaults laid
-//             out relative to the gate side (sim/npcs.js, data/npcs.js).
+//             out relative to the gate side (sim/npcs.js, data/npcs.js); a spot
+//             that a building serves stands at its door instead.
 //             npcs: role ids staffed here (default: every role in data/npcs.js).
 //   outposts  {id, name, x, y, r} contested outposts (#11): data only, never painted; sim/outposts.js owns who holds them.
 //   landmarks {kind:'lair', name, x, y, r, inner, mouth:'W'|'E'|'N'|'S', exclude, light}
@@ -84,13 +88,13 @@ export const ELDMOOR={
   ],
   river:{curve:'river',width:2},
   towns:[
-    // spots: the quartermaster's table and the captain's gate post are the heroes' old ah/qg stops;
-    // the inn is by the south wall, the forge by the north, the chapel in the gate-side corner,
-    // the square in the middle of the hero path. Homes line the back (west) wall at night.
+    // spots: the quartermaster, gate captain, smith, chapel and inn stand at the door of their building
+    // (the town plan, gen.js planBuildings, #793); the square is in the middle of the hero path.
+    // Homes line the back (west) wall at night.
     {name:'Highgate',fac:0,x0:2,y0:2,w:11,h:9,gate:'E',race:'hallowan',
-      spots:{quartermaster:[3.5,3.8],gate:[7.5,3.8],inn:[3.5,7.3],smith:[5.5,1.6],chapel:[8.5,1.9],square:[5.5,6.1]}},
+      spots:{square:[5.5,6.1]}},
     {name:'Grimhold',fac:1,x0:2,y0:39,w:11,h:9,gate:'E',race:'ashfolk',
-      spots:{quartermaster:[3.5,3.8],gate:[7.5,3.8],inn:[3.5,7.3],smith:[5.5,1.6],chapel:[8.5,1.9],square:[5.5,6.1]}},
+      spots:{square:[5.5,6.1]}},
   ],
   landmarks:[
     {kind:'lair',name:'Kragmaw',x:71.5,y:25.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
@@ -156,7 +160,7 @@ export const TESTWORLD={
 // hero to the region nearest their home town, so northern and southern towns climb different
 // ways. Not canon geography: see docs/LORE.md, "The Stepping Lands". Region fauna lives in
 // src/data/fauna.js, keyed by region id.
-const TOWN_SPOTS={quartermaster:[3.5,3.8],gate:[7.5,3.8],inn:[3.5,7.3],smith:[5.5,1.6],chapel:[8.5,1.9],square:[5.5,6.1]};
+const TOWN_SPOTS={square:[5.5,6.1]}; // the others stand at their building's door (gen.js planBuildings, #793)
 // The Stepping Lands' Sunken Crypt (#309): three chambers of its own, pitched for Sedgewater (levels 4-9; offsets are
 // from the party's average). Bestiary species only; the boss is a Grave Warden under a name, not a new creature.
 const STEPPING_CRYPT_ROOMS=[
@@ -195,12 +199,15 @@ export const STEPPING={
       sky:[['clear',.5],['fog',.35],['snow',.15]], // fog-bound far north
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'paleEdge'},{kind:'north-of-curve',curve:'frostLine'}]}},
   ],
-  river:{curve:'river',width:2},
+  river:{curve:'river',width:2,fords:[72]}, // the one bridge is far north; the south wades here (#794)
   towns:[
     {name:'Highgate',fac:0,x0:2,y0:2,w:11,h:9,gate:'E',race:'hallowan',spots:TOWN_SPOTS},
     {name:'Grimhold',fac:1,x0:2,y0:87,w:11,h:9,gate:'E',race:'ashfolk',spots:TOWN_SPOTS},
     {name:'Cairnmoot',fac:0,x0:28,y0:30,w:11,h:9,gate:'E',race:'tarrow',spots:TOWN_SPOTS},
     {name:'Murkstead',fac:1,x0:28,y0:62,w:11,h:9,gate:'E',race:'mirekin',spots:TOWN_SPOTS},
+    // #715: homes for the Skerrin (Concord) and the Thornhide (Warband), appended.
+    {name:'Brinereach',fac:0,x0:30,y0:46,w:11,h:9,gate:'E',race:'skerrin',spots:TOWN_SPOTS},
+    {name:'Thornteeth',fac:1,x0:52,y0:74,w:11,h:9,gate:'E',race:'thornhide',spots:TOWN_SPOTS},
   ],
   landmarks:[
     {kind:'crypt',name:'The Sunken Crypt',boss:'Mere-Warden Hask',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25,rooms:STEPPING_CRYPT_ROOMS,
@@ -215,6 +222,9 @@ export const STEPPING={
     {from:'Cairnmoot',to:'hubW'},
     {from:'Grimhold',to:'Murkstead'},
     {from:'Murkstead',to:'hubW'},
+    {from:'Brinereach',to:'hubW'},
+    {from:'Thornteeth',to:'Murkstead'},
+    {from:'Thornteeth',to:'The Sunken Crypt'},
     {from:'hubW',to:'The Sunken Crypt'},
     {from:'hubW',to:'The Hollow Cairn'},
     {from:'hubW',to:'hubE'},
@@ -227,7 +237,7 @@ export const STEPPING={
   // many random spawn points, so heroes stay local in regions too big for the Eldmoor 7-tile test.
   spawn:{townPad:[4,3],nearest:40},
   nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{
-    lowmark:{herb:16,ore:8,hide:12,fish:8},sedgewater:{herb:14,ore:8,hide:12,fish:6},cairnwold:{herb:12,ore:12,hide:10,fish:0},
+    lowmark:{herb:16,ore:8,hide:12,fish:8},sedgewater:{herb:14,ore:8,hide:12,fish:5},cairnwold:{herb:12,ore:12,hide:10,fish:0},
     cinderreach:{herb:8,ore:14,hide:10,fish:0},rimeholt:{herb:8,ore:10,hide:10,fish:0},palereach:{herb:6,ore:8,hide:8,fish:0}}},
 };
 
