@@ -76,3 +76,6 @@ export const profBonus=l=>l>=15?5:l>=10?4:l>=5?3:2;
 // Score growth at these levels: +1 to the primary, and half the time +1 to the secondary.
 export const GROWTH_LEVELS=[5,10,15,20];
 export const SCORE_MAX=20;
+// An agent-played hero with a runner chooses its growth point (raise_score, #714); if it does not within HOLD game hours
+// (or its runner is gone) the class-priority default is applied. Scripted heroes grow at once, as before.
+export const GROWTH={HOLD:24};

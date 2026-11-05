@@ -21,7 +21,7 @@ const GROUND={
   meadow:{ramp:['#34782f','#3a8236','#3f8a3a','#45923c','#4a9a40'],acc:['#f4e06a','#f08ab0','#f4f4f8','#6cc050'],odds:.05},
   fen:{ramp:['#3d5729','#42602c','#46622f','#4a6632'],acc:['#7a9a46','#9ab060'],odds:.05},
   swamp:{ramp:['#2a5242','#2c5646','#2f5a4a','#335f4e'],acc:['#5a8a6a','#8aa050'],odds:.04},
-  mud:{ramp:['#4f4e2c','#545330','#5b5a34','#6e6a3e'],acc:['#3e3c22','#7a7650'],odds:.04},
+  mud:{ramp:['#5e4c2c','#645230','#6c5834','#7e6a3e'],acc:['#3e3c22','#7a7650'],odds:.04},
   ash:{ramp:['#585050','#5f5652','#655c58','#6e6460','#746a64'],acc:['#4a423e','#8a807a','#7e8a52'],odds:.04},
   snow:{ramp:['#d8e0e8','#dde4ec','#e2e8ee','#e6ecf2'],acc:['#c4ced8','#ffffff'],odds:.03},
   ice:{ramp:['#aad4e2','#b4dce8','#bde2ec'],acc:['#e4f8fc','#6a98b0'],odds:.03},
