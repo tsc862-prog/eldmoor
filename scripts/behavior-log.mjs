@@ -133,6 +133,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     S.empty = flags.has('empty') ? S.empty + 1 : 0;
     if (S.empty >= BD.EMPTY_RUN && (S.empty === BD.EMPTY_RUN || S.empty % 10 === 0)) anomaly({kind: 'no-tool-calls', seat, hero: rec.hero || null, severity: 'bad', text: `${who}: ${S.empty} turns in a row without a tool call (${line.provider || '?'}/${line.model || '?'})`, evidence: {run: S.empty, turn: line.turn, narration: narration.slice(0, 200)}, force: S.empty === BD.EMPTY_RUN});
     if (flags.has('repeat')) anomaly({kind: 'repeated-narration', seat, hero: rec.hero || null, text: `${who} repeats an earlier narration`, evidence: {turn: line.turn, narration: narration.slice(0, 200)}});
+    if (flags.has('repeat-act')) anomaly({kind: 'repeated-act', seat, hero: rec.hero || null, text: `${who} repeats the same ${tools.filter(t => t.ok).map(t => t.name).slice(-1)[0] || 'act'} as last turn`, evidence: {turn: line.turn, tool: (tools.filter(t => t.ok).slice(-1)[0] || {}).name || null}});
     if (flags.has('foreign')) anomaly({kind: 'not-english', seat, hero: rec.hero || null, text: `${who} answered in another language (${line.model || '?'})`, evidence: {turn: line.turn, narration: narration.slice(0, 120)}});
     if (stale) anomaly({kind: 'stale-claim', seat, hero: rec.hero || null, severity: 'bad', text: `${who} ${stale}`, evidence: {turn: line.turn, narration: narration.slice(0, 200), state: (rec.after || rec.brief || {}).state || null}});
     S.refused = flags.has('refused') ? S.refused + 1 : 0;

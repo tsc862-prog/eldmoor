@@ -104,6 +104,7 @@ for (let i = 1; i <= 3; i++) ok(await turn(A.id, 'mock-A', {provider: 'ollama', 
 for (let i = 4; i <= 6; i++) await turn(A.id, 'mock-A', {provider: 'ollama', model: 'qwen2.5:14b', turn: i, brief: brief(A), tools: [{name: 'hunt', ok: false, error: 'Not done: hunt needs "n"'}, {name: 'move_to', ok: false, error: 'Not done: unknown place', refused: false}], narration: `Turn ${i}: ${A.name} tries something new each time ${i}.`, seconds: 3});
 await turn(B.id, 'mock-B', {provider: 'ollama', model: 'llama3.1:8b', turn: 1, brief: brief(B), tools: [{name: 'look', ok: true}], narration: '我们去城里休息一下，然后再出发。', seconds: 6});
 await turn(B.id, 'mock-B', {provider: 'ollama', model: 'llama3.1:8b', turn: 2, brief: brief(B), tools: [{name: 'status', ok: true}], narration: `${B.name} strikes the wolf again, blades clashing in a desperate battle. Key: ${KEY}`, seconds: 5});
+await turn(B.id, 'mock-B', {provider: 'ollama', model: 'llama3.1:8b', turn: 3, brief: brief(B), tools: [{name: 'emote', ok: true}], narration: `${B.name} poses with his cloak flaring.`, seconds: 2, flags: ['repeat-act']}); // #801: the runner saw the same emote as last turn
 const stolen = await turn(A.id, 'mock-B', {provider: 'ollama', model: 'llama3.1:8b', turn: 99, tools: [], narration: 'FORGED LINE FOR A'});
 ok(!stolen, 'a runner cannot write a turn line for a hero another runner holds (#123)');
 const dmc = await post('/play/claim', {role: 'dm', runner: 'mock-dm', provider: 'anthropic', model: 'claude-sonnet-5-5'});
@@ -161,11 +162,11 @@ server.close(); BR.setFetch(null);
 const turns = lines('turn'), anomalies = lines('anomaly'), world = lines('world'), decisions = lines('decision');
 const kinds = new Set(anomalies.map(a => a.kind));
 console.log(`  .. logged ${turns.length} turns, ${decisions.length} decisions, ${world.length} digests, ${anomalies.length} anomalies: ${[...kinds].sort().join(', ')}`);
-ok(turns.length === 9, `9 turn lines (6 for A, 2 for B, 1 for the DM; none forged): ${turns.length}`);
+ok(turns.length === 10, `10 turn lines (6 for A, 3 for B, 1 for the DM; none forged): ${turns.length}`);
 ok(!turns.some(t => /FORGED/.test(t.narration)), 'no forged line in turns.jsonl');
 ok(turns.filter(t => t.seat === 'hero:' + A.id).every(t => t.after && t.after.state), 'hero turn lines carry the state after the turn (from the game)');
 ok(turns.some(t => t.seat === 'dm' && t.cost === .012), 'the DM turn line carries its cost');
-const want = ['no-aim', 'no-memories', 'no-tool-calls', 'repeated-narration', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
+const want = ['no-aim', 'no-memories', 'no-tool-calls', 'repeated-narration', 'repeated-act', 'not-english', 'stale-claim', 'refused-calls', 'ollama-mismatch', 'request-flood', 'relay-failures', 'idle', 'stuck-state', 'reflex-scenes', 'reflex-votes', 'levers-refused', 'lever-near-hurt'];
 for (const k of want) ok(kinds.has(k), `anomaly logged: ${k}`);
 ok(world.length >= 6 && world.every(w => Array.isArray(w.members) && (w.members.length === 5 || (w.deaths || []).length > 0 && w.members.length >= 4)), `${world.length} hourly digests with the five members (one short in the hour a member fell)`);
 const lastW = world[world.length - 1] || {};
