@@ -73,7 +73,7 @@ import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
-import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, tableHooks, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
+import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, tableHooks, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let LOG_FILE = join(LOGS, 'fellowship.log'); const RUNS_FILE = join(LOGS, 'fellowship-runs.jsonl'); // AGENT_LOGS moves them for tests
@@ -279,8 +279,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       settings: {autoCompactEnabled: true}, maxTurns: scene || refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv, hooks: tableHooks({idle: on => {if (m.lease) m.lease.idle(on)}, onOver: () => {rested = true; out(m.name, '[table: nothing to wait for here; the turn ends and pacing wakes it]')}}), // #868
     }});
-    const sceneS = [];
+    const sceneS = [], gs = grabSpend(); // #747: what an aborted query reports before the cut
     try {for await (const msg of q) {
+      if (msg.type === 'assistant') gs.add(msg);
       if (msg.type === 'system' && msg.subtype === 'init') {m.sess.sessionId = msg.session_id; if (!refl && !scene) delete m.sess.rolled; saveSession(m.sess, {url: base}); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => out(m.name, s))}}
       else if (msg.type === 'system' && msg.subtype === 'compact_boundary') {m.compacts = (m.compacts || 0) + 1; m.sess.compacts = (m.sess.compacts || 0) + 1; out(m.name, `[compacted: ${msg.compact_metadata.pre_tokens} -> ${msg.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (msg.type === 'assistant' && !msg.parent_tool_use_id) {
@@ -300,7 +301,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`); failed = true}}
     grab.stop(); aborts.delete(ac);
     m.sess.turns++; m.turns++; if (scene) m.scenes++;
-    let turnCost = null, tin = null, tout = null, cread = null, cwrite = null;
+    let turnCost = null, tin = null, tout = null, cread = null, cwrite = null, grabCost = null;
+    if (grab.grabbed() && !result) { // the cut query sent no result: count what it spent (#747)
+      grabCost = gs.cost(model, {sent: String(m.sess.system || '').length + prompt.length}); spent += grabCost.usd; m.cost += grabCost.usd; m.sess.costUsd += grabCost.usd; turnCost = grabCost.usd;
+      out(m.name, `[turn ${m.turns}] cut for its scene | ${model} | ${grabCost.how} ${money(grabCost.usd)} (${grabCost.calls} model calls reported) | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`)}
     if (result) {
       const ud = usageDelta(m.sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)
       const tot = result.total_cost_usd || 0, cost = tot >= m.sess.lastTotal ? tot - m.sess.lastTotal : tot; m.sess.lastTotal = tot;
@@ -317,7 +321,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let wrote = 0; if (refl) {wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; m.notes = (m.notes || 0) + wrote; m.reflections = (m.reflections || 0) + 1;
       await closeReflection(base, m.id, runnerId, refl.id, wrote); out(m.name, `[reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(m.sess.ctx != null ? {ctx: m.sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     m.rolledNow = false; saveSession(m.sess, {url: base});
     if (grab.grabbed() && !again && !stopping && !m.ended && !failed) {out(m.name, '[scene answered; resuming the turn]'); return (await claudeTurn(m, null, w, null, true)) || tools > 0}
     return !failed && (tools > 0 || !!refl);
