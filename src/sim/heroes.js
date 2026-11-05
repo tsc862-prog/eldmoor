@@ -293,8 +293,8 @@ export function updAgent(a,dt){
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;if(d>r){moveTo(a,b.x,b.y,dt,2.8);break}a.moving=false;
     if(b.target&&b.target.kind==='hero')priestHeal(a,[b.target,a,...partyMates(a)]);
     {const mv=fightMoves(a,b,[a,...partyMates(a)],a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,b);a.cd=1.1}}break}
-  case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx;
-    moveTo(a,CRYPT.x+(k%3-1)*.9,CRYPT.y+.6+Math.floor(k/3)*.7,dt,2.6);break}
+  case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx,D=a.siteIn!=null&&a.siteAt||CRYPT; // a.siteAt: the mouth of a DM-made site a background party gathers at (sim/sites.js, #642)
+    moveTo(a,D.x+(k%3-1)*.9,D.y+.6+Math.floor(k/3)*.7,dt,2.6);break}
   case 'raid':{if(!boss.alive){a.raid=false;goHome(a);break}
     if(a.hp<mh*RAID_FLEE&&rnd()<dt*2){a.raid=false;a.target=null;pop(a.x,a.y-.6,'RETREAT','#ffd070');log(a,' broke from the raid on ',{t:'Kragmaw',c:'gd'},' wounded and fled the lair.');goHome(a);break} // live to raid again
     const idx=a.raidIdx,ang=Math.PI*(.55+idx*.18),rr=Math.min(CLS[a.cls].range+.9,3.2);

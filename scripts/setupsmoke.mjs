@@ -263,7 +263,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   // the hall picker (#771): only where the faction has a choice of towns; a pick lasts until another faction or map
   {const change=(f,v)=>{const s=sel(f);s.value=v;s.dispatch('change',{target:s})},w0=sel('world').value,f0=sel('fac').value;
    change('world','eldmoor');ok(!sel('hall'),'hall: no picker with one town to choose');
-   change('world','stepping');const o=sel('hall').childNodes.map(x=>x.value);ok(o[0]===''&&o.length===3,'hall: the default and the two towns of the faction: '+o);
+   change('world','stepping');const o=sel('hall').childNodes.map(x=>x.value);ok(o[0]===''&&o.length===4,'hall: the default and the three towns of the faction: '+o);
    change('hall',o[2]);ok(sel('hall').value===o[2],'hall: the pick stands');
    change('fac',f0==='0'?'1':'0');ok(sel('hall').value==='','hall: another faction goes back to the default');
    change('fac',f0);change('world',w0)}

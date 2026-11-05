@@ -140,7 +140,7 @@ export async function dmMindCases({provider, model, env: env0, ok, port, pricey 
       await post(B, '/play/call', {tool: 'attempt', args: {what: 'I read the weather in the gate crows.'}, hero: hero.id});
       const stopped = await until(async () => {const x = (await get(B, '/play/runner')).runners.find(q => q.key === 'dm'); return x && (x.state === 'stopped' || x.state === 'crashed') ? x : null}, 40000);
       ok(stopped && stopped.budgetSpent && stopped.spentWhy === 'budget reached' && stopped.state === 'stopped', tag + 'the voice\'s spend ends the run as a budget stop (#807)' + (stopped ? '' : '\n' + log().slice(-1000)));
-      ok(stopped && stopped.cost >= pricey.budget && !/\[turn 2\] /.test(log()), tag + `no further turn is paid for, and the page sees the spend ($${stopped && stopped.cost} of $${pricey.budget})`);
+      ok(stopped && stopped.cost >= pricey.budget && stopped.cost < pricey.budget + .02 && !/\[turn 2\] /.test(log()), tag + `no further turn is paid for, at most the one voice call already in flight ($0.011), and the page sees the spend ($${stopped && stopped.cost} of $${pricey.budget})`);
       const ev = readFileSync(join(tmp, 'runners', 'events.jsonl'), 'utf8').split('\n').filter(Boolean);
       ok(ev.some(l => /"budget"/.test(l) && /budget reached/.test(l)), tag + 'logs/runners/events.jsonl records the budget stop');
       const auto = JSON.parse(readFileSync(join(tmp, 'runners', 'active.json'), 'utf8'));
