@@ -94,3 +94,4 @@
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
 - [Invitations #872/#864](invitations.md) — invite.js: one rare header line, computed at read, marks on playFresh; why not events
 - [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
+- [Attempt reach #864](attempt_reach.md) — voices hold no Claude slot; real-time wait, 12 s pickup, wound parse, one retry, narrator invitation

@@ -365,14 +365,15 @@ export function companionVoice({base, adapter, model, effort = 'low', log = () =
 // a few seconds while this loop polls, then the scripted DM rules. One forced structured answer per call (enums for skill, DC and
 // effect kinds), then ruling_answer; a refused answer (an illegal effect) is logged and the scripted DM rules at the deadline.
 export const RULING_POLL_IDLE = 1500, RULING_POLL_HOT = 400;
+export const RULING_AGAIN_MS = 1500; // a refused answer goes back to the model once if this much of the budget is left (#864)
 export const RULING_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), ruling on what a hero tries. ' +
   NO_WORDS +
   'The hero may try anything; you decide which skill it tests and how hard it is (easy 8, fair 12, hard 15, heroic 18), and what follows a success and a failure, drawn only from the legal effects. ' +
   'The game rolls the dice; you never decide the result, what a hero thinks or chooses, and never touch level, XP, gold or life (a wound is at most 15% and never below 10% HP). ' +
   'Most attempts deserve none or one small effect: a clever idea a reveal (a fact they learn, a place, a creature) or someone warming to them, a reckless one a small wound or exposed. ' +
   'text is what the heroes hear on a success and fail_text on a failure (vivid, as much as the moment needs, usually one to three sentences, true to what is in sight). ' +
-  'An effect is {kind, target, value}: move {target: a direction or "x,y"}, reveal {target: place|fact|creature, value: the name or the fact}, attitude {target: a person in sight, value: -3..3}, open_talk {target: a person}, ' +
-  'open_scene {target: mystery|meeting|social|ambush|trap}, item {target: give|take, value: the item}, wound {target: 1..15}, condition {target: warded|exposed, value: minutes}, boon {target: d4|d6|d8}, none. ' +
+  'An effect is {kind, target, value} (value "" when the form has none): move {target: a direction or "x,y"}, reveal {target: place|fact|creature, value: the name or the fact}, attitude {target: a person in sight, value: -3..3}, open_talk {target: a person}, ' +
+  'open_scene {target: mystery|meeting|social|ambush|trap}, item {target: give|take, value: the item}, wound {target: the percent as a number, 1..15}, condition {target: warded|exposed, value: minutes}, boon {target: d4|d6|d8}, none. ' +
   'Reply as JSON {"skill": "...", "dc": "...", "effects": [...], "fail_effects": [...], "text": "...", "fail_text": "...", "note": "..."}; note is for your own log.';
 export function rulingPrompt(c) {
   const h = c.hero || {}, w = c.where || {}, s = c.in_sight || {}, t = c.attempt || {};
@@ -391,25 +392,30 @@ export const rulingSchema = c => {const L = c.legal || {}, kinds = (L.effects ||
 // {kind, target, value} -> the game's "kind:target:value" form (empty parts dropped); "none" entries dropped unless alone.
 export const effectText = e => e && typeof e === 'object' ? [e.kind, e.target, e.value].map(x => String(x == null ? '' : x).trim()).filter((x, i) => i === 0 || x).join(':') : String(e || '');
 export const effectList = L => {const a = (Array.isArray(L) ? L : []).slice(0, 3).map(effectText).filter(Boolean), b = a.filter(x => x !== 'none'); return b.length ? b : a.slice(0, 1)};
+const rulingWho = c => `${c.hero ? c.hero.name : 'call ' + c.call} "${short(c.attempt && c.attempt.what || '', 60)}"`; // the log names the hero and the attempt (#864)
 export function rulingVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = RULING_POLL_IDLE, pollHot = RULING_POLL_HOT, budgetS = 8, waitMs = VOICE_WAIT_MS}) {
   let done = false, seen = 0;
   const loop = async () => {
     while (!done && !stopped()) {
       const p0 = Date.now(), t = await tool(base, 'ruling_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
       const c = t && t.ok && t.call;
+      if (c && c.call !== seen && c.seconds_left <= .8) {seen = c.call; log(`[ruling] ${rulingWho(c)}: picked up with ${Number(c.seconds_left).toFixed(1)} s left, too late to ask; the scripted DM rules`)} // #864: this loss left no line
       if (c && c.call !== seen && c.seconds_left > .8) {
         seen = c.call; const t0 = Date.now(), left = `left ${Number(c.seconds_left).toFixed(1)} s`; // #885
+        const end = t0 + Math.max(800, c.seconds_left * 1000 - 400); let user = rulingPrompt(c);
         try {
-          const ms = Math.max(800, c.seconds_left * 1000 - 400);
-          const r = await adapter.call({system: RULING_SYSTEM, user: rulingPrompt(c), schema: rulingSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
-          let j = null; try {j = JSON.parse(r.text)} catch {}
-          onCost(r.usage || {});
-          if (!j || typeof j.text !== 'string' || !j.text.trim()) log(`[ruling] call ${c.call}: the model's reply was not usable; the scripted DM rules`);
-          else {
+          for (let again = false; ; again = true) { // one more try after a refused answer (#864): the game's words say what was wrong, and the DM's ruling beats the scripted one
+            const ms = end - Date.now();
+            const r = await adapter.call({system: RULING_SYSTEM, user, schema: rulingSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+            let j = null; try {j = JSON.parse(r.text)} catch {}
+            onCost(r.usage || {});
+            if (!j || typeof j.text !== 'string' || !j.text.trim()) {log(`[ruling] call ${c.call}: the model's reply was not usable; the scripted DM rules`); break}
             const a = await tool(base, 'ruling_answer', {call: c.call, skill: j.skill, dc: j.dc, effects: effectList(j.effects), fail_effects: effectList(j.fail_effects), text: j.text, fail_text: j.fail_text || '', note: j.note || ''});
-            log(`[ruling] ${c.hero ? c.hero.name : '?'} "${short(c.attempt && c.attempt.what || '', 60)}": ${j.skill} ${j.dc} -> ${a.ok ? (a.outcome || 'ruled') + (a.roll ? ' (' + a.roll + ')' : '') : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
+            log(`[ruling] ${rulingWho(c)}: ${j.skill} ${j.dc} -> ${a.ok ? (a.outcome || 'ruled') + (a.roll ? ' (' + a.roll + ')' : '') : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
+            if (a.ok || again || /already ruled|is waiting|lapses/.test(a.error || '') || end - Date.now() < RULING_AGAIN_MS) break;
+            user = rulingPrompt(c) + `\nYour last answer was refused: ${short(a.error, 300)} Answer again, with only legal effects (or none).`;
           }
-        } catch (e) {log(`[ruling] call ${c.call}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s (${left} at pickup); the scripted DM rules`)}
+        } catch (e) {log(`[ruling] ${rulingWho(c)}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s (${left} at pickup); the scripted DM rules`)}
         continue;
       }
       if (t && t.ok && pollRest(p0, waitMs)) continue; // a held long poll came back empty: ask again at once

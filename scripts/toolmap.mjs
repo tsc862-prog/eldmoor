@@ -61,7 +61,7 @@ export const ungrouped = role => { const g = groupsOf(role).find(x => x.title ==
 export function toolMap(role, short = false) {
   const by = new Map(TABLES[role].tools.map(t => [t.name, t]));
   const rows = groupsOf(role).map(g => short ? `${g.title}: ${g.names.join(', ')}.` : `${g.title}:\n` + g.names.map(n => `- ${n}: ${oneLine(by.get(n))}`).join('\n'));
-  return [MAP_HEAD, ...rows, MAP_TAIL].join('\n');
+  return [MAP_HEAD, ...rows, ...(role === 'hero' ? ['Anything else: attempt {what}, in your own words; the DM rules on it.'] : []), MAP_TAIL].join('\n');
 }
 
 // Put the map into a prompt: swapped if one is there, else added at the end (regenerated at each runner start).

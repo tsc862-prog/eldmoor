@@ -639,7 +639,7 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   else{const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+near+'". Use a hero name or id, a town, a region name, "x,y", or "table".'};
     const r=nOf(a.radius,DMA.NARRATE_R,4,20);label=p.label;
     hs=S.agents.filter(b=>alive(b)&&!b.hidden&&(dist(b,p)<=r||p.town&&b.state==='town'&&b.town===p.town))}
-  const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs)hearLine(b,e);
+  const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs){hearLine(b,e);if(b.player)b.dmSaid=Math.round(S.gameMin)} // dmSaid: the header may invite an attempt (#864)
   for(const sc of allScenes())if(hs.some(b=>sc.ids.includes(b.id)))sc.narr={t:e.t,text:t}; // the banner and tableView show it
   day.narr=(day.narr||0)+1;
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
