@@ -16,6 +16,7 @@
 //     log "follows the party", solo heroes and scripted parties are unchanged.
 // Usage: npm run braincheck
 // Internal: node scripts/braincheck.mjs --fp plain|brain|loud   (prints a fingerprint of a short run)
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -117,7 +118,7 @@ ok(checkReply('fightOrFlee', ['fight', 'flee'], '{"choice":"flee","line":"Back!"
 ok(checkRequest({kind: 'say', snapshot: {}}) === null && Math.abs(costOf('claude-haiku-5-5', 1e6, 1e6) - 0.6) < 1e-9, 'checkRequest / costOf');
 await new Promise(r => relay.server.close(r));
 { // verbose log
-  const file = join(mkdtempSync(join(tmpdir(), 'eldmoor-relay-')), 'logs', 'relay.jsonl');
+  const file = join(mkTmp('eldmoor-relay-'), 'logs', 'relay.jsonl');
   const v = createRelay({client: fakeClient, timeoutMs: 120, log: () => {}, verbose: file});
   await new Promise(r => v.server.listen(0, '127.0.0.1', r));
   const vb = `http://127.0.0.1:${v.server.address().port}/decide`;

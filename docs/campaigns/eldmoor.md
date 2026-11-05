@@ -31,6 +31,9 @@ DM-only. The heroes never read this; reveal it through narrate, npc_say, hooks, 
 - **Concord Fellowship**: Hear it first from the chapel: the candle-wax is the shared prayer. The ledger of Highgate holds the first page. Hallowans tell it as debt; Tarrows and Skerrins as duty. Concord voice stays formal. tags: concord, adapt
 - **Warband Fellowship**: Hear it first at the spirit circle: the salt tally and the locked chest. Ashfolk tell it as a bargain they refuse to break; the pit-lords will not admit it. Grimhold's gate warden is the opening contact. tags: warband, adapt
 
+## Prologue
+- **The first delve**: The company's first dungeon is a small one near its hall: read `first_delve` in dm_status for the place. Keep it small and human, a chore that turns out to be real. Hint at the campaign's premise through one object or sight below, no more: this is where they learn each other's voices, and the world's real danger comes after.
+
 ## Secrets
 - **The Lanterns Are Leashes**: They keep the dead on the Lantern Road asleep, and the flame is borrowed from Kragmaw. Where: a Lore roll at a failing shrine (mystery mark with cast.reveal), or Edrin Pask's Candle-Stubs. tags: lanterns, reveal
 - **Vesk Is a Keeper, Not a Usurper**: The Lich-Warden holds the oath the Drowned King made; the court is not hostile by choice. Where: Mother Ysmay's causeway count ends at the Crypt mouth; a Table scene at the Crypt with the Warden's voice (npc_say or stage_scene meeting). tags: vesk, crypt

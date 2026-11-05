@@ -197,7 +197,7 @@ function strikeBack(g,room,cr,rearguard){const out=[],foes=rearguard?[pickA(live
 const goneDown=r=>r.dn.length?' '+r.dn.map(x=>x.name).join(' and ')+(r.dn.length>1?' go':' goes')+' down.':'';
 function outcome(sc){const g=grp(sc);if(!g)return '';const cr=g.crawl,room=roomsOf(g)[cr.i];cr.stats.rounds++;let tail;
   const foes=liveFoes(cr);
-  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){if(!isDown(b))heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP/roomsOf(g).length))} // the downed lie where they fell: only a heal brings them up
+  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){if(!isDown(b))heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP*(dunOf(g).xp||1)/roomsOf(g).length))} // the downed lie where they fell: only a heal brings them up
     if(sc.beats.some(b=>b.k==='retreat'))tail+=' Those who fell back come forward again.';
     if(cr.i+1>=roomsOf(g).length){cr.end='clear';cr.foes=null}
     else{cr.i++;cr.foes=null;cr.rd=0;cr.gap=CRAWL.GAP;tail+=' The way on is open.'}

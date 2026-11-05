@@ -182,7 +182,8 @@ function since(list,k){if(!list||!list.length)return [];if(!k)return list.slice(
 // #487: with the scripted heroes' caution. A hurt hero walks home to heal (it rests out here only when no creature is
 // close), a storm sends it home, and every hunt autopilot starts is wary (field(), fight()): it keeps to one ground,
 // takes only prey it sizes up as an even match or less, and breaks off at PK.WARY_FLEE.
-function autopilot(a){const field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
+function autopilot(a){if((a.state==='hunt'||a.state==='travel')&&cityAt(a)){a.state='town';a.dest=null} // an orderless hero left in the hunt state at a town's edge is in town: neither branch took it, so it stood there for good
+  const field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
   if(!field&&a.state!=='town')return null;
   return idlePick(a,{town:a.state==='town',field}); // the hero's gambits (#617): its class preset is the policy above, rule for rule
 }
