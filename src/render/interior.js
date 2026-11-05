@@ -19,7 +19,7 @@ import {hash} from '../core/rng.js';
 import {DUNGEON as D,DUNGEON,THEMES,TEXT,MARK} from './palette.js';
 import {FURN} from './furniture.js';
 import {SITEP} from './siteprops.js';
-import {sprite,outlined,heroSprite,npcSprite,SPR} from './sprites.js';
+import {sprite,outlined,sceneFigure,drawFigure,SCENE_K,SPR} from './sprites.js';
 import {MOBS} from '../data/mobs.js';
 import {S} from '../sim/state.js';
 import {classColor,DISP,toneOf} from '../core/colors.js';
@@ -232,11 +232,11 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
   // the party, outlined hero sprites in a line facing the chamber; they step while a scene is playing
   if(play)drawCrawl(ctx,m,cv,now,dpr,sc,PS);
   else if(st.party&&st.party.length){const pp=partySpot(m,st),n=st.party.length,fr=st.busy?Math.floor(now*2.2)&1:0;
-    st.party.forEach((a,k)=>{const s=outlined(heroSprite(a,false,(fr+k)&1&&st.busy?1:0)),x=Math.round((pp.x+(k-(n-1)/2)*1.05)*T-s.width/2),y=Math.round(pp.y*T+(k&1?3:0)-s.height);
-      ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x+s.width/2,y+s.height-1,5,1.5,0,0,7);ctx.fill();ctx.drawImage(s,x,y);
-      if(st.foes){const mh=maxHp(a),f=mh>0?Math.max(0,Math.min(1,a.hp/mh)):1,bx=x+(s.width>>1)-5,by=y-2; // a small health bar while foes stand in the room
+    st.party.forEach((a,k)=>{const s=sceneFigure(a,1,(fr+k)&1&&st.busy?1:0),x=Math.round((pp.x+(k-(n-1)/2)*1.05)*T-s.w/2),y=Math.round(pp.y*T+(k&1?3:0)-s.h);
+      ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x+s.w/2,y+s.h-1,5,1.5,0,0,7);ctx.fill();drawFigure(ctx,s,x+s.w/2,y+s.h);
+      if(st.foes){const mh=maxHp(a),f=mh>0?Math.max(0,Math.min(1,a.hp/mh)):1,bx=x+(s.w>>1)-5,by=y-2; // a small health bar while foes stand in the room
         ctx.fillStyle=MARK.edge;ctx.fillRect(bx-1,by-1,12,4);ctx.fillStyle='#142a1c';ctx.fillRect(bx,by,10,2);ctx.fillStyle=f<.35?'#e0584a':f<.65?'#e0b040':'#58c070';ctx.fillRect(bx,by,Math.max(1,Math.round(10*f)),2)}
-      if(a.eff)drawConditions(ctx,null,PS,a,x+(s.width>>1),y+s.height,y+(st.foes?-3:0),now)})}
+      if(a.eff)drawConditions(ctx,null,PS,a,x+(s.w>>1),y+s.h,y+(st.foes?-3:0),now)})}
   // names at a constant CSS size, above each chamber; unreached ones are a question mark
   const compact=T*sc/dpr<10; // a phone-sized view: only the chamber in progress keeps its name, so labels never pile up
   for(const r of m.rooms){const seen=reached<0||r.i<=reached,cur=st.cur===r.i;if(compact&&!cur)continue;
@@ -326,12 +326,12 @@ export function drawSetting(ctx,box,m,st,now,dpr=1){
   const art=st.item&&ITEM_ART[st.item];if(art){const s=outlined(sprite('it-'+st.item,art.rows,art.map)),ix=Math.round(c0.x*T+10),iy=Math.round(c0.y*T),pulse=.55+.3*Math.sin(now*3);
     ctx.globalCompositeOperation='lighter';ctx.globalAlpha=pulse;ctx.drawImage(G.warm,ix+s.width/2-14,iy-s.height/2-14,28,28);ctx.globalCompositeOperation='source-over';ctx.globalAlpha=1;
     ctx.drawImage(s,ix,iy-s.height);ctx.strokeStyle=MARK.sel;ctx.globalAlpha=pulse;ctx.lineWidth=dpr/sc;ctx.strokeRect(ix-1.5,iy-s.height-1.5,s.width+3,s.height+3);ctx.globalAlpha=1}
-  for(const q of ents){const e=q.e,s=spriteOf(e,st.busy&&e===st.cur?fr:0);if(!s)continue;
-    const px=Math.round(q.x*T),py=Math.round(q.y*T),o=outlined(s),top=py-s.height;q.px=px;q.top=top;
-    if(dark>.15){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(.5,dark*.8);ctx.drawImage(G.warm,px-17,py-s.height*.75-6,34,34);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over'} // ambient pool: people always read in a dim room
-    ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,s.width/2,1.6,0,0,7);ctx.fill();
-    if(q.cast||q.hero){const col=q.hero?classColor(e.cls):castColor(e);ctx.strokeStyle=col;ctx.globalAlpha=.8;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(px,py-.5,s.width/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
-    ctx.save();ctx.translate(px,0);if(q.flip)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)-1,top-1);ctx.restore();
+  for(const q of ents){const e=q.e,s=sceneFigure(e,q.flip?-1:1,st.busy&&e===st.cur?fr:0,SCENE_K,e.state==='ghost');if(!s)continue;
+    const px=Math.round(q.x*T),py=Math.round(q.y*T),top=py-s.h;q.px=px;q.top=top;
+    if(dark>.15){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=Math.min(.5,dark*.8);ctx.drawImage(G.warm,px-17,py-s.h*.75-6,34,34);ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over'} // ambient pool: people always read in a dim room
+    ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,s.w/2,1.6,0,0,7);ctx.fill();
+    if(q.cast||q.hero){const col=q.hero?classColor(e.cls):castColor(e);ctx.strokeStyle=col;ctx.globalAlpha=.8;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(px,py-.5,s.w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
+    drawFigure(ctx,s,px,py);
     if(e.eff)drawConditions(ctx,null,pseudo,e,px,py,top,now);}
   // over the heads: the gold chevron for the one acting, "..." for a member still thinking, a tick once answered
   const marks=st.marks||{};
@@ -363,11 +363,6 @@ export function answerMark(ctx,x,y,k,now){x=Math.round(x);
 function plate(ctx,t,x,y,col,css,dpr,sc){const s=css*dpr/sc;ctx.font=s+'px VT323, monospace';const w=ctx.measureText(t).width,p=s*.2;
   ctx.fillStyle='rgba(6,6,14,.8)';ctx.fillRect(x-w/2-p,y,w+2*p,s*.86);ctx.textAlign='center';ctx.fillStyle=col;ctx.fillText(t,x,y+s*.68)}
 
-// A scene entity's sprite: a hero, a townsperson (S.wanderers / S.npcs) or a creature.
-function spriteOf(e,fr){if(!e)return null;
-  if(e.kind==='hero')return heroSprite(e,e.state==='ghost',fr);
-  if(e.kind==='mob'){const M=MOBS[e.type];return M&&SPR[M.spr]?sprite(e.type+fr,SPR[M.spr][fr],M.col):null}
-  if(e.role)return npcSprite(e,fr);return null}
 const nameOf=e=>e.kind==='mob'?(e.name||(MOBS[e.type]&&MOBS[e.type].name)||'foe'):e.name||'?';
 const headOf=e=>e.kind==='hero'?e.name.toUpperCase():'['+nameOf(e)+']';
 function castColor(e){if(e.kind==='mob'||e.kind==='boss')return DISP.hostile.color;if(e.kind==='hero')return DISP.hostile.color;

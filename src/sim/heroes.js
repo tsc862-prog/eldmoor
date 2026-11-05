@@ -24,7 +24,7 @@ import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
 import {blockOf} from '../data/bestiary.js';
 import {rollLoot} from './loot.js';
-import {rollScores,growScores} from './abilities.js'; // ability scores (sim/abilities.js)
+import {rollScores,growScores,levelGrowth} from './abilities.js'; // ability scores (sim/abilities.js)
 import {combatStats,dmgTaken} from './stats.js'; // Health, Attack, Defense, Crit, Speed (sim/stats.js)
 import {emptySlots,equipEpic,shopUpgrade} from './gear.js';
 import {newInv,load,sellLoot,autoEquip,passSpares,restock,fightAid,idleTend,tendAlly} from './inv.js'; // the pack (sim/inv.js)
@@ -100,7 +100,7 @@ export function moveTo(e,x,y,dt,sp){let st=-1;
   return false}
 
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
-  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)growScores(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
+  while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)levelGrowth(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     record(a,'Reached level '+a.lvl+'.');
     if(a.lvl%5===0||a.lvl>=15)log(a,' reached level ',gold(String(a.lvl)),a.lvl===20?'. The first steps of a legend.':'.');
@@ -190,7 +190,7 @@ export function strike(a,t,o){
   return d}
 
 export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){tendAlly(a,list);return}let low=null; // spell on cooldown: a potion for a member nearly down (sim/inv.js)
-  for(const b of list){if(b.state==='ghost'||dist(a,b)>(b.state==='downed'?5:4))continue;if(b.hp<maxHp(b)*.55*tm(a,'mercy')&&(!low||b.hp/maxHp(b)<low.hp/maxHp(low)))low=b}
+  let lm=0;for(const b of list){if(b.state==='ghost'||dist(a,b)>(b.state==='downed'?5:4))continue;const bm=maxHp(b);if(b.hp<bm*.55*tm(a,'mercy')&&(!low||b.hp/bm<low.hp/lm)){low=b;lm=bm}} // each max HP read once (#730)
   if(!low&&(a.state==='hunt'||a.state==='follow')&&reflexMay(a))low=woundedMate(a,list); // nothing presses: a scripted healer tends a wounded mate (#656)
   if(low)healOne(a,low)}
 // One cast of the class heal on one hero (priestHeal's pick, or a gambit's target, #617).
@@ -219,9 +219,10 @@ const mendHold=a=>!a.player&&a.company==null&&a.wounds.length>=WOUND.MEND_AT;
 // Caution thresholds: retreat from the hunt at 45% HP, flee a fight at 22%, flee a duel at 20% (50% when outnumbered). A wounded hero leaves prey above its level alone.
 // Personality traits (data/traits.js) scale these via tm(a,key): Reckless lowers retreat/flee, Cautious raises them, etc.
 export function updAgent(a,dt){
-  a.cd-=dt*combatStats(a).speed;a.healCd-=dt;if(a.potCd>0)a.potCd-=dt;if(a.wardT>0)a.wardT-=dt;const mh=maxHp(a),c=homeOf(a),boss=S.boss;
+  const cs=combatStats(a); // one lookup for the swing timer and max HP (#730): nothing between them changes the totals
+  a.cd-=dt*cs.speed;a.healCd-=dt;if(a.potCd>0)a.potCd-=dt;if(a.wardT>0)a.wardT-=dt;const mh=cs.health,boss=S.boss; // the home town (homeOf) only where a case uses it
   switch(a.state){
-  case 'town':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
+  case 'town':{const c=homeOf(a);a.hp=Math.min(mh,a.hp+mh*.3*dt);const sp=[c.ah,c.qg,c.gate][a.townStep];
     if(moveTo(a,sp.x,sp.y,dt,2.2)){a.wait-=dt;if(a.wait>0)break;
       if(a.townStep===0)say(a,'idle',{p:.35});
       if(a.townStep===0){sellAndShop(a);a.townStep=1;a.wait=1+rnd()*1.5}
@@ -238,9 +239,9 @@ export function updAgent(a,dt){
         say(a,'depart',{zone:ZONES[tz]});
         a.zone=tz;a.state='travel';a.dest=zonePoint(a.zone,null,c.gate);if(a.player)writeSighting(a,ZONES[tz],c.name)}}break}
   // At the inn until only one wound is left, seeing the priest each game day it has the gold. Then the town's last step: out the gate.
-  case 'mend':{a.hp=Math.min(mh,a.hp+mh*.3*dt);const inn=c.spots&&c.spots.inn||c.ah;moveTo(a,inn.x,inn.y,dt,2.2);chapelVisit(a);
+  case 'mend':{const c=homeOf(a);a.hp=Math.min(mh,a.hp+mh*.3*dt);const inn=c.spots&&c.spots.inn||c.ah;moveTo(a,inn.x,inn.y,dt,2.2);chapelVisit(a);
     if(!mendHold(a)){a.state='town';a.townStep=2;a.wait=.2;a.linger=0}break}
-  case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}
+  case 'travel':{if(leaderOf(a)){a.state='follow';a.dest=null;break}const c=homeOf(a);
     if(a.adv&&dmTravel(a,dt))break; // DM: walking to the adventure's next scene
     if(checkEncounter(a,dt))break; // road encounter in reach: detour and resolve (sim/encounters.js)
     if(zoneAt(a.x,a.y)===a.zone&&a.zone>0&&rnd()<dt*.5){a.state='hunt';a.dest=null;break}
@@ -276,7 +277,7 @@ export function updAgent(a,dt){
     if(a.state==='return')say(a,'flee',{mob:MOBS[m.type].name});
     break}
   case 'regroup':{a.regT-=dt;if(a.regT<=0||!a.dest||moveTo(a,a.dest.x,a.dest.y,dt,2.4)){a.state=a.regNext==='return'?'return':leaderOf(a)?'follow':'hunt';a.dest=null;a.regNext=null}break}
-  case 'return':if(steerClear(a,dt,moveTo))break;if(checkEncounter(a,dt))break;if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break;
+  case 'return':{if(steerClear(a,dt,moveTo))break;if(checkEncounter(a,dt))break;const c=homeOf(a);if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break}
   case 'downed':case 'aid':downedStep(a,dt);break; // at zero HP, and the one who came to help (sim/downed.js)
   case 'duel':{const b=a.target;if(!b||b.state!=='duel'||b.target!==a){a.state='hunt';a.target=null;break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
