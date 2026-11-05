@@ -1,3 +1,4 @@
+- [First delve #922](first_delve.md) — prologue.js flow, default in one line, stored only when it differs, hook seams kept off crawl.js/table.js, tuning
 - [Party rules](party_rules.md) — why followers have their own state, duelers stay, regroup exists, zone = weakest member, 50% outnumbered flee
 - [Companies initiate #826](companies_initiate.md) — inMuster keyed on hasLinks, solo go_crypt/join_raid, raid vote lapse, askCompany seam for call_to
 - [Own oaths #800](own_oaths.md) — goal is an offered thread until sworn; swornOf is the one reader; dice stay in goals.js; keep_oath for words
@@ -95,3 +96,4 @@
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
 - [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
 - [DM day one #910](dm_day_one.md) — ensure() in postHook/withdrawHook; held-world prep turn must not crash; dmcheck --dayone
+- [Seeded import dice #888](seeded_import_dice.md) — GOODS stock rolled at import, before seedRng; seeded checks import scripts/seed-first.mjs first
