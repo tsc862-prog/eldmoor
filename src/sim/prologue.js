@@ -96,13 +96,15 @@ const view=()=>{const out=companies().filter(C=>C.prologue).map(C=>{const P=C.pr
 const siteOfScene=sc=>sc&&sc.ctx&&sc.ctx.site!=null?siteById(sc.ctx.site):null;
 const delveRoom=sc=>{const s=siteOfScene(sc);return !!(sc&&sc.kind==='crawl'&&s&&s.prologue)};
 voicedScene(sc=>delveRoom(sc)&&!!(sc.calls&&sc.calls.some(c=>!c.done))); // only while its call waits: a long crawl never hides another company's scene
-kindHooks('crawl').dm={
+const DM_ROOM={
   onFrame(sc){if(!delveRoom(sc)||sc.ctx.rd)return;const s=siteOfScene(sc),room=s.rooms[sc.ctx.room],row=rowOf(s.prologue);
     pushCall(sc,{kind:'voice',ms:TABLE.frameMs,who:'the narrator',about:'The first delve, '+s.name+', room '+(sc.ctx.room+1)+' of '+s.rooms.length+': '+room.name+'. What the table shows, which stays on it: '+words(sc.frame)+' Behind it (yours alone): '+row.dm+' Add what they see and hear as they come in, a few lines, true to the foes named; decide nothing for them.'})}, // voice, not frame: the foes left and who is hurt stay on the table
   live:voiceLive,
   fill(sc,c){resolveCall(sc,c,{text:'',by:'scripted'})}, // the room's own frame is already on the table
   done(){},
 };
+// Only while a first delve runs: every other crawl, and every world without one, keeps exactly the path it had.
+Object.defineProperty(kindHooks('crawl'),'dm',{get:()=>(S.companies||[]).some(C=>C.prologue)?DM_ROOM:undefined});
 
 // ---- the way home ----
 PLAY.homecoming='all';
