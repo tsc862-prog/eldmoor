@@ -5,6 +5,7 @@
 // Usage: npm run savecheck
 // Internal: node scripts/savecheck.mjs --restore <file>   (the child phase)
 import './seed-first.mjs'; // before the sim loads: its import-time dice are fixed, so the seeded run repeats (#888)
+import {mkTmp} from './tmp.mjs';
 import {writeFileSync, readFileSync, mkdtempSync, rmSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
@@ -233,7 +234,7 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
     'after the v6 migration every agent hero rides in a company and the Fellowship is followed');
   // Running on is compared in fresh processes: module-level timers and caches are not part of a save, so two restores in
   // one process drift apart even from the same file.
-  const dir = mkdtempSync(join(tmpdir(), 'eldmoor-v6-')), runs = {};
+  const dir = mkTmp('eldmoor-v6-'), runs = {};
   for (const [k, snap] of [['v7', v7], ['v6', v6]]) {const f = join(dir, k + '.json'); writeFileSync(f, JSON.stringify(snap));
     const c = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fixture', f], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
     try {runs[k] = JSON.parse((c.stdout || '').trim().split(/\r?\n/).pop())} catch {runs[k] = {err: (c.stderr || c.stdout || '').slice(-400)}}}
@@ -265,7 +266,7 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
 }
 
 // Pristine-state restore in a child process (what a browser reload does).
-const dir = mkdtempSync(join(tmpdir(), 'eldmoor-save-'));
+const dir = mkTmp('eldmoor-save-');
 const file = join(dir, 'save.json');
 writeFileSync(file, json);
 const child = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--restore', file], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
