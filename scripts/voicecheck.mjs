@@ -8,7 +8,9 @@
 //   2. Session zero's frame posted while the table voice is not polling, picked up PICKUP_S (5) seconds later and answered
 //      after 5 s of model time: the DM agent's frame, not the scripted fill.
 //   3. A member's talk line and a free action (attempt) answered by the DM's voices with 2-5 s model calls, in time.
-//   4. Nothing was filled by the scripted DM, and the whole run stays under RATE_BOUND DM calls a real minute (the
+//   4. A hero goes down while the table voice is mid-call (#655): the DM's lines, not the scripted fill, both for a second hero
+//      down during the model call and for a downing whose end comes while its line is being written.
+//   5. Nothing was filled by the scripted DM, and the whole run stays under RATE_BOUND DM calls a real minute (the
 //      request-flood anomaly fires at 90).
 import http from 'node:http';
 let seed = 0x9e3779b9 ^ 680;
@@ -21,6 +23,7 @@ const P = await import('../src/sim/player.js'), {homeOf} = await import('../src/
 const {attachPlay} = await import('./relay-mcp.mjs'), {localBackend} = await import('./play-headless.mjs');
 const {tableVoice, talkVoice, rulingVoice, dmTool, VOICE_WAIT_MS} = await import('./dm-agent.mjs');
 const {BD} = await import('./behavior-log.mjs');
+const DCALL = await import('../src/sim/downcall.js'), D = await import('../src/sim/downed.js');
 
 const IDLE_S = 25, POLL_BOUND = 3, PICKUP_S = 5, RATE_BOUND = 20;
 let fails = 0; const ok = (c, m) => {console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) fails++};
@@ -32,7 +35,7 @@ setDmSeat(true); setRunnerLinks(() => 'none'); T.TABLE.speed = 1; T.TABLE.mode =
 const L = SLT.slotHeroes(SLT.slotted()); for (const x of L) x.hp = maxHp(x);
 
 // the world runs in real time at 1x, as on the page
-let last = Date.now(); const ticker = setInterval(() => {const n = Date.now(); for (const x of L) if (x.state !== 'dead') x.hp = maxHp(x); step(Math.min(.1, (n - last) / 1000)); last = n}, 25); // the members kept whole: a death would open an arrival scene mid-test
+let last = Date.now(), still = false; const ticker = setInterval(() => {const n = Date.now(); if (still) {S.gameMin += (n - last) / 1000 * 6; last = n; DCALL.downCallTick(); return} for (const x of L) if (x.state !== 'dead' && x.state !== 'downed') x.hp = maxHp(x); step(Math.min(.1, (n - last) / 1000)); last = n}, 25); // the members kept whole: a death would open an arrival scene mid-test; the downed are left down, healing them fakes a revival and a new downing every blow
 
 const server = http.createServer();
 const play = attachPlay(server, {backend: localBackend(), log: () => {}});
@@ -70,6 +73,7 @@ for (const k of Object.keys(counts)) ok(counts[k] <= POLL_BOUND, `${k}: ${counts
 // 2. session zero's frame, picked up 5 s late
 console.log(`session zero: the frame picked up ${PICKUP_S} s after it was posted`);
 await voices.table.stop(); setDmAlive(() => true); // a runner holds the seat but its table voice is busy elsewhere
+{const L = SLT.slotHeroes(SLT.slotted()); for (const a of L) {a.x = L[0].x; a.y = L[0].y}} // session zero waits for members out of range (#771)
 A_.planOpening();
 let sc = null; {const w = Date.now(); while (Date.now() - w < 5000 && !(S.table && S.table.kind === 'opening' && S.table.calls && S.table.calls.length)) await sleep(25); sc = S.table}
 ok(sc && sc.kind === 'opening' && sc.calls && sc.calls[0] && sc.calls[0].kind === 'frame', 'the opening scene asks for its frame');
@@ -87,7 +91,7 @@ setDmAlive(null);
 // 3. a talk line and a free action
 console.log('a member talks to a townsperson, then tries something of their own');
 const a = L[0], c0 = homeOf(a), qm = S.npcs.find(p => p.town === c0.name && p.role === 'quartermaster');
-for (const x of L) if (x !== a) {x.x = c0.gate.x + 30; x.y = c0.gate.y}
+for (const x of L) if (x !== a) {x.x = c0.gate.x + 14; x.y = c0.gate.y} // out of earshot, on ground that fits them: 30 tiles out one blow beat a whole health bar, downing a member every few seconds
 a.state = 'town'; a.town = c0.name; a.x = qm.x + 1; a.y = qm.y; a.pq = []; a.target = null; a.dest = null; a.hidden = false; a.playRate = [];
 const tr = P.playerAct(a.id, 'talk', {target: 'quartermaster', text: 'Have you rope and salt pork?'});
 ok(tr.waiting, 'the line waits for the DM');
@@ -98,7 +102,25 @@ ok(ar.ok && ar.call, 'the attempt waits for a ruling');
 {const w = Date.now(); while (Date.now() - w < 15000 && S.rulings.cur.some(x => x.id === ar.call)) await sleep(25)}
 ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.call === ar.call && e.detail.by === 'dm-agent'), 'the ruling voice ruled on it');
 
-// 4. no scripted fill, and the rate
+// 4. a downing while the table voice is thinking; the mock's 5 s and 3 s calls come next. This is about the call's clock, so the
+// heroes stand still (no reflex, heal or save ends a downing unasked) while the game clock and the calls run on at 1x, in real time.
+// They stay still to the end of the run: a downing after the voices stop would be nobody listening, not a late voice.
+console.log('a hero goes down while the table voice is mid-call');
+{const {downCallsOf} = DCALL; T.TABLE.mode = 'off'; still = true; // no rescue scene: the call is the point here
+ const foe = S.mobs.find(m => m.alive), [b, c, d] = L.filter(x => x !== a && x.state !== 'dead' && x.state !== 'downed'), down0 = D.downStats().downed;
+ const lay = x => {x.hp = 0; D.goDown(x, foe)};
+ const calls = x => downCallsOf(x.id), picked = async x => {const w = Date.now(); while (Date.now() - w < 5000 && !calls(x).some(k => k.seen != null)) await sleep(10)}, settled = async (x, n) => {const w = Date.now(); while (Date.now() - w < 20000 && calls(x).filter(k => k.state === 'done').length < n) await sleep(25)};
+ const by = x => calls(x).map(k => k.kind + ':' + k.by + (k.why ? '/' + k.why : '')).join(', ');
+ li = 2; lay(b); await picked(b); await sleep(1500); const mid = calls(b)[0].state === 'wait'; lay(c);
+ ok(mid && calls(c).length === 1 && calls(c)[0].state === 'wait', 'a second hero goes down 1.5 s into a 5 s model call: its call waits');
+ await settled(b, 1); await settled(c, 1);
+ ok(calls(b).length === 1 && calls(c).length === 1 && calls(b)[0].by === 'dm-agent' && calls(c)[0].by === 'dm-agent', `both lines are the DM's (${by(b)}; ${by(c)})`);
+ ok(c.chat.some(e => /^MOCKVOICE/.test(e.text) && e.dm), 'the hero down during the call hears that line');
+ li = 3; lay(d); await picked(d); await sleep(500); D.tellNear(d, 'revived'); await settled(d, 2);
+ ok(calls(d).length === 2 && calls(d).every(k => k.by === 'dm-agent'), `the end coming mid-call leaves the line being written, and is voiced after it (${by(d)})`);
+ ok(D.downStats().downed === down0 + 3, 'three downings, three heroes');}
+
+// 5. no scripted fill, and the rate
 for (const v of Object.values(voices)) await v.stop();
 const fills = S.dmLog.filter(e => e.id > fill0 && e.detail && e.detail.fill);
 if (fills.length) console.log(JSON.stringify(fills.map(e => ({t: e.t, s: e.summary, d: e.detail})), null, 1), Date.now() - t0, L.map(x => x.name + ' ' + x.state));

@@ -23,11 +23,12 @@ export const OPENAI_URL = 'https://api.openai.com/v1';
 
 // $ per 1M tokens, standard tier, short context (<272K input) where the page splits by context.
 // Source: https://developers.openai.com/api/docs/pricing (platform.openai.com/docs/pricing redirects
-// there), read 2026-11-01. Cached-input discounts are ignored, so a cost here is an upper bound.
+// there), read 2026-11-01. `cached` ($ per 1M cached input tokens, #728) is given only where the page was read
+// on 2026-11-03 (gpt-6.1-terra, gpt-6-luna); a model without one prices cached tokens at `in`, so its cost stays an upper bound.
 // The page notes GPT-5.6 Sol's price is promotional through at least 2026-11-21.
 export const PRICES_SOURCE = 'https://developers.openai.com/api/docs/pricing (read 2026-11-01)';
 export const PRICES = {
-  'gpt-6-astra': {in: 10, out: 50}, 'gpt-6.1-sol': {in: 2, out: 10}, 'gpt-6.1-terra': {in: 1, out: 5}, 'gpt-6-luna': {in: 0.10, out: 0.50}, 'gpt-6-sol': {in: 2, out: 10},
+  'gpt-6-astra': {in: 10, out: 50}, 'gpt-6.1-sol': {in: 2, out: 10}, 'gpt-6.1-terra': {in: 1, out: 5, cached: 0.05}, 'gpt-6-luna': {in: 0.10, out: 0.50, cached: 0.01}, 'gpt-6-sol': {in: 2, out: 10},
   'gpt-5.6-sol': {in: 4, out: 20}, 'gpt-5.6-terra': {in: 2, out: 12}, 'gpt-5.6-luna': {in: 0.20, out: 1.20},
   'gpt-5.5': {in: 5, out: 30}, 'gpt-5.5-pro': {in: 30, out: 180}, 'gpt-5.4': {in: 2.5, out: 15}, 'gpt-5.4-pro': {in: 30, out: 180}, 'gpt-5.4-mini': {in: 0.75, out: 4.5}, 'gpt-5.4-nano': {in: 0.20, out: 1.25},
   'gpt-5.2': {in: 1.75, out: 14}, 'gpt-5.2-pro': {in: 21, out: 168}, 'gpt-5.1': {in: 1.25, out: 10}, 'gpt-5': {in: 1.25, out: 10}, 'gpt-5-mini': {in: 0.25, out: 2}, 'gpt-5-nano': {in: 0.05, out: 0.40}, 'gpt-5-pro': {in: 15, out: 120},
@@ -50,7 +51,8 @@ export function shapeList(models, allow = null, priceOf = priceFor, labelOf = pr
   const prices = {}; if (labelOf) for (const m of list) { const p = labelOf(m); if (p) prices[m] = {in: p.in, out: p.out} }
   return {models: list, dropped, prices: labelOf ? prices : null};
 }
-export const costOf = (model, inTok, outTok) => {const p = priceFor(model); return p ? (inTok * p.in + outTok * p.out) / 1e6 : null};
+// inTok is the whole prompt; cachedTok of it is billed at the cached rate when the table has one (else at `in`).
+export const costOf = (model, inTok, outTok, cachedTok = 0) => {const p = priceFor(model); if (!p) return null; const c = Math.min(Math.max(+cachedTok || 0, 0), inTok); return ((inTok - c) * p.in + c * (p.cached ?? p.in) + outTok * p.out) / 1e6};
 
 // Chat-capable models out of GET /models (which also lists embeddings, speech, images, moderation ...).
 export const isChatModel = id => /^(gpt-|o\d|chatgpt-|chat-latest)/.test(id)
@@ -227,8 +229,9 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     async chat({model, messages, tools, format, strict = false, maxTokens = 600, signal}) {
       const mdl = model || defaultModel;
       if (!mdl) throw fail(name + ': no model chosen (use --model, or set the default model in .env)');
-      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), [tokensField]: tokens(mdl, maxTokens), messages: toOpenAI(messages),
-        ...(tools ? {tools} : {}), ...(format ? {response_format: strict ? {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema: format}} : {type: 'json_object'}} : {})};
+      const fit = fitTools(tools, toOpenAI(messages));
+      const t0 = Date.now(), body = {model: mdl, ...effortField(mdl), [tokensField]: tokens(mdl, maxTokens), messages: fit.messages,
+        ...(tools ? {tools: fit.tools} : {}), ...(format ? {response_format: strict ? {type: 'json_schema', json_schema: {name: 'reply', strict: true, schema: format}} : {type: 'json_object'}} : {})};
       const j = await withSchema(body, format, {signal, waitMs: 30000, retries: 4});
       const out = finish(j, mdl, t0, false);
       const m = out.raw, calls = Array.isArray(m.tool_calls) ? m.tool_calls.filter(c => c && c.function).map(c => {
@@ -243,8 +246,9 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
     const billed = j && j.model || mdl, u = j && j.usage || {};
     // out: completion tokens, or total minus prompt when that is larger (thinking tokens billed as output but not counted as completion)
     const inTok = +u.prompt_tokens || 0, outTok = Math.max(+u.completion_tokens || 0, (+u.total_tokens || 0) - inTok), ec = costField ? Number(u[costField]) : NaN;
-    const c = costFn ? costFn(billed, inTok, outTok) ?? costFn(mdl, inTok, outTok) : costField ? (Number.isFinite(ec) && ec >= 0 ? ec : null) : costOf(billed, inTok, outTok) ?? costOf(mdl, inTok, outTok);
-    const usage = {in: inTok, out: outTok, cost: c ?? 0, costKnown: c != null, ...(c == null ? {costNote: 'unknown'} : {})};
+    const cachedTok = Math.min(+(u.prompt_tokens_details && u.prompt_tokens_details.cached_tokens) || 0, inTok); // #728: the cached part of prompt_tokens
+    const c = costFn ? costFn(billed, inTok, outTok) ?? costFn(mdl, inTok, outTok) : costField ? (Number.isFinite(ec) && ec >= 0 ? ec : null) : costOf(billed, inTok, outTok, cachedTok) ?? costOf(mdl, inTok, outTok, cachedTok);
+    const usage = {in: inTok, out: outTok, ...(cachedTok ? {cached: cachedTok} : {}), cost: c ?? 0, costKnown: c != null, ...(c == null ? {costNote: 'unknown'} : {})};
     const text = typeof m.content === 'string' ? m.content : null;
     const out = {text, usage, model: billed, ms: Date.now() - t0, raw: m, finish: ch && ch.finish_reason || null};
     if (structured) {
@@ -260,6 +264,24 @@ export function openaiAdapter({apiKey = null, baseUrl = OPENAI_URL, defaultModel
 // The agent loop's messages as OpenAI chat messages: tool_calls get ids and JSON-string arguments, and
 // each following tool message answers the next unanswered id (a tool message with no call to answer
 // becomes plain user text, so a trimmed history never sends an orphan).
+// Chat Completions answers 400 to a function description past 1024 characters (developers' reports; the docs do not print it), and the
+// game's longest tools run past that (the DM's stage_scene is over 3000, #824). Cut at a sentence and send the rest in the system
+// message, so nothing is lost and the prompt is the same size. -> {tools, messages}
+export const TOOL_DESC_MAX = 1024;
+export function fitTools(tools, messages, max = TOOL_DESC_MAX) {
+  if (!Array.isArray(tools)) return {tools, messages};
+  const MORE = ' (more in your orders)', room = max - MORE.length, rest = [];
+  const out = tools.map(t => {const f = t && t.function, d = f && f.description;
+    if (typeof d !== 'string' || d.length <= max) return t;
+    const dot = d.lastIndexOf('. ', room - 1), at = dot > room / 2 ? dot + 1 : room;
+    rest.push(`${f.name}: ${d.slice(at).trim()}`);
+    return {...t, function: {...f, description: d.slice(0, at).trim() + MORE}}});
+  if (!rest.length) return {tools, messages};
+  const note = 'More on your tools:\n' + rest.join('\n'), L = messages.slice(), i = L.findIndex(m => m.role === 'system');
+  if (i >= 0) L[i] = {...L[i], content: L[i].content + '\n\n' + note}; else L.unshift({role: 'system', content: note});
+  return {tools: out, messages: L};
+}
+
 export function toOpenAI(messages) {
   const out = [], pending = []; let n = 0;
   const flush = () => {while (pending.length) out.push({role: 'tool', tool_call_id: pending.shift(), content: '(not run)'})}; // calls cut short (the hero died mid-reply)

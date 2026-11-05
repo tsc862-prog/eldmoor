@@ -8,6 +8,11 @@
 //            (six trials, each its own dice; at least 3 must level, the wary autopilot being about a coin flip per day)
 //   edge     a walk (move_to "explore <dir>", hunt {where}) into a region 5+ levels above the hero stops at its edge once,
 //            with the danger in words; the same call again (or force: "yes") goes on; leaving a party leader says so
+//   errand   (#727) an arrival in town on the agent's own order is a now wake and holds autopilot in town 120 game minutes;
+//            an errand aim (ask, buy, rest, ...) waits in town until its until, then autopilot hunts as before; running it
+//            (list_jobs) is progress; intent and move_to naming the town it stands in answer "already here"; a forced aim
+//            copying a finished one word for word is dropped; an errand is a wait (#790): stale at 2 h unless run, cut to
+//            INTENT.WAIT_MAX, beaten by a level condition, and a hero who keeps setting errands is still moved by the town-idle guard
 //   world    background heroes are never touched (their seeded hash: node scripts/professioncheck.mjs --hash)
 // Usage: npm run townpilotcheck
 const baseSeed = Number(process.env.TOWNPILOT_SEED) || 3;
@@ -31,7 +36,7 @@ const act = (a, tool, args) => P.playerAct(a.id, tool, args || {});
 const band = z => REGIONS[z] && REGIONS[z].band;
 const inTownRect = a => CITY.some(c => a.x >= c.x0 - .5 && a.x <= c.x1 + 1.5 && a.y >= c.y0 - .5 && a.y <= c.y1 + 1.5);
 
-console.log('\nEldmoor townpilotcheck: autopilot in town (#466), danger edges (#465)\n');
+console.log('\nEldmoor townpilotcheck: autopilot in town (#466), danger edges (#465), town errands (#727)\n');
 init({fellowship: false}); run(5);
 const heroes = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead');
 let A = heroes.find(a => a.fac === 0); let B = heroes.find(a => a.fac === 0 && a !== A);
@@ -98,6 +103,61 @@ ok(/^move,hunt$/.test((A.pq || []).map(x => x.kind).join(',')) && /still in town
 S.parties = S.parties.filter(p => p !== party); A.party = B.party = null; A.pq = [];
 if (B.player) P.markPlayer(B, false);
 
+// ---------------------------------------------------------------- wait (#790)
+console.log('wait');
+{const {aimLine, aimState, aimBrief, intentWatch, INTENT} = await import('../src/sim/intent.js');
+ const {postHook} = await import('../src/sim/dm.js'); const {companyOf} = await import('../src/sim/company.js');
+ const hs3 = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && a.fac === A.fac && homeOf(a) === homeOf(A));
+ const [L, F1, F2] = hs3.length >= 3 ? hs3 : S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && a.fac === A.fac);
+ const M = [L, F1, F2]; const tryGroup = () => {const pt = {id: ++S.uid, fac: L.fac, leader: L, mem: [L, F1, F2], zone: 0, home: false}; for (const x of M) {fresh(x, 3); x.party = pt; x.partyOk = true; x.intent = null; x.townIdle = null; x.playEv = []} S.parties.push(pt); return pt};
+ const gm = (min, each) => {const t0 = S.gameMin; while (S.gameMin < t0 + min) {run(2); each && each()}};
+ const left = new Map();
+ // the owner's case: all three wait "until all three are level four" at level 3
+ let pt = tryGroup(); for (const x of M) idle(x);
+ let r = act(L, 'intent', {goal: 'Hold in town with the knot', why: 'we wait', until: 'all three are level four'});
+ ok(r.ok && L.intent.untilLevel === 4 && L.intent.untilAll, 'a level condition in the until words is read: level 4, all of them');
+ ok(L.intent.order && L.intent.order.kind === 'hunt' && L.intent.order.ground != null && !L.intent.order.n, 'and it maps to a hunt on the fitting ground, not a wait: ' + (L.intent.order && L.intent.order.ground));
+ ok(/not from waiting|not from waiting in town/.test(r.notes || '') && /Levels come from kills/.test(r.notes || ''), 'the tool says levels come from kills, not from waiting: ' + (r.notes || '').slice(0, 120));
+ ok(aimLine(L).includes('until level 4 (you are 3)'), 'the header shows: ' + aimLine(L));
+ for (const x of [F1, F2]) act(x, 'intent', {goal: 'Hold in town with the knot', why: 'we wait', until: 'all three are level four'});
+ for (const x of M) idle(x);
+ gm(720, () => {for (const x of M) {if (!left.has(x.id) && !inTownRect(x)) left.set(x.id, S.gameMin); if (!x.adv && x.playIdle !== true) idle(x); else if (x.playIdle) idle(x, 0 + 130)}});
+ ok(M.every(x => left.has(x.id)), 'the company is out of town within 12 game hours, followers included (' + M.map(x => left.has(x.id) ? Math.round((left.get(x.id) - (S.gameMin - 720)) / 60 * 10) / 10 + 'h' : 'never').join(', ') + ')');
+ ok(M.every(x => !x.adv && !x.quest), 'and none of them took a job or bounty on its own');
+ S.parties = S.parties.filter(x => x !== pt); for (const x of M) x.party = null;
+ // a wait is never progress: stale after 2 hours, ended at the cap
+ fresh(A, 3); A.intent = null; A.townIdle = null; idle(A); r = act(A, 'intent', {goal: 'Wait in town for Fena', why: 'she said she would come', until: 'Fena arrives'});
+ ok(r.ok && A.intent.order && A.intent.order.kind === 'wait' && A.intent.untilAt == null || A.intent.untilAt - A.intent.set <= INTENT.WAIT_MAX, 'a wait aim is held to ' + INTENT.WAIT_MAX + ' game minutes whatever its until says');
+ gm(125, () => idle(A));
+ ok(aimState(A) === 'stale' && aimBrief(A).ask && /waiting has earned nothing/.test(aimBrief(A).why), 'after 2 hours the wait is stale and the next turn asks: ' + aimBrief(A).why);
+ gm(130, () => idle(A));
+ ok(A.intent.done && /run its course/.test(A.intent.done.why), 'at the cap it ends: ' + (A.intent.done && A.intent.done.why));
+ // camp is not a wait that runs out
+ fresh(A, 3); A.intent = null; act(A, 'intent', {goal: 'Rest at the camp', why: 'night', until: 'dawn'}); A.intent.set -= 400; A.intent.prog -= 400; A.state = 'camp'; intentWatch(A);
+ ok(!A.intent.done, 'a camp rest is not cut off by the wait cap'); A.state = 'town'; intentWatch(A); ok(!!A.intent.done, 'out of camp the cap applies');
+ // the town-idle guard against a stubborn agent who keeps stating a wait
+ fresh(A, 3); A.intent = null; A.townIdle = null; A.playEv = []; const g0 = S.gameMin; let nextRe = g0, still10 = null, wake = null, wentOut = false; const watchWake = () => {const e = (A.playEv || []).find(e => /waiting earns no levels/.test(e.text)); if (e && !wake) wake = e.text}; act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); nextRe += 100; idle(A);
+ gm(840, () => {if (S.gameMin >= nextRe) {act(A, 'intent', {goal: 'Wait in town', why: 'still waiting', until: '3'}); A.pq = (A.pq || []).filter(x => !x.auto); nextRe += 100} idle(A); watchWake(); if (still10 == null && S.gameMin - g0 >= 600) still10 = inTownRect(A); if (!inTownRect(A)) wentOut = true});
+ ok(still10 === true, 'before 12 idle hours the guard does not move a hero that keeps its wait');
+ ok(wentOut, 'after 12 idle hours autopilot hunts whatever wait aim it holds (' + A.state + ' in ' + ZONES[zoneAt(A.x, A.y)] + ')'); // out and maybe back: the near ground is a short walk
+ ok(wake && /Autopilot hunts/.test(wake) && /board has|Hunt out/.test(wake), 'and the agent was woken with a line naming the ground and the board: ' + String(wake).slice(0, 220));
+ ok(!A.adv && !A.quest, 'still no job taken for it');
+ // legitimate waits: an open meeting plan keeps the clock from running
+ fresh(A, 3); A.intent = null; A.townIdle = null; A.playEv = []; const C = companyOf(A); C.plans = [{id: 99, where: 'the ford', at: S.gameMin + 3000, atText: 'x', made: S.gameMin, by: A.id, who: [A.id], whoNames: [A.name], status: 'open'}];
+ act(A, 'intent', {goal: 'Wait in town for the meeting', why: 'the plan', until: '3'}); idle(A); nextRe = S.gameMin + 100; wake = null; gm(840, () => {watchWake(); if (S.gameMin >= nextRe) {act(A, 'intent', {goal: 'Wait in town for the meeting', why: 'the plan', until: '3'}); A.pq = (A.pq || []).filter(x => !x.auto); nextRe += 100} idle(A)});
+ ok(inTownRect(A) && !wake, 'an open meeting plan is a legitimate wait: no guard wake in 14 hours');
+ C.plans = [];
+ // the refusal names the board
+ fresh(A, 5); A.intent = null; S.adventures = (S.adventures || []).filter(h => !(h.phase === 'open' && h.town === homeOf(A).name)); /* the refusal lists four: a full board would crowd these out */ const hi = postHook(homeOf(A), 'negotiate', 'writ'), lo = postHook(homeOf(A), 'rescue', 'writ');
+ r = act(A, 'take_adventure', {job_id: hi.id});
+ ok(!r.ok && /needs level 6/.test(r.error) && new RegExp('job:' + lo.id).test(r.error) && /Grow first/.test(r.error), 'a level refusal lists the takeable hooks with ids: ' + String(r.error).slice(0, 200));
+ r = act(A, 'take_quest', {id: 'job:' + hi.id});
+ ok(!r.ok && new RegExp('job:' + lo.id).test(r.error), 'take_quest too');
+ fresh(A, 3); r = act(A, 'take_adventure', {job_id: lo.id});
+ ok(!r.ok && !r.error.includes('job:' + lo.id) && /Grow first/.test(r.error), 'a hook the hero cannot take is not offered: ' + String(r.error).slice(0, 160));
+ S.adventures = S.adventures.filter(h => h !== hi && h !== lo);
+}
+
 // ---------------------------------------------------------------- edge
 console.log('edge');
 // a spot in a level-1 region whose road east enters a region 5+ levels above, first (no milder region between)
@@ -161,6 +221,98 @@ ok(r.ok && A.target && A.target.type === 'spider', 'the agent\'s own hunt order 
 A.target = null; A.pq = []; A.state = 'hunt';
 for (const m of S.mobs) if (m.placed) {m.placed = false; m.scan = 0; m.wait = 0}
 for (const m of cleared) {m.alive = true; m.gone = false; m.target = null; m.hp = m.maxhp} rebuild(); // the field as it was
+
+// ---------------------------------------------------------------- errand (#727)
+console.log('errand');
+const IN = await import('../src/sim/intent.js');
+const ARRIVE_HOLD = 120; // TP.ARRIVE_HOLD in sim/player.js
+const outside = () => {for (const d of [6, 8, 10]) for (const [dx, dy] of [[0, 1], [0, -1], [1, 0], [-1, 0]]) {const p = {x: c.gate.x + dx * d, y: c.gate.y + dy * d};
+  if (p.x > 1 && p.y > 1 && p.x < 78 && p.y < 48 && !inTownRect(p) && ZONES[zoneAt(p.x, p.y)]) return p} return null};
+const away = outside();
+const atField = () => {fresh(A); A.playArrive = null; A.intent = null; A.intentPast = null; A.x = away.x; A.y = away.y; A.state = 'hunt'};
+const walkIn = (max = 400) => {for (let i = 0; i < max && (A.pq || []).length && A.pq[0].kind !== 'rest'; i++) run(.1)};
+const kinds = () => (A.pq || []).map(x => x.kind).join(',');
+ok(!!away, `a spot outside ${c.name} (${away && away.x},${away && away.y})`);
+// 1. an arrival on the agent's own move_to, the idle clock long past PK.IDLE: a now wake, and autopilot stays in town
+atField(); r = act(A, 'move_to', {target: c.name}); A.playTurn = null; A.playActAt = S.gameMin - 500;
+const ev0 = A.playEvN || 0; walkIn();
+const arr = (A.playEv || []).find(e => e.n > ev0 && /^Arrived/.test(e.text));
+ok(r.ok && arr && arr.w === 2, `arriving in ${c.name} on its own order is a now wake (${arr ? arr.text + ' w=' + arr.w : 'no arrival event'})`);
+ok(A.playArrive != null && Math.abs(A.playArrive - S.gameMin) < 30, 'the arrival is noted for the hold');
+run(.2);
+ok(A.playIdle && (A.pq || [])[0] && A.pq[0].kind === 'rest' && /staying in/.test(A.pq[0].auto || ''), `autopilot runs but stays in town ("${A.playDoing}")`);
+{const t0 = A.playArrive; let left = false; while (S.gameMin < t0 + ARRIVE_HOLD - 8) {run(.5); if (!inTownRect(A)) left = true}
+  ok(!left && A.state === 'town', `still in ${c.name} ${Math.round(S.gameMin - t0)} game minutes after arriving`);
+  while (S.gameMin < t0 + ARRIVE_HOLD + 6 && !/^move/.test(kinds())) run(.2);
+  ok(/^move,hunt$/.test(kinds()), `after the hold, autopilot heads out to hunt as before (${kinds()})`)}
+// 2. an errand aim in town: a wait-kind order until its until (4 h by default), then autopilot hunts as before
+fresh(A); A.playArrive = null; A.intent = null;
+r = act(A, 'intent', {goal: 'Ask the innkeeper for news of the Sunken Crypt', why: 'I need the way down'}); A.playTurn = null;
+ok(r.ok && /waiting in/.test(r.carries_on || '') && A.intent.order && A.intent.order.kind === 'wait' && A.intent.order.errand === 'ask', `an errand aim in town waits there: ${r.carries_on}`);
+ok(/talk|list_jobs/.test(r.next || '') && /earshot/.test(r.next || ''), `and names the next step: ${r.next}`);
+ok(A.intent.untilAt != null && Math.abs(A.intent.untilAt - S.gameMin - IN.INTENT.ERRAND) < 2, 'with no hours given it holds 4 game hours');
+ok(/Your aim says ask: talk to someone here/.test(IN.aimBrief(A).errand || ''), `the turn header names it: ${IN.aimBrief(A).errand}`);
+{idle(A); run(.1);
+  ok((A.pq || [])[0] && A.pq[0].kind === 'rest' && A.pq[0].hold && /waiting in/.test(A.pq[0].auto || ''), `autopilot keeps to the errand ("${A.pq[0] && A.pq[0].auto}")`);
+  const until = A.intent.untilAt; let left = false; while (S.gameMin < until - 10) {run(.5); if (!inTownRect(A)) left = true}
+  ok(!left && IN.aimState(A) === 'stale' && IN.aimHeld(A) && /waiting has earned nothing/.test(IN.aimBrief(A).why || ''), `in town ${Math.round((S.gameMin - until + IN.INTENT.ERRAND) / 60 * 10) / 10} game hours on: still held, but an unrun errand earns nothing and the next turn asks (${left ? 'left town' : IN.aimBrief(A).why})`);
+  while (S.gameMin < until + 6 && !/^move/.test(kinds())) run(.2);
+  ok(A.intent.done && /^move,hunt$/.test(kinds()), `the errand's time up: autopilot hunts as before (${kinds()})`)}
+// 3. running the errand is progress, and acting on it
+fresh(A); A.playArrive = null; A.intent = null;
+act(A, 'intent', {goal: 'Find out where the Sunken Crypt lies', why: 'the job'}); r = act(A, 'list_jobs', {}); A.playTurn = null;
+ok(r.ok !== false && A.intent.acted === true && !IN.aimBrief(A).errand, 'list_jobs runs the errand: acted, and the header no longer asks it');
+// 4. already here: intent and move_to naming the town it stands in
+fresh(A); A.playArrive = null; A.intent = null;
+r = act(A, 'intent', {goal: 'Return to ' + c.name + ' and recover fully', why: 'hurt'});
+ok(r.ok && r.here === 'You are already in ' + c.name + '.' && /earshot/.test(r.next || ''), `intent naming ${c.name} inside it: "${r.here}" ${r.people ? '(' + r.people.slice(0, 2).join('; ') + ')' : ''}`);
+A.pq = []; r = act(A, 'move_to', {target: c.name});
+ok(r.ok && r.already_here && /already in/.test(r.here) && !(A.pq || []).length, 'move_to the town it stands in: already here, no walk');
+r = act(A, 'move_to', {target: 'the inn'});
+ok(r.ok && !r.already_here && (A.pq || []).length, 'move_to a spot in town still walks');
+A.pq = []; A.playTurn = null;
+// 5. an errand aim set out in the field: the aim's walk arrives (a now wake) and becomes the wait in town
+atField(); r = act(A, 'intent', {goal: 'Return to ' + c.name + ' and ask about the Crypt', why: 'rumours'}); A.playTurn = null;
+ok(r.ok && A.intent.order && A.intent.order.kind === 'move', `in the field it is a walk first (${r.carries_on})`);
+idle(A); const ev1 = A.playEvN || 0; for (let i = 0; i < 400 && A.intent.order.kind !== 'wait'; i++) run(.1);
+for (let i = 0; i < 40 && (A.pq || []).length && A.pq[0].kind === 'move'; i++) run(.1);
+const arr2 = (A.playEv || []).find(e => e.n > ev1 && /^Arrived/.test(e.text));
+ok(A.intent.order.kind === 'wait' && !A.intent.done && A.intent.order.town && inTownRect(A), `on arrival the errand holds it in town (${IN.orderText(A.intent.order)})`);
+ok(arr2 && arr2.w === 2, `the aim's own walk arriving is a now wake too (${arr2 ? arr2.text : 'none'})`);
+// 6. a forced answer that copies a finished aim word for word is dropped; said again by the agent itself it is set
+fresh(A); A.playArrive = null; A.intent = null; A.intentPast = null; A.intentDay = null;
+const g6 = 'Break off from the Webspinner and get back to the road'; act(A, 'intent', {goal: g6, why: 'x'}); act(A, 'intent', {done: 'yes'});
+r = act(A, 'intent', {goal: g6, why: 'x', forced: 'yes'});
+ok(r.ok && r.dropped === 'stale aim dropped' && A.intent.done && IN.aimBrief(A).ask, 'a forced aim copied from a finished one is dropped and the header asks again');
+act(A, 'intent', {goal: 'Hunt boars in the fields', why: 'coin'});
+r = act(A, 'intent', {goal: g6, why: 'x', forced: 'yes'});
+ok(r.dropped, 'an older finished aim copied word for word is dropped too');
+r = act(A, 'intent', {goal: g6, why: 'x'});
+ok(r.ok && !r.dropped && A.intent.goal === g6, 'the agent restating it in a free turn sets it');
+A.pq = []; A.playTurn = null; A.intent = null;
+// 7. an errand lives inside #790: capped, never progress, and no way past the town-idle guard
+const cleanA = (lvl = 3) => {fresh(A, lvl); Object.assign(A, {playArrive: null, intent: null, intentPast: null, intentDay: null, townIdle: null, playEv: []})};
+cleanA(); r = act(A, 'intent', {goal: 'Ask around about the Sunken Crypt', why: 'the way', until: '12'}); A.playTurn = null;
+ok(A.intent.order.errand === 'ask' && A.intent.untilAt - S.gameMin <= IN.INTENT.WAIT_MAX + 1, `an errand given 12 hours is held to the wait cap (${Math.round(A.intent.untilAt - S.gameMin)} min)`);
+cleanA(); r = act(A, 'intent', {goal: 'Rest at the inn with the knot', why: 'we wait', until: 'level four'}); A.playTurn = null;
+ok(A.intent.order.kind === 'hunt' && A.intent.untilLevel === 4 && /Levels come from kills/.test(r.notes || ''), `a level condition beats the errand words: a hunt, not a wait (${IN.orderText(A.intent.order)})`);
+atField(); A.intentDay = null; act(A, 'intent', {goal: 'Return to ' + c.name + ' and ask about the Crypt', why: 'rumours', until: '40'}); A.playTurn = null; A.intent.set -= 500; A.intent.prog = S.gameMin; A.x = A.intent.order.to.x; A.y = A.intent.order.to.y; A.state = 'town'; IN.intentWatch(A);
+ok(A.intent.order.kind === 'wait' && !A.intent.done && A.intent.untilAt - S.gameMin <= IN.INTENT.WAIT_MAX + 1, `a long walk there does not eat the errand, and a far until is cut to the cap (${Math.round(A.intent.untilAt - S.gameMin)} min left)`);
+cleanA(); act(A, 'intent', {goal: 'Buy supplies for the road', why: 'the road'}); A.playTurn = null; A.x = away.x; A.y = away.y; A.state = 'hunt'; A.pq = []; idle(A); run(.2);
+ok(!/waiting/.test((A.pq || [])[0] && A.pq[0].auto || ''), `out of town the errand holds nothing (${(A.pq || [])[0] && A.pq[0].auto})`);
+cleanA(); act(A, 'intent', {goal: 'Wait in town for Fena', why: 'she said so', until: 'Fena arrives'}); A.intent.prog -= 130; act(A, 'list_jobs', {}); act(A, 'earshot', {}); A.playTurn = null;
+ok(IN.aimState(A) === 'stale', 'a plain wait gains nothing from reading the board: only an errand counts its tools as progress');
+// the hero who keeps setting errands: new aims, the board read, even fresh arrivals inside town; no help from the check's idle clock after the start
+for (const arrives of [false, true]) {
+  cleanA(); idle(A); const t0 = S.gameMin, goals = ['Ask about the Crypt', 'Buy supplies for the road', 'Find a trainer', 'Read the board for work', 'Learn the news']; let i = 0, next = t0, at10 = null, wake = null, errands = 0, over = 0;
+  while (S.gameMin < t0 + 900 && (at10 == null || inTownRect(A))) {
+    if (S.gameMin >= next && inTownRect(A)) {r = act(A, 'intent', {goal: goals[i++ % goals.length], why: 'one more thing'}); if (r.ok && A.intent.order && A.intent.order.errand) errands++; if (A.intent.untilAt - S.gameMin > IN.INTENT.WAIT_MAX + 1) over++; act(A, 'list_jobs', {}); A.playTurn = null; if (arrives) A.playArrive = S.gameMin; next += 100}
+    run(2); const e = (A.playEv || []).find(e => /waiting earns no levels/.test(e.text)); if (e && !wake) wake = e.text; if (at10 == null && S.gameMin - t0 >= 600) at10 = inTownRect(A)}
+  const how = arrives ? 'with fresh arrivals' : 'restating alone';
+  ok(errands >= 7 && !over && at10 === true, `${how}: ${errands} errands set, each inside the cap, and the hero still in town at 10 hours`);
+  ok(!inTownRect(A) && wake && /Autopilot hunts/.test(wake), `${how}: the guard moves it all the same, out ${Math.round((S.gameMin - t0) / 60 * 10) / 10} h after it last earned anything (${A.state} in ${ZONES[zoneAt(A.x, A.y)]})`);
+  ok(!A.adv && !A.quest, `${how}: and no job was taken for it`)}
+A.pq = []; A.playTurn = null; A.intent = null;
 
 void xpNeed; void last;
 

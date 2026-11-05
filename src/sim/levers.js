@@ -33,6 +33,7 @@
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
 import {clamp} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
+import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {GOODS,QUEST_ITEMS,USES,EPICS,BOSS_EPICS,DG_EPICS,SLOTS} from '../data/items.js';
@@ -41,7 +42,7 @@ import {makeItem} from './gear.js';
 import {notify} from './notify.js';
 import {RACES} from '../data/races.js';
 import {npcRole,WANDER_ROLES} from '../data/npcs.js';
-import {BEAST,ADVENTURES} from '../data/adventures.js';
+import {BEAST,ADVENTURES,SUPPLY} from '../data/adventures.js';
 import {S} from './state.js';
 import {sceneOf} from './scenes.js';
 import {takeProp} from './props.js'; // the scene prop that held the item is gone (#592)
@@ -50,8 +51,10 @@ import {focuses,pullTouchesAny,reserveOf,fairRefusal} from './dmfocus.js'; // th
 import {timeline,record} from './history.js';
 import {npcSay,ensureNpcs} from './npcs.js';
 import {moveTo} from './heroes.js';
+import {clearLine} from './path.js';
 import {spawnMob} from './mobs.js';
 import {postHook,withdrawHook} from './dm.js';
+import {postSupply,withdrawSupply,openAt as supplyOpenAt,SUP} from './supply.js'; // goods jobs (#720): post_hook takes their names as tpl
 import {customFoe,spawnFoe} from './encounterbuilder.js';
 import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
 import {CUSTOM} from '../data/encounter-tables.js';
@@ -122,7 +125,10 @@ export function spotErr(p,o={}){
   if(!(p.x>=1&&p.y>=1&&p.x<W-1&&p.y<H-1))return 'off the map';
   const t=tiles[I(Math.floor(p.x),Math.floor(p.y))];
   if(o.road&&t!==ROAD)return 'not a road tile';
-  if(!WALKABLE.includes(t))return 'not a walkable tile';
+  // solid ground (#792): the passability layer is the one way to ask; the refusal names the nearest spot that passes
+  const hint=()=>{if(o._hint)return '';const q=nearestOpen(p.x,p.y,12,s=>!spotErr(s,{...o,_hint:1}));return q?'; nearest open ground is '+q.x+','+q.y:'; no open ground within 12 tiles'};
+  if(solidAt(p.x,p.y))return 'solid ground ('+solidWhy(p.x,p.y)+')'+hint();
+  if(!WALKABLE.includes(t))return 'not a walkable tile'+hint();
   const c=CITY.find(c=>p.x>=c.x0-1&&p.x<=c.x1+1&&p.y>=c.y0-1&&p.y<=c.y1+1);if(c)return 'inside '+c.name;
   const g=CITY.find(c=>dist(p,c.gate)<(o.clear||LK.TOWN_CLEAR));if(g)return 'within '+(o.clear||LK.TOWN_CLEAR)+' tiles of '+g.name+'’s gate';
   for(const l of LANDMARKS)if(l.exclude&&dist(p,l)<l.exclude+1)return 'on '+l.name;
@@ -172,6 +178,9 @@ export function pull(name,raw,o={}){raw=aliasRaw(name,raw);name=leverAlias(name)
   if(!reason)return fail('a reason is required');
   if(def.stub&&!IMPL[def.stub]&&!def.native)return fail('not available yet');
   const p=validate(def,raw);if(typeof p==='string')return fail(p);
+  // The engine's own placements (by 'scripted') never fail on solid ground (#792): the point steps to the nearest open tile.
+  // A model or agent caller is refused instead, with that tile named (spotErr), so it can choose.
+  if(by==='scripted'&&p.at&&solidAt(p.at.x,p.at.y)){const q=nearestOpen(p.at.x,p.at.y,12);if(q)p.at={x:q.x,y:q.y}}
   const ctx={by,reason,adv:o.adv||null,now:S.gameMin};
   if(def.check){const e=def.check(p,ctx);if(e)return fail(e)}
   const z=def.region?def.region(p):p.region!=null?p.region:null,D=today(),lim=def.limits;
@@ -334,25 +343,29 @@ function shock(p){const g=GOODS[p.good],s=SHOCK_SUPPLY[p.direction][p.size];if(p
 const TPLS=Object.keys(ADVENTURES).filter(k=>k!=='fallen');
 const REWARD={small:.8,fair:1,generous:1.25};
 register({name:'post_hook',about:'Post a job on a town board: template, giver role, an optional target place or person, and a reward scale (gold only).',
-  params:{town:{type:'town'},tpl:{type:'enum',values:Object.keys(ADVENTURES)},giver:{type:'enum',values:['captain','innkeeper','smith','quartermaster','priest','bard'],opt:true},
+  params:{town:{type:'town'},tpl:{type:'enum',values:[...Object.keys(ADVENTURES),...Object.keys(SUPPLY)]},giver:{type:'enum',values:['captain','innkeeper','smith','quartermaster','priest','bard'],opt:true},
     target:{type:'id',opt:true},region:{type:'region',opt:true},reward:{type:'enum',values:Object.keys(REWARD),def:'fair'},
     src:{type:'enum',values:['request','writ','rumour','oath','follow','remnant','death','dm'],def:'dm'},forHero:{type:'id',opt:true},spec:{type:'obj',opt:true}},
   limits:{perDay:80},cooldown:0,hide:['spec'],
   region:p=>{const c=townOf(p.town);return zoneAt(c.gate.x,c.gate.y)},
   check(p,ctx){if(p.tpl==='fallen'&&ctx.by!=='scripted')return 'only the world posts a recovery for the fallen';
     if(p.spec&&ctx.by!=='scripted')return 'spec is for the scripted DM';
+    if(SUPPLY[p.tpl]){const c=townOf(p.town);if(supplyOpenAt(c).length>=SUP.BOARD_MAX)return p.town+'’s board already holds '+SUP.BOARD_MAX+' goods jobs';
+      if(p.target!=null)return 'a goods job names no place (leave place out)'}
     const open=(S.adventures||[]).filter(h=>h.phase==='open'&&h.town===p.town).length;if(open>=LK.BOARD_MAX)return p.town+'’s board is full ('+open+')';
     if(p.target!=null&&!(S.places||[]).some(x=>x.id===p.target)&&!anyNpc(p.target))return 'no such place or person';
     if(p.forHero!=null&&!S.agents.some(a=>a.id===p.forHero&&a.state!=='dead'))return 'no such living hero';return null},
   apply(p,ctx){const c=townOf(p.town),o=p.spec?{...p.spec}:{};o.data={...(o.data||{})};if(ctx&&ctx.by)o.by=ctx.by; // the quest log tells the DM agent's jobs apart (sim/questlog.js)
     if(p.giver&&!o.giver)o.roles=[p.giver];if(p.forHero!=null)o.for=p.forHero;if(p.region!=null&&o.zone==null)o.zone=p.region;
     if(p.target!=null){const t=(S.places||[]).find(x=>x.id===p.target)||anyNpc(p.target);o.data.x=t.x;o.data.y=t.y;o.data.place=t.name;if(o.zone==null)o.zone=zoneAt(t.x,t.y)}
+    if(SUPPLY[p.tpl]){const j=postSupply(c,p.tpl,{...o,by:ctx&&ctx.by,src:p.src,reward:p.reward,for:p.forHero!=null?p.forHero:o.for});
+      return {ok:true,effect:{hook:j.id,tpl:j.tpl,giver:j.giver?j.giver.name:null,zone:'any',wants:j.want.n+' '+j.want.id,pays:j.gold+'g'},ret:j}}
     if(p.reward!=='fair')o.data.payMul=REWARD[p.reward];
     const h=postHook(c,p.tpl,p.src,o);return {ok:true,effect:{hook:h.id,tpl:h.tpl,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone]},ret:h}},
   describe:p=>p.tpl+' at '+p.town+(p.giver?' from the '+p.giver:'')});
 register({name:'withdraw_hook',about:'Take an open job down from a board.',params:{hook:{type:'id'}},limits:{perDay:60},
-  check(p){const h=(S.adventures||[]).find(x=>x.id===p.hook);return !h?'no such hook':h.phase!=='open'?'hook #'+p.hook+' is already taken':null},
-  apply(p){const h=withdrawHook(p.hook);return h?{ok:true,effect:{hook:h.id,tpl:h.tpl,town:h.town}}:{ok:false,effect:'could not take it down'}},
+  check(p){const h=(S.adventures||[]).find(x=>x.id===p.hook)||(S.supply||[]).find(x=>x.id===p.hook);return !h?'no such hook':h.phase!=='open'?'hook #'+p.hook+' is already taken':null},
+  apply(p){const h=withdrawHook(p.hook)||withdrawSupply(p.hook);return h?{ok:true,effect:{hook:h.id,tpl:h.tpl,town:h.town}}:{ok:false,effect:'could not take it down'}},
   describe:p=>'hook #'+p.hook+' taken down'});
 
 // Hand a hero an object, or take one back (issue #524; the old give_token / take_token levers are folded in: pull() reads them as
@@ -446,7 +459,7 @@ register({name:'custom_foe',about:'A special foe from the bestiary: base creatur
   apply(p,ctx){const lvl=p.lvl!=null?bandLvl(p.region,p.lvl).lvl:band(p.region)[0]+2,pair=v=>v&&Array.isArray(v.pair)&&v.pair.length===2?v.pair:undefined;
     const f=customFoe(p.base,{name:p.name,levels:p.levels,swap:pair(p.swap),resist:pair(p.resist)},{region:p.region,level:lvl,reason:ctx.reason,adv:ctx.adv});
     if(!f){const e=S.dmLog&&S.dmLog[0];return {ok:false,effect:e&&e.kind==='custom'?String(e.summary[0]).replace('Special foe refused: ',''):'the bestiary refused it'}}
-    const m=spawnFoe(f);m.hpl=m.hp;m.x=p.at.x;m.y=p.at.y;m.home={...p.at};m.spawn={...p.at};m.lever=ctx.id;if(ctx.adv)m.adv=ctx.adv.id;
+    const m=spawnFoe(f);m.hpl=m.hp;Object.assign(m,standAt(p.at.x,p.at.y));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};m.lever=ctx.id;if(ctx.adv)m.adv=ctx.adv.id;
     return {ok:true,effect:{mob:m.id,name:f.name,lvl:m.lvl,points:f.points},until:S.gameMin+DAY,ret:m}},
   expire(rec){mobsOf(rec.id,true)},
   describe:p=>(p.name||p.base)+' in '+ZONES[p.region]});
@@ -504,7 +517,7 @@ export function leverTick(dt){const L=ensureLevers();
 function wander(w,dt){if(w.chatCd>0)w.chatCd-=dt;if(w.bubble){w.bubble.life-=dt;if(w.bubble.life<=0)w.bubble=null}
   if(w.stroll){if(moveTo(w,w.stroll.x,w.stroll.y,dt,1)){w.stroll=null;w.wait=4+r()*8}}
   else{w.moving=false;w.wait-=dt;if(w.wait<=0){const a=r()*6.283,d=r()*1.4,q={x:w.home.x+Math.cos(a)*d,y:w.home.y+Math.sin(a)*d};
-    if(!spotErr(q,{clear:.1})||w.homeKind==='town')w.stroll=q;else w.wait=3}}
+    if((!spotErr(q,{clear:.1})||w.homeKind==='town')&&clearLine(w,q))w.stroll=q;else w.wait=3}} // a stroll stays in the open: never round a house (#794)
   if(w.chatCd>0)return;
   for(const a of S.agents){if(a.state==='dead'||a.state==='ghost'||a.hidden||dist(a,w)>2.2)continue;
     const last=w.met[a.id];if(last!=null&&S.gameMin-last<DAY)continue;w.met[a.id]=S.gameMin;

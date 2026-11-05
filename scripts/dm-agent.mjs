@@ -20,12 +20,13 @@
 // in 30 s) gets a DM turn now and then, not back to back. Any DM runs until stopped (a paid one until its
 // --budget is spent; #563) unless --max-turns is given; any DM stops after --max-fails N (default 5) failed or empty turns in a row.
 // Session: logs/agents/dm.json (gitignored), resumed next run for the same world; --new sets it
-// aside in logs/agents/old/. Cost line per turn.
+// aside in logs/agents/old/, and so does a run on another provider (#824: a conversation cannot cross providers; the notes, whens
+// and DM log are in the game, so the new mind reads them again). Cost line per turn.
 //
 // Options: --url (or PLAY_URL; default http://127.0.0.1:8787), --max-turns N (optional; default until stopped), --min-gap S, --max-fails N, --budget USD
 // (default 1.00, this run), --cadence evening|S, --tool-turns N (model calls per turn, default 16),
-// --provider anthropic|ollama|google (or DM_PROVIDER; google = Gemini through the same tool loop as Ollama, #672), --model (or DM_MODEL; default claude-sonnet-5-5, or the
-// Ollama default), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
+// --provider anthropic|ollama|openai|huggingface|google (or DM_PROVIDER; every provider a hero has, #824: the last three play through the same tool loop as Ollama), --model (or DM_MODEL; default claude-sonnet-5-5, or the
+// Ollama default; OpenAI, Hugging Face and Gemini need one chosen), --effort (default medium), --ollama-url, --num-ctx, --env FILE, --new.
 // --claude-concurrency is accepted (the runner supervisor passes it) and changes nothing: always one call.
 // Table voice (issue #132): --table-model (or DM_TABLE_MODEL; default claude-haiku-5-5 with Anthropic, the seat's model with
 // Ollama) answers the at-the-table calls of the scenes the DM stages; --no-table-voice leaves them to the scripted DM.
@@ -37,19 +38,27 @@
 // Ruling voice (issue #522): --ruling-model (or DM_RULING_MODEL; default the table model) rules on the heroes' free actions
 // (ruling_call -> ruling_answer: skill, DC word, bounded effects, the line heard); --no-ruling-voice leaves them to the scripted DM.
 // --ruling-budget S: real seconds the game waits per ruling (4-30; default 8 with Anthropic, 25 with a local model).
+// Companion voice (issue #764): with the talk model, speaks for the scripted companions of agent companies (companion_call ->
+// companion_say); --no-companion-voice leaves them to their usual talk; --companion-budget S (default 8 with Anthropic, 25 local).
 import {mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
 import {hostname} from 'node:os';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
 import {withToolMap} from './toolmap.mjs';
-import {loadDmSession, saveDmSession, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
+import {loadDmSession, saveDmSession, setAsideDm, dmSessionPath, runnerSettings, DEFAULT_PROVIDER} from './agent-sessions.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
+import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
 import {paceSettings, turnCap, capText, failTracker, localWorked, takeClaudeSlot} from './pacing.mjs';
+import {isCompat, compatLabel} from './agent-chat.mjs';
+import {PROVIDERS} from '../src/data/providers.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const DM_PROVIDERS = ['anthropic', 'ollama', 'google'];
+export const DM_PROVIDERS = PROVIDERS; // the seat takes every mind a hero can have: the one list (#824)
+// The saved conversation cannot carry over to this run's provider (a Claude session id, or another model's history): true when there is one to set aside.
+export const mindSwitched = (sess, rs) => {const was = sess && sess.runner && sess.runner.provider || (sess && sess.sessionId ? DEFAULT_PROVIDER : null);
+  return !!was && was !== rs.provider && !!(sess.sessionId || sess.turns || (sess.local && sess.local.history && sess.local.history.length))};
 export const DEFAULT_DM_MODEL = 'claude-sonnet-5-5'; // claude-api skill (cached 2026-10-06): Sonnet 5.5, $2 in / $10 out per 1M tokens
 export const EVENING = 18 * 60, DAY = 1440, POLL_MS = 4000, BACKOFF = [30, 60, 120, 240, 600];
 // Fellowship-change turns (issue #165): between evenings, a turn is also due when the Fellowship's situation changed (dm_status
@@ -78,7 +87,7 @@ export function dmSystemPrompt(st) {
     DM_WISH_ORDERS,
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
     '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
-    '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): for an elite or an ambush call stage_scene with preview "true" first to see the cast the game will build, then write a frame that fits it (a frame of armed men over a pack of boars is refused); you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. A meeting or social scene may name a setting (a house, a tavern back room, a chapel, a cellar, an interrogation cell, a shrine, the hold of a ship) and at (a town or a building in it): the Table scene plays in that room; the other kinds play where they happen. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
+    '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): for an elite or an ambush call stage_scene with preview "true" first to see the cast the game will build, then write a frame that fits it (a frame of armed men over a pack of boars is refused); you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. A meeting or social scene may name a setting (a house, a tavern back room, a chapel, a cellar, an interrogation cell, a shrine, the hold of a ship) and at (a town or a building in it): the Table scene plays in that room; the other kinds play where they happen. A vision (stage_scene kind vision) is an omen or a shared dream with no cast and no dice: near a member or "fellowship" it comes when they next rest, near a place when one of them stands there; you frame it, answer what they ask of it, and cast.reveal, cast.place or cast.creature becomes what they know; use it to plant a thread, a warning or a place to seek. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
     '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); the same voice frames the opening scene of a new world (session zero) and speaks for a newcomer who arrives to take a fallen member’s place. You do not need to do anything for that.',
     DM_FELLOWSHIP_ORDERS,
     DM_COMPANY_ORDERS,
@@ -89,6 +98,7 @@ export function dmSystemPrompt(st) {
     DM_RENOWN_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
+    '- In narrate, npc_say, whisper, dream and table_answer: ' + NO_WORDS.trim(),
     '',
     'Each turn: dm_status (read fellowship_needs first), hear (what they said aloud since you last listened), notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, levers as needed), update notes, pull at most a few levers, and end with one short sentence of what you prepared.',
   ].join('\n');
@@ -97,7 +107,7 @@ export function dmSystemPrompt(st) {
 // A note for the people who build the game (#663): the one line the DM seat carries (the heroes' is WISH_ORDERS in agent-player.mjs).
 export const DM_WISH_ORDERS = '- wish {tool, what, why, moment} is for the people who build the game: say which tool you wished you had to tell this story (even one the rules forbid), in English, at most 3 a game day. It is read later, never answered in play; nothing changes this session.';
 export const withDmWishOrders = sys => /- wish \{tool, what, why, moment\}/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_WISH_ORDERS;
-export const DM_FELLOWSHIP_ORDERS = '- The Fellowship comes first, then the overall world. Every turn starts with them: where they are, their open threads and oaths, pending decisions, their recent scenes, and what would make their next game hours interesting (dm_status fellowship_needs; fellowship_view for the detail). The DM never reads hero notes; you know only what the game shows. Put your hooks, rumours, people, places and staged scenes on their road and their threads first. World-shaping that does not touch them comes after, and only when nothing is pending for them; part of each day�s lever and staging limits is kept for the Fellowship, so a refusal that says so is that rule, not an error. A turn also runs when their situation changes (a scene ends, they arrive somewhere, a member falls, an oath is kept), not only on game evenings.';
+export const DM_FELLOWSHIP_ORDERS = '- The Fellowship comes first, then the overall world. Every turn starts with them: where they are, their open threads and oaths, pending decisions, their recent scenes, and what would make their next game hours interesting (dm_status fellowship_needs; fellowship_view for the detail). The DM never reads hero notes; you know only what the game shows. An oath is what a hero swore aloud (oaths.sworn); a thread is only offered from their past (oaths.offered): never say they swore it, but a rumour or a person who knew it may put it before them. Put your hooks, rumours, people, places and staged scenes on their road and their threads first. World-shaping that does not touch them comes after, and only when nothing is pending for them; part of each day�s lever and staging limits is kept for the Fellowship, so a refusal that says so is that rule, not an error. A turn also runs when their situation changes (a scene ends, they arrive somewhere, a member falls, an oath is kept), not only on game evenings.';
 export const withDmFellowshipOrders = sys => {
   sys = String(sys || ''); if (/\bThe Fellowship comes first\b/.test(sys)) return sys;
   const at = sys.indexOf('\n- If dm_status shows a Table scene');
@@ -120,7 +130,7 @@ export const DM_CALL_ORDERS = [
 ].join('\n');
 // What you can do between scenes (issue #636): every lever as a tool, and taking things back. withDmBetweenOrders adds it to an older session's prompt.
 export const DM_BETWEEN_ORDERS = [
-  '- What you can do between scenes, one tool each (all with a reason; each lever tool counts as a pull with the same limits, cooldowns and Fellowship share as pull_lever, which still works): post_hook or withdraw_hook (jobs on a board), place_person or retire_person (a visitor comes or goes; how says what the town says of them), set_attitude (a person warms or turns on a hero, the Fellowship or a faction), mark_place (a ruin, camp, shrine or tower), mark_danger (an area turns dangerous, or with cleared "yes" quiet), set_condition (bandits, plague, festival, migration, fog over a region), price_shock (a good dearer or cheaper), start_event (a festival, plague, migration or invasion), custom_foe (one special creature near a place), create_site (a dungeon site) and nudge_relation (two parties warm or cool), give_item and take_item (an object changes hands), stage_scene (a narrated encounter), narrate, npc_say, whisper and dream (your voice).',
+  '- What you can do between scenes, one tool each (all with a reason; each lever tool counts as a pull with the same limits, cooldowns and Fellowship share as pull_lever, which still works): post_hook or withdraw_hook (jobs on a board), place_person or retire_person (a visitor comes or goes; how says what the town says of them), set_attitude (a person warms or turns on a hero, the Fellowship or a faction), mark_place (a ruin, camp, shrine or tower), mark_danger (an area turns dangerous, or with cleared "yes" quiet), set_condition (bandits, plague, festival, migration, fog over a region), price_shock (a good dearer or cheaper), start_event (a festival, plague, migration or invasion), custom_foe (one special creature near a place), create_site (a dungeon site) and nudge_relation (two parties warm or cool), give_item and take_item (an object changes hands), summon_hero (a background hero of your choosing, a rival or a wanderer, near a place; in a world with no other heroes the roads fill only this way), stage_scene (a narrated encounter), narrate, npc_say, whisper and dream (your voice).',
   '- Take back what you started instead of repeating a refused call: undo reaches your last pull or placement within 3 game hours (a job, person, marker, area, condition, attitude, foe or unopened scene; not items, prices or relations), unstage cancels a staged scene the Table has not opened (the cast walks off), dismiss ends one of your markers or areas early. A refusal that says one staged scene is pending means unstage it or wait; do not ask again. Taking back is logged and capped at 6 a game day.'
 ].join('\n');
 export const withDmBetweenOrders = sys => /\bWhat you can do between scenes\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_BETWEEN_ORDERS;
@@ -142,6 +152,11 @@ export const withDmCampaignOrders = sys => /\bcampaign seed\b/.test(String(sys |
 export const withDmMemoryOrders = sys => /\bYour notes are searchable\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_MEMORY_ORDERS;
 const notesNow = st => st && Array.isArray(st.relevant_notes) && st.relevant_notes.length ? ` Notes that may matter now: ${st.relevant_notes.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id}).` : '';
 const heardNote = st => st && st.unheard && st.unheard.total ? ` ${st.unheard.total} line${st.unheard.total === 1 ? '' : 's'} said aloud wait for you: read hear first.` : ' Nothing new was said aloud; a quiet turn is hear, then one act or nothing.';
+// The first turn after a roll (#787): the DM's memory is in the game, so it re-reads it. The notes are the campaign; a hero's journal is not the DM's to read.
+export const DM_RESUME = ' You are picking up after a pause, with no memory of this conversation: start with notes_read and read_dm_log, to recall what you have set in motion.';
+// The evening turn asks once a game day (#829): a thing the story wanted that no tool or lever allowed. One sentence, no extra call.
+export const DM_WISH_ASK = ' Was there a thing the story wanted today that no tool or lever allowed? If so, say it with wish {tool, what, why, moment} (read later by the builders; nothing changes now); if not, leave it.';
+export const wishNote = (st, sess) => st && st.part === 'evening' && sess && sess.wishAsk !== st.day ? (sess.wishAsk = st.day, DM_WISH_ASK) : '';
 export const dmTurnPrompt = (turns, st) => turns === 0
   ? 'You take the DM seat. Orient yourself: dm_status, hear, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
   : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign, the Fellowship first.${heardNote(st)}${notesNow(st)}`;
@@ -193,8 +208,12 @@ export const POLL_IDLE = 2500, POLL_HOT = 400;
 export const VOICE_WAIT_MS = 20000;
 // After a poll: sleep only when it came back early without a call (the host did not hold it).
 const pollRest = (t0, waitMs) => waitMs > 0 && Date.now() - t0 >= Math.min(waitMs / 2, 1000);
+// One line every DM voice carries (#750): the members are agent-played and only their own agents give them words; the game cuts a quote
+// attributed to one of them (sim/spokefor.js) and tells the voice so.
+export const NO_WORDS = 'Never quote a hero or put words in a hero\'s mouth (only an arrival\'s newcomer, when a call asks you to voice them): you may describe what they do, not what they say (they speak for themselves; a line that quotes one is cut). ';
 export const TABLE_SYSTEM = 'You are the Dungeon Master\'s voice at the table in Eldmoor, a hardcore fantasy world (original setting; no names from other games or books). ' +
-  'A scene is being played: one you staged, the opening of the campaign (session zero: frame it as the company first sits down), a newcomer’s arrival (voice the newcomer), or a company’s talk round its camp fire (frame the night and open the talk on the topic given; never speak for the heroes). Each request is one call: frame the scene, voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
+  NO_WORDS +
+  'A scene is being played: one you staged, the opening of the campaign (session zero: frame it as the company first sits down), a newcomer’s arrival (voice the newcomer), or a company’s talk round its camp fire (frame the night and open the talk on the topic given; never speak for the heroes), or a hero going down (describe the downing, a death save or its end, true to the dice given). Each request is one call: frame the scene, voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
   'Write what can be seen, heard or smelled, as much as the moment needs; usually a few vivid sentences. The Cast line is the truth: voice and describe only what it lists, and invent no one else (no men, bandits or leaders when the cast is creatures). Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
 export function tablePrompt(t) {
   const c = t.call, s = t.scene || {};
@@ -220,7 +239,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
           if (!j || typeof j.text !== 'string') log(`[table] call ${c.id} ${c.kind}: the model's reply was not JSON; the scripted DM fills it`);
           else {
             const a = await tool(base, 'table_answer', {call: c.id, text: j.text, ...(c.legal ? {pick: j.pick} : {})});
-            log(`[table] call ${c.id} ${c.kind}${a.pick ? ' ' + a.pick : ''}: ${a.ok ? '"' + short(a.said || '', 140) + '"' : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s, ${r.usage ? r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+            log(`[table] call ${c.id} ${c.kind}${a.pick ? ' ' + a.pick : ''}: ${a.ok ? '"' + short(a.said || '', 140) + '"' : 'x ' + short(a.error, 100)}${a.spoke_for ? ' (spoke for ' + a.spoke_for.join(', ') + ': cut)' : ''} | ${((Date.now() - t0) / 1000).toFixed(1)} s, ${r.usage ? r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
           }
         } catch (e) {log(`[table] call ${c.id} ${c.kind}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM fills it`)}
         continue;
@@ -241,6 +260,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
 // npc_say {conv} and at most one npc_offer. A late, failed or refused answer changes nothing: the scripted DM has it.
 export const TALK_POLL_IDLE = 1500, TALK_POLL_HOT = 400;
 export const TALK_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), voicing one of its people. ' +
+  NO_WORDS +
   'A hero of the Fellowship is talking to them. Answer as that person, in their own voice, as much as the moment needs (usually a few sentences), true to their role, mood, what they want and what they know. ' +
   'You may add one follow-up from the legal list: trade (they open their stock), rumour (a lead the hero can act on: put it in about, and a region name if it has a place), job (work posted for the hero), combat (they turn hostile; only when the hero truly provoked it), blessing (priests and hermits), leave (they end it), or none. ' +
   'Most answers need none; a merchant asked about goods trades, a worried person may give a rumour or a job. Never decide what the hero thinks or does. ' +
@@ -287,6 +307,58 @@ export function talkVoice({base, adapter, model, effort = 'low', log = () => {},
   const p = loop().catch(e => log(`[talk] voice stopped: ${short(String(e && e.message || e), 120)}`));
   return {stop: () => {done = true; return p}};
 }
+// ---- the companion voice (issue #764) ----
+// A scripted hero riding with an agent company (a hire, a companion) speaks through the DM: the game puts a call (companion_call)
+// with its card, the day, what it heard and what it already said to each listener; one structured model call per line (the talk
+// model), then companion_say. A late, failed or refused answer changes nothing: its usual talk fills it, never repeating a row.
+export const COMP_POLL_IDLE = 1500, COMP_POLL_HOT = 400;
+export const COMP_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), voicing a companion who rides with a company of heroes, like a companion played by the DM at a tabletop game. ' +
+  'Say one or two sentences as that companion, in their own voice: true to their card (class, home, traits, oath, how they ride), to what the company did today and to what was just said. ' +
+  'Never repeat or rephrase a line they already said to that listener (you_said_to_them); say something new. Never put words in a hero\'s mouth, decide what a hero thinks or does, or quote a hero. Speak English, plainly, no stage directions. ' +
+  'Reply as JSON {"text": "..."}.';
+export function compPrompt(c) {
+  const p = c.companion || {}, w = c.their_words;
+  const why = c.trigger === 'camp' ? `It is night at the camp fire in ${c.where}; the talk turns to ${c.topic || 'whatever is on their mind'}.`
+    : c.trigger === 'quarrel' ? `At the fire in ${c.where}, someone just snapped at them; they answer back.`
+    : `In ${c.where}, a hero speaks to them and they answer.`;
+  return [`You are ${p.name}, a level ${p.level} ${p.cls}${p.race ? ' (' + p.race + ')' : ''} from ${p.home || 'somewhere'}${p.origin ? ', ' + p.origin : ''}. You ride with ${p.company || 'a company'}: ${p.rides}.`,
+    p.traits && p.traits.length ? `Your traits: ${p.traits.join(', ')}.` : '', p.oath ? `Your oath: ${p.oath}.` : '',
+    ['voice', 'wants', 'fears', 'quirk', 'never_says', 'backstory'].filter(k => p[k]).map(k => `${k.replace('_', ' ')}: ${p[k]}`).join(' | '),
+    `Time ${c.time}. ${why}`,
+    c.today && c.today.length ? `Today the company: ${c.today.join(' | ')}` : 'Nothing much happened today.',
+    c.heard && c.heard.length ? `Lately you heard: ${c.heard.join(' | ')}` : '',
+    ...(c.listeners || []).map(l => `${l.name} (${l.cls}, level ${l.level}) hears you.${l.you_said_to_them && l.you_said_to_them.length ? ' You already said to them: ' + l.you_said_to_them.join(' | ') : ''}`),
+    w ? `${w.from} ${w.how}: "${w.text}"` : ''].filter(Boolean).join('\n');
+}
+export const compSchema = () => ({type: 'object', properties: {text: {type: 'string'}}, required: ['text'], additionalProperties: false});
+export function companionVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = COMP_POLL_IDLE, pollHot = COMP_POLL_HOT, budgetS = 8, waitMs = VOICE_WAIT_MS}) {
+  let done = false, seen = 0;
+  const loop = async () => {
+    while (!done && !stopped()) {
+      const p0 = Date.now(), t = await tool(base, 'companion_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
+      const c = t && t.ok && t.call;
+      if (c && c.call !== seen && c.seconds_left > .8) {
+        seen = c.call; const t0 = Date.now(), who = c.companion && c.companion.name;
+        try {
+          const ms = Math.max(800, c.seconds_left * 1000 - 400);
+          const r = await adapter.call({system: COMP_SYSTEM, user: compPrompt(c), schema: compSchema(c), maxTokens: 300, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+          let j = null; try {j = JSON.parse(r.text)} catch {}
+          onCost(r.usage || {});
+          if (!j || typeof j.text !== 'string' || !j.text.trim()) log(`[companion] call ${c.call}: the model's reply was not usable; the usual talk fills it`);
+          else {
+            const said = await tool(base, 'companion_say', {call: c.call, text: j.text.trim()});
+            log(`[companion] ${who} (${c.trigger}): ${said.ok ? '"' + short(said.said || j.text, 140) + '"' : 'x ' + short(said.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+          }
+        } catch (e) {log(`[companion] call ${c.call}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the usual talk fills it`)}
+        continue;
+      }
+      if (t && t.ok && pollRest(p0, waitMs)) continue;
+      await sleep(pollIdle);
+    }
+  };
+  const p = loop().catch(e => log(`[companion] voice stopped: ${short(String(e && e.message || e), 120)}`));
+  return {stop: () => {done = true; return p}};
+}
 // ---- the ruling voice (issue #522) ----
 // A hero tries something the tools never named (attempt; scene_act attempt at the table). The game asks the DM for a ruling
 // (ruling_call): the hero in words, the attempt, the place and what is in sight, the legal skills, DCs and effect forms. It waits
@@ -294,6 +366,7 @@ export function talkVoice({base, adapter, model, effort = 'low', log = () => {},
 // effect kinds), then ruling_answer; a refused answer (an illegal effect) is logged and the scripted DM rules at the deadline.
 export const RULING_POLL_IDLE = 1500, RULING_POLL_HOT = 400;
 export const RULING_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), ruling on what a hero tries. ' +
+  NO_WORDS +
   'The hero may try anything; you decide which skill it tests and how hard it is (easy 8, fair 12, hard 15, heroic 18), and what follows a success and a failure, drawn only from the legal effects. ' +
   'The game rolls the dice; you never decide the result, what a hero thinks or chooses, and never touch level, XP, gold or life (a wound is at most 15% and never below 10% HP). ' +
   'Most attempts deserve none or one small effect: a clever idea a reveal (a fact they learn, a place, a creature) or someone warming to them, a reckless one a small wound or exposed. ' +
@@ -355,7 +428,8 @@ export const talkNote = st => {const w = talkWaiting(st); return w.length ? ` A 
 // 20 tool calls; half on Continue or for a DM runner started again mid-session). A fresh runner waits for the host to start
 // it (dm_status prep.state 'running'): as long as session zero is due (prep.opening_due), else PREP_WAIT_MS. The turn has
 // the prep's call cap as its model-call cap and is aborted at its time cap; then the runner calls prep_done (a cap the game
-// counted may already have ended it) and the opening scene opens; the table voice frames it.
+// counted may already have ended it) and the opening scene opens; the table voice frames it. The game starts the prep's
+// clock at the turn's first call (#733), and the DM's turn leases the reserved DM slot (RUNNER_DM_SLOTS), never queued behind heroes.
 export const PREP_WAIT_MS = 15000;
 export const prepPrompt = st => {const p = st.prep || {}, cap = `at most ${p.max_calls || 20} tool calls and ${p.max_seconds || 90} seconds`;
   return p.kind === 'opening'
@@ -365,7 +439,7 @@ export async function waitPrep({base, log = () => {}, stopped = () => false, too
   const t0 = Date.now(); let said = false;
   for (;;) {
     if (stopped()) return null;
-    const st = await tool(base, 'dm_status'), p = st && st.ok ? st.prep : null;
+    const st = await tool(base, 'dm_status', {_poll: true}), p = st && st.ok ? st.prep : null; // _poll: this wait neither counts nor starts the prep clock (#733)
     if (p && p.state === 'running') return st;
     if (!(p && p.host)) return null; // nobody holds the world for a prep (an older page, play-headless without --wait-ready)
     if (!(p && p.opening_due) && Date.now() - t0 >= waitMs) return null;
@@ -434,29 +508,40 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     log(`[dm] the game clock is behind this DM's last turn (a new world or an older save): starting a fresh DM session`);
   }
   if (note) log('[dm] ' + note);
-  sess.system = withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.DM_PROVIDER || DEFAULT_PROVIDER, model: env.DM_MODEL || DEFAULT_DM_MODEL, effort: env.DM_EFFORT || 'medium'});
+  if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider ${DM_PROVIDERS.join(', ')}.`); await quit(1)}
+  // Another provider takes the seat (#824): the old conversation is set aside like --new; what the DM knows is in the game (S.dmAgent:
+  // notes, whens, the DM log), so the turn is told to read it, and what it already saw of its watches stays seen.
+  if (mindSwitched(sess, rs)) {
+    const was = (sess.runner && sess.runner.provider) || DEFAULT_PROVIDER, seen = {lastWatch: sess.lastWatch, lastFired: sess.lastFired, ev: sess.ev}; ({sess, note} = loadDmSession(st0.world, fresh, {startNew: true}));
+    for (const k in seen) if (seen[k] != null) sess[k] = seen[k];
+    sess.rolled = true; log(`[dm] the seat changes mind (${was} -> ${rs.provider}): a new conversation; the notes, whens and DM log stay with the world${note ? '; ' + note : ''}`);
+  }
+  sess.runner = rs;
+  sess.system = withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
-  if (!DM_PROVIDERS.includes(rs.provider)) {console.error(`[dm] provider "${rs.provider}" has no DM runner. Use --provider anthropic, ollama or google.`); await quit(1)}
   const saveSess = () => saveDmSession(sess, {url: base});
   let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;
   const maxTurns = turnCap(turnsAsked, rs.provider, 12), fails = failTracker(pace.maxFails), gapUntil = () => lastEnd ? lastEnd + pace.minGap * 1000 : 0;
   const t00 = Date.now();
 
-  if (rs.provider === 'ollama' || rs.provider === 'google') {
+  if (rs.provider === 'ollama' || isCompat(rs.provider)) {
     // A local model sits in the seat (Mixed minds): the tool loop of scripts/local-agent.mjs over the DM tools. No key, cost 0.
-    // Gemini (#672) plays through the same loop with its own adapter (GOOGLE_API_KEY from this process's .env; free tier cost 0).
-    const gem = rs.provider === 'google';
+    // OpenAI, the Hugging Face router and Gemini (#672, #824) play through the same loop with their adapter (the key from this process's
+    // .env), the seat's model for every voice, real cost per turn and the budget; no Claude slot.
+    const gem = isCompat(rs.provider), label = compatLabel(rs.provider);
     const {ollamaAdapter, OLLAMA_URL, OLLAMA_MODEL, numCtxFrom} = await import('./providers/ollama.mjs');
     const {localTurn, localLine, paidLine} = await import('./local-agent.mjs');
-    let ol = null, spentG = 0;
+    let ol = null, spentG = 0, unknown = false;
+    const over = () => gem && spentG >= budget; // a voice can spend the rest of the budget between turns
+    const noPrice = u => {if (u && u.costKnown === false && !unknown) {unknown = true; log(`[dm] ${rs.model} reports no price: its spend is counted as $0, so the budget does not limit it`)}};
     if (gem) {
       const {openaiRunner} = await import('./agent-chat.mjs'), o = await openaiRunner(rs, env, {explicit: !!opt('model', null)});
       if (o.error) {console.error('[dm] ' + o.error); await quit(1)}
       if (o.note) log('[dm] ' + o.note);
-      ol = o.adapter; sess.runner = rs; mind = {provider: 'google', model: rs.model}; await claim();
-      log(`[dm] DM seat taken | model ${rs.model} via Gemini (${ol.tier} tier) | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
+      ol = o.adapter; sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; await claim();
+      log(`[dm] DM seat taken | model ${rs.model} via ${label}${ol.tier ? ' (' + ol.tier + ' tier)' : ''} | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
     } else {
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
     rs.model = rs.model || env.OLLAMA_MODEL || OLLAMA_MODEL; rs.effort = null; sess.runner = rs; mind = {provider: 'ollama', model: rs.model}; await claim();
@@ -466,36 +551,39 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     {const {localModelNote} = await import('./pacing.mjs'); const n = await localModelNote(ol, rs.model); if (n) log('[dm] ' + n)} // another model, or ours at another num_ctx (#221)
     log(`[dm] DM seat taken | local model ${rs.model} via Ollama, num_ctx ${ol.numCtx} | ${sess.local && sess.local.history && sess.local.history.length ? 'resuming' : 'new session'} | ${capText(maxTurns)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
     }
-    const where = gem ? ' (Gemini)' : ' (local)', onCost = gem ? u => {const c = u && u.cost || 0; spentG += c; sess.costUsd = (sess.costUsd || 0) + c} : undefined;
+    const where = gem ? ` (${label})` : ' (local)', onCost = gem ? u => {const c = u && u.cost || 0; spentG += c; sess.costUsd = (sess.costUsd || 0) + c; noPrice(u)} : undefined;
     {const {warmUp} = await import('./warmup.mjs'); await warmUp({base, seat: {role: 'dm'}, runner, model: rs.model, adapter: ol, log})} // the start gate (issue #222): ready = answered
     if (!flag('no-table-voice')) {tableVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost}); log(`[dm] table voice: ${rs.model}${where} answers the calls of staged scenes`)}
     if (!flag('no-talk-voice')) {talkVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || (gem ? 8 : 25)))}); log(`[dm] talk voice: ${rs.model}${where} answers the Fellowship's conversations with world characters`)}
+    if (!flag('no-companion-voice')) {companionVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || (gem ? 8 : 25)))}); log(`[dm] companion voice: ${rs.model}${where} speaks for the scripted companions of agent companies`)}
     if (!flag('no-ruling-voice')) {rulingVoice({base, adapter: ol, model: rs.model, log, stopped: () => stopping, onCost, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || (gem ? 8 : 25)))}); log(`[dm] ruling voice: ${rs.model}${where} rules on the heroes' free actions`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
     if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
     for (let turn = 1; turn <= maxTurns && !ended; turn++) {
-      if (gem && spentG >= budget) {ended = 'budget reached'; break}
-      const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
+      if (over()) {ended = 'budget reached'; break}
+      const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping || over(), gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = over() ? 'budget reached' : 'the seat closed'; break}
       let r = null, err = null;
       const prepping = st === prepSt && !!prepSt, prepAt = Date.now();
-      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
+      {const rd = rollDue(sess, 0, {busy: prepping}); if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}} // only when asked from the page (#787)
+      try {r = await localTurn({chat: ol.chat, call: (tool, args) => prepping && Date.now() - prepAt > prepSt.prep.max_seconds * 1000 ? Promise.resolve({ok: false, error: 'The prep time is over: end the turn.'}) : dmTool(base, tool, args), sess, prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + wishNote(st, sess) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), model: rs.model, toolTurns: prepping ? Math.max(2, st.prep.max_calls) : toolTurns, tools: DM_TOOLS, rules,
         // the breaker and the minute cap (issue #467): 3 refusals of one tool or 5 in a row end the turn; at most
         // DM_CALLS_PER_MIN (default 30) tool calls a real minute across turns, well under the relay's flood line (90)
         opts: {endOnWait: false, sameRefusals: 3, consecutiveRefusals: 5, callsPerMin: Math.max(5, Number(opt('calls-per-min', env.DM_CALLS_PER_MIN || 30)) || 30)},
         on: (k, a, b) => {if (k === 'text') log(`  DM: ${a}`); else if (k === 'tool') log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') log(`    < ${short(a, 220)}`);
           else if (k === 'break') log(`  [breaker] ${a.n} refusals of ${a.tool}${a.inRow > a.n ? ' (' + a.inRow + ' in a row)' : ''}: the turn ends here`); else if (k === 'throttle') log(`  [throttle] ${a} tool calls in the last minute: the turn ends here`)}})}
       catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[dm] turn failed: ${err}`)}
+      if (r && !prepping) delete sess.rolled; // told to re-read (#787)
       if (prepping) {const d = await dmTool(base, 'prep_done', {summary: 'prepared the table'}); log(`[dm] prep over: ${d.ok ? (d.prep && d.prep.why) || 'done' : short(d.error, 80)}`); prepSt = null}
       sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; lastEnd = Date.now(); sess.lastWatch = Math.max(sess.lastWatch || 0, seenMax(st.watches_fired, 'id')); sess.lastFired = Math.max(sess.lastFired || 0, seenMax(st.fired, 'seq'));
       reportTurn(base, {role: 'dm', runner, provider: rs.provider, model: rs.model, turn: sess.turns, gameMin: st.gameMin ?? null, ...localRec(r), ...(err ? {error: err} : {})});
-      if (r && gem) {runIn += r.in; runOut += r.out; spentG += r.cost || 0; sess.costUsd = (sess.costUsd || 0) + (r.cost || 0); log(`[turn ${sess.turns}] ${paidLine(r, rs.model, 'google', {run: spentG, session: sess.costUsd})}`)}
+      if (r && gem) {runIn += r.in; runOut += r.out; spentG += r.cost || 0; sess.costUsd = (sess.costUsd || 0) + (r.cost || 0); noPrice(r); log(`[turn ${sess.turns}] ${paidLine(r, rs.model, rs.provider, {run: spentG, session: sess.costUsd})}`)}
       else if (r) {runIn += r.in; runOut += r.out; log(`[turn ${sess.turns}] ${localLine(r, rs.model)}`)}
       saveSess();
       if (fails.ok(localWorked(r))) ended = fails.why();
     }
     clearInterval(beat); await release();
-    log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t00) / 1000).toFixed(0)} s, ${gem ? money(spentG) + ' (Gemini ' + ol.tier + ' tier)' : '$0 (local)'}. Session saved to ${dmSessionPath()}.`);
+    log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${runIn} tokens in / ${runOut} out in ${((Date.now() - t00) / 1000).toFixed(0)} s, ${gem ? (unknown ? 'cost unknown for ' + rs.model + ', counted ' : '') + money(spentG) + ` (${label}${ol.tier ? ' ' + ol.tier + ' tier' : ''}) | run ${money(spentG)}` : '$0 (local)'}. Session saved to ${dmSessionPath()}.`);
     process.exit(0);
   }
 
@@ -516,6 +604,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] talk voice: ${talkModel} answers the Fellowship's conversations with world characters`);
   }
+  if (!flag('no-companion-voice')) {
+    const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
+    const compModel = opt('talk-model', env.DM_TALK_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
+    companionVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: compModel}), model: compModel, log, stopped: () => stopping, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || 8)),
+      onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
+    log(`[dm] companion voice: ${compModel} speaks for the scripted companions of agent companies`);
+  }
   if (!flag('no-ruling-voice')) {
     const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
     const rulingModel = opt('ruling-model', env.DM_RULING_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
@@ -526,7 +621,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
   const {model, effort} = rs;
   log(`[dm] DM seat taken | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)}, cadence ${cadence}, at least ${pace.minGap} s apart`);
-  const childEnv = {...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-dm-agent/1.0'};
+  const rollAt = rollPoint('dm', model, env); let netSaid = false; // the roll and the compaction net (#787)
+  const childEnv = withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-dm-agent/1.0'}, rollAt, env);
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   {const {warmUp, claudeWarmAdapter} = await import('./warmup.mjs'); await claim(); await warmUp({base, seat: {role: 'dm'}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log})} // the start gate (issue #222)
@@ -534,12 +630,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
   for (let turn = 1; turn <= maxTurns && !ended;) {
     if (spent >= budget) {ended = 'budget reached'; break}
-    const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = 'the seat closed'; break}
+    const st = prepSt || await waitTurn({base, cadence, lastGm: sess.turns ? sess.lastGm : null, lastSig: sess.turns ? sess.lastSig : null, lastWatch: sess.lastWatch || 0, ev: sess.ev || (sess.ev = {day: -1, n: 0}), log, stopped: () => stopping || spent >= budget, gapUntil: gapUntil(), talkNow: flag('no-talk-voice')}); if (!st) {ended = spent >= budget ? 'budget reached' : 'the seat closed'; break}
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
-    const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
+    const rd = rollDue(sess, rollAt, {busy: st === prepSt && !!prepSt, legacy: /haiku/i.test(model)}); // between turns (waitTurn never returns with a scene or a vote open), never in the prep (#787)
+    if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}
+    const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping, member: 'DM', tools: () => tools, onLost: () => {if (turnAbort) turnAbort.abort()}}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const prepping = st === prepSt && !!prepSt, prepTimer = prepping ? setTimeout(() => {if (turnAbort) turnAbort.abort()}, prepSt.prep.max_seconds * 1000) : null;
-    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {
+    const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + wishNote(st, sess) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?role=dm&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Role': 'dm', 'X-Eldmoor-Runner': runner}, timeout: 30000}},
@@ -548,10 +646,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       cwd: join(ROOT, 'logs'), env: childEnv,
     }});
     try {for await (const m of q) {
-      if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; saveSess()}
+      if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; if (!prepping) delete sess.rolled; saveSess(); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => log('  ' + s))}}
       else if (m.type === 'system' && m.subtype === 'api_retry') {if (m.error_status === 429 || m.error === 'rate_limit' || m.error === 'overloaded') {limited = true; log(`  [rate limited: the SDK retries in ${Math.round(m.retry_delay_ms / 1000)} s (attempt ${m.attempt}/${m.max_retries})]`)}}
-      else if (m.type === 'system' && m.subtype === 'compact_boundary') log(`  [compacted: ${m.compact_metadata.pre_tokens} -> ${m.compact_metadata.post_tokens ?? '?'} tokens]`);
+      else if (m.type === 'system' && m.subtype === 'compact_boundary') {sess.compacts = (sess.compacts || 0) + 1; log(`  [compacted: ${m.compact_metadata.pre_tokens} -> ${m.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (m.type === 'assistant' && !m.parent_tool_use_id) {
+        sess.ctx = ctxOf(m.message.usage) ?? sess.ctx; // the last call's prompt (#787)
         if (m.error === 'rate_limit' || m.error === 'overloaded') {limited = true; failed = m.error}
         for (const b of m.message.content || []) {
           if (b.type === 'text' && b.text.trim()) {log(`  DM: ${b.text.trim()}`); tc.text(b.text)}
@@ -573,10 +672,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
       spent += cost; sess.costUsd += cost; turnCost = cost;
       if (result.is_error && isRateLimit(JSON.stringify(result.errors || result.result || ''))) failed = failed || 'rate_limit';
-      log(`[turn ${sess.turns + 1}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
+      log(`[turn ${sess.turns + 1}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(sess.ctx)} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
-    reportTurn(base, {role: 'dm', runner, provider: rs.provider, model, turn: sess.turns + 1, gameMin: st.gameMin ?? null, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost,
-      flags: result && result.subtype !== 'success' ? [result.subtype] : [], ...(failed ? {error: failed === 'rate_limit' || failed === 'overloaded' ? '429 ' + failed : failed} : {})});
+    reportTurn(base, {role: 'dm', runner, provider: rs.provider, model, turn: sess.turns + 1, gameMin: st.gameMin ?? null, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}),
+      flags: [...(rd ? ['session-rolled'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(failed ? {error: failed === 'rate_limit' || failed === 'overloaded' ? '429 ' + failed : failed} : {})});
     // A rate-limited turn that did nothing is retried after a growing pause; a turn that got work done counts.
     if (failed && failed !== 'error' && !tools) {const s = BACKOFF[Math.min(backoff, BACKOFF.length - 1)]; backoff++; log(`[dm] rate limited (${failed}); backing off ${s} s before trying the turn again`); saveSess(); await sleep(s * 1000); continue}
     backoff = 0; sess.turns++; sess.lastGm = st.gameMin; sess.lastSig = st.fellowship_change == null ? null : st.fellowship_change; turn++; lastEnd = Date.now(); sess.lastWatch = Math.max(sess.lastWatch || 0, seenMax(st.watches_fired, 'id')); sess.lastFired = Math.max(sess.lastFired || 0, seenMax(st.fired, 'seq'));
@@ -584,6 +683,6 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (fails.ok(!failed && tools > 0)) ended = fails.why();
   }
   clearInterval(beat); await release();
-  log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}${tableCost ? ' (table voice ' + money(tableCost) + ')' : ''}, session ${money(sess.costUsd)}. Session saved to ${dmSessionPath()}.`);
+  log(`[dm] stopped after ${sess.turns} turns this session${ended ? ' (' + ended + ')' : ''}; this run ${money(spent)}${tableCost ? ' (table voice ' + money(tableCost) + ')' : ''}, session ${money(sess.costUsd)}, ${sess.rolls || 0} rolls, ${sess.compacts || 0} compactions. Session saved to ${dmSessionPath()}.`);
   process.exit(0);
 }

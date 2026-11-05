@@ -54,6 +54,14 @@ tick(120);
 const busy=ranked().slice().sort((a,b)=>(b.history||[]).length-(a.history||[]).length)[0];
 select(busy);setView('follow');tick(1);
 
+// Log tags (#785): outcomes carry no source, decisions keep who drove the hero
+{const {record}=await import('../src/sim/history.js');const f={player:true,name:'T',history:[]};
+  record(f,'Reached level 2.');record(f,'Slew ',{t:'a wolf',c:'gd'},'.');record(f,'Fell at level 3, slain by a wolf.');record(f,'Looted ',{t:'Axe'},' from a wolf.');
+  record(f,'Set out for Highgate.');record(f,'Took a job: x.');
+  ok(f.history.slice(0,4).every(e=>!('src' in e)),'log: outcome lines (level, slew, fell, looted) carry no source');
+  ok(f.history[4].src==='agent'&&f.history[5].src==='agent','log: decision lines of an agent hero keep the agent tag');
+  record(f,'Went down at level 3 to a wolf.');ok(!('src' in f.history[6]),'log: a downing carries no source')}
+
 // Scroll a list, tick, check it held. get() re-finds the list after the tick (a rebuilt list would be a new node).
 // ranked: rows move by rank, so only the scroll position must hold
 function holds(name,get,{sec=20,min=3,ranked=false}={}){let n=get();
@@ -194,41 +202,41 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
 const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});(await import('../src/sim/council.js')).partySay(sp,'Hold the line at the ford.'); // a repeat said outside the agent tool (agents' own near-repeats are refused since #163)
   const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
   ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
-  select(mem[0]);setTab('chat');uiFast();const ul=tb().querySelector('.log');
+  select(mem[0]);setTab('chat');uiFast();
+  ok(/Chat panel/.test(tb().textContent)&&!tb().querySelector('.log.chat'),'dossier Mind > Chat holds no copy of the chat (#845): it points to the Chat panel');
+  const ul=$('chatList');
   const li=ul&&ul.children.find(x=>/Hold the line/.test(x.textContent));
-  ok(!!li&&/Hold the line at the ford. ×2/.test(li.textContent)&&/shouts: /.test(li.textContent)&&!!li.querySelector('.chheard'),'chat: repeated shout shows once with a count and who heard: '+(li&&li.textContent));
+  ok(!!li&&/Hold the line at the ford./.test(li.textContent)&&/shouts: /.test(li.textContent)&&!!li.querySelector('.chheard'),'chat: the shout shows with who heard it: '+(li&&li.textContent));
   ok(!!li&&!li.textContent.includes(sp.name+': '+sp.name),'chat: the own-name prefix is dropped');
   ok(!tb().querySelector('.ai-badge'),'chat: no mind or model badge');
   ok(!!li&&!li.querySelector('.chtag')&&li.querySelector('.hn').classList.contains('fmn'),'chat: no channel tag box, role-coloured name on the one line')
   ok(!!li&&li.querySelector('.chheard').textContent.includes(mem[0].name),'chat: the dim list names who heard: '+(li&&li.querySelector('.chheard')&&li.querySelector('.chheard').textContent));
   // an out-of-range shout (#182): "Fena calls out, but no one is near"
   {mem[0].chat.push({t:'12:00',d:Math.floor(sim.S.gameMin/1440)+1,from:sp,text:'Anyone out there?',trigger:'party',party:true,heard:[],far:[mem[2].name]});uiFast();
-   const lo=tb().querySelector('.log').children.find(x=>/Anyone out there/.test(x.textContent));
+   const lo=$('chatList').children.find(x=>/Anyone out there/.test(x.textContent));
    ok(!!lo&&/calls out, but no one is near/.test(lo.textContent)&&!lo.querySelector('.chheard'),'chat: a shout nobody heard reads "calls out, but no one is near": '+(lo&&lo.textContent))}
   // day stamps and separators (#168): "D3 13:57", a "Day N" row where the day changes; an older entry with no day keeps its bare time
   {const h=mem[0];const d0=Math.floor(sim.S.gameMin/1440)+1;h.chat.push({t:'23:58',d:d0+5,from:sp,text:'Stamp test A.',trigger:'x',party:true},{t:'01:10',d:d0+6,from:sp,text:'Stamp test B.',trigger:'x',party:true});
-   uiFast();const u2=tb().querySelector('.log.chat'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
+   uiFast();const u2=$('chatList'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
    ok(tm.some(t=>/^D\d+ \d\d:\d\d$/.test(t)),'chat: times carry the game day: '+tm.slice(0,3).join(', '));
    ok(u2.children.filter(x=>x.classList.contains('daysep')).length>=2,'chat: day separators appear where the day changes');
-   // #181: the dossier Chat tab is a per-hero filter of the chat panel's stream; the phone-width View group wraps
-   {const mine=tb().querySelector('.log.chat').textContent;h.chat.push({t:'09:00',d:d0+7,from:h,text:'Only-for-me test line.',trigger:'x'});
-    const other=mem.find(m=>m!==h&&m!==sp&&m.chat)||{chat:[]};other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
-    const t2=tb().querySelector('.log.chat').textContent;
-    ok(/Only-for-me/.test(t2)&&!/Only-for-other/.test(t2),'dossier chat: shows this heros slice of the stream only');
-    ok(tb().querySelector('.log.chat').children.length>0&&mine.length>0,'dossier chat: built from the stream');
-    const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   {const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
     ok(/\.group\{[^}]*flex-wrap:wrap/.test(css0),'phone width: the View button group wraps instead of widening the page')}
    const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8').match(/\.log\.chat li\.chl\{[^}]*\}/);
    ok(!!css&&!/text-indent:\s*-/.test(css[0]),'chat: no negative text-indent (the stamp cannot start left of the list box)')}}
+// Company tab Lately feed and the whole-map spots (#845, #844)
+{uiFast();const ly=$('felbody').querySelector('.fellately');ok(!!ly&&!!ly.querySelector('.fth-h'),'Company tab: a Lately feed sits under the threads');
+  const {companySpots}=await import('../src/render/wholemap.js');const sp=companySpots();
+  ok(sp.length>0&&sp.every(x=>x.name&&x.r>=5)&&sp.filter(x=>x.followed).length===1,'whole map: each company has a ring spot and a name, one followed: '+sp.map(x=>x.name).join(', '))}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 
 // The Agents panel (#145): limits and spend in one place, sent to the relay's supervisor
 console.log('Agents panel');
 {const posts=[];const hk='hero:'+mem[1].id;
   const relay={ok:true,enabled:true,session:{budget:null,spent:.42,left:null},kinds:{hero:{defaults:{maxTurns:20,budget:1},caps:{maxTurns:200,budget:5}},fellowship:{defaults:{maxTurns:6,budget:2},caps:{maxTurns:100,budget:10}},dm:{defaults:{maxTurns:12,budget:1},caps:{maxTurns:200,budget:5}}},
-    runners:[{key:hk,kind:'hero',hero:mem[1].id,heroes:[mem[1].id],name:mem[1].name,state:'live',turns:3,cost:.42,budget:1,provider:'anthropic',model:'claude-haiku-5-5',lines:[]}]};
+    runners:[{key:hk,kind:'hero',hero:mem[1].id,heroes:[mem[1].id],name:mem[1].name,state:'live',turns:3,cost:.42,budget:1,provider:'anthropic',model:'claude-haiku-5-5',ctx:212,rolls:1,lines:[]}]};
   globalThis.fetch=async(url,o)=>{url=String(url);const j=v=>({ok:true,status:200,json:async()=>v});
-    if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push({url,body});
+    if(o&&o.method==='POST'){const body=JSON.parse(o.body);posts.push({url,body});if(url.endsWith('/fresh'))return j({ok:true,asked:[hk]});
       if(url.endsWith('/limits')){if('sessionBudget' in body)relay.session={budget:body.sessionBudget,spent:.42,left:body.sessionBudget==null?null:body.sessionBudget-.42};return j({ok:true,session:relay.session,applies:body.budget!=null&&body.budget<1?'now':'next start'})}
       return j({ok:true})}
     if(url.endsWith('/play/runner'))return j(relay);throw new Error('no route '+url)};
@@ -238,13 +246,17 @@ console.log('Agents panel');
   btn.click();ok(!pop.hidden&&btn.getAttribute('aria-expanded')==='true','it opens the Agents popover');
   // the runner poll is throttled in real time (5 s); an earlier step may have left the relay marked down, so wait for the stub to be read
   for(let i=0;i<250&&!pop.querySelector('select[data-agsess]');i++){await wait();uiSlow()}
-  const ss=pop.querySelector('select[data-agsess]');ok(!!ss,'the popover reads the relay');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
+  const ss=pop.querySelector('select[data-agsess]');ok(!!ss,'the popover reads the relay');ok(/No session budget is set/.test(pop.textContent),'with none set the popover says nothing caps the total (#807)');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
   ok(posts.some(p=>p.url.endsWith('/play/runner/limits')&&p.body.sessionBudget===5),'the session budget is sent to the relay');
   ok(/Spent \$0\.42 of \$5\.00/.test(pop.textContent),'the spend so far shows live against the budget');
   ok(/Agents · \$0\.42 \/ \$5\.00/.test(btn.textContent),'the button carries the spend: '+btn.textContent);
   ok(JSON.parse(localStorage.getItem('eldmoor.agentLimits')).session===5,'the session budget is kept per viewer');
   const row=pop.querySelector('.agr[data-k='+hk.replace(':','\\:')+']')||pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
   ok(!!row&&row.textContent.includes(mem[1].name),'a row for the agent-played hero');
+  ok(/ctx 212k/.test(row.textContent),'the state line shows the session size (#787): '+row.textContent.slice(0,120));
+  {const fb=pop.querySelector('[data-agfresh]');ok(!!fb&&/Fresh sessions for all/.test(fb.textContent),'Fresh sessions for all shows while a runner runs');
+    fb.dispatch('click',{target:fb,bubbles:true});pop.dispatch('click',{target:fb});await wait();await wait();uiSlow();
+    ok(posts.some(p=>p.url.endsWith('/play/runner/fresh')),'and asks the relay');ok(/Asked 1 runner/.test(pop.textContent),'and says so')}
   const bs=row.querySelectorAll('select').find(x=>x.dataset.agf==='budget');bs.value='0.5';bs.dispatch('change',{target:bs});await wait();uiSlow();
   ok(posts.some(p=>p.body.key===hk&&p.body.budget===.5),'a lower budget on a running runner is sent live');
   const row2=pop.querySelectorAll('.agr').find(r=>r.getAttribute('data-k')===hk);
@@ -357,6 +369,51 @@ console.log('declutter');
    $('dmPane').children[0].children[0].click();uiFast();ok(/scripted scene opens/.test($('dmChatList').textContent)&&!!$('dmChatList').querySelector('.dimmed'),'the Scripted DM toggle shows its entries, dimmed');
    const row=$('dmChatList').querySelector('[data-dmid]');ok(row.tabIndex===0&&row.getAttribute('role')==='button','DM rows are keyboard focusable');
    $('chatTabs').children.find(b=>b.dataset.ctab==='chat').click()}}
+
+// ---- a Table scene as one exchange in the Chat (#734): header, frame or question, lines with their act, result ----
+console.log('chat scene groups');
+{const S=sim.S,F=SLT.slotted(),cl=$('chatList'),fb=$('chatFilter'),d=Math.floor(S.gameMin/1440)+3,gm=(d-1)*1440+18*60+21,t='18:21',t2='18:30';
+  const show=k=>{fb.children.find(b=>b.dataset.cf===k).click();uiFast();return cl.children.filter(c=>c.tagName==='LI'&&!c.classList.contains('daysep'))};
+  const kv=F.id+':97340',kc=F.id+':97341',ids=mem.map(a=>a.id),said=[];
+  const P={id:97340,by:mem[0].id,byName:mem[0].name,kind:'crypt',details:'A group is forming for The Sunken Crypt; do we all go?',at:gm,status:'failed',result:'Failed 2-3 ('+mem[0].name+' settles: not yet)',done:gm,votes:{}};
+  mem.forEach((a,i)=>P.votes[a.id]={v:i<2?'yes':'no',reason:i===1?'We all go down together.':'',by:i===4?'reflex':'agent',at:gm});
+  F.props.push(P);
+  const line=(a,text,sk,opt,rfx,tt)=>{const e={t:tt,d,from:a,text,trigger:'table',scene:true,sk,opt,fh:true,...(rfx?{rfx:1}:{})};for(const b of mem)b.chat.push(e);said.push(e);return e};
+  line(mem[1],'We all go down together.',kv,'yes',0,t);line(mem[2],'Not yet. I am level two.',kv,'no',0,t);
+  line(mem[0],'Now, while it turns!',kc,'strike',1,t2);line(mem[1],'On me. Get behind.',kc,'guard',0,t2);
+  const keep=S.tableLog;S.tableLog=(keep||[]).slice();
+  S.tableLog.push({key:kv,company:F.id,kind:'decision',title:'Put to the party: '+P.details,frame:mem[0].name+' puts it to the party: '+P.details+'. Everyone votes.',at:gm,end:gm,where:'Highgate',ids,prop:P.id,
+    acts:mem.map((a,i)=>({id:a.id,name:a.name,k:i<2?'yes':'no',by:i===4?'reflex':'agent',said:i===1||i===2})),result:P.result+'.'});
+  S.tableLog.push({key:kc,company:F.id,kind:'elite',title:'The Ashen Stalker',frame:'A grey shape drops from the ridge, eyes like coals.',at:gm+9,end:gm+12,where:'Mirefen',ids,
+    acts:mem.map((a,i)=>({id:a.id,name:a.name,k:i===1?'guard':i===3?'heal':'strike',by:i===0||i===4?'reflex':'agent',said:i<2})),result:'The Ashen Stalker is badly hurt. '+mem[4].name+' fell back. (3 rounds.)'});
+  const tbl=show('table'),tx=tbl.map(r=>r.textContent),H=tbl.filter(r=>r.classList.contains('scg-h'));
+  ok(H.length>=2&&/TABLE/.test(H[0].textContent)&&/The Ashen Stalker · elite foe · Mirefen/.test(H[0].textContent)&&/Put to the party: A group is forming for The Sunken Crypt; do we all go\? · vote · Highgate/.test(H[1].textContent),'Table: a header per scene, newest scene on top: '+H.slice(0,2).map(h=>h.textContent).join(' | '));
+  const iv=tbl.indexOf(H[1]),grp=tbl.slice(iv,iv+8).map(r=>r.textContent);
+  ok(/proposes: A group is forming/.test(grp[1])&&!/\[crypt/.test(grp[1]),'Table: the vote\'s question (the proposal) comes right under its header: '+grp[1]);
+  ok(/We all go down together\. \(yes\)/.test(grp.join('\n'))&&/Not yet\. I am level two\. \(no\)/.test(grp.join('\n')),'Table: each line has its act dimmed after the words');
+  ok(grp.some(x=>x.includes(mem[3].name)&&/\(no\)$/.test(x))&&grp.some(x=>x.includes(mem[4].name)&&/\(reflex: no\)$/.test(x)),'Table: a silent member\'s act shows, a reflex one as "(reflex: no)"');
+  ok(grp[2].includes(mem[0].name)&&/\(yes\)$/.test(grp[2])&&grp[3].includes(mem[1].name)&&grp[5].includes(mem[3].name)&&grp[6].includes(mem[4].name),'Table: lines and silent acts in seat order: '+grp.slice(2,7).join(' / '));
+  ok(/Failed 2-3/.test(grp[7])&&tbl[iv+7].classList.contains('scg-r')&&tbl[iv+7].classList.contains('scg-end'),'Table: the result closes the group: '+grp[7]);
+  ok(!tx.some(x=>/ votes (yes|no)/.test(x)),'Table: no separate vote rows (the lines carry the votes)');
+  const ic=tbl.indexOf(H[0]),cg=tbl.slice(ic,ic+8);
+  ok(cg.every(r=>r.classList.contains('scg'))&&/^DM: A grey shape/.test(cg[1].textContent.replace(/^D\d+ \d\d:\d\d/,'')),'Table: the combat group keeps together, the DM\'s frame under its header: '+cg[1].textContent);
+  ok(/Now, while it turns! \(reflex: strike\)/.test(cg.map(r=>r.textContent).join('\n'))&&/On me\. Get behind\. \(guard\)/.test(cg.map(r=>r.textContent).join('\n')),'Table: combat lines with their acts, a reflex line marked');
+  ok(/badly hurt/.test(cg[cg.length-1].textContent)&&cg[cg.length-1].classList.contains('scg-r'),'Table: the combat result closes its group: '+cg[cg.length-1].textContent);
+  ok(!!cl.querySelector('.scg-h .scgt')&&!!cl.querySelector('.chopt'),'Table: the header label and the dimmed act have their own classes');
+  const pty=show('party').map(r=>r.textContent).join('\n');
+  ok(/Put to the party: A group is forming.*· vote/.test(pty)&&/proposes: A group is forming/.test(pty)&&/votes no/.test(pty)&&/Failed 2-3/.test(pty)&&!/Ashen Stalker/.test(pty)&&!/I am level two/.test(pty),'Party: the vote\'s header, question, votes and result; not the combat scene, not the table lines');
+  const all=show('all'),at=all.map(r=>r.textContent),ks=all.map(r=>r.getAttribute('data-k'));
+  ok(at.filter(x=>/Put to the party: A group is forming/.test(x)).length===1&&at.filter(x=>/proposes: A group is forming/.test(x)).length===1&&!ks.some(k=>/^v97340-/.test(k||'')),'All: the vote group once (header, question, the lines carry the votes): '+at.filter(x=>/A group is forming|votes/.test(x)).join(' / '));
+  ok(new Set(ks).size===ks.length,'All: every row has its own key');
+  const node=all.find(r=>r.classList.contains('scg-h'));uiFast();ok(cl.children.includes(node),'All: the header is the same node after a refresh');
+  // live: an open scene's header says who it waits for
+  {const T=await import('../src/sim/table.js'),sc={id:97342,company:F.id,kind:'check',title:'A rotten bridge',frame:['The planks sag.'],ids:ids.slice(),i:0,phase:'turn',t:0,acts:{[mem[0].id]:{k:'steady',line:'',by:'agent'}},beats:[],ctx:{},pause:true,at:gm+20,all:true,w:{}};
+   const was=S.table;S.table=sc;let ok1=false,txt='';try{show('table');const h=cl.querySelector('[data-k="sh'+F.id+':97342"]');txt=h?h.textContent:'';ok1=/A rotten bridge · check/.test(txt)&&/1\/5 answered/.test(txt)}catch(e){txt=String(e)}finally{S.table=was}
+   ok(ok1,'Table: an open scene\'s header shows the answers so far live: '+txt);void T}
+  // the dossier's Chat tab points to the Chat panel (#845); the scene exchange lives there
+  select(mem[2]);setTab('chat');uiFast();ok(/Chat panel/.test(tb().textContent)&&!tb().querySelector('.scg-h'),'dossier Chat: a company member tab points to the Chat panel, which holds the scene exchange');
+  // clean up
+  F.props.splice(F.props.indexOf(P),1);S.tableLog=keep;if(!keep)delete S.tableLog;for(const b of mem)b.chat=b.chat.filter(e=>!said.includes(e));show('all')}
 
 // The run gate (#171): the world only runs while every required agent seat is connected
 console.log('run gate');
@@ -480,6 +537,20 @@ console.log('the DM prepares the table');
   const start=dmf.querySelector('.dmfrun').querySelector('[data-runact=start]');ok(!!start&&/Start DM/.test(start.textContent),'a stopped DM offers Start DM');
   document._ls.pointerdown.forEach(f=>f({button:0,target:start,preventDefault(){},stopPropagation(){}}));await wait();
   ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'),'Start DM goes to the relay');
+  // the DM's picker offers every provider a hero's has (#824), with the same price labels, and a pick reaches the relay
+  {const mp=await import('../src/ui/mindpick.js'),rn=await import('../src/ui/runners.js'),ds=await import('../src/ui/dmseat.js');
+   relay.health={providers:{ollama:{ok:true,models:['q:1b']},openai:{ok:true,models:['gpt-6-luna'],prices:{'gpt-6-luna':{in:.1,out:.5}}},huggingface:{ok:true,models:['meta-llama/Llama-3.3-70B-Instruct']},google:{ok:true,models:['gemini-3.8-flash'],free:true,prices:{'gemini-3.8-flash':{in:0,out:0}}}}};
+   const pf=globalThis.fetch;globalThis.fetch=async(url,o)=>String(url).endsWith('/health')?{ok:true,status:200,json:async()=>relay.health}:pf(url,o);
+   mp.mindChange({dataset:{mprov:'-1'},value:'ollama'});mp.pulledModels();for(let i=0;i<20&&!mp.openaiModels().length;i++)await wait();
+   const pick=rn.runnerPick('dm',...mp.mindLists()).children[0],vals=pick.children.map(o=>o.value),texts=pick.children.map(o=>o.textContent||o.text||'').join(' | ');
+   ok(['ollama:q:1b','openai:gpt-6-luna','huggingface:meta-llama/Llama-3.3-70B-Instruct','google:gemini-3.8-flash','anthropic:claude-haiku-5-5'].every(v=>vals.includes(v)),'the DM picker lists Claude, local, OpenAI, Hugging Face and Gemini: '+vals.join(', '));
+   ok(/\$0\.10 \/ \$0\.50/.test(texts),'with the price labels of a hero\'s picker: '+texts);
+   ok(/another provider|set aside/.test(pick.title)&&/notes/.test(pick.title),'its title says what a switch keeps and what it sets aside');
+   ok(ds.dmSeatSig().includes('gpt-6-luna'),'a list that arrives late rebuilds the seat');
+   document._ls.change.forEach(f=>f({target:{dataset:{runpick:'dm'},value:'openai:gpt-6-luna'}}));
+   posts.length=0;await rn.startRunner('dm');
+   ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'&&p.body.provider==='openai'&&p.body.model==='gpt-6-luna'),'Start DM sends the picked mind');
+   document._ls.change.forEach(f=>f({target:{dataset:{runpick:'dm'},value:''}}));globalThis.fetch=pf}
   const box=$('dmlog'),wb=$('worldbox');box.open=false;wb.open=false;dmf.dispatch('click',{target:dmf.querySelector('.dmfdo')});
   ok(box.open&&wb.open,'a click on the frame opens the Dungeon Master panel');
   box.open=false;dmf.dispatch('click',{target:dmf.querySelector('[data-dmnotes]')});
@@ -801,6 +872,12 @@ console.log('the DM prepares the table');
   ok(rows[0].querySelector('.tma.yes').textContent==='YES'&&rows[1].querySelector('.tma.no').textContent==='NO','banner: a row shows the vote cast (YES, NO)');
   ok(/Taking the watch instead/.test(rows[1].querySelector('.tmq').textContent),'banner: a row carries what the member said');
   ok(rows[2].classList.contains('st-wait')&&/reflex in 111 s/.test(rows[2].querySelector('.tmt').textContent),'banner: a nudged member shows the reflex timer ('+rows[2].querySelector('.tmt').textContent+')');
+  {const SWm=await import('../src/sim/scenewait.js'),e0=SWm.SW.EXTRA_MS;SWm.SW.EXTRA_MS=90000;sc.q=[ms[2].id];TB.renderTable(1); // #687: a queued member's countdown runs on into the extension
+   const tq=[...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent;
+   ok(/^queued · reflex in 201 s$/.test(tq),'banner: a queued member counts down the extension too ('+tq+')');
+   w[ms[2].id].t=210;TB.renderTable(1);ok(/^queued · reflex in 0 s$/.test([...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent),'banner: it reaches 0 s only when the extension is over');
+   w[ms[2].id].t=9;delete sc.q;SWm.SW.EXTRA_MS=e0;TB.renderTable(1);
+   ok(/^reflex in 111 s$/.test([...box.querySelectorAll('.tmr')][2].querySelector('.tmt').textContent),'banner: not queued, the plain countdown is back')}
   ok(rows[4]&&rows[4].classList.contains('st-wait')&&rows[4].querySelector('.tmt').textContent==='4 s','banner: a thinking member shows how long ('+(rows[4]&&rows[4].querySelector('.tmt').textContent)+')');
   ok(rows[3].classList.contains('st-held')&&/no runner/.test(rows[3].textContent),'banner: a member with no runner says so');
   ok(!/answered · waiting for/.test(box.textContent)&&/has no runner: Restart runner/.test((box.querySelector('.tl')||{}).textContent||''),'banner: the waiting list is not said twice (rows only); what to do about a missing runner stays');
@@ -858,7 +935,7 @@ console.log('the DM prepares the table');
 {const fb=$('felbody'),P=await import('../src/sim/persona.js'),LV=await import('../src/ui/lifeview.js');
   const a=SLT.slotHeroes(SLT.slotted())[0];let sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));
   if(!sb){fb.querySelector('[data-fact="drawer:members"]').click();uiFast();sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id))}sb.click();
-  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null);
+  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null&&i.dataset.fpin!=='oath'); // a sworn oath has its own pin (#800)
   ok(pins.length===P.PERSONA_ORDER.length+1,'pins: one per persona field and one for the stances ('+pins.length+')');
   ok(fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='beliefs')&&fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='traits'),'sheet editor: beliefs and traits boxes');
   const pw=pins.find(i=>i.dataset.fpin==='wants');pw.checked=true;pw.dispatch('change',{target:pw});uiFast();
@@ -1049,6 +1126,46 @@ console.log('the DM prepares the table');
   box().querySelector('.dghbtn').click();ok(box().querySelector('.dghist').hidden,'dungeon history: and closes it');
   dv.closeDungeon();ok(dv.dungeonSite()===null,'dungeon view: closed, the minimap has no mark');
   a.state=was;CRYPT.group=keep;uiFast()}
+// ---- the crawl as it is played (#742): named spots per chamber, members on the spot their act names, foes at the den, beats ----
+{const dv=await import('../src/render/dungeonview.js'),cv=await import('../src/render/crawlview.js'),RG=await import('../src/sim/roomgrid.js'),{CRYPT}=await import('../src/world/map.js'),{buildInterior,IT}=await import('../src/world/interior.js'),{TABLE}=await import('../src/sim/table.js');
+  const S=sim.S,keep=CRYPT.group,keepT=S.table,m=buildInterior(CRYPT),walk=t=>t===IT.FLOOR||t===IT.WATER||t===IT.DAIS||t===IT.DOOR;
+  const inRoom=(r,p)=>p.x>=r.x&&p.x<=r.x+r.w&&p.y>=r.y&&p.y<=r.y+r.h&&walk(m.tiles[Math.floor(p.y-.3)*m.w+Math.floor(p.x)]);
+  ok(m.rooms.every((r,i)=>{const s=cv.crawlSpots(m,i);return cv.SPOT_IDS.every(id=>inRoom(r,s[id]))}),'crawl spots: every chamber has stair, back, front, both flanks, cover and den on its own floor');
+  ok(m.rooms.every((r,i)=>{const s=cv.crawlSpots(m,i),d=p=>Math.hypot(p.x-s.den.x,p.y-s.den.y);return d(s.back)>d(s.front)&&d(s.front)>.8&&(r.boss||Math.hypot(s.back.x-s.stair.x,s.back.y-s.stair.y)<d(s.back))}),'crawl spots: the back by the way in (below the dais in the boss chamber), the front between it and the den');
+  ok(cv.crawlSpots(m,0).coverName===(m.rooms[0].water?'reeds':'cover'),'crawl spots: a wet chamber\'s cover is the reeds');
+  ok(cv.crawlSpots(m,1,{spots:{front:{u:.3,v:.2}}}).front.u===.3,'crawl spots: a room spec may move a spot (spots: {front: {u, v}})');
+  ok(cv.spotFor('guard')==='front'&&cv.spotFor('hold')==='front'&&cv.spotFor('strike',0)==='flankL'&&cv.spotFor('strike',1)==='flankR'&&cv.spotFor('strike',2)==='front'&&cv.spotFor('ward')==='back'&&cv.spotFor('heal')==='back'&&cv.spotFor('read')==='back'&&cv.spotFor('potion')==='back'&&cv.spotFor('scout')==='cover'&&cv.spotFor('retreat')==='stair','crawl spots: the acts name their spots (guard, hold front; strikers left, right, then front; ward, heal, read, potion back; scout cover; retreat stair)');
+  const mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,5),hp0=mem.map(a=>a.hp);
+  const foes=[0,1,2].map(()=>({type:'tombskit',name:'Tomb Skitter',hp:2,hits:2,lvl:3,atk:1}));
+  CRYPT.group={phase:'inside',name:'The Fellowship',mem,tSite:true,crawl:{i:0,rd:0,gap:0,foes,end:null}};
+  const sc={id:97420,kind:'crawl',title:CRYPT.rooms[0].name,frame:['x'],ids:mem.map(a=>a.id),i:0,phase:'turn',t:0,acts:{},beats:[],ctx:{room:0,rd:0},pause:true,at:0};S.table=sc;
+  const sp0=TABLE.speed;TABLE.speed=1;let t=1000;const tick=(n,dt=.05)=>{let v;for(let k=0;k<n;k++){t+=dt;v=cv.crawlView(m,dv.stateOf(CRYPT),t)}return v};
+  // the sim keeps the tiles (#744): the party comes in at the stair, the foes at the den; the view walks everyone to their tile
+  const G0=RG.roomGrid(m,0,CRYPT.rooms[0]),cr0=CRYPT.group.crawl,stand=(a,id)=>{cr0.pos[a.id]={x:G0.spots[id].x,y:G0.spots[id].y}};
+  RG.placeRoom(G0,cr0,mem.map(a=>a.id),foes.length);
+  let v=tick(3);ok(v.live&&cv.crawlRoom()===0&&mem.every(a=>cv.crawlPlacement()[a.id]==='stair'||cv.crawlPlacement()[a.id]==='back'),'crawl view: the party stands by the way in as the sim set it ('+mem.map(a=>cv.crawlPlacement()[a.id]).join(', ')+')');
+  const want=['front','back','flankL','flankR','cover'];mem.forEach((a,i)=>stand(a,want[i]));tick(60);
+  const P=cv.crawlPlacement();
+  ok(mem.every((a,i)=>P[a.id]===want[i]),'crawl view: each member heads for the tile the sim keeps ('+mem.map(a=>P[a.id]).join(', ')+')');
+  ok(mem.every(a=>{const p=cv.crawlPos(a.id);return Math.hypot(p.x-p.tx,p.y-p.ty)<.05}),'crawl view: and walks there within a few seconds');
+  const S0=cv.crawlSpots(m,0),f0=cv.foePos(0),fr=cv.crawlPos(mem[0].id);
+  ok(Math.hypot(f0.x-S0.den.x,f0.y-S0.den.y)<Math.hypot(fr.x-S0.den.x,fr.y-S0.den.y),'crawl view: the foes stand at the den, past the front');
+  stand(mem[4],'stair');tick(80);ok(cv.crawlPlacement()[mem[4].id]==='stair','crawl view: a retreat walks the member back to the stair');
+  // a round resolves at once: the beats are queued and play over a few seconds; the HP bars wait for them
+  foes[0].hp=0;sc.beats.push({id:mem[2].id,name:mem[2].name,k:'strike',text:'Strike',res:'a crushing blow',by:'agent',rd:1});
+  sc.beats.push({id:mem[3].id,name:mem[3].name,k:'strike',text:'Strike',res:'missed badly and left an opening',by:'agent',rd:1});
+  mem[0].hp=Math.max(1,mem[0].hp-10);sc.phase='outcome';sc.summary='2 of them stand. 1 blow lands, 1 misses.';
+  tick(1);const Q=cv.crawlQueue();ok(Q.join()==='strike,strike,blow','crawl beats: the round plays as beats in act order, the foes\' blows after ('+Q.join()+')');
+  ok(cv.crawlSummary()==='','crawl beats: the summary waits until the beats have played');
+  tick(100);ok(!cv.crawlQueue().length&&cv.crawlSummary()===sc.summary,'crawl beats: a few seconds later they have played and the summary sits under the room');
+  TABLE.speed=8;foes[1].hp=1;sc.beats.push({id:mem[2].id,name:mem[2].name,k:'strike',text:'Strike',res:'hit Tomb Skitter',by:'agent',rd:1});tick(1);ok(!cv.crawlQueue().length,'crawl beats: at 8x they are skipped');
+  // the room is won: the view stays on it for its last beats, then the party comes in by the next room's way in
+  TABLE.speed=1;foes[1].hp=0;foes[2].hp=0;sc.beats.push({id:mem[3].id,name:mem[3].name,k:'strike',text:'Strike',res:'struck down Tomb Skitter',by:'agent',rd:1});tick(1);
+  CRYPT.group.crawl.i=1;CRYPT.group.crawl.foes=null;CRYPT.group.crawl.gap=4;S.table=null;tick(2);ok(cv.crawlRoom()===0,'crawl view: the won room stays in view while its last beat plays');
+  tick(120);ok(cv.crawlRoom()===1||!cv.crawlView(m,dv.stateOf(CRYPT),t).live,'crawl view: then the view moves on with the party');
+  // hover: a foe as drawn is found by foeAt only while the crawl view is live; sim state untouched
+  ok(mem.every((a,i)=>a.hp===(i===0?Math.max(1,hp0[0]-10):hp0[i])),'crawl view: reading the crawl changes no hero');
+  mem[0].hp=hp0[0];TABLE.speed=sp0;CRYPT.group=keep;S.table=keepT;uiFast()}
 // ---- the raid arena (#85, raid slice): Kragmaw's lair in the dungeon view's frame, the raid read live, its history ----
 {const dv=await import('../src/render/dungeonview.js'),rv=await import('../src/render/raidview.js'),{LANDMARKS}=await import('../src/world/map.js'),{buildArena,IT}=await import('../src/world/interior.js'),again=await import('../src/world/interior.js?again3');
   const S=sim.S,B=S.boss,L=LANDMARKS.find(l=>l.kind==='lair');ok(!!L&&L.inner>0&&!!L.opening,'raid arena: the lair landmark carries its floor radius and opening');
@@ -1346,7 +1463,8 @@ console.log('the DM prepares the table');
   const pf=P.purposeOf(fol);ok(pf.kind==='follow'&&pf.line.startsWith('Following → '+lead.name+' (3 tiles)')&&pf.tether&&pf.tether.id===lead.id,'purpose: an agent follower names whom it follows, how far, and tethers ('+pf.line+')');
   // a waiting hero: in town, the party leader still there
   const c=CITY.find(t=>t.fac===waiter.fac)||CITY[0],kw={state:waiter.state,party:waiter.party,pq:waiter.pq,act:waiter.playActAt,x:waiter.x,y:waiter.y};
-  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;waiter.x=c.gate.x;waiter.y=c.gate.y;
+  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;// stand a little off the gate, away from the leader: the wait line is not drawn to someone within 0.8 tiles, and the leader may stand at the gate
+  waiter.x=c.gate.x;waiter.y=c.gate.y;for(const[dx,dy]of[[0,0],[2,1],[-2,1],[2,-1],[-2,-1],[3,0]]){waiter.x=c.gate.x+dx;waiter.y=c.gate.y+dy;if(Math.hypot(lead.x-waiter.x,lead.y-waiter.y)>1.5)break}
   const pw=P.purposeOf(waiter);ok(pw.kind==='wait'&&pw.line.startsWith('Waiting for '+lead.name)&&/40 min/.test(pw.line)&&pw.wait&&pw.wait.id===lead.id,'purpose: a waiting hero names whom it waits for and how long ('+pw.line+')');
   // a traveller on a walk order
   const kt={pq:trav.pq,state:trav.state,adv:trav.adv},dest={x:c.gate.x+6,y:c.gate.y+4};trav.adv=null;trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
@@ -1374,7 +1492,9 @@ console.log('the DM prepares the table');
   cam.sel=trav;cam.dpr=1;cam.sc=2;m=mk();const lab=[];FX.drawPurposeGround(m.ctx,S,cam,{drawText:t=>lab.push(t),blink:0});
   ok(m.L.strokes>=1&&from(trav,m.L)>=1,'overlays: the followed traveller gets its dotted road, from itself');ok(lab.includes('the old mill'),'overlays: the marker names what is there');
   cam.sel=fol;cam.hover=waiter;m=mk();FX.drawPurposeGround(m.ctx,S,cam,{drawText:()=>{},blink:0});
-  ok(from(fol,m.L)>=1&&from(waiter,m.L)>=1&&from(trav,m.L)===0&&from(hunter,m.L)===0,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else');
+  {const who=a=>a.name+' '+a.state+' ('+a.x.toFixed(2)+','+a.y.toFixed(2)+')'+(a.hidden?' hidden':''),n={fol:from(fol,m.L),waiter:from(waiter,m.L),trav:from(trav,m.L),hunter:from(hunter,m.L)},
+    bad=[n.fol>=1?'':'follower tether missing',n.waiter>=1?'':'waiter wait line missing (leader '+who(lead)+', distance '+Math.hypot(lead.x-waiter.x,lead.y-waiter.y).toFixed(2)+')',n.trav===0?'':'traveller drawn',n.hunter===0?'':'hunter drawn'].filter(Boolean);
+  ok(!bad.length,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else'+(bad.length?' ['+bad.join('; ')+'] counts '+JSON.stringify(n)+' fol='+who(fol)+' waiter='+who(waiter)+' trav='+who(trav)+' hunter='+who(hunter)+' lead='+who(lead):''))}
   // intent icons: close zoom with the switch on; off hides them except the focused hero's hourglass
   const cnt=(a,close)=>{let n=0;const ctx=new Proxy({},{get:(o,k)=>k==='fillRect'?()=>n++:typeof o[k]!=='undefined'?o[k]:()=>{},set:(o,k,v)=>{o[k]=v;return true}});FX.drawIntentIcon(ctx,S,cam,a,0,0,12,close);return n};
   const vi=$('vIcons');PV.setIcons(true);ok(cnt(hunter,true)>0&&cnt(hunter,false)===0,'icons: a hunter’s icon at close zoom, none far out');
@@ -1432,6 +1552,19 @@ console.log('the DM prepares the table');
   ok(!side.querySelectorAll('section').some(x=>x.classList.contains('doff'))&&$('setPop').contains($('vIcons')),'1280 px: no section hidden by the dock; Intent icons back in Settings');
   ok(side.children.filter(x=>x.tagName==='SECTION'&&!x.hidden).map(x=>x.id)[0]==='fellowship','1280 px: the side column opens with the Companies panel');
   window.innerWidth=keepW;S.pinned=keepPin;cam.sel=keepSel;uiFast()}
+// ---- a world reset stops every runner with one relay call and says so once (#691) ----
+{console.log('World reset');
+  const posts=[];const realFetch=globalThis.fetch;
+  let n=3;globalThis.fetch=async(url,o)=>{url=String(url);posts.push({url,body:o&&o.body?JSON.parse(o.body):null});return {ok:true,status:200,json:async()=>({ok:true,stopped:n,keys:[]})}};
+  const sv=await import('../src/ui/save.js');
+  const tx=()=>document.getElementById('wStatus').textContent;
+  const r1=await sv.resetRunners();
+  ok(r1===3&&posts.length===1&&posts[0].url.endsWith('/play/runner/stop-all'),'one call to /play/runner/stop-all, not one per runner: '+posts.map(p=>p.url).join());
+  ok(tx()==='World reset: 3 runners stopped','the page says "World reset: 3 runners stopped": '+tx());
+  n=1;const r2=await sv.resetRunners();ok(r2===1&&tx()==='World reset: 1 runner stopped','one runner reads singular: '+tx());
+  const both=[sv.resetRunners(),sv.resetRunners()];await Promise.all(both);ok(posts.length===3,'two resets at once share one call');
+  globalThis.fetch=async()=>{throw new Error('relay down')};const before=tx();const r3=await sv.resetRunners();ok(r3===null&&tx()===before,'no relay: nothing is said, the reload goes on');
+  globalThis.fetch=realFetch}
 // ---- the downed (#659): party frames, the dossier header, the purpose line, the Log, the timeline, the chronicle, the banner ----
 {const S=sim.S,DN=await import('../src/sim/downed.js'),DV=await import('../src/ui/downview.js'),FR=await import('../src/ui/frames.js'),TB=await import('../src/ui/table.js');
   const {cam}=await import('../src/render/draw.js'),{setTimelineFilter}=await import('../src/ui/timeline.js');
@@ -1487,5 +1620,38 @@ console.log('the DM prepares the table');
   a.down.f=DN.failsOf(a)-1;DN.downHit(a,m,false);uiFast();ok(a.state==='dead'&&!FR.frameRows().some(r=>r.name===a.name&&r.down),'downed: three failures and they are gone; no downed row on the fallen');
   }
   guardMem=keepGuard;cam.sel=keepSel;uiFast()}
+// The page watchdog (#736): a long frame logs one line, a run of them (or one over 2 s) is a page-stall anomaly, and the link labels
+// read "page busy (3.2 s frame)" instead of flipping to connecting while the page is the one that is slow.
+console.log('page watchdog');
+{const PW=await import('../src/ui/pagewatch.js'),BR=await import('../src/ui/player-bridge.js'),ML=await import('../src/ui/mindlabel.js'),{dmFrameData}=await import('../src/ui/dmframe.js');
+  const a=SLT.slotMembers(SLT.slotted()).map(m=>m.hero).find(h=>h&&h.player&&h.state!=='dead');
+  const lines=[];PW.setPageLog(l=>lines.push(l));PW.resetPageWatch();PW.setWhere(()=>'dungeon The Sunken Crypt room 2/5 · 3440x1300');
+  const links={};if(a)links[a.id]='connected';BR.bridgeFeed({links,runners:{},ready:{},dm:{seat:true,link:'connected',claimed:true}});
+  ok(!!a&&ML.linkOf(a)==='connected'&&/live/.test(ML.mindLabel(a).text),'before: the link reads live ('+(a&&ML.mindLabel(a).text)+')');
+  const t=performance.now();
+  ok(!PW.frameDone({ms:16,sim:1,render:14,ui:1},t)&&!lines.length,'a normal frame logs nothing');
+  ok(PW.frameDone({ms:400,sim:2,render:395,ui:3},t)&&lines.length===1&&/\[page\] 400 ms frame \(sim 2, render 395, ui 3 ms\) · dungeon The Sunken Crypt room 2\/5/.test(lines[0]),'a scripted 400 ms frame logs one line naming the view and its halves: '+lines[0]);
+  ok(!PW.takeAnomalies().length&&ML.linkOf(a)==='connected','one 400 ms frame is no anomaly and the label stays live');
+  PW.frameDone({ms:400,render:400},t+1500);PW.frameDone({ms:400,render:400},t+3000);
+  const an=PW.takeAnomalies();ok(an.length===1&&an[0].kind==='page-stall'&&an[0].seat==='page'&&/3 frames over 250 ms/.test(an[0].text)&&an[0].evidence.where.startsWith('dungeon'),'three 400 ms frames in a minute: one page-stall anomaly ('+(an[0]&&an[0].text)+')');
+  PW.frameDone({ms:3200,sim:1,render:3198,ui:1},performance.now());
+  const big=PW.takeAnomalies();ok(big.length===1&&big[0].severity==='bad'&&/froze for 3\.2 s/.test(big[0].text),'a 3.2 s frame is a page-stall anomaly at once');
+  ok(ML.linkOf(a)==='pagebusy'&&/page busy \(3\.2 s frame\)/.test(ML.mindLabel(a).text),'the member label reads page busy, not connecting: '+ML.mindLabel(a).text);
+  {const was=sim.dmSeatOn();sim.setDmSeat(true);const d=dmFrameData();sim.setDmSeat(was);ok(d.link==='pagebusy'&&d.linkText==='page busy (3.2 s frame)','the DM frame reads page busy too ('+d.linkText+')')}
+  const dg=PW.pageDigest();ok(dg.longFrames===4&&dg.worstMs===3200&&/Sunken Crypt/.test(dg.where)&&PW.pageDigest().longFrames===0,'the hour digest carries {longFrames, worstMs, where} and resets');
+  PW.resetPageWatch();PW.relayLate({tool:'scene_act',ms:15000,silentMs:16200});
+  ok(/page busy \(no answer for 16\.2 s\)/.test(ML.mindLabel(a).text),'a relay time-out on a silent page reads page busy as well: '+ML.mindLabel(a).text);
+  PW.resetPageWatch();ok(ML.linkOf(a)==='connected','once it passes the label is live again');
+  BR.bridgeFeed(null);PW.setPageLog(null)}
+// ---- #843/#848: the frame row never changes height; the DM bar is one line while calm ----
+{const fs=await import('node:fs'),css=fs.readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  const shape=()=>[...$('frames').querySelectorAll('.pf[data-hid]')].map(f=>f.children.map(c=>c.className.split(' ')[0]).join(','));
+  uiFast();const before=shape();ok(before.length>0&&before.every(x=>x==='pfkey,pftop,meter,purp,pfsl,pfsl,pffoot'),'frames: the same six parts in every frame ('+before[0]+')');
+  const f0=$('frames').querySelector('.pf[data-hid]'),sl=f0.querySelectorAll('.pfsl');
+  ok(sl.length===2&&sl[0].querySelector('.pftg')&&sl[0].querySelector('.pfdown')&&sl[1].querySelector('.pfchips')&&sl[1].querySelector('.pfrep'),'frames: target and downed share one fixed slot, chips and the replacement line the other');
+  ok(!/\.pf(tg|rep|chips):empty\{display:none\}/.test(css)&&/\.pfsl1\{height:17px\}/.test(css)&&/\.pfsl2\{height:15px\}/.test(css),'frames: nothing collapses when empty; the slots have fixed heights');
+  const m=sim.S.mobs.find(x=>x.alive&&!x.gone),a=sim.S.agents.find(x=>x.company!=null&&x.state!=='dead'&&!x.hidden);
+  if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
+  ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

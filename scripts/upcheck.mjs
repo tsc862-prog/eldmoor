@@ -24,6 +24,20 @@ import {attachPlay} from './relay-mcp.mjs';
 import {attachRunners} from './runners.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+
+// One upcheck at a time per checkout (#324 family): every launcher watches this checkout's scripts/, and the code-change test writes
+// a file there, so a second upcheck running at once would trip the first one's notice early (it prints once, then stays quiet) and
+// fail it. A run waits its turn on a lock file; a lock whose owner is gone is taken over.
+{const lock = join(tmpdir(), 'eldmoor-upcheck-' + Buffer.from(ROOT).toString('hex').slice(-24) + '.lock'), t0 = Date.now();
+  const gone = p => {try {process.kill(p, 0); return false} catch {return true}};
+  for (;;) {
+    try {writeFileSync(lock, String(process.pid), {flag: 'wx'}); break} catch {
+      let owner = 0; try {owner = Number(readFileSync(lock, 'utf8'))} catch {}
+      if (!owner || gone(owner)) {try {rmSync(lock, {force: true})} catch {}} else if (Date.now() - t0 > 900000) {console.error('upcheck: another run holds ' + lock + ' (pid ' + owner + ') for 15 minutes'); process.exit(1)} else await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+  process.on('exit', () => {try {if (readFileSync(lock, 'utf8') === String(process.pid)) rmSync(lock, {force: true})} catch {}});
+}
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -40,8 +54,8 @@ console.log('active.json and resume (fake children)');
   const active = join(tmp, 'runners', 'active.json');
   const readActive = () => {try {return JSON.parse(readFileSync(active, 'utf8')).runners} catch {return null}};
   let heroes = [{id: 1, name: 'Ann', alive: true}, {id: 2, name: 'Bo', alive: true}, {id: 3, name: 'Cy', alive: true}, {id: 4, name: 'Di', alive: false}];
-  let connected = true, dm = false;
-  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected, heroes, dm})};
+  let connected = true, dm = false, world = null; // world: the page's S.worldId (#691)
+  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected, heroes, dm, ...(world ? {worldId: world} : {})})};
   const kids = [];
   const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 50000 + kids.length; k.args = args; k.got = '';
     k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d; if (/stop/.test(d)) setTimeout(() => k.emit('exit', 0), 5)}});
@@ -98,7 +112,17 @@ console.log('active.json and resume (fake children)');
   connected = true; dm = true; const D = await mk(); const r3 = await D.sup.resume({waitMs: 3000, pollMs: 20, settleMs: 20, heroWaitMs: 100});
   ok(r3.resumed.join() === 'hero:1,dm' && /dm-agent\.mjs/.test(kids[kids.length - 1].args.join(' ')), 'an open DM seat with no saved DM runner: resume starts one (the DM is always played): ' + JSON.stringify(r3));
   dm = false;
-  B.server.close(); C.server.close(); D.server.close();
+  // only the same world (#691): the list carries the world id it was saved in
+  const ONE = [{kind: 'hero', hero: 1, name: 'Ann', provider: 'ollama', model: 'qwen2.5:14b', maxTurns: null, budget: null}];
+  writeFileSync(active, JSON.stringify({saved: 'x', world: 'w-old', runners: ONE})); world = 'w-new'; connected = true;
+  const E = await mk(), nE = kids.length, r4 = await E.sup.resume({waitMs: 3000, pollMs: 20, settleMs: 20, heroWaitMs: 100});
+  ok(!r4.resumed.length && kids.length === nE && r4.skipped.some(x => x.why === 'another world') && E.lines.some(l => /another world/.test(l)), 'a page that plays another world gets nothing resumed, even for a hero with the same id and name: ' + JSON.stringify(r4));
+  writeFileSync(active, JSON.stringify({saved: 'x', world: 'w-same', runners: ONE})); world = 'w-same';
+  const F = await mk(), r5 = await F.sup.resume({waitMs: 3000, pollMs: 20, settleMs: 20, heroWaitMs: 100});
+  ok(r5.resumed.join() === 'hero:1', 'the same world id resumes the list: ' + JSON.stringify(r5));
+  ok(JSON.parse(readFileSync(active, 'utf8')).world === 'w-same', 'the list records the world it was saved in');
+  F.sup.stop('hero:1'); world = null;
+  B.server.close(); E.server.close(); F.server.close(); C.server.close(); D.server.close();
   rmSync(tmp, {recursive: true, force: true});
 }
 
@@ -165,6 +189,11 @@ console.log('launcher (real children on spare ports)');
     m = mark(); send('s');
     ok(await seen(/relay: ok/, m, 8000) && await seen(/art loop: /, m, 8000) && /ollama: not reachable/.test(out.slice(m)), 'status shows the relay and Ollama');
     ok(await seen(/art loop: waiting until \d{4}-\d\d-\d\d \d\d:\d\d .*; last pass made 0/, m, 8000), 's shows the art loop: its next check and last pass: ' + (out.slice(m).match(/art loop: .*/) || [''])[0]);
+    ok(await seen(/cost today: /, m, 8000), 's shows the spend of the day in one line (#799): ' + (out.slice(m).match(/cost today: .*/) || [''])[0]);
+    // a: art review (#712) and s ending with it
+    m = mark(); send('a');
+    ok(await seen(/art review: nothing waiting/, m, 15000) && /art terrain: 0 accepted, 0 waiting/.test(out.slice(m)), 'a prints the art review, one line per slice');
+    m = mark(); send('h'); ok(await seen(/a  art review/, m, 4000), 'h lists the a key');
     // u: dirty tree refused
     appendFileSync(join(work, 'a.txt'), 'local edit\n'); m = mark(); send('update');
     ok(await seen(/update refused: the working tree has local changes/, m, 15000), 'u refuses a dirty tree');
