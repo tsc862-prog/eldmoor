@@ -338,12 +338,12 @@ export const adapterAsk = (adapter, model, effort = 'low') => async (system, use
 // One forced scene turn: at most two asks, then scene_act by the runner. -> a turn record shaped like localTurn's
 // (mode 'scene', forced: true, misses: answers that were not a legal option). keep: write it into sess.local.history.
 export async function sceneTurn({ask, call, sess, scene: sc, on = () => {}, keep = true, strict = false}) {
-  const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'scene', forced: true, calls: [], misses: 0};
+  const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, cached: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'scene', forced: true, calls: [], misses: 0};
   const schema = sceneSchema(sc.keys, {strict, moves: sc.moves, swear: !!sc.swear}), user = scenePrompt(sc);
   let pick = null, note = '';
   for (let k = 0; k < 2 && !pick; k++) {
     const r = await ask(sess.system || '', user + note, schema), u = r.usage || {};
-    stat.modelCalls++; stat.in += u.in || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
+    stat.modelCalls++; stat.in += u.in || 0; stat.cached += u.cached || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
     let j = null; try {j = JSON.parse(r.text)} catch {}
     if (!j || typeof j !== 'object') {const c = parseTextCalls(r.text).find(x => x.function.name === 'scene_act'); if (c) j = c.function.arguments} // the call written as text still counts
     const opt = j && String(j.option || '').trim().toLowerCase();
@@ -442,12 +442,12 @@ export function reflectNotes(text) {
 // One reflection turn: at most two asks, then remember per note by the runner. moment: brief.reflect; context: the turn's
 // state header text (pacing.mjs briefText). -> a turn record like localTurn's (mode 'reflect', notes: titles written).
 export async function reflectTurn({ask, call, sess, moment, prompt, context = '', on = () => {}, keep = true, strict = false}) {
-  const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'reflect', forced: true, calls: [], misses: 0, notes: [], moment: moment && moment.id};
+  const t0 = Date.now(), stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, cached: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: 'reflect', forced: true, calls: [], misses: 0, notes: [], moment: moment && moment.id};
   const recent = recentOf(sess), user = [recent ? 'What you did and heard lately (your own turns):\n' + recent : '', context ? context.trim() : '', prompt].filter(Boolean).join('\n\n');
   let notes = null, note = '', bec = null, aim = null, oath = null, wsh = null;
   for (let k = 0; k < 2 && !notes; k++) {
     const r = await ask(sess.system || '', user + note, reflectSchema({strict, swear: !!(moment && moment.thread), wish: !!(moment && moment.kind === 'dusk')})), u = r.usage || {};
-    stat.modelCalls++; stat.in += u.in || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
+    stat.modelCalls++; stat.in += u.in || 0; stat.cached += u.cached || 0; stat.out += u.out || 0; stat.modelMs += r.ms || 0; stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false;
     notes = reflectNotes(r.text); bec = reflectBecome(r.text); aim = reflectIntent(r.text); oath = moment && moment.thread ? reflectSwear(r.text) : null; wsh = moment && moment.kind === 'dusk' ? reflectWish(r.text) : null;
     if (!notes) {const w = parseTextCalls(r.text).filter(c => c.function.name === 'remember').map(c => c.function.arguments).filter(a => a && a.text); if (w.length) notes = w.slice(0, REFLECT_NOTES)} // remember written as text still counts
     if (!notes) {stat.misses++; note = '\n\nThat was not the JSON object. Answer only with {"notes": [...]} (an empty list for none).'}
@@ -518,7 +518,7 @@ export function trimHistory(h, budget) {
 export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12, on = () => {}, opts = {}, tools: list = PLAYER_TOOLS, rules = LOCAL_RULES, interrupt = null}) {
   const o = {...LOCAL_DEFAULTS, ...opts};
   const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
-  const t0 = Date.now(); let reprompted = false; const stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: L.mode, calls: []};
+  const t0 = Date.now(); let reprompted = false; const stat = {tools: 0, acts: 0, repeat: false, reprompted: false, foreign: false, fresh: false, modelCalls: 0, in: 0, cached: 0, out: 0, cost: 0, costKnown: true, modelMs: 0, narration: '', dead: false, capped: false, rejected: 0, mode: L.mode, calls: []};
   const addCost = u => {stat.cost += u.cost || 0; if (u.costKnown === false) stat.costKnown = false}; // paid providers (OpenAI) report a cost; Ollama's is 0
   // a run of empty turns (no call, a repeat, another language): start this one from a fresh context
   if ((L.emptyRun || 0) >= o.freshAfter) {L.history = []; L.lastNarr = null; L.emptyRun = 0; stat.fresh = true}
@@ -580,7 +580,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
     try {res = await ask(() => ({model, messages: [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)], ...(L.mode === 'json' ? {format: actionSchema(list)} : {tools}), maxTokens: o.maxTokens, ...sample}))}
     catch (e) {if (e.noTools && L.mode !== 'json') {L.mode = stat.mode = 'json'; on('mode', 'json'); i--; continue} throw e}
     if (!res) break; // looped twice: the turn ends empty
-    stat.modelCalls++; stat.in += res.usage.in; stat.out += res.usage.out; stat.modelMs += res.ms; addCost(res.usage);
+    stat.modelCalls++; stat.in += res.usage.in; stat.cached += res.usage.cached || 0; stat.out += res.usage.out; stat.modelMs += res.ms; addCost(res.usage);
     const msg = res.message || {}, content = String(msg.content || '');
     if (L.mode === 'json') {
       let j = null; try {j = JSON.parse(content)} catch {}
@@ -622,7 +622,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
       turnMsgs.push({role: 'user', content: 'The wait is over. End your turn now: one short sentence of narration in the third person about what you did and why.'});
       const fin = await ask(() => ({model, messages: [{role: 'system', content: sys()}, ...L.history.map(strip), ...turnMsgs.map(strip)], maxTokens: o.maxTokens, ...sample}));
       if (!fin) break;
-      stat.modelCalls++; stat.in += fin.usage.in; stat.out += fin.usage.out; stat.modelMs += fin.ms; addCost(fin.usage);
+      stat.modelCalls++; stat.in += fin.usage.in; stat.cached += fin.usage.cached || 0; stat.out += fin.usage.out; stat.modelMs += fin.ms; addCost(fin.usage);
       stat.narration = cleanNarration(fin.message && fin.message.content, list);
       turnMsgs.push({role: 'assistant', content: stat.narration, narr: 1}); break;
     }
@@ -660,7 +660,7 @@ export async function localTurn({chat, call, sess, prompt, model, toolTurns = 12
 export function joinTurns(a, b) {
   if (!a) return b; if (!b) return a;
   const o = {...a, ...b};
-  for (const k of ['tools', 'acts', 'modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms', 'rejected', 'misses']) o[k] = (a[k] || 0) + (b[k] || 0);
+  for (const k of ['tools', 'acts', 'modelCalls', 'in', 'cached', 'out', 'cost', 'modelMs', 'ms', 'rejected', 'misses']) o[k] = (a[k] || 0) + (b[k] || 0);
   for (const k of ['fresh', 'reprompted', 'foreign', 'dead', 'capped', 'looped', 'chatbot', 'loopRetried', 'broke', 'throttled', 'sceneJump', 'repeatAct']) o[k] = a[k] || b[k] || false;
   o.costKnown = a.costKnown !== false && b.costKnown !== false; o.calls = [...(a.calls || []), ...(b.calls || [])];
   o.sceneS = [...(a.sceneS || []), ...(b.sceneS || [])]; if (!o.sceneS.length) delete o.sceneS;
@@ -688,5 +688,5 @@ export const localLine = (st, model) => `${model} (local) | ${st.tools} tool cal
 // unknown price (a model not in the provider's price table) says so instead of a dollar figure.
 export const paidLine = (st, model, provider, {run = null, session = null} = {}) => {
   const money = v => '$' + v.toFixed(v > 0 && v < 0.0001 ? 6 : 4); // estimated costs of a cheap open model can be a few millionths
-  return `${model} (${provider}) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | ${st.costKnown ? 'turn ' + money(st.cost) : 'cost unknown (model not in the price table)'}${run != null ? ' | run ' + money(run) : ''}${session != null ? ' | session ' + money(session) : ''}${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
+  return `${model} (${provider}) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in}${st.cached ? ' (' + st.cached + ' cached)' : ''} / out ${st.out} | ${st.costKnown ? 'turn ' + money(st.cost) : 'cost unknown (model not in the price table)'}${run != null ? ' | run ' + money(run) : ''}${session != null ? ' | session ' + money(session) : ''}${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 };

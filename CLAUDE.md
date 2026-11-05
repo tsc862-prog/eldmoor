@@ -752,8 +752,8 @@ Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pic
 own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
 1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
 with its source and date) drives cost; a model not in it reports tokens with cost "unknown" (the turn
-line says so; the run budget cannot count it). Cached-input discounts are ignored, so costs are an
-upper bound. Every request sends `reasoning_effort: "none"` (Chat Completions supports function calling
+line says so; the run budget cannot count it). Cached input (`prompt_tokens_details.cached_tokens`, #728) is priced at the
+cached rate where `PRICES` has one (gpt-6.1-terra, gpt-6-luna) and shown as "tokens in 4449 (3900 cached)"; other models keep the full rate, an upper bound. Every request sends `reasoning_effort: "none"` (Chat Completions supports function calling
 on the current reasoning models only with it); a model that rejects the field is asked again without it.
 Errors: 401 "bad or missing key", 429 "rate limit" (the relay's limiter queues OpenAI calls,
 `RELAY_OPENAI_CONCURRENCY`, default 4, pauses on `retry-after`, drops a late decision and retries writing
