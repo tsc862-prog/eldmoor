@@ -912,6 +912,7 @@ encounters and speak at their tables (issue #132, below).
   kind `falter`/`reinforce`, `rival`, `tremor`). Each call has `TABLE.dmMs` (6 s) at 1x, and only while the
   runner is polling; then the scripted DM fills it, and after 2 misses it fills the rest at once. At 3x/8x
   every slot is scripted and the scene resolves in one step.
+- Never a member's words (#750, `src/sim/spokefor.js`): every DM-voiced text (table_answer, narrate, npc_say, whisper, dream, ruling_answer, and a when firing one) is cut of any quote attributed to a living agent-played hero before anyone hears it (the narration around it stays; all of it gone = refused); the call's DM log entry carries `spoke_for`, the result tells the DM, `dm_status.spoke_for_today` counts it, behavior anomaly `dm-spoke-for`. Exempt: an arrival's newcomer on its own voice/oath call, and a quote of the hero's own words. A fireside's quiet-day topic is the fire's own question to one member (who gets `answer`), never one member asking another.
 - Ruling voice (#522): `npm run dm` also rules on the heroes' free actions (polls `ruling_call`, one forced structured answer with
   enums for skill, DC and effect kinds, then `ruling_answer`; `--ruling-model`/`DM_RULING_MODEL`, default the table model; `--ruling-budget S`,
   8 s with Anthropic, 25 s local; `--no-ruling-voice` leaves every ruling to the scripted DM). A `[ruling]` line per call.
