@@ -41,6 +41,7 @@ import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.
 import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
+import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeLight,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
 import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
 const SCENE_LIGHT=[255,232,196]; // the light under a Table scene's people at night (#471)
@@ -198,6 +199,8 @@ export function createRenderer(cv,screenEl){
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
     drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite,outlined,dispoRing}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
     drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
+    let lt=performance.now();if(!cut){lifeBegin(S,cam,lt/1000);lifeGround(ctx)} // the ambient life of the map (#795): render only
+    lifeStats.acc=performance.now()-lt;
     if(!cut)drawPurposeGround(ctx,S,cam,{drawText,blink}); // the followed or hovered hero's road, tether or wait line, under the entities
     if(cut)drawSceneRings(ctx,cam,cut); // who is in the scene: a ring at their feet (#431)
     const fxNow=performance.now()/1000;syncSpells(fx,fxNow,inView);drawSpells(ctx,0,close,inView,fxNow); // spell effects on the ground: rings, roots, briars (#374)
@@ -207,9 +210,11 @@ export function createRenderer(cv,screenEl){
     for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ents.push(a);
     for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ents.push(p);
     if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ents.push(boss);
+    lt=performance.now();if(!cut)lifeEnts(ents);lifeStats.acc+=performance.now()-lt;
     if(close&&!cut)trafficEnts(S,inView,MARGIN,ents); // road traffic, skipped at whole-map zoom
     ents.sort((a,b)=>a.y-b.y);
     for(const e of ents){
+      if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);continue} // critters, stalls and guards (townlife.js)
       if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
       const fr=e.moving?Math.floor(blink*6+e.id)%2:0;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
@@ -245,6 +250,7 @@ export function createRenderer(cv,screenEl){
         ctx.globalAlpha=1}
       if(p.type==='ring'){if(!inView(p.x*T,p.y*T,96))continue;ctx.strokeStyle='rgba(255,140,40,'+p.life+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x*T,p.y*T,(1-p.life/.6)*72+8,0,7);ctx.stroke()}}
     // weather sits on the ground, so it goes under the night: fog no longer brightens midnight
+    lt=performance.now();if(!cut)lifeAir(ctx,blink);lifeStats.acc+=performance.now()-lt;
     drawWeather(ctx,S,cam,blink);
     // night: a blue wash, then light added back (lighter): lava fields glow, torches flicker,
     // crypt mouths breathe a faint green, the camp fire (camp.js)
@@ -261,6 +267,7 @@ export function createRenderer(cv,screenEl){
         glow(L.x*T,L.y*T,r*(L.big?1:.94+.06*fl),LIGHT.torch,dk*.7*fl)}
       for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,40))glow(x,y,26,LIGHT.crypt,dk*(.35+.1*Math.sin(now*1.3)))}
       drawCampLight(ctx,S,dk,inView);
+      lt=performance.now();if(!cut)lifeLight(ctx,glow,dk,LIGHT);lifeStats.acc+=performance.now()-lt;
       if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-HEAD/2,22*PROC_SCALE*.75,SCENE_LIGHT,dk*.6); // a Table scene's people keep a pool of light at night (#471)
       ctx.globalCompositeOperation='source-over'}
     drawSpells(ctx,1,close,inView,fxNow); // spell effects in the air, over the night wash: they carry their own light (#374)
@@ -305,7 +312,7 @@ export function createRenderer(cv,screenEl){
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
         lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,16,a===sel?10:7,null,true,3)}}
-    flushLabels(sc);
+    flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;
     const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
     if(whole)drawWholeMap(ctx,cam,blink);
     if(close){drawBubbles(ctx,S,cam,drawText);
