@@ -295,7 +295,14 @@ is silent, and scene choices time out to the scripted branch, so the world never
 - Danger edges (#465): a move_to or hunt {where} whose road enters a region whose lowest level is 5+ above the hero's
   stops at its edge the first time, with the danger in words (the land's feel, the hero's lore, the townsfolk's warning);
   the same call again within 12 game hours, or `force: "yes"`, walks on (never a hard block). Walking out of shouting
-  range of a party leader who will not follow says so (`apart`). `npm run townpilotcheck` covers both.
+  range of a party leader who will not follow says so (`apart`). Town errands (#727): an arrival in a town on the agent's own
+  order (a move_to or the aim's walk) is a now wake and holds autopilot's leave-town steps for `TP.ARRIVE_HOLD` 120 game minutes
+  (rest, sell, buy still run); an aim with errand words (ask, information, directions, buy, sell, trainer, board, rest; `errandOf`
+  in `intent.js`) is a wait-kind order in that town until its until (`INTENT.ERRAND` 4 h by default, never past `INTENT.WAIT_MAX`; a walked errand counts from its arrival, `waitAt`), and talk, list_jobs, buy,
+  sell, earshot, learn_profession and rest count as its progress. It is a wait like any other (#790): the time itself earns nothing, so an unrun errand goes stale at 2 h (still held, the next turn asks), a level condition turns it into a hunt, it holds nothing once the hero is out of town, and neither a new errand, the board read nor a fresh arrival touches the town-idle clock: `townGuard` overrides the wait and `TP.ARRIVE_HOLD` alike; `intent` or `move_to` naming the town the hero stands in answers
+  "You are already in <town>" with who is about and the tools (no walk); a forced reflection's aim copying a finished one word for
+  word is dropped (`stale-aim-dropped` turn flag); the `errand-unacted` anomaly (an errand held in town let go with none of
+  talk, list_jobs, buy, sell, earshot) is counted per mind beside `no-aim` in the report's Mind comparison. `npm run townpilotcheck` covers it all.
 - One mind per hero: an agent-played hero has no relay brain (Fellowship Minds: agents turns the members'
   brains off; the relay still writes their sheets) and voices no scripted line (no barks, banter, camp lines,
   quarrel replies or table lines; a silent agent's table reflex acts without a word). Its own lines (say,
@@ -752,8 +759,8 @@ Notes: the model ids and prices were read from OpenAI's pages on 2026-11-01; pic
 own list. The cheapest current chat model on the pricing page was `gpt-6-luna` ($0.10 in / $0.50 out per
 1M tokens, https://developers.openai.com/api/docs/pricing). The price table in `openai.mjs` (`PRICES`,
 with its source and date) drives cost; a model not in it reports tokens with cost "unknown" (the turn
-line says so; the run budget cannot count it). Cached-input discounts are ignored, so costs are an
-upper bound. Every request sends `reasoning_effort: "none"` (Chat Completions supports function calling
+line says so; the run budget cannot count it). Cached input (`prompt_tokens_details.cached_tokens`, #728) is priced at the
+cached rate where `PRICES` has one (gpt-6.1-terra, gpt-6-luna) and shown as "tokens in 4449 (3900 cached)"; other models keep the full rate, an upper bound. Every request sends `reasoning_effort: "none"` (Chat Completions supports function calling
 on the current reasoning models only with it); a model that rejects the field is asked again without it.
 Errors: 401 "bad or missing key", 429 "rate limit" (the relay's limiter queues OpenAI calls,
 `RELAY_OPENAI_CONCURRENCY`, default 4, pauses on `retry-after`, drops a late decision and retries writing
@@ -905,6 +912,7 @@ encounters and speak at their tables (issue #132, below).
   kind `falter`/`reinforce`, `rival`, `tremor`). Each call has `TABLE.dmMs` (6 s) at 1x, and only while the
   runner is polling; then the scripted DM fills it, and after 2 misses it fills the rest at once. At 3x/8x
   every slot is scripted and the scene resolves in one step.
+- Never a member's words (#750, `src/sim/spokefor.js`): every DM-voiced text (table_answer, narrate, npc_say, whisper, dream, ruling_answer, and a when firing one) is cut of any quote attributed to a living agent-played hero before anyone hears it (the narration around it stays; all of it gone = refused); the call's DM log entry carries `spoke_for`, the result tells the DM, `dm_status.spoke_for_today` counts it, behavior anomaly `dm-spoke-for`. Exempt: an arrival's newcomer on its own voice/oath call, and a quote of the hero's own words. A fireside's quiet-day topic is the fire's own question to one member (who gets `answer`), never one member asking another.
 - Ruling voice (#522): `npm run dm` also rules on the heroes' free actions (polls `ruling_call`, one forced structured answer with
   enums for skill, DC and effect kinds, then `ruling_answer`; `--ruling-model`/`DM_RULING_MODEL`, default the table model; `--ruling-budget S`,
   8 s with Anthropic, 25 s local; `--no-ruling-voice` leaves every ruling to the scripted DM). A `[ruling]` line per call.
@@ -1047,6 +1055,7 @@ Beside the required CI (`ci.yml`, "CI ok"), four watchers (none required, none p
   generated sheets; `terrain.js` per-pixel tile textures into cached chunks at TILE (or U with no terrain asset);
   `draw.js` the camera object `cam`, entities sorted by y, effects, day/night
   overlay with torch light, labels at constant CSS size.
+  Ambient life (#795, solid-world slice 4): `life.js` the frame's shared facts and a private random stream; `critters.js` town critters (chickens, dogs, cats, goats) and wild ones by biome (deer, hares, crows, gulls) that scatter from a hero within 2 tiles and come home, plus roosting birds that burst from a tree a hero passes; `townlife.js` stalls (market hours, shut in rain and at night), gate guards and a wall walker, chimney smoke at the smithy and inn by hour, door lamps and forge glow at dusk, the hall's pennant; `footprints.js` prints in snow. All render only (no sim state, nothing in `step()`, no shared RNG), placed from `CITY` buildings and `solidAt`, so hashes hold; `draw.js` takes them as `kind:'deco'` entries in the y-sorted list and calls `lifeBegin/lifeGround/lifeEnts/lifeAir/lifeLight`; `lifeStats.ms` is their frame cost (about 0.1-0.3 ms). `townart.js` now draws the sketch pieces (smithy, chapel, inn, board) when no asset covers them. There is no `src/sim/critters.js`: nothing the sim needs to know.
 - `src/ui/`: `panels.js` hero card, factions, chronicle, graveyard, guilds,
   top heroes, auction house, clock; `controls.js` speed, view (incl. Follow Fellowship)
   and selection; `fellowship.js` the Fellowship panel (founding, roster, sheet editor,
