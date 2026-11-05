@@ -3,6 +3,7 @@
 // frame through the runner supervisor; turns and the ruling voice through the game; the table, talk, ruling and companion voices on
 // the provider's adapter; a fresh session and a switch of provider that keep the notes; and (with `pricey`) a voice spending the last
 // of the budget, which ends as a budget stop.
+import {mkTmp} from './tmp.mjs';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -28,7 +29,7 @@ const RESUME = /no memory of this conversation/;
 // provider, model: the seat's mind; env: the provider's key and mock URL; ok: the check's ok(); port: this and the next two ports are used;
 // seen: the mock's list of chat bodies; pricey: {model, budget}, a model and a budget that one DM turn stays under and one more voice call passes.
 export async function dmMindCases({provider, model, env: env0, ok, port, pricey = null, seen = null}) {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-dmmind-')), kids = [];
+  const tmp = mkTmp('eldmoor-dmmind-'), kids = [];
   const env = {...env0, AGENT_LOGS: tmp, AGENT_MIN_GAP: '0', AGENT_REFLECT: '0'};
   const run = (args, {pipe = false, e = env} = {}) => {
     const p = spawn(process.execPath, args, {cwd: ROOT, env: e, stdio: [pipe ? 'pipe' : 'ignore', 'pipe', 'pipe']}); kids.push(p); let out = '';

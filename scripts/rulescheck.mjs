@@ -12,6 +12,7 @@
 //     checked-out (merged) tree holds docs/patchnotes/<PR>.md, unless the PR carries the label no-notes. The PR number
 //     comes from --pr N or PR_NUMBER (CI); the label is read live with gh (GH_TOKEN), so adding it and re-running works.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
+import {mkTmp} from './tmp.mjs';
 import {readFileSync, readdirSync, existsSync, mkdtempSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
@@ -91,7 +92,7 @@ const keysOf = t => t == null ? null : Array.isArray(t) ? t.map(rowKey) : Object
 if (argv.includes('--no-tables')) console.log('append-only tables: skipped (--no-tables)');
 else {
   console.log('append-only tables: no existing row reordered or renamed against ' + opt('--against', 'origin/main'));
-  const ref = opt('--against', 'origin/main'), dir = mkdtempSync(join(tmpdir(), 'eldmoor-rules-'));
+  const ref = opt('--against', 'origin/main'), dir = mkTmp('eldmoor-rules-');
   const a = spawnSync('git', ['archive', ref, 'src'], {cwd: ROOT, maxBuffer: 1 << 30});
   let t = a.status === 0 ? spawnSync('tar', ['-x'], {cwd: dir, input: a.stdout, maxBuffer: 1 << 30}) : null;
   if (!t || t.status !== 0) ok(false, 'could not read ' + ref + ' (git archive failed: ' + String(a.stderr || (t && t.stderr)).trim().slice(0, 200) + '); run `git fetch origin main`');

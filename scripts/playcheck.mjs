@@ -11,6 +11,7 @@
 //   goes on with say and ends after a few exchanges or when the member walks off), and a dead hero's answers. The mock agent's waits drive game time themselves, so the
 //   run depends on the seed (PLAYCHECK_SEED), not on how fast the machine is.
 // Usage: npm run playcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 
 // Seeded Math.random before the sim is imported (core/rng.js reads it at call time).
@@ -478,7 +479,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   const {mkdtempSync, writeFileSync: wf, existsSync: ex, readdirSync, rmSync} = await import('node:fs');
   const {tmpdir} = await import('node:os'); const {join} = await import('node:path');
   const SS = await import('./agent-sessions.mjs');
-  const logs = mkdtempSync(join(tmpdir(), 'eldmoor-sess-'));
+  const logs = mkTmp('eldmoor-sess-');
   wf(join(logs, 'agent-session.json'), JSON.stringify({sessionId: 's-old', heroId: 5, heroName: 'Ann', turns: 3}));
   const note = SS.migrateLegacy(logs);
   ok(ex(SS.sessionPath(5, logs)) && !ex(join(logs, 'agent-session.json')) && /moved/.test(note), 'the old single session file moves to logs/agents/5.json on first run');

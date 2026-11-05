@@ -6,6 +6,7 @@
 // Probes that need no flag of their own live in this file (company, world, autopilot); the rest call the check scripts' own
 // hash modes (professioncheck --hash, tablecheck --hash/--hash-talk, crawlcheck --hash, dmcheck --hash, focuscheck --hash).
 // This file is copied into the extracted base, so both sides run the same probe code against their own src/.
+import {mkTmp} from './tmp.mjs';
 import {spawn, spawnSync} from 'node:child_process';
 import {mkdtempSync, copyFileSync, writeFileSync, mkdirSync, symlinkSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -84,12 +85,12 @@ async function runAll(root) {
 const ROOT = resolve(HERE, '..'), ref = opt('--against', 'origin/main');
 let baseRoot = null;
 if (!argv.includes('--no-compare')) {
-  const dir = mkdtempSync(join(tmpdir(), 'eldmoor-base-'));
+  const dir = mkTmp('eldmoor-base-');
   const a = spawnSync('git', ['archive', ref], {cwd: ROOT, maxBuffer: 1 << 30});
   if (a.status !== 0) {console.error('git archive ' + ref + ' failed: ' + String(a.stderr)); process.exit(1)}
   const t = spawnSync('tar', ['-x'], {cwd: dir, input: a.stdout, maxBuffer: 1 << 30});
   if (t.status !== 0) {console.error('tar failed: ' + String(t.stderr)); process.exit(1)}
-  mkdirSync(join(dir, 'scripts'), {recursive: true}); copyFileSync(ME, join(dir, 'scripts/hashcheck.mjs'));
+  mkdirSync(join(dir, 'scripts'), {recursive: true}); copyFileSync(ME, join(dir, 'scripts/hashcheck.mjs')); copyFileSync(join(HERE, 'tmp.mjs'), join(dir, 'scripts/tmp.mjs'));
   // the base probes only read node_modules (a junction in the temp dir; the worktree is never touched)
   if (existsSync(join(ROOT, 'node_modules'))) symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'junction');
   baseRoot = dir;
