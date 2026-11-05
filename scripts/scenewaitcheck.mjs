@@ -212,7 +212,7 @@ console.log('E. a slow DM frame and five live members: nobody acts before the fr
 // long turns holding the slots, the DM and a fourth member (for a party line) wait for one, the fifth proposes a vote, and
 // everyone answers at once. The waiting member's slot wait sees its scene: it tells the table (queued, why slot) and asks
 // again as a scene, which the supervisor serves before the DM. Every answer lands, nobody's reflex votes, and a member that
-// answered and waits gets one wait back when the table settles.
+// answered and waits is told its turn is over.
 console.log('F. three Claude slots, five Claude members and the DM: every vote lands, the slot wait answers the scene first');
 {
   const {EventEmitter} = await import('node:events'), {attachRunners} = await import('./runners.mjs'), {takeClaudeSlot} = await import('./pacing.mjs');
@@ -227,7 +227,7 @@ console.log('F. three Claude slots, five Claude members and the DM: every vote l
   const fakeSpawn = () => {const k = new EventEmitter(); k.pid = 50000 + Math.floor(Math.random() * 1000); k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write() {}}); k.kill = () => setTimeout(() => k.emit('exit', null), 5); return k};
   const tmpF = mkdtempSync(join(tmpdir(), 'eldmoor-slotscene-'));
   let PBF = null;
-  const sup = attachRunners(server, {play, enabled: true, log: () => {}, spawnImpl: fakeSpawn, base: () => PBF, logs: tmpF, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '3'}});
+  const sup = attachRunners(server, {play, enabled: true, log: () => {}, spawnImpl: fakeSpawn, base: () => PBF, logs: tmpF, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '3', RUNNER_DM_SLOTS: '0', RUNNER_SCENE_SLOTS: '0'}}); // the DM in the shared pool (#733), no slot kept for scenes (#868): the queue's own scene-first order is what this case measures
   await new Promise(r => server.listen(0, '127.0.0.1', r)); PBF = `http://127.0.0.1:${server.address().port}`;
   const J = (path, body, origin) => fetch(PBF + path, {method: 'POST', headers: {'content-type': 'application/json', ...(origin ? {origin} : {})}, body: JSON.stringify(body)}).then(r => r.json());
   const starts = [];
@@ -261,7 +261,7 @@ console.log('F. three Claude slots, five Claude members and the DM: every vote l
   ok(pr.ok, 'the fifth member puts a vote to the company: ' + (pr.error || 'ok'));
   const sc = await (async () => {for (let i = 0; i < 100 && !(S.table && S.table.kind === 'decision'); i++) await sleep(50); return S.table})();
   ok(sc && sc.all && sc.ids.length === 5, 'an everyone-answers vote opens for the five');
-  // A answers and then waits: one wait, back when the table settles
+  // A answers and then waits: the wait ends its turn at once (#868), so it keeps no slot
   let waits = 0, wr = null;
   const aWait = (async () => {for (let i = 0; i < 1200 && !answered[A.id]; i++) await sleep(50); waits++; wr = await call(A, 'wait', {minutes: 30})})();
   await Promise.all(runs); await aWait;
@@ -274,7 +274,7 @@ console.log('F. three Claude slots, five Claude members and the DM: every vote l
   const dmAt = logs.indexOf('dm got a slot'), dAt = logs.findIndex(l => l.startsWith(D.name + ' got a slot'));
   ok(dAt >= 0 && dmAt >= 0 && dAt < dmAt, 'the supervisor served the scene request before the DM, which asked first: ' + logs.filter(l => /got a slot/.test(l)).join(' | '));
   ok(sc && [A, B, C].every(a => sc.qw && sc.qw[a.id] === 'turn'), 'the members mid-turn reported why (turn)');
-  ok(waits === 1 && wr && wr.ok && wr.why === 'the table settled' && /Passed 5-0/.test(wr.scene_outcome || ''), `the member that answered and waited got one wait back when the table settled (${wr && wr.why}: ${wr && wr.scene_outcome})`);
+  ok(waits === 1 && wr && wr.ok && wr.turn_over === true && /Your turn is over/.test(wr.why), `the member that answered and waited was told its turn is over (${wr && wr.why})`);
   // the cause of a miss reaches the anomaly and the report
   const {missCause} = await import('../src/sim/scenewait.js');
   ok(missCause(sc, D.id) === 'waiting for a slot' && missCause(sc, A.id) === 'mid-turn' && missCause({}, 1) === 'no answer', 'the miss cause names what the answer waited behind');
@@ -290,7 +290,7 @@ console.log('F. three Claude slots, five Claude members and the DM: every vote l
 // scene answer is played, and the member's turn resumes. Here the "query" is a mock that runs until its signal aborts.
 console.log('G. a Claude member mid-turn is aborted at SCENE_GRAB_MS, answers in time, resumes, and nobody is missed');
 {
-  const {sceneGrab, SCENE_GRAB_MS, GRAB_RESUME} = await import('./pacing.mjs');
+  const {sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, grabSpend, GRAB_EST_OUT} = await import('./pacing.mjs');
   ok(SCENE_GRAB_MS === 15000 && /Carry on/.test(GRAB_RESUME), 'the grab is 15 s by default and the resume prompt tells the member to carry on');
   // unit: answered in time -> never fires; stop() ends the poll; a flap resets the clock
   {let d = true, n = 0; const g = sceneGrab({due: () => d, abort: () => n++, ms: 400, every: 50}); await sleep(200); d = false; await sleep(150); d = true; await sleep(250); ok(n === 0 && !g.grabbed(), 'due, then not due, then due again: the clock restarted, nothing fired'); g.stop();
@@ -307,7 +307,16 @@ console.log('G. a Claude member mid-turn is aborted at SCENE_GRAB_MS, answers in
   const grab = sceneGrab({due: () => sceneDue(A), abort: () => ac.abort(), onGrab: () => {grabAt = Date.now() - t0}, ms: 800, every: 100});
   for (const x of [B, ...rest]) sim.playerAct(x.id, 'scene_act', {option: 'press', line: 'Down.'});
   const ticker = setInterval(() => {for (let i = 0; i < 6; i++) sim.step(1 / 60)}, 100); // the table ticks real time, as the page does
+  // #747: the cut query sends no result, so the run budget moves by what the stream reported (assistant usage), else by an estimate
+  const gs = grabSpend(), usage = (id, i, o, cr = 0, cw = 0) => ({type: 'assistant', message: {id, usage: {input_tokens: i, output_tokens: o, cache_read_input_tokens: cr, cache_creation_input_tokens: cw}}});
+  gs.add(usage('m1', 100, 20)); gs.add(usage('m1', 100, 80)); gs.add(usage('m2', 1000, 50, 20000, 3000)); // m1 streamed twice: counted once, its largest figures
+  let spent = 0; const budgetLeft = 1;
   await inFlight; grab.stop();
+  {const c = gs.cost('claude-sonnet-5-5', {sent: 90000}), want = (100 * 2 + 80 * 10 + 1000 * 2 + 20000 * 0.2 + 3000 * 2.5 + 50 * 10) / 1e6; spent += c.usd;
+   ok(c.how === 'reported' && c.calls === 2 && Math.abs(c.usd - want) < 1e-9 && spent > 0 && budgetLeft - spent < budgetLeft, `a grab moves the run total by the reported usage ($${c.usd.toFixed(6)}, two calls, a repeated message counted once)`);
+   const e = grabSpend().cost('claude-sonnet-5-5', {sent: 30000});
+   ok(e.how === 'estimated' && Math.abs(e.usd - (10000 * 2 + GRAB_EST_OUT * 10) / 1e6) < 1e-9, `with nothing reported the estimate is the characters sent at the full input rate plus ${GRAB_EST_OUT} output tokens ($${e.usd.toFixed(6)})`);
+   ok(grabSpend().cost('claude-nope-9', {sent: 3000}).usd > 0 && grabSpend().cost('claude-haiku-5-5', {sent: 3000}).usd < grabSpend().cost('claude-opus-5-5', {sent: 3000}).usd, 'an unpriced model counts as the dearest listed; the price table orders models')}
   ok(aborted === 1 && !failed && grab.grabbed() && grabAt >= 700 && grabAt < 2500, `the mid-turn member's query was aborted once, ${grabAt} ms after its scene was due, and the abort was not counted as a failure`);
   // the structured scene answer, then the turn resumes (a second query)
   const ans = sim.playerAct(A.id, 'scene_act', {option: 'press', line: 'Coming.'}); resumed++;
@@ -317,6 +326,129 @@ console.log('G. a Claude member mid-turn is aborted at SCENE_GRAB_MS, answers in
   clearInterval(ticker);
   ok(sc.resolved && !(sc.miss && sc.miss.length) && ids.every(id => sc.acts[id] && sc.acts[id].by === 'agent'), 'the scene resolved with every answer by its agent and nobody missed');
   TABLE.liveMs = liveMs0; SW.EXTRA_MS = extra0; TABLE.wakeGapMs = gap0; setRunnerLinks(null); S.table = null;
+}
+// ---------------------------------------------------------------- H. the slot deadlock at the table (#868)
+// The incident, replayed on the real supervisor, pacing and game: five Claude members on 5 slots. Four are in their turns when an
+// everyone-answers scene opens; they answer and then call wait the way Haiku did, with nothing but a wait in hand, until the
+// 12-call cap. The fifth asked for a slot just before the scene and its request was aborted to ask again as a scene while the
+// supervisor held it for the DM's voice. Every model call is counted. Its answer must land inside TABLE.liveMs, no reflex, no slot lost.
+console.log('H. the slot deadlock: four companions waiting at the table, the fifth member\'s scene, a slot granted to an aborted request');
+{
+  const {EventEmitter} = await import('node:events'), {attachRunners} = await import('./runners.mjs'), {takeClaudeSlot} = await import('./pacing.mjs');
+  const {localBackend} = await import('./play-headless.mjs'), {allScenes} = await import('../src/sim/scenes.js'), {HELD_WAIT} = await import('./relay-mcp.mjs');
+  for (const sc of allScenes()) sc.resolved = true; S.table = null; sim.step(1 / 60);
+  const live = mem.filter(a => a.state !== 'dead'); gather(); for (const a of live) {a.playEv = []; a.hp = a.maxhp || a.hp}
+  const liveMs0 = TABLE.liveMs, extra0 = SW.EXTRA_MS, gap0 = TABLE.wakeGapMs; TABLE.liveMs = 6000; SW.EXTRA_MS = 2000; TABLE.wakeGapMs = 0;
+  const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
+  const play = attachPlay(server, {backend: localBackend(), log: () => {}}); setRunnerLinks(() => 'connected');
+  const fakeSpawn = () => {const k = new EventEmitter(); k.pid = 51000 + Math.floor(Math.random() * 1000); k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write() {}}); k.kill = () => setTimeout(() => k.emit('exit', null), 5); return k};
+  const tmpH = mkdtempSync(join(tmpdir(), 'eldmoor-slotstall-'));
+  let PB = null; const supLog = [];
+  const sup = attachRunners(server, {play, enabled: true, log: s => supLog.push(s), spawnImpl: fakeSpawn, base: () => PB, logs: tmpH, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '5'}});
+  await new Promise(r => server.listen(0, '127.0.0.1', r)); PB = `http://127.0.0.1:${server.address().port}`;
+  const J = (path, body, origin) => fetch(PB + path, {method: 'POST', headers: {'content-type': 'application/json', ...(origin ? {origin} : {})}, body: JSON.stringify(body)}).then(r => r.json());
+  for (const a of live) await J('/play/runner/start', {hero: a.id, provider: 'anthropic'}, 'http://localhost:5173');
+  const claude = async () => (await (await fetch(PB + '/play/runner')).json()).claude;
+  const due = id => async () => {const h = await (await fetch(PB + '/play/health')).json(); const me = (h.heroes || []).find(x => x.id === id); return !!(me && me.due)};
+  const onDueOf = a => async () => {await J('/play/pace', {hero: a.id, queued: true, why: 'slot'})};
+  const call = (a, tool, args) => J('/play/call', {hero: a.id, tool, args});
+  // a wait the page still holds at the relay's cap comes back as the relay's held answer (scaled from 60 s to 1.5 s), as live
+  const waitOnce = a => Promise.race([call(a, 'wait', {minutes: 10}), sleep(1500).then(() => ({...HELD_WAIT}))]);
+  const over = r => /"?turn_over"?\s*:\s*true/.test(JSON.stringify(r));
+  const model = {calls: 0, waits: 0, live: 0, peak: 0};
+  const modelCall = async (ms = 60) => {model.calls++; model.live++; model.peak = Math.max(model.peak, model.live); await sleep(ms); model.live--};
+  const [A, B, C, D, E] = live, sent = {};
+  let last = Date.now(); const tick = setInterval(() => {const n = Date.now(); sim.step(Math.min(.1, (n - last) / 1000)); last = n}, 20);
+  // a companion's turn: free calls, then its answer, then wait until the 12-call cap (or until the runner ends the turn)
+  const companion = async a => {const free = await takeClaudeSlot(PB, () => {}, {key: 'hero:' + a.id, member: a.name, due: due(a.id), onDue: onDueOf(a)});
+    for (let calls = 0; calls < 12;) {
+      if (!sent[a.id] && !(await due(a.id)())) {await sleep(100); continue} // mid-turn until the scene comes (uncounted: the scene is what is measured)
+      await modelCall(); calls++;
+      if (!sent[a.id]) {sent[a.id] = await call(a, 'scene_act', {option: 'press', line: 'Down.'}); continue}
+      model.waits++; const r = await waitOnce(a); if (over(r)) break}
+    free()};
+  const turns = [A, B, C, D].map(companion);
+  await sleep(400);
+  // the scene opens; the fifth member's wake comes with it and it asks for a slot before its scene is due (the DM's voice frames the
+  // scene, so the supervisor holds the request DM_FIRST_MS), and asks again as a scene once the frame is up
+  const sc = openScene('check', 'Trouble on the road', ['Webspinners drop from the wet boughs.'], {anchor: E.id});
+  play.dmVoiceBusy = () => true; setTimeout(() => {play.dmVoiceBusy = () => false}, 3000);
+  await sleep(700);
+  const t5 = Date.now(); let gotAt = null, ans = null;
+  const fifth = (async () => {const free = await takeClaudeSlot(PB, () => {}, {key: 'hero:' + E.id, member: E.name, due: due(E.id), onDue: onDueOf(E)}); gotAt = Date.now() - t5;
+    await modelCall(); ans = await call(E, 'scene_act', {option: 'press', line: 'Holding the stair.'}); free()})();
+  await Promise.all([...turns, fifth]);
+  await until(() => S.table !== sc, 15000);
+  ok(ans && ans.ok === true && !(sc.miss && sc.miss.length), `the fifth member's own answer landed, no reflex: ${ans && (ans.ok ? 'scene_act ok' : ans.error)}, after ${gotAt} ms waiting for a slot`);
+  ok(gotAt != null && gotAt < TABLE.liveMs, `it got a slot inside TABLE.liveMs (${gotAt} ms of ${TABLE.liveMs} ms)`);
+  ok(sc.ids.every(id => sc.acts[id] && sc.acts[id].by === 'agent'), 'every answer by its agent: ' + sc.ids.map(id => (sc.acts[id] || {}).by).join(', '));
+  await sleep(150); const end = await claude();
+  ok(end.used === 0, `every slot came back when the turns ended, none lost to the aborted request (used ${end.used})`);
+  ok(model.peak <= 5, `at most RUNNER_CLAUDE_MAX model calls at once (peak ${model.peak})`);
+  console.log(`  counted: ${model.calls} model calls, ${model.waits} of them wait, for one scene and four companions`);
+  ok(model.waits <= 4, `a companion calls wait once at the table, not in a loop (${model.waits} waits for four companions)`);
+  clearInterval(tick); TABLE.liveMs = liveMs0; SW.EXTRA_MS = extra0; TABLE.wakeGapMs = gap0; setRunnerLinks(null); sup.killAll(); server.close();
+  try {rmSync(tmpH, {recursive: true, force: true})} catch {}
+}
+// ---------------------------------------------------------------- I. resting at the table (#868): what a wait says and when pacing wakes
+console.log('I. a wait at the table ends the turn at once, for any mind, and pacing keeps its word');
+{
+  const {hostCall, hostPace} = await import('../src/sim/player-host.js'), {paceCheck} = await import('../src/sim/pace.js'), {tableRest} = await import('../src/sim/scenewait.js'), {allScenes} = await import('../src/sim/scenes.js'), {notify} = await import('../src/sim/notify.js');
+  const {turnOver, tableHooks} = await import('./pacing.mjs'), {HELD_WAIT} = await import('./relay-mcp.mjs');
+  for (const sc of allScenes()) sc.resolved = true; S.table = null; sim.step(1 / 60);
+  const live = mem.filter(a => a.state !== 'dead'), [A, B, ...rest] = live; gather(); for (const a of live) {a.playEv = []; delete a.tableRest}
+  setRunnerLinks(() => 'connected'); const liveMs0 = TABLE.liveMs, gap0 = TABLE.wakeGapMs; TABLE.liveMs = 60000; TABLE.wakeGapMs = 0;
+  const sc = openScene('check', 'A word at the ford', ['The DM calls for a roll at the ford.'], {anchor: A.id});
+  ok(tableRest(A) && !sceneDue(A), 'while the DM sets the scene a member has nothing to do at it');
+  let t0 = Date.now(), r = await hostCall(A.id, 'wait', {minutes: 30});
+  ok(r.turn_over === true && /DM is still setting the scene/.test(r.why) && Date.now() - t0 < 300, `a wait during the frame comes back at once and ends the turn: "${r.why}"`);
+  for (let i = 0; i < 600 && !(sc.wk && sc.wk.done); i++) sim.step(1 / 60);
+  t0 = Date.now(); r = await hostCall(B.id, 'wait', {minutes: 30});
+  ok(!r.turn_over && r.table_waits && Date.now() - t0 < 300, 'a member whose own scene waits gets its wait back at once with table_waits, not turn_over: ' + String(r.why));
+  sim.playerAct(A.id, 'scene_act', {option: 'press', line: 'Down.'});
+  t0 = Date.now(); r = await hostCall(A.id, 'wait', {minutes: 30});
+  ok(r.ok && r.turn_over === true && r.waited_min === 0 && Date.now() - t0 < 300, `answered: the wait comes back at once (${Date.now() - t0} ms): "${r.why}"`);
+  ok(/Your turn is over/.test(r.why) && /woken when the table settles/.test(r.why) && !/call wait again|wait again/i.test(r.why) && !/wait again/i.test(HELD_WAIT.why) && HELD_WAIT.turn_over === true, 'the text says the turn is over and who wakes it; neither it nor the relay\'s held answer says call wait again');
+  ok(A.tableRest === true, 'the game remembers to wake it');
+  // resting: only what must be answered wakes it; a companion's line or an urgent note waits for the table
+  A.playEvSeen = A.playEvN || 0; notify(A, 'Bo says: down the left bank.', 1); notify(A, 'Something stirs close by.', 2);
+  ok(paceCheck(A.id, {since: S.gameMin, wake: 'all'}) === null, 'at rest, news does not start a turn while the table is open (it would be paid for nothing)');
+  A.playEvN = A.playEvN || 0; notify(A, 'YOUR TURN at the table (again)', 3);
+  const must = paceCheck(A.id, {since: S.gameMin, wake: 'all'});
+  ok(must && must.wake === 'now' && must.must, 'what must be answered still starts it at once');
+  A.playEvSeen = A.playEvN; for (const x of [B, ...rest]) sim.playerAct(x.id, 'scene_act', {option: 'press', line: 'Coming.'});
+  const tick = setInterval(() => {for (let i = 0; i < 6; i++) sim.step(1 / 60)}, 30);
+  await until(() => S.table !== sc, 15000); clearInterval(tick);
+  ok(S.table !== sc && !tableRest(A), 'the table settles');
+  const brief = paceCheck(A.id, {since: S.gameMin, wake: 'now'});
+  const news = (A.playEv || []).filter(e => e.n > (A.playEvSeen || 0)).map(e => e.text).join(' / ');
+  ok(/The scene ends/.test(news), 'the outcome waits unread for the next turn (no wait hands it over any more): ' + news.slice(0, 90));
+  const w = await hostPace(A.id, {since: S.gameMin, wake: 'all', realMs: 300, minutes: 1440});
+  ok(w.wake && !A.tableRest, `pacing wakes it once the table has settled (${w.wake}: ${String(w.why).slice(0, 60)})`);
+  A.playEvSeen = A.playEvN; A.tableRest = true; const only = paceCheck(A.id, {since: S.gameMin, wake: 'all', minutes: 1440});
+  ok(only && only.wake === 'soft' && only.why === 'the table settled', 'with no news at all the settled table wakes it by itself');
+  ok(paceCheck(A.id, {since: S.gameMin, wake: 'now', minutes: 1440}) === null, 'a soft wake: inside the minimum gap it waits');
+  delete A.tableRest;
+  // a hero outside the scene that stops the world: no game time can pass for it either
+  gather(); B.x += 200; B.y += 200; const other = openScene('check', 'Elsewhere', ['A word.'], {anchor: A.id});
+  if (other && !other.ids.includes(B.id) && other.pause) {r = await hostCall(B.id, 'wait', {minutes: 30}); ok(r.turn_over === true && /paused for a scene/.test(r.why), 'out of the scene while the world stands still: the wait ends the turn too: ' + r.why)}
+  else ok(false, 'the far member stays out of the scene: ' + (other ? other.ids.length : 'none'));
+  for (const s2 of allScenes()) s2.resolved = true; S.table = null; gather(); delete B.tableRest;
+  // the local loop: the turn ends on that result, with no closing call for narration
+  let n = 0; const chat = async () => {n++; return {message: {role: 'assistant', content: '', tool_calls: [{function: {name: 'wait', arguments: {}}}]}, usage: {in: 1, out: 1}, ms: 1}};
+  const lr = await localTurn({chat, call: async () => ({ok: true, waited_min: 0, turn_over: true, why: 'x'}), sess: {system: 's'}, prompt: 'Turn 2.', model: 'm', toolTurns: 6});
+  ok(n === 1 && lr.tableRest && lr.tools === 1, `a local mind: one model call, no closing narration call (${n})`);
+  ok((await import('./pacing.mjs')).localWorked(lr), 'and the turn counts as played, not empty');
+  let n2 = 0; const chat2 = async () => {n2++; return {message: {role: 'assistant', content: n2 > 1 ? 'He waits.' : '', tool_calls: n2 > 1 ? [] : [{function: {name: 'wait', arguments: {}}}]}, usage: {in: 1, out: 1}, ms: 1}};
+  await localTurn({chat: chat2, call: async () => ({ok: true, waited_min: 30, why: 'time passed'}), sess: {system: 's'}, prompt: 'Turn 2.', model: 'm', toolTurns: 6});
+  ok(n2 === 2, `an ordinary wait still gets its closing narration (${n2} calls)`);
+  // the Claude side: what the hook reads and answers (the real CLI is in sessioncheck)
+  ok(turnOver('{"ok":true,"turn_over":true}') && turnOver([{type: 'text', text: '{"ok":true,"turn_over": true}'}]) && turnOver({content: [{type: 'text', text: JSON.stringify(HELD_WAIT)}]}) && !turnOver('{"ok":true,"why":"time passed"}') && !turnOver('{"turn_over":false}'), 'turnOver reads the tool result in every shape');
+  const seen = []; const H = tableHooks({idle: on => seen.push(on), onOver: () => seen.push('over')});
+  const post = H.PostToolUse[0].hooks[0], pre = H.PreToolUse[0].hooks[0];
+  await pre({}); const c1 = await post({tool_response: '{"ok":true,"why":"time passed"}'}); await pre({}); const c2 = await post({tool_response: '{"ok":true,"turn_over":true}'});
+  ok(c1.continue === undefined && c2.continue === false && seen.join() === 'true,false,true,false,over', 'an ordinary wait lets the turn go on; turn_over stops it, and the lease hears idle on and off: ' + seen.join());
+  TABLE.liveMs = liveMs0; TABLE.wakeGapMs = gap0; setRunnerLinks(null); S.table = null;
 }
 closeOllama();
 for (const k of kids) try {k.kill()} catch {}

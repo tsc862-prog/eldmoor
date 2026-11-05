@@ -217,6 +217,7 @@ export function setGambit(a,{id,when,and,then,before,on,why}={}){
     if(L.length>=GAMBIT.MAX)return {error:'You keep at most '+GAMBIT.MAX+' rules; drop_gambit one first. '+ids(L)};
     const nr={id:nextId(L),...rule};
     if(before!=null&&String(before).trim()!==''){const b=findRule(L,before);if(!b)return {error:'No rule '+before+' to put it before. '+ids(L)};L.splice(L.indexOf(b),0,nr)}else L.push(nr);
+    const W=a.gambitWrote||(a.gambitWrote={n:0,ab:0});W.n++;if(nr.then==='use_ability')W.ab++; // rules the hero wrote itself (#779), read by the behavior digest
     return {text:'added rule '+nr.id+' at place '+(L.indexOf(nr)+1)+': '+ruleText(nr)}})}
 export function moveGambit(a,{id,before,after,why}={}){return edit(a,'move',why,L=>{const r=findRule(L,id);if(!r)return {error:'No rule '+id+'. '+ids(L)};
   const bv=before!=null&&String(before).trim()!=='',av=after!=null&&String(after).trim()!=='';if(bv===av)return {error:'Say where: before or after (a rule id, or "top" / "bottom").'};

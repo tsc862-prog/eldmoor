@@ -8,7 +8,9 @@
 //             and the first board job), the members introduce themselves (a silent agent's reflex shows its persona line),
 //             the leader is confirmed or contested, and the first move (the hall's job, the gate captain's writ) is put to
 //             them. Introductions at the opening count as met (sim/talk.js). A solo's opening is short: the gate captain
-//             and a rumour; an heir's (below) adds the Chronicle's line about who fell.
+//             and a rumour; an heir's (below) adds the Chronicle's line about who fell. It waits for the whole company (#771): with
+//             a member out of shouting range of the leader the opening holds (q.hold), tells them to walk there, and after
+//             ARRIVE.GATHER_MIN opens with those present, the frame naming who is missing.
 //   arrival   a fallen member's recruit. Owner decision 5: the recruit is seeded into the company as today (the fallen
 //             member's class, SEED_BEHIND under the lowest living member) but arrives in a DM-narrated scene at the
 //             company's next camp or town, never in the Crypt, a raid or a fight. The newcomer is made and seated when the
@@ -25,10 +27,11 @@
 // opening scene, so the seeded hashes do not move. Flavour picks use a hash of ids, never the gameplay RNG.
 //
 // State (plain data, saved with the world):
-//   S.opening  {queue:[{company, kind:'new'|'heir', fallen?, cause?}]}  openings still to play; gone once all have
+//   S.opening  {queue:[{company, kind:'new'|'heir', fallen?, cause?, hold?:{since, away:[id], where}}]}  openings still to play; gone once all have
 //   C.arrivals [{slot?, cls, fallen, name, lvl, since}]                   recruits waiting for the next camp or town
-import {S,clockStr,dayNo} from './state.js';
+import {S,clockStr,dayNo,noOthers} from './state.js';
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
@@ -43,13 +46,16 @@ import {notify} from './notify.js';
 import {remember} from './memory.js';
 import {bond} from './bonds.js';
 import {tm} from '../data/traits.js';
-import {CAP as CHAT_CAP} from './chat.js';
+import {CAP as CHAT_CAP,speak,agentLine} from './chat.js';
+import {swornOf,threadOf,threadText,oathSaid,hushOath} from './oath.js'; // only what was sworn is told at the table (#800)
+import {swearBlock,swearWord,takeOath,setAside} from './sworn.js';
 import {hasLinks,runnerLink,agentLive} from './runlink.js';
 import {prepActive} from './prep.js';
 import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {TABLE,openScene,setSceneKind,tableOn,sceneFor,callSeen,callLeft} from './table.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
-import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf} from './company.js';
+import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf,placeWord} from './company.js';
+import {inRange} from './reach.js';
 
 export const ARRIVE={
   POLL_MS:5000,   // the table waits for the DM's voice only if its runner polled table_call this recently (as staged scenes)
@@ -57,6 +63,7 @@ export const ARRIVE={
   LINE_MAX:2000,  // a technical ceiling for the DM's lines
   WAIT_DAYS:4,    // a recruit waits this many game days for a camp or a town, then arrives wherever the company is
   HEIR_WAIT:60,   // game minutes a solo's heir's opening waits for a runner to hold the heir (a new hero id), then plays without one
+  GATHER_MIN:540, // game minutes session zero waits for members out of range (#771): PREP.MS of real time at 1x, then it opens with those present
 };
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
 const byId=id=>S.agents.find(x=>x.id==id)||null;
@@ -81,7 +88,7 @@ function firstMoves(town){const hooks=(S.adventures||[]).filter(v=>v.phase==='op
 function rumourNear(a){let best=null,bd=1e9;for(const m of S.mobs||[]){if(!m.alive||!(m.elite||m.named))continue;const d=dist(a,m);if(d<bd){bd=d;best=m}}
   return best?(best.name||MOBS[best.type].name)+' is seen in '+(ZONES[zoneAt(best.x,best.y)]||'the wilds'):null}
 // A member's introduction in their own words, from their persona (a silent agent's reflex shows this line).
-function introLine(a){const P=a.persona||{},home=homeOf(a).name,w=P.wants?low(String(P.wants)).replace(/[.!?]+$/,''):null;
+function introLine(a){const P=a.persona||{},home=a.born||homeOf(a).name,own=!(a.goal&&a.goal.offered)||(P.by&&P.by.wants==='self'),w=P.wants&&own?low(String(P.wants)).replace(/[.!?]+$/,''):null; // a want seeded from an unsworn thread is not said for them (#800)
   return a.name+', a '+(a.cls||'hero').toLowerCase()+' of '+home+(w?', who wants '+w:'')}
 
 // ---- the opening (session zero, #437) ----
@@ -91,12 +98,28 @@ export const openingPending=()=>!!(S.opening&&S.opening.queue&&S.opening.queue.l
 export function planOpening(){const CS=companies();if(!CS.length)return null;const f=followed();
   const ids=CS.map(C=>C.id).sort((x,y)=>(f&&x===f.id?-1:f&&y===f.id?1:x-y));
   S.opening={queue:ids.map(id=>({company:id,kind:'new'}))};return S.opening}
+// Members the leader cannot shout to: the opening takes only those in range (present() in sim/table.js).
+const farFrom=C=>{const ld=leadOf(C);return ld?memOf(C).filter(b=>b!==ld&&b.state!=='downed'&&!inRange(ld,b)):[]};
+// Session zero waits for the whole company (#771). True when the opening may open: everyone in range, or the wait is up.
+function gathered(q){const C=q.kind==='new'?companyById(q.company):null;if(!C||!tableOn())return true;
+  const far=farFrom(C);if(!far.length){delete q.hold;return true}
+  const ld=leadOf(C),town=townOf(C),inTown=ld.state==='town',where=inTown?town:ld.name;
+  if(!q.hold){q.hold={since:Math.round(S.gameMin),away:[],where};const who=names(far.map(a=>a.name));
+    log(gd(C.name||ld.name+'\'s company'),' holds its first table in ',gd(town),' for ',who,'.');
+    for(const b of memOf(C))if(!far.includes(b))notify(b,'The first table waits for '+who+'; stay close, it opens when they reach you.',false)}
+  for(const a of far)if(!q.hold.away.includes(a.id))notify(a,'Your company waits for you at '+where+' for its first table: walk there now ('+(inTown?'move_to '+town:'follow '+ld.name)+').',true,2);
+  q.hold.away=far.map(a=>a.id);q.hold.where=where;
+  return S.gameMin-q.hold.since>=ARRIVE.GATHER_MIN}
+// The panels and the DM's status: who session zero waits for, or null.
+export function openingWait(){const q=S.opening&&S.opening.queue&&S.opening.queue.find(x=>x.hold);if(!q)return null;const C=companyById(q.company);
+  return {company:C&&C.name||null,where:q.hold.where,names:q.hold.away.map(byId).filter(living).map(a=>a.name),minutes_left:Math.max(0,Math.round(ARRIVE.GATHER_MIN-(S.gameMin-q.hold.since)))}}
 function openingFrame(C,q){const L=memOf(C),ld=leadOf(C),town=townOf(C),d=Math.floor(S.gameMin/1440)+1,{job,writ}=firstMoves(town);
   if(L.length===1){const a=L[0],r=rumourNear(a);
     const head=q.kind==='heir'?[a,' comes to ',gd(town),', sent for after ',gd(q.fallen||'one who fell'),' fell'+(q.cause?' ('+q.cause+')':'')+'. ']:[a,' stands at the gate of ',gd(town),' on day '+d+'. '];
     return [...head,'The gate captain has '+(writ?'a writ: '+writ:'nothing posted yet')+'.',r?' In the inn they say '+r+'.':'']}
-  const oaths=L.filter(a=>a.goal&&!a.goal.done).map(a=>a.name+' has sworn to '+low(a.goal.text).replace(/[.!?]+$/,''));
-  return [gd(C.name||'The company'),' sits at one table in '+town+' for the first time, day '+d+': '+names(L.map(a=>a.name))+'. ',ld?ld.name+' has the head of the table. ':'',
+  const oaths=L.filter(swornOf).map(a=>oathSaid(a));
+  const far=farFrom(C),here=L.filter(a=>!far.includes(a));
+  return [gd(C.name||'The company'),' sits at one table in '+town+' for the first time, day '+d+': '+names(here.map(a=>a.name))+'. ',far.length?names(far.map(a=>a.name))+(far.length>1?' have':' has')+' not reached the table. ':'',ld?ld.name+' has the head of the table. ':'',
     oaths.length?oaths.join('; ')+'. ':'','On the board by the door: '+(job||'nothing yet')+(writ?'; the gate captain\'s writ: '+writ:'')+'.']}
 function openOpening(q){const C=companyById(q.company),L=memOf(C);if(!C||!L.length)return null;const ld=leadOf(C),town=townOf(C),solo=L.length===1;
   if(q.kind==='heir')log(nar(''),'The Chronicle remembers ',gd(q.fallen||'one who fell'),(q.cause?', '+q.cause:'')+'. In '+town+', ',L[0],' takes up the road.');
@@ -104,7 +127,8 @@ function openOpening(q){const C=companyById(q.company),L=memOf(C);if(!C||!L.leng
   const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,setting:'tavern',...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town)};
   const frame=openingFrame(C,q);
   if(!tableOn())return settleOpening(C,ctx,[],title);
-  const sc=openScene('opening',title,frame,ctx,C);
+  const far=farFrom(C),sc=openScene('opening',title,frame,ctx,C);
+  for(const b of far)notify(b,'Your company sat down in '+town+' without you. Ask them what was said when you reach them.',false);
   if(!sc)return settleOpening(C,ctx,[],title); // nobody of theirs has the say: the line for the record, no scene
   return sc}
 function optsOpening(sc,a){const c=sc.ctx,ld=byId(c.lead);
@@ -113,12 +137,19 @@ function optsOpening(sc,a){const c=sc.ctx,ld=byId(c.lead);
   return [{k:'introduce',text:'Introduce yourself'+(ld?'; '+ld.name+' leads':'')},{k:'lead',text:'Introduce yourself and offer to lead instead'+(ld?' of '+ld.name:'')}]}
 function reflexOpening(sc,a){const c=sc.ctx;if(c.solo)return 'listen';const ld=byId(c.lead);if(ld===a)return 'introduce';
   return tm(a,'bold')>1.2&&ld&&a.lvl>ld.lvl?'lead':'introduce'}
-function applyOpening(sc,a,act){const k=act.k,c=sc.ctx;
-  if(k==='introduce'){const t=introLine(a);if(act.by!=='agent'&&a.player)return 'introduces themself: '+t;return 'introduces themself'}
-  if(k==='lead')return 'offers to lead';
-  if(k==='yield')return 'offers the lead';
-  if(k==='listen')return c.writ?'hears the writ: '+c.writ:'hears the gate captain out';
+function applyOpening(sc,a,act){const k=act.k,c=sc.ctx,sw=act.swear?swearAt(sc,a,act.swear):'';
+  if(k==='introduce'){const t=introLine(a);if(act.by!=='agent'&&a.player)return 'introduces themself: '+t;return 'introduces themself'+sw}
+  if(k==='lead')return 'offers to lead'+sw;
+  if(k==='yield')return 'offers the lead'+sw;
+  if(k==='listen')return (c.writ?'hears the writ: '+c.writ:'hears the gate captain out')+sw;
   return null}
+// The hero's own answer to its past (#800): sworn aloud before those at the table, or set aside in silence.
+function swearAt(sc,a,raw){const w=swearWord(raw);if(swearBlock(a,w))return '';if(w==='no'){setAside(a);return ''}
+  const t=w==='yes'?a.goal.text:w;agentLine(a,speak(a,(/swear/i.test(t)?t:'I swear it: '+t).slice(0,240),'agent'));
+  const g=takeOath(a,w,{by:'table',hearers:sc.ids.map(byId).filter(b=>living(b)&&b!==a)});return ' and swears: "'+g.text+'"'}
+// What the first table asks of this hero alone (tableView): its thread, and that nothing binds it.
+function viewOpening(sc,a){if(sc.acts[a.id]||swornOf(a))return {};const t=threadText(a);
+  return {swear:'You may swear your own oath as you act (swear: your words; "yes" takes up what your past holds, "no" sets it aside). Say nothing of it and you are bound to nothing.',...(t?{your_past:t}:{})}}
 // The outcome: met, the leader, the first move. beats: the table's acts (none when no scene could open).
 function settleOpening(C,ctx,beats,title){const L=memOf(C),ids=beats.length?beats.map(b=>b.id):L.map(a=>a.id),here=ids.map(byId).filter(living);
   for(const a of here)for(const b of here)if(a!==b)(a.talkHeard||(a.talkHeard={}))[b.id]=1; // introductions at the opening count as met (sim/talk.js)
@@ -144,11 +175,12 @@ function queueArrival(C,q){if(!q.cls)return false;reserve(C.fac,q.cls);(C.arriva
   for(const b of memOf(C))if(b.player)notify(b,'Word goes back to '+townOf(C)+': '+q.name+'\'s place will be filled. The newcomer will meet you at your next camp or in town.',false);return true}
 setArrivalHook((F,q)=>hosted()?queueArrival(F,q):false);
 // Any other company: an agent member's seat is refilled the same way; a solo's heir starts at home (owner answer 2).
-setCompanyDeathHook((C,a)=>{if(!hosted()||!a||!a.player)return;
+// In a world with no others (#780) no recruit comes behind them: the last of a company always leaves an heir, host or no host.
+setCompanyDeathHook((C,a)=>{const none=noOthers();if(!(hosted()||none)||!a||!a.player)return;
   const rest=C.ids.map(byId).filter(x=>living(x)&&x!==a);
-  if(rest.length){queueArrival(C,{cls:a.cls,fallen:a.id,name:a.name,lvl:a.lvl});return}
-  if(!LIVE[runnerLink(a)])return; // a solo nobody was playing leaves no heir behind (its replacement is the world's usual recruit)
-  reserve(a.fac,a.cls);const h=makeHero(a.fac,a.cls,null,1);h.succeeds=a.id;markPlayer(h,true);const N=soloFor(h);
+  if(rest.length){if(hosted())queueArrival(C,{cls:a.cls,fallen:a.id,name:a.name,lvl:a.lvl});return}
+  if(!none&&!LIVE[runnerLink(a)])return; // a solo nobody was playing leaves no heir behind (its replacement is the world's usual recruit)
+  reserve(a.fac,a.cls);const h=hushOath(()=>makeHero(a.fac,a.cls,null,1));h.succeeds=a.id;markPlayer(h,true);const N=soloFor(h);
   if(N&&C.letters){N.letters={};for(const k in C.letters){const l=C.letters[k];if(l&&l.from===a.id)N.letters[k]={...l}}}
   if(N)(S.opening||(S.opening={queue:[]})).queue.push({company:N.id,kind:'heir',fallen:a.name,cause:a.cause||null,since:Math.round(S.gameMin)})});
 // An heir's opening waits (up to HEIR_WAIT) until a runner holds the new hero, so the scene is its agent's and not settled
@@ -163,11 +195,15 @@ function settled(C){const L=memOf(C);if(!L.length)return false;const g=CRYPT.gro
   const ld=leadOf(C);return ld&&ld.state==='town'?'town':false}
 function makeRecruit(C,q){if(isFellowship(C))return seatRecruit(C,q);
   const L=members(C);if(!L.length||C.ids.length>=8)return null;
-  const a=makeHero(C.fac,q.cls,null,1);seedLevel(a,Math.min(...L.map(b=>b.lvl))-2);
+  const a=hushOath(()=>makeHero(C.fac,q.cls,null,1));seedLevel(a,Math.min(...L.map(b=>b.lvl))-2);
   if(!joinCompany(C,a).ok)return null;markPlayer(a,true);if(q.fallen!=null)a.succeeds=q.fallen;return a}
-function place(C,a,where){if(where==='camp'){const g=C.camp;a.x=g.x+1.2;a.y=g.y+.9;a.state='camp';a.camp=g.ids.length;a.dest=null;a.moving=false;if(!g.ids.includes(a.id))g.ids.push(a.id);return 'the camp\'s edge'}
-  const c=homeOf(leadOf(C)||a),gt=c.gate||c.qg;if(gt){a.x=gt.x;a.y=gt.y}a.town=isFellowship(C)?C.hall:a.town;a.state='town';a.townStep=1;return 'the gate of '+c.name}
-function openArrival(C,q,where){const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=q.slot?lcRoleOf(q.slot):roleOf(a.cls);
+function place(C,a,where){const ld=leadOf(C)||a,town=isFellowship(C)?C.hall:ld.town||a.town;
+  if(a.town&&a.town!==town){a.born=a.born||a.town;a.town=town} // home is where the company is (#771); their people's town stays in their origin text
+  if(where==='road'){Object.assign(a,standAt(ld.x+1.2,ld.y+.9));a.zone=ld.zone;a.state='hunt';a.dest=null;a.moving=false;return ld.name+'\'s side'} // the wait ran out in the field: they come to the company, not to an empty gate
+  if(where==='camp'){const g=C.camp;Object.assign(a,standAt(g.x+1.2,g.y+.9));a.state='camp';a.camp=g.ids.length;a.dest=null;a.moving=false;if(!g.ids.includes(a.id))g.ids.push(a.id);return 'the camp\'s edge'}
+  const c=homeOf(ld),gt=c.gate||c.qg;if(gt){a.x=gt.x;a.y=gt.y}a.state='town';a.townStep=1;return 'the gate of '+c.name}
+function openArrival(C,q,where){const lead=leadOf(C);if(where==='town'&&lead&&lead.state!=='town')where='road';
+  const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=placeWord(a.cls);
   const title='A newcomer: '+a.name;
   const frame=[a,', a level '+a.lvl+' '+a.cls.toLowerCase()+', comes to '+at+', sent to take ',gd(q.name),'\'s place as the company\'s '+role+'.'];
   const ctx={arrival:1,recruit:a.id,fallen:q.fallen,fname:q.name,role,slot:q.slot||null,skip:[a.id],anchor:ld?ld.id:null,at,...(where==='town'?{setting:'tavern',town:homeOf(leadOf(C)||a).name}:{})};
@@ -228,7 +264,7 @@ const DM_ARRIVE={
 };
 function resolve(sc,c,{text,by}){c.done=true;c.by=by;c.text=text||'';if(text)say(sc,text,NARRATOR);
   dmlog('agent',null,['At the table ('+sc.kind+', '+c.kind+'): ',text||'-',by==='scripted'?' [scripted fill'+(c.t>0?': '+lateWhy(c.seen):'')+']':''],{by,call:c.kind,scene:sc.kind,text,...(by==='scripted'?{fill:true,why:fillWhy(c),...(c.t>0?{late:lateWhy(c.seen)}:{})}:{})},{heroes:[]})}
-setSceneKind('opening',{options:optsOpening,reflex:reflexOpening,apply:applyOpening,outcome:sc=>settleOpening(companyById(sc.company)||slotted(),sc.ctx,sc.beats,sc.title),dm:DM_OPEN});
+setSceneKind('opening',{options:optsOpening,reflex:reflexOpening,apply:applyOpening,view:viewOpening,swear:(sc,a,raw)=>swearBlock(a,raw),outcome:sc=>settleOpening(companyById(sc.company)||slotted(),sc.ctx,sc.beats,sc.title),dm:DM_OPEN});
 setSceneKind('arrival',{options:optsArrival,reflex:reflexArrival,apply:applyArrival,outcome:sc=>settleArrival(companyById(sc.company)||slotted(),sc.ctx,sc.beats),dm:DM_ARRIVE});
 
 // ---- the DM's tools for these scenes (sim/dmagent.js hands table_call / table_answer here while one is at the table) ----
@@ -254,10 +290,10 @@ export function sceneAnswer(a){a=a&&typeof a==='object'?a:{};const sc=ourScene()
 export function sessionTick(){const O=S.opening,CS=S.companies;
   if(!(O&&O.queue&&O.queue.length)&&!(CS&&CS.some(C=>C.arrivals&&C.arrivals.length)))return; // the common case: nothing to open
   if(!hosted()){if(O&&!O.queue.length)delete S.opening;return}
-  if(O&&O.queue&&O.queue.length){if(prepActive())return;const i=O.queue.findIndex(q=>heirReady(q)&&!sceneFor(companyById(q.company)));
+  if(O&&O.queue&&O.queue.length){if(prepActive())return;const i=O.queue.findIndex(q=>heirReady(q)&&!sceneFor(companyById(q.company))&&gathered(q));
     if(i>=0){const q=O.queue.splice(i,1)[0];if(!O.queue.length)delete S.opening;openOpening(q);return}}
   for(const C of companies()){if(!C.arrivals||!C.arrivals.length||sceneFor(C))continue; // each company its own table (#518)
-    const where=settled(C)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!(CRYPT.group&&CRYPT.group.mem.some(a=>memOf(C).includes(a)))?'town':false);if(!where)continue;
+    const where=settled(C)||(noOthers()&&!memOf(C).length?'town':false)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!(CRYPT.group&&CRYPT.group.mem.some(a=>memOf(C).includes(a)))?'town':false);if(!where)continue;
     const q=C.arrivals.shift();if(!C.arrivals.length)delete C.arrivals;openArrival(C,q,where);return}}
 // The panels: what waits.
 export function arrivalsView(C){return (C&&C.arrivals||[]).map(q=>({cls:q.cls,fallen:q.name,since:q.since}))}

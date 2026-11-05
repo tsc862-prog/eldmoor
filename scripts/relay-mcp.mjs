@@ -72,6 +72,13 @@ import {DM_TOOLS} from '../src/data/dm-tools.js';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
 export const CALL_MS = 15000, WAIT_MS = 60000, MAX_BODY = 16 * 1024;
+// A slow page (#736). LATE_MS: a call the page answers after the relay gave up on it is kept this long for the runner's retry
+// of the same tool and args (the retry gets that answer, or joins the call still pending, instead of asking the page again).
+// The page sends a beat every few seconds (src/ui/player-bridge.js); a page silent for PAGE_SILENT_MS is busy (its thread blocked).
+export const LATE_MS = 30000, LATE_MAX_MS = 5 * 60000, PAGE_SILENT_MS = 5000;
+// A `wait` the page has not answered when WAIT_MS runs out (src/sim/player.js holds one at most PK.WAIT_REAL_MS, so a slow page) is
+// not offline. The turn ends here (turn_over, #868: nobody keeps a Claude slot for a wait) and pacing starts the next one.
+export const HELD_WAIT = {ok: true, waited_min: 0, held: true, turn_over: true, why: 'the game has not answered this wait yet; your turn is over: end it here, you will be woken when something needs you (the world is not offline)'};
 export const DM_VOICE_MS = 10000; // the longest a voice call counts as pending without its answer (#682)
 export const DM_WAIT_MAX = 25000; // the longest long poll of table_call / npc_call / ruling_call {wait_ms} (#680; src/sim/player-host.js DM_WAIT.MAX)
 // What an agent hears while the game page is away (#399): a pause in the world, not advice to a human ("Press Agent ...", which
@@ -99,16 +106,47 @@ const cleanHeroes = list => (Array.isArray(list) ? list : []).filter(h => h && t
 export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes.length - 1] || null);
 
 // ---- the browser backend: one page at a time over a WebSocket, serving all its agent heroes ----
-export function browserBackend({log = () => {}, onBehavior = null, onWorld = null, onMirror = null, onHello = null} = {}) {
-  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false, dmPrep = null, worldId = null;
+// callMs, waitMs, lateMs, silentMs: the time-outs above (checks shorten them). onPageLate({tool, ms, silentMs, seat}): a call the
+// page did not answer in time while it was silent (no beat, no message for silentMs): the page's thread was busy (#736).
+export function browserBackend({log = () => {}, onBehavior = null, onWorld = null, onMirror = null, onHello = null, onPageLate = null, callMs = CALL_MS, waitMs = WAIT_MS, lateMs = LATE_MS, silentMs = PAGE_SILENT_MS, now = () => Date.now()} = {}) {
+  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false, dmPrep = null, worldId = null, heardAt = 0;
   const waiting = new Map();
   const send = o => {if (sock && sock.readyState === 1) sock.send(JSON.stringify(o))};
+  // Late answers (#736): key (seat, tool, args) -> {id, at, done, result, joined: [{res, t}]} for calls the relay gave up on; lateOf: call id -> key.
+  const late = new Map(), lateOf = new Map(), stats = {late: 0, lateServed: 0, joined: 0, pageBusy: 0};
+  const stable = v => Array.isArray(v) ? '[' + v.map(stable).join(',') + ']' : v && typeof v === 'object' ? '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stable(v[k])).join(',') + '}' : JSON.stringify(v === undefined ? null : v);
+  const prune = () => {const t = now(); for (const [k, L] of late) if (!L.joined.length && t - L.at > (L.done ? lateMs : LATE_MAX_MS)) {late.delete(k); if (L.id != null) lateOf.delete(L.id)}};
+  const silent = () => now() - heardAt; // ms since the page last said anything (a beat every few seconds while its thread runs)
+  const asLate = r => r && typeof r === 'object' ? {...r, late: true} : r;
+  // What a timed-out call answers: a held wait on a live page is not offline; otherwise offline, 'page busy' when the page went silent.
+  const timedOut = (seatKey, tool, ms) => {const q = silent();
+    if (tool === 'wait' && q < silentMs) return {...HELD_WAIT};
+    if (q >= silentMs) {stats.pageBusy++; send({type: 'pagelate', tool, ms, silentMs: q}); if (onPageLate) try {onPageLate({tool, ms, silentMs: q, seat: seatKey})} catch {} return paused('page busy')}
+    return paused('no answer in time')};
+  // One forwarded call with the late-answer keep: a retry of the same seat, tool and args gets the answer the page gave late, or joins
+  // the call still pending, instead of asking the page a second time (a scene_act that took 16 s still lands, once).
+  function ask(seatKey, tool, args, ms, msg) {
+    prune(); const key = seatKey + '|' + tool + '|' + stable(args || {}), L = late.get(key);
+    if (L && L.done) {late.delete(key); stats.lateServed++; log(`[play] ${seatKey} ${tool}: the page's late answer goes to the retry`); return Promise.resolve(asLate(L.result))}
+    if (L) {stats.joined++; return new Promise(res => {const j = {res}; j.t = setTimeout(() => {const i = L.joined.indexOf(j); if (i >= 0) L.joined.splice(i, 1); L.at = now(); res(timedOut(seatKey, tool, ms))}, ms); L.joined.push(j)})}
+    const id = ++seq;
+    return new Promise(res => {
+      const t = setTimeout(() => {waiting.delete(id); stats.late++; late.set(key, {id, at: now(), done: false, result: null, joined: []}); lateOf.set(id, key); res(timedOut(seatKey, tool, ms))}, ms);
+      waiting.set(id, {res, t});
+      send(msg(id));
+    });
+  }
+  function lateResult(id, result) {const key = lateOf.get(id); lateOf.delete(id); const L = key && late.get(key); if (!L) return;
+    if (L.joined.length) {late.delete(key); stats.lateServed++; for (const j of L.joined.splice(0)) {clearTimeout(j.t); j.res(asLate(result))} return}
+    L.done = true; L.result = result; L.at = now(); L.id = null}
   return {
     attach(ws) {
       if (sock && sock !== ws) try {sock.close(4000, 'replaced')} catch {}
-      sock = ws; heroes = []; lastLinks = ''; log('[play] game page connected');
+      sock = ws; heroes = []; lastLinks = ''; heardAt = now(); late.clear(); lateOf.clear(); log('[play] game page connected');
       ws.on('message', buf => {
         let m; try {m = JSON.parse(String(buf))} catch {return}
+        if (sock === ws) heardAt = now(); // any message (a beat every few seconds) says the page's thread runs
+        if (m.type === 'beat') return;
         if (m.type === 'hello') {
           // {heroes:[...]} since #93; an older page sends {hero} alone
           const next = cleanHeroes(Array.isArray(m.heroes) ? m.heroes : m.hero ? [m.hero] : []);
@@ -123,33 +161,27 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
         } else if (m.type === 'behavior' && onBehavior && typeof m.kind === 'string') {try {onBehavior(m.kind, m.rec)} catch (e) {log('[play] behavior log: ' + e.message)}}
         else if (m.type === 'mirror' && onMirror && Array.isArray(m.seats)) {try {onMirror(m.seats)} catch (e) {log('[play] memory mirror: ' + e.message)}} // agent memories as Markdown (#155); written, never read back
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
+        else if (m.type === 'result' && lateOf.has(m.id)) lateResult(m.id, m.result); // answered after the relay gave up: kept for the retry (#736)
       });
       ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; dmPrep = null; worldId = null; log('[play] game page disconnected');
-        for (const [id, w] of waiting) {clearTimeout(w.t); w.res(paused('page went away')); waiting.delete(id)}});
+        for (const [id, w] of waiting) {clearTimeout(w.t); w.res(paused('page went away')); waiting.delete(id)}
+        for (const L of late.values()) for (const j of L.joined.splice(0)) {clearTimeout(j.t); j.res(paused('page went away'))}
+        late.clear(); lateOf.clear()});
     },
     info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat, ...(worldId ? {worldId} : {}), ...(dmPrep ? {dmPrep} : {})}),
+    page: () => ({silentMs: sock ? silent() : null, ...stats, kept: late.size}), // the page's liveness and the late-answer counts (#736)
     // A DM tool call (issue #66), answered by the page through src/sim/dmagent.js.
     dmCall(tool, args) {
       if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
       if (!dmSeat) return Promise.resolve({ok: false, error: 'The DM seat is closed: the page opens it for the world it plays.', offline: true});
-      const id = ++seq;
       const held = Math.min(DM_WAIT_MAX, Math.max(0, Number(args && args.wait_ms) || 0)); // a long-polled voice call (#680) is held by the page up to wait_ms
-      return new Promise(res => {
-        const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, CALL_MS + held);
-        waiting.set(id, {res, t});
-        send({type: 'dmcall', id, tool, args: args || {}});
-      });
+      return ask('dm', tool, args, callMs + held, id => ({type: 'dmcall', id, tool, args: args || {}}));
     },
     call(heroId, tool, args) {
       if (!sock || sock.readyState !== 1) return Promise.resolve(paused('game not connected'));
       if (!heroes.length) return Promise.resolve(paused('no agent hero listed'));
       if (!heroes.some(h => h.id === heroId)) return Promise.resolve({ok: false, error: `Hero #${heroId} is not agent-played in the game.`, offline: true});
-      const id = ++seq;
-      return new Promise(res => {
-        const t = setTimeout(() => {waiting.delete(id); res(paused('no answer in time'))}, tool === 'wait' || tool === 'pace' ? WAIT_MS : CALL_MS);
-        waiting.set(id, {res, t});
-        send({type: 'call', id, hero: heroId, tool, args: args || {}});
-      });
+      return ask('hero:' + heroId, tool, args, tool === 'wait' || tool === 'pace' ? waitMs : callMs, id => ({type: 'call', id, hero: heroId, tool, args: args || {}}));
     },
     narrate(heroId, text) {send({type: 'narrate', hero: heroId, text: String(text).slice(0, 600)})},
     // Runner link states for the page's Agent tab and Minds panel; sent only when they change.
@@ -204,13 +236,16 @@ const readBody = req => new Promise((res, rej) => {
 // embed: a scripts/embed.mjs semanticRecall (issue #553): recall and journal_search of a hero (and the DM's recall) get the meaning scores the game folds into its keyword ranking; without it, or when it has nothing, the tool answers as before.
 // mirror: a scripts/memory-mirror.mjs writer (issue #155) for the page's {type:'mirror', seats} messages.
 // behavior: a scripts/behavior-log.mjs writer (issue #129); without it the host keeps no behavior logs.
-export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null, embed = null, offlineWaitMs = OFFLINE_WAIT_MS} = {}) {
+// pageOpts: the browser backend's time-outs (callMs, waitMs, lateMs, silentMs; checks shorten them, #736).
+export function attachPlay(server, {backend = null, origin = 'http://localhost:5173', log = console.log, verbose = null, now = () => Date.now(), behavior = null, mirror = null, embed = null, offlineWaitMs = OFFLINE_WAIT_MS, pageOpts = {}} = {}) {
   let links = () => ({}), runners = () => ({}); // defined below; the page's digests carry them
   // A wish (#663) is stamped with the model that holds its seat; nothing of it ever goes back out.
   const wishRunner = seat => {try {const s = String(seat || ''), r = s === 'dm' ? runnerOf(DM_KEY) : runnerOf(Number.isFinite(+s.slice(5)) ? +s.slice(5) : s.slice(5)); return r ? {provider: r.provider || null, model: r.model || null} : {}} catch (e) {return {}}};
   const behaviorIngest = (kind, rec) => behavior ? behavior.ingest(kind, kind === 'wish' && rec && rec.type === 'wish' ? {...wishRunner(rec.seat), ...rec} : rec, {links: links(), runners: runners()}) : false;
-  const be = backend || browserBackend({log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror || embed ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id); if (embed) embed.setWorld(w, id)} : null,
-    onMirror: mirror ? seats => mirror.write(seats) : null, onHello: () => pushLinks()}); // mirror: scripts/memory-mirror.mjs (issue #155)
+  const be = backend || browserBackend({...pageOpts, log, onBehavior: behavior ? behaviorIngest : null, onWorld: behavior || mirror || embed ? (w, id) => {if (behavior) behavior.setWorld(w); if (mirror) mirror.setWorld(w, id); if (embed) embed.setWorld(w, id)} : null,
+    onMirror: mirror ? seats => mirror.write(seats) : null, onHello: () => pushLinks(), // mirror: scripts/memory-mirror.mjs (issue #155)
+    onPageLate: info => {log(`[play] the page did not answer ${info.seat} ${info.tool} in ${(info.ms / 1000).toFixed(0)} s and has been silent ${(info.silentMs / 1000).toFixed(1)} s: page busy`); // #736
+      if (behavior && behavior.anomaly) behavior.anomaly({kind: 'page-stall', seat: 'page', severity: 'bad', src: 'relay', text: `the page did not answer ${info.tool} (${info.seat}) in ${(info.ms / 1000).toFixed(0)} s; silent for ${(info.silentMs / 1000).toFixed(1)} s (its thread was busy)`, evidence: {tool: info.tool, seat: info.seat, ms: info.ms, silentMs: Math.round(info.silentMs)}})}});
   const stats = {calls: 0, errors: 0, offlineWaits: 0};
   const claims = new Map(), act = new Map(); // hero id -> {runner, at} / {last, inflight}
   const vlog = rec => {if (!verbose) return; try {mkdirSync(dirname(verbose), {recursive: true}); appendFileSync(verbose, JSON.stringify(rec) + '\n')} catch (e) {log(`[play] verbose log failed: ${e.message}`)}};
@@ -281,7 +316,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   // The DM's voice is answering a call (#682): a voice poll handed it a call (table/talk/ruling) and its answer has not come
   // yet. The runner supervisor lets a hero's Claude slot request yield DM_FIRST_MS meanwhile (scripts/runners.mjs).
   let dmVoiceAt = 0;
-  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say']);
+  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call', 'companion_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say', 'companion_say']);
   const dmVoiceBusy = () => dmVoiceAt > 0 && now() - dmVoiceAt < DM_VOICE_MS;
   // A DM tool call (issue #66): counted, logged, never thrown.
   async function dmCall(tool, args) {
@@ -299,7 +334,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
     if (VOICE_POLLS.has(tool) && r.ok && r.call && Number(r.call.seconds_left) > 0) dmVoiceAt = now(); else if (VOICE_ANSWERS.has(tool) && (tool !== 'npc_say' || (args && args.conv != null))) dmVoiceAt = 0;
-    if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
+    if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call' || tool === 'companion_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
     log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'}${note} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
     return r;
@@ -368,7 +403,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         return;
       }
       if (path === '/play/health' && req.method === 'GET') {const i = be.info(), hs = i.heroes || [], d = defaultHero(hs);
-        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id), rd = readyOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {}), ready: rd ? rd.state : null, ...(rd ? {warm: rd} : {})}}), dm: dmInfo(), ...stats})}
+        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id), rd = readyOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {}), ready: rd ? rd.state : null, ...(rd ? {warm: rd} : {})}}), dm: dmInfo(), ...(be.page ? {page: be.page()} : {}), ...stats})}
       if (path === '/mcp') {
         if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
         const body = await readBody(req);
@@ -425,7 +460,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (path === '/play/pace') {const id = hero;
         if (id == null) return send(400, {ok: false, error: 'pace needs the hero id'});
         const holder = heldBy(id, rid); if (holder) return send(409, refusedSeat(id, holder));
-        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.queued != null ? {queued: !!a.queued, ...(typeof a.why === 'string' ? {why: a.why.slice(0, 12)} : {})} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000))};
+        const a = b.args && typeof b.args === 'object' ? b.args : b, args = a.held ? {held: true} : a.brief ? {brief: true, ...(a.self ? {self: true} : {})} : a.queued != null ? {queued: !!a.queued, ...(typeof a.why === 'string' ? {why: a.why.slice(0, 12)} : {})} : a.reflected != null ? {reflected: String(a.reflected).slice(0, 40), wrote: Number(a.wrote) || 0} : {since: a.since ?? null, minutes: a.minutes, wake: a.wake === 'now' || a.wake === 'must' ? a.wake : 'all', reflect: !!a.reflect, realMs: Math.min(30000, Math.max(0, Number(a.realMs) || 10000)), ...(Number(a.hearWake) > 0 ? {hearWake: Math.min(1440, Number(a.hearWake))} : {})};
         let r; try {r = await be.call(id, 'pace', args)} catch (e) {r = {ok: false, error: String(e.message || e)}}
         return send(200, r && typeof r === 'object' ? r : {ok: false, error: 'no answer'})}
       if (path === '/play/narrate') {const id = resolve(hero);

@@ -15,6 +15,8 @@
 //      (claim tag, session file, "| run $" turn lines, the budget stopping the run, no key / unknown
 //      model refusals) and a one-turn Fellowship of OpenAI members.
 // Usage: npm run openaicheck
+import {fitTools, TOOL_DESC_MAX} from './providers/openai.mjs';
+import {dmMindCases} from './dm-mind-cases.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync} from 'node:fs';
@@ -59,6 +61,15 @@ console.log('openai adapter (mock server)');
   ok(priceFor('gpt-4o-2024-08-06') === PRICES['gpt-4o'] && costOf('nope-1', 10, 10) === null && /developers\.openai\.com\/api\/docs\/pricing \(read 2026-11-01\)/.test(PRICES_SOURCE), 'a dated snapshot maps to its family; an unlisted model has no price; the table cites its source and date');
   const u = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-future-1'});
   ok(u.usage.in === 1000 && u.usage.cost === 0 && u.usage.costKnown === false && u.usage.costNote === 'unknown', 'an unlisted model reports tokens with cost unknown');
+  // cached input (#728): prompt_tokens_details.cached_tokens is priced at the cached rate; no field = as before
+  mock.setCached(800);
+  const cr = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-6-luna'}), cu = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-6-astra'});
+  ok(cr.usage.in === 1000 && cr.usage.cached === 800 && Math.abs(cr.usage.cost - (200 * 0.10 + 800 * 0.01 + 20 * 0.50) / 1e6) < 1e-12, 'a reply with cached tokens: in stays the whole prompt, cached is split out and priced at the cached rate');
+  ok(PRICES['gpt-6.1-terra'].cached === 0.05 && PRICES['gpt-6-luna'].cached === 0.01 && Math.abs(costOf('gpt-6.1-terra', 4449, 56, 3900) - (549 * 1 + 3900 * 0.05 + 56 * 5) / 1e6) < 1e-12 && costOf('gpt-6-luna', 1000, 20, 5000) === costOf('gpt-6-luna', 1000, 20, 1000), 'terra and luna carry a cached price; cached is capped at the prompt');
+  ok(cu.usage.cached === 800 && Math.abs(cu.usage.cost - (1000 * 10 + 20 * 50) / 1e6) < 1e-12, 'a model with no cached price keeps the full input rate (an upper bound)');
+  mock.setCached(0);
+  const c0 = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-6-luna'});
+  ok(!('cached' in c0.usage) && Math.abs(c0.usage.cost - (1000 * 0.10 + 20 * 0.50) / 1e6) < 1e-12, 'a reply without the field prices exactly as before');
   // reasoning_effort: a model that rejects it is asked again without, and remembered
   const n0 = mock.seen.length; await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-4o-mini'}); await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-4o-mini'});
   ok(mock.seen.length === n0 + 3 && !('reasoning_effort' in mock.seen[mock.seen.length - 1]), 'a model that rejects reasoning_effort is asked again without it, and remembered');
@@ -87,6 +98,11 @@ console.log('openai adapter (mock server)');
   ok(cq.tools.length === ollamaTools().length && cq.tools[0].type === 'function' && cq.reasoning_effort === 'none', 'chat: the tools are sent as function tools, reasoning_effort none (Chat Completions needs it for tool calls)');
   const t = toOpenAI([{role: 'user', content: 'a'}, {role: 'assistant', content: '', tool_calls: [{function: {name: 'look', arguments: {}}}, {function: {name: 'wait', arguments: {minutes: 5}}}]}, {role: 'tool', tool_name: 'look', content: '{}'}, {role: 'user', content: 'next'}, {role: 'tool', tool_name: 'x', content: 'orphan'}]);
   ok(t[1].tool_calls.length === 2 && t[1].tool_calls[1].function.arguments === '{"minutes":5}' && t[2].tool_call_id === t[1].tool_calls[0].id && t[3].tool_call_id === t[1].tool_calls[1].id && t[3].content === '(not run)' && t[4].role === 'user' && t[5].role === 'user' && /orphan/.test(t[5].content), 'message translation: ids, JSON-string arguments, unanswered calls filled, orphan tool results become text');
+  // a function description past the API's limit (#824): cut at a sentence, the rest in the system message, the shorter ones untouched
+  {const long = 'First rule here. '.repeat(100).trim(), f = fitTools([{type: 'function', function: {name: 'big', description: long}}, {type: 'function', function: {name: 'small', description: 'short'}}], [{role: 'system', content: 'Orders.'}, {role: 'user', content: 'go'}]);
+   const d = f.tools[0].function.description, more = f.messages[0].content.split('big: ')[1];
+   ok(d.length <= TOOL_DESC_MAX && /\. \(more in your orders\)$/.test(d) && d.replace(' (more in your orders)', '').length + more.length + 1 === long.length && f.tools[1].function.description === 'short' && f.messages[0].content.startsWith('Orders.'), 'fitTools: nothing is lost and the description fits (' + d.length + ')');
+   const same = [{type: 'function', function: {name: 's', description: 'short'}}], m0 = [{role: 'user', content: 'x'}], g = fitTools(same, m0); ok(g.tools === same && g.messages === m0, 'fitTools leaves a request that fits alone')}
   // chat retries a 429 by itself (an agent turn has seconds to spare), up to its wait budget
   mock.set('rate', 1); const t0 = Date.now(); const rr = await ad.chat({model: 'gpt-6-luna', messages: [{role: 'user', content: 'x'}], tools: ollamaTools()});
   ok(rr.message && Date.now() - t0 >= 900 && Date.now() - t0 < 5000, 'chat: a 429 waits retry-after and tries again (' + (Date.now() - t0) + ' ms)');
@@ -127,6 +143,11 @@ console.log('openai through the relay');
 }
 
 console.log('agent loop over the OpenAI adapter');
+{
+  const { paidLine } = await import('./local-agent.mjs');
+  const base = {tools: 1, ms: 1000, modelMs: 500, modelCalls: 2, in: 4449, out: 56, cost: 0.001, costKnown: true};
+  ok(/tokens in 4449 \(3900 cached\) \/ out 56/.test(paidLine({...base, cached: 3900}, 'gpt-6.1-terra', 'openai')) && /tokens in 4449 \/ out 56/.test(paidLine(base, 'gpt-6.1-terra', 'openai')), 'the turn line shows the cached split, and none when nothing was cached');
+}
 {
   const ad = openaiAdapter({apiKey: KEY, baseUrl: mock.url}), calls = [], game = async (tool, args) => {calls.push([tool, args]); return {ok: true, tool}};
   const sess = {system: 'You are Ann.'}, got = [];
@@ -207,10 +228,13 @@ console.log('npm run fellowship -- --provider openai (headless Fellowship, mock 
   ok(code === 0, 'the Fellowship runner finishes' + (code ? '\n' + out.slice(-3000) : ''));
   ok((out.match(/\[turn 1(, scene)?\] gpt-6-luna \(openai\)/g) || []).length === 5 && /\| run \$0\.\d+ of \$1\.0000/.test(out), 'each of the five plays an OpenAI turn with the run total against the budget');
   ok(!out.includes(KEY), 'the key is not in the output');
-  const j = JSON.parse(readFileSync(join(ROOT, 'logs', 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop());
+  const j = JSON.parse(readFileSync(join(tmp, 'fellowship-runs.jsonl'), 'utf8').trim().split('\n').pop());
   ok(j.url === FB && j.spent > 0 && j.members.every(m => m.provider === 'openai' && m.tokensIn > 0 && m.cost > 0), 'the run record lists the members with tokens and real cost');
   fw.p.kill();
 }
+
+// the DM on OpenAI (#824): gpt-6-astra costs $0.011 a call here, so a turn of three stays under $0.04 and one voice call passes it
+await dmMindCases({provider: 'openai', model: 'gpt-6-luna', env: cleanEnv, ok, port: port + 3, seen: mock.seen, pricey: {model: 'gpt-6-astra', budget: .04}});
 
 for (const k of kids) try {k.kill()} catch {}
 mock.close();

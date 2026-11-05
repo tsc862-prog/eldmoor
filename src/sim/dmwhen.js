@@ -29,7 +29,7 @@ export const WHEN={MAX:6,PER_DAY:12,HOURS:24,MIN_H:1,MAX_H:72,EVERY:2,KEEP:12,SE
 export const WATCH={MAX:6,PER_DAY:12};
 const DAY=1440,NIGHT_HH=20,DAWN_HH=6;
 // The actions a when may carry: the DM's voice and its world tools (only those that exist in DM_TOOLS; create_site joins when it lands).
-const DEFER0=['narrate','npc_say','whisper','dream','stage_scene','post_hook','place_person','mark_place','give_item','take_item','create_site','pull_lever'];
+const DEFER0=['narrate','npc_say','whisper','dream','stage_scene','post_hook','place_person','mark_place','give_item','take_item','create_site','summon_hero','pull_lever'];
 export const deferTools=()=>DEFER0.filter(n=>DM_TOOLS.some(t=>t.name===n));
 const WHO_RE=/\{who\}|\$who\b/gi,WHO_TEST=/\{who\}|\$who\b/i;
 // The trigger table (append-only): args (? = optional), what it means, and whether it names a hero ({who}).
@@ -130,7 +130,8 @@ function baseline(e){const on=e.on,st={};
     case 'hero_levels':st.lv=Object.fromEntries(subjects(on).map(a=>[a.id,a.lvl]));break;
     case 'oath_kept':st.g=Object.fromEntries(subjects(on).map(a=>[a.id,goalKey(a)]));break}
   return st}
-const goalKey=a=>a.goal?clean(a.goal.text,80)+'|'+(a.goal.done?1:0):'';
+// Only an oath kept counts (#800); a.oathKept outlives the goal, which moves on the moment it is kept.
+const goalKey=a=>{const g=a.goal;return g&&g.done?clean(g.text,80)+'|1':a.oathKept?'kept '+a.oathKept.at+'|1':g&&!g.offered?clean(g.text,80)+'|0':''};
 function holds(e,a){const on=e.on;switch(e.trigger){
   case 'enter_region':return a.state!=='dungeon'&&zoneAt(a.x,a.y)===on.z;
   case 'enter_town':return a.state==='town'&&a.town===on.town;
@@ -156,7 +157,7 @@ function check(e){const on=e.on,st=e.st;
     case 'hero_levels':{let hit=null;for(const a of subjects(on)){const was=st.lv[a.id];st.lv[a.id]=a.lvl;
         if(was==null||a.lvl<=was)continue;if(on.level&&!(a.lvl>=on.level&&was<on.level))continue;if(!hit)hit={who:a,what:a.name+' reaches level '+a.lvl}}return hit}
     case 'oath_kept':{let hit=null;for(const a of subjects(on)){const was=st.g[a.id],k=goalKey(a);st.g[a.id]=k;
-        if(was==null||was===k||!k.endsWith('|1'))continue;if(!hit)hit={who:a,what:a.name+' keeps an oath: '+clean(a.goal.text,80)}}return hit}}
+        if(was==null||was===k||!k.endsWith('|1'))continue;if(!hit)hit={who:a,what:a.name+' keeps an oath: '+clean((a.goal&&a.goal.done?a.goal:a.oathKept).text,80)}}return hit}}
   return null}
 
 // ---- setting, listing, cancelling ----
@@ -189,6 +190,7 @@ export function setWhen(a){const w=W();if(!w)return {ok:false,error:'The DM seat
   let args=sa.args;
   if(lever){const params=args.params!=null?objArg(args.params):(()=>{const q={...args};delete q.reason;delete q.lever;return q})();if(params==null)return {ok:false,error:'Refused: params must be an object. '+usage};args={lever,params,reason:args.reason||reason}}
   if(row&&row.args&&row.args.reason&&!clean(args.reason,160))args.reason=reason;
+  if(row&&row.args&&row.args.why&&!clean(args.why,160))args.why=reason; // summon_hero's reason is its why (#780)
   const R=resolve(trigger,sa.on);if(R.error)return {ok:false,error:'Refused: '+R.error+'. '+usage,triggers:triggersList()};
   if(usesWho(args)&&!TRIGGERS[trigger].who)return {ok:false,error:'Refused: "{who}" needs a trigger that names a hero ('+TRIGGER_NAMES.filter(k=>TRIGGERS[k].who).join(', ')+'); '+trigger+' names nobody.'};
   // the action's own arguments, checked now as the tool would (it is checked again, for real, when it fires)

@@ -5,12 +5,13 @@
 // If you changed the Eldmoor map on purpose, paste the new hashes into SNAPSHOT.
 import {ELDMOOR, TESTWORLD, STEPPING} from '../src/world/spec.js';
 import {buildWorld} from '../src/world/gen.js';
+import {RACES} from '../src/data/races.js';
 import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
 
 // FNV-1a of the zone and tile arrays of the Eldmoor map as of the spec rewrite.
 const SNAPSHOT = {zone: '7d08ac18', tiles: 'bda9e97b'};
 // Same for the Stepping Lands (160x100). Update when the STEPPING spec or the generator changes on purpose.
-const SNAPSHOT_STEPPING = {zone: '1089eab4', tiles: 'cfab7241'};
+const SNAPSHOT_STEPPING = {zone: '1089eab4', tiles: '2763d8b2'};
 const TILE_NAMES = ['grass','tree','swamp','mud','rock','peak','lava','road','floor','wall','river','bridge','sgrass','flower','snow','ice'];
 
 function fnv(a) {let h = 0x811c9dc5; for (let i = 0; i < a.length; i++) {h ^= a[i]; h = Math.imul(h, 16777619) >>> 0} return h.toString(16).padStart(8, '0')}
@@ -101,6 +102,11 @@ for (const path of st.ROUTES) {const a = path[0], b = path[path.length - 1];
 { const reach = (a, b) => roadConnected(st, a, b); const near = c => {const gx = Math.floor(c.gate.x), gy = Math.floor(c.gate.y);
     for (let r = 0; r <= 3; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {const t = st.tiles[st.I(gx + dx, gy + dy)]; if (t === ROAD) return [gx + dx, gy + dy]} return null};
   const a = near(st.CITY[0]); for (const c of st.CITY) {const b = near(c); if (!a || !b || !reach(a, b)) {console.error(`FAIL: no continuous road from ${st.CITY[0].name} to ${c.name}`); fail++}} }
+
+// #715: every people has its own home town on the Stepping Lands (homeOf picks the town whose race matches)
+for (const r of RACES) {const t = st.CITY.find(c => c.race === r.id);
+  if (!t || t.fac !== r.fac || t.name !== r.home) {console.error(`FAIL: Stepping has no home town for ${r.name} (${t ? t.name : 'none'} != ${r.home})`); fail++}}
+console.log('  stepping homes: ' + RACES.map(r => r.id + '@' + (st.CITY.find(c => c.race === r.id) || {}).name).join(', '));
 
 // every spawn point is on a walkable tile
 for (const w of [eld, tw, st]) for (const L of w.ZPTS) for (const p of L) if (WALKABLE.indexOf(w.tileAt(p.x, p.y)) < 0) {console.error(`FAIL: ${w.name} spawn point ${p.x},${p.y} is not walkable`); fail++; break}

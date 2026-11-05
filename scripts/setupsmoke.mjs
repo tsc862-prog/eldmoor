@@ -125,11 +125,14 @@ if(mode==='a'){
   const n2=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:healer');n2.value='';n2.dispatch('input',{target:n2});
   click(ids.get('setup'),b=>b.dataset.a==='nameroll'&&b.dataset.slot==='dps1');
   ok(all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1').value.length>=3,'name reroll fills a name');
+  {const o=sels(ids.get('setup'),'others');ok(o&&o.value==='full'&&o.childNodes.map(x=>x.value).join()==='full,none','Other heroes (#780): the usual roster by default, or none');
+   o.value='none';o.dispatch('change',{target:o});ok(sels(ids.get('setup'),'others').value==='none','the choice stays on the page')}
   click(ids.get('setup'),b=>b.dataset.a==='start');
   for(let i=0;i<100&&reloads<1;i++)await new Promise(r=>setTimeout(r,20)); // the reload follows the runners' stop call (#691)
   const pend=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
   ok(pend&&pend.world==='eldmoor'&&reloads===1&&pend.v===2&&pend.mode==='together'&&pend.heroes.length===5&&pend.heroes[0].cls==='Warrior'&&pend.heroes[0].mind.mode==='agent','Start queues the setup (v2 together, #453) and reloads');
   ok(sim.validateSetup(pend).length===0,'the queued setup validates');
+  ok(pend.others==='none','the queued setup carries Other heroes: none');
   {const last=JSON.parse(localStorage.getItem('eldmoor.setup.last')||'null');setup.openSetup({first:false});
    const nm=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1');
    ok(last&&last.v===2&&all(ids.get('setup'),'.scard').length===5&&nm&&nm.value===pend.heroes[2].name,'a stored v2 last setup opens on the page as its five places (#453)')}
@@ -257,6 +260,13 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   const sel=f=>all(R(),'select').find(s=>s.dataset.f===f);
   ok(pressed('smode','mode','together')&&!pressed('smode','mode','apart'),'switch: Together is on by default');
   ok(!all(R(),'button').some(b=>b.dataset.a==='count')&&!sel('start:0'),'together: no hero count, no start towns');
+  // the hall picker (#771): only where the faction has a choice of towns; a pick lasts until another faction or map
+  {const change=(f,v)=>{const s=sel(f);s.value=v;s.dispatch('change',{target:s})},w0=sel('world').value,f0=sel('fac').value;
+   change('world','eldmoor');ok(!sel('hall'),'hall: no picker with one town to choose');
+   change('world','stepping');const o=sel('hall').childNodes.map(x=>x.value);ok(o[0]===''&&o.length===4,'hall: the default and the three towns of the faction: '+o);
+   change('hall',o[2]);ok(sel('hall').value===o[2],'hall: the pick stands');
+   change('fac',f0==='0'?'1':'0');ok(sel('hall').value==='','hall: another faction goes back to the default');
+   change('fac',f0);change('world',w0)}
   click(R(),b=>b.dataset.a==='smode'&&b.dataset.mode==='apart');
   ok(pressed('smode','mode','apart')&&all(R(),'.scard').length===5,'Apart keeps the five heroes as cards');
   ok(all(R(),'button').filter(b=>b.dataset.a==='count').length===10&&pressed('count','n','5'),'Apart: hero count 1-10 (6-10 need local minds), five chosen');

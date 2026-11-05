@@ -146,7 +146,9 @@ watchOnce('after_hours', {h: 2}, () => {S.gameMin += 120}, 'after_hours trips');
 watchOnce('hero_levels', {hero: M.name}, () => {M.lvl++}, 'hero_levels trips');
 M.goal = {text: 'Slay ten marsh wolves', done: false, need: 10, progress: 3};
 watchOnce('oath_kept', {company: 'fellowship'}, () => {M.goal.done = true}, 'oath_kept trips');
-M.goal = null;
+M.goal = {text: 'A thread nobody swore', done: false, need: 1, progress: 0, offered: true};
+{const n = hits().length; watchOnce('oath_kept', {company: 'fellowship'}, () => {M.oathKept = {text: 'I will never be cold', at: Math.round(S.gameMin)}; M.goal = {text: 'Rolled', done: false, need: 1, progress: 0, offered: true, aside: true}}, 'an oath in the hero\'s own words trips it after the goal has moved on (#800)'); ok(hits().length > n, 'once')}
+M.goal = null; delete M.oathKept;
 ok(new Set(hits().map(h => h.id)).size === hits().length, 'each hit has its own id');
 
 // once:no -> at most once a game day

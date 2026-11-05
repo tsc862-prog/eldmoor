@@ -43,6 +43,12 @@ const P = await import('../src/sim/player.js');
 const F_ = await import('../src/sim/company.js');
 const T = await import('../src/sim/table.js');
 const TRD = await import('../src/sim/tableround.js');
+// A live, unclaimed mob that can (talker) or cannot (beast) be parleyed with, not one of `except`. Where the world has run short of that kind away from
+// the test's spot (what is left depends on where the home town's hunting ground falls), a free mob takes the species of any mob of that kind.
+const kindMob = (want, except = []) => {const ok = m => want === 'talker' ? TRD.canParley(m) : !TRD.canParley(m), free = m => m.alive && !m.gone && !m.elite && !m.used && !except.includes(m);
+  const m = S.mobs.find(x => free(x) && ok(x)); if (m) return m;
+  const proto = S.mobs.find(x => ok({...x, alive: true})), base = S.mobs.find(x => free(x) && !ok(x)); if (proto && base) {base.type = proto.type; if (proto.v !== undefined) base.v = proto.v; if (proto.name && !base.named) base.name = proto.name}
+  return base && ok(base) ? base : undefined};
 const C = await import('../src/sim/council.js');
 const {CRYPT, ZONES, zoneFor, zonePoint, dist} = await import('../src/world/map.js');
 const {homeOf} = await import('../src/data/races.js');
@@ -106,7 +112,7 @@ if (process.argv[2] === '--rounds') {
   if (process.argv[3] === 'fall') { // one member alone in reach at 1 HP, a hard-hitting foe that goes first
     M.slice(1).forEach(x => {x.x = spot.x + 40}); q.lvl = 12; q.hit = 50; const lone = M[0]; lone.hp = 1;
     const sf = T.openScene('elite', 'Fall test', ['A brute.'], {mob: q.id}); sf.foeAt = 0; let g = 0;
-    while (S.table && g++ < 60 * 120) {const c = S.table; if (c.phase === 'turn' && !c.acts[lone.id] && lone.state !== 'dead') PA(lone.id, 'scene_act', {option: 'strike'}); step(1 / 60)}
+    while (S.table && g++ < 60 * 120) {const c = S.table; if (c.phase === 'turn') for (const id of c.ids) if (!c.acts[id] && (id === lone.id ? lone.state !== 'dead' : true)) PA(id, 'scene_act', {option: 'strike'}); step(1 / 60)} // the far members answer too (their strike only closes in), so a foe's miss in round 1 never leaves the table waiting on them
     const good = !S.table && lone.state === 'dead' && (sf.fell || []).includes(lone.id) && / fell./.test(sf.summary) && sf.rd <= TRD.TR.ROUNDS;
     console.log((good ? 'FALL ok' : 'FALL bad') + ' (round ' + sf.rd + '): ' + sf.summary); process.exit(0);
   }
@@ -116,6 +122,58 @@ if (process.argv[2] === '--rounds') {
     step(1 / 60)}
   console.log('ROUNDS ' + JSON.stringify(sc.beats.map(b => [b.id, b.rd, b.k, b.by, b.res])) + ' ' + sc.summary + ' hp:' + M.map(x => Math.round(x.hp)).join(',') + ' foe:' + Math.round(q.hp));
   process.exit(0);
+}
+
+// ---- the oath is chosen (#800), in a child with a fresh world: node scripts/tablecheck.mjs --opening ----
+if (process.argv[2] === '--opening') {
+  const {dmAct, setDmSeat} = SIM, A = await import('../src/sim/arrival.js'), FR = await import('../src/sim/fireside.js'), CM = await import('../src/sim/camp.js'), PC = await import('../src/sim/pace.js'), O = await import('../src/sim/oath.js'), LA = await import('./local-agent.mjs');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
+  init({fellowship: false}); run(20);
+  for (const a of S.agents) if (a.fac === 0) {a.lvl = 8; a.hp = maxHp(a)}
+  SLT.foundSlots(SLT.autoPick(0), {fac: 0, ai: false}); setDmSeat(true);
+  const M = SLT.slotMembers(SLT.slotted()).map(m => m.hero), [sayer, taker, refuser, quiet, last] = M, LINK = {};
+  for (const x of [sayer, taker, refuser]) LINK[x.id] = 'connected';
+  SIM.setRunnerLinks(x => LINK[x.id] || 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; FR.FIRE.LIVE_MS = 1500;
+  ok(M.every(x => x.goal.offered && !O.swornOf(x) && O.threadText(x)), 'every member of a new company holds an offered thread, none an oath: ' + O.threadText(quiet));
+  ok(M.every(x => !/swor|swear|oath/i.test(O.threadText(x))), 'a thread is told as the past, never as a promise');
+  const secret = quiet.goal.target || quiet.goal.text, rolled = quiet.goal.text;
+  const home = homeOf(M[0]);
+  for (const [i, x] of M.entries()) {x.state = 'town'; x.townStep = 1; x.x = home.gate.x - 1 - (i % 3) * .4; x.y = home.gate.y + (i % 2) * .4; x.hidden = false; x.target = null; x.dest = null; x.pq = []}
+  S.opening = {queue: [{company: SLT.slotted().id, kind: 'new'}]}; step(1 / 60);
+  const sc = S.table; ok(sc && sc.kind === 'opening', 'the first table opens');
+  ok(!/has sworn/.test(T.tableView(sayer).frame) && !T.tableView(sayer).frame.includes(rolled), 'the frame reads out no oath: ' + T.tableView(sayer).frame.slice(0, 120));
+  let k = 0; while (S.table && S.table.phase === 'frame' && k++ < 900) {dmAct('table_call'); step(1 / 60)}
+  settle(); const v = T.tableView(sayer), b0 = PC.paceBrief(sayer.id).brief;
+  ok(v.swear && v.your_past === O.threadText(sayer), 'the hero alone is asked, and shown its own past');
+  ok(b0.thread === O.threadText(sayer) && !b0.oath && b0.scene.swear && b0.scene.you.past === O.threadText(sayer) && !b0.scene.you.oath, 'the brief and the forced scene carry the thread, not an oath');
+  {const f = LA.sceneFrom(b0.scene), sch = LA.sceneSchema(f.keys, {swear: !!f.swear}), st = LA.sceneSchema(f.keys, {swear: true, strict: true}), pl = LA.sceneSchema(f.keys);
+   ok(sch.properties.swear && !sch.required.includes('swear') && st.required.includes('swear') && !pl.properties.swear, 'a forced answer may carry swear (a strict schema requires it, empty to swear nothing)');
+   ok(/"swear"/.test(LA.scenePrompt(f)) && LA.scenePrompt(f).includes(O.threadText(sayer)), 'the forced prompt offers it')}
+  const words = 'I will see the old debts of my house paid, every one.';
+  ok(!PA(sayer.id, 'scene_act', {option: 'introduce', swear: 'x'.repeat(400)}).ok && !sc.acts[sayer.id], 'an oath too long is refused and the act stays unsaid');
+  ok(PA(sayer.id, 'scene_act', {option: 'introduce', line: 'Well met.', swear: words}).swears === words, 'a member swears in its own words');
+  ok(PA(taker.id, 'scene_act', {option: 'introduce', line: 'I am here.', swear: 'yes'}).ok, 'a member takes up its thread as it stands');
+  ok(PA(refuser.id, 'scene_act', {option: 'introduce', line: 'I owe the past nothing.', swear: 'no'}).ok, 'a member sets its thread aside');
+  const rolledTaker = taker.goal.text;
+  let g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
+  ok(!S.table, 'the first table ends');
+  ok(sayer.goal.text === words && sayer.goal.sworn && sayer.goal.sworn.words && sayer.goal.type === 'own' && !sayer.goal.offered && sayer.goal.sworn.heard.length === 4, 'its words are its oath, heard by the table');
+  ok((sayer.chat || []).some(e => e.from === sayer && e.text.includes(words)) && sc.beats.some(b => (b.res || '').includes(words)), 'sworn aloud: in chat and in the scene');
+  ok(O.swornOf(taker) && taker.goal.text === rolledTaker && !taker.goal.sworn.words, 'yes: the thread is its oath, as it stands');
+  ok(refuser.goal.aside && !O.swornOf(refuser) && !O.threadOf(refuser) && refuser.memories.notes.some(n => n.tags.includes('past')), 'no: set aside, kept as a memory of its own');
+  ok(quiet.goal.offered && !O.swornOf(quiet) && !JSON.stringify(sc.beats).includes(rolled), 'a silent member stays unsworn and nothing of its thread was said');
+  const chron = S.chronicle.map(e => (e.parts || []).map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '').join('')).join('\n');
+  ok(chron.includes(' swears: ' + words) && !chron.includes(rolled), 'the Chronicle names what was sworn and nothing else');
+  ok((S.timeline || []).some(e => e.kind === 'swore'), 'the timeline too');
+  ok(PC.paceBrief(sayer.id).brief.oath === words && !PC.paceBrief(sayer.id).brief.thread, 'the header says your oath once sworn');
+  // the next fire names what was sworn, and never the silent member's thread
+  for (const [i, x] of M.entries()) {x.state = 'hunt'; x.x = home.gate.x + 14 + (i % 3) * .5; x.y = home.gate.y + 2 + (i % 2) * .5; x.hidden = false; x.target = null; x.dest = null; x.pq = []; x.hp = maxHp(x)}
+  const lead = C.leaderOfF(); LINK[lead.id] = 'connected'; const w = CM.leaderRest(lead, 4); g = 0; while (!(S.table && S.table.kind === 'fireside') && g++ < 60 * 60) {step(1 / 60); dmAct('table_call')}
+  const fs = S.table, fr = fs ? [fs.ctx.topic, ...(fs.ctx.topics || []), T.tableView(fs.ids.map(id => S.agents.find(x => x.id === id))[0]).frame].join(' | ') : '';
+  ok(fs && fs.kind === 'fireside' && fr.includes(words), `the next fire names the sworn words (${(fs && fs.ctx.topic) || w})`);
+  ok(fs && !fr.includes(rolled) && !fr.includes('has sworn to ' + rolled.charAt(0).toLowerCase()), 'a silent member\'s thread is never narrated');
+  console.log(fail ? 'OPENING FAILED' : 'OPENING OK'); process.exit(fail ? 1 : 0);
 }
 
 // ---- session zero and arrivals (#437, #452), in a child with a fresh world: node scripts/tablecheck.mjs --arrival ----
@@ -146,12 +204,21 @@ if (process.argv[2] === '--arrival') {
   for (const [t, a] of ACTS) {const r = P.playerAct(live.id, t, a); ok(r.ok === false && r.held === 'prep' && r.error === 'The DM is preparing the table; wait for the opening scene.', 'the DM prepares: ' + t + ' is refused with the prep line')}
   for (const t of ['look', 'status', 'self', 'lore', 'recall', 'journal_read']) {const r = P.playerAct(live.id, t, {}); ok(r.ok !== false || !r.held, 'the DM prepares: ' + t + ' (read-only) still answers' + (r.ok === false ? ' (' + r.error + ')' : ''))}
   ok(PC.paceCheck(live.id, {since: 0, minutes: 5, wake: 'all'}) === null, 'the DM prepares: no paced turn');
+  { // a runner's first turn waits for the hold like a paced one (#770): the real pacer against the real host answer
+    const {hostPace} = await import('../src/sim/player-host.js'), {makePacer} = await import('./pacing.mjs');
+    const pc = makePacer({base: 'x', hero: live.id, runner: 'r', fetchImpl: async (u, o) => ({status: 200, json: async () => hostPace(live.id, JSON.parse(o.body))})});
+    const h = await hostPace(live.id, {held: true}); ok(h.ok && h.held === 'prep', 'pace {held} says the DM prep holds the world');
+    let started = false; const first = pc.ready().then(r => {started = true; return r});
+    await new Promise(r => setTimeout(r, 1500)); ok(!started, 'a runner started during the prep takes no first turn while it holds');
+    globalThis.__firstTurn = {first, flag: () => started};
+  }
   run(2); ok(!heardIntro(), 'no hero line lands before the opening scene');
   ok(A.openingDue() && PR.prepView().state === 'running' && PR.prepView().max_calls === PR.PREP.CALLS, 'session zero is due and the DM prepares (full caps)');
   run(2); ok(!S.table, 'no opening scene while the DM prepares');
   dmAct('dm_status'); dmAct('notes_read'); ok(PR.prepView().calls === 2, 'DM tool calls during the prep are counted');
   dmAct('table_call'); ok(PR.prepView().calls === 2, 'an idle table_call poll is not counted');
   const pd = dmAct('prep_done', {summary: 'Plans written.'}); ok(pd.ok && PR.prepView().state === 'done' && PR.prepView().why === 'done', 'prep_done ends the prep');
+  {const ft = globalThis.__firstTurn, t0 = Date.now(), r = await Promise.race([ft.first, new Promise(r => setTimeout(() => r(null), 4000))]); ok(r && !r.dead && !r.gone && !r.stopped && ft.flag() && Date.now() - t0 < 2500, 'the first turn runs promptly when the hold lifts (' + (Date.now() - t0) + ' ms)'); delete globalThis.__firstTurn}
   step(1 / 60); let sc = S.table;
   ok(sc && sc.kind === 'opening' && /^SESSION ZERO · /.test(sc.title) && sc.all && sc.pause, `the opening scene opens, everyone at once, paused (${sc && sc.title})`);
   ok(!A.openingPending() && !S.opening, 'one company: the opening queue is empty');
@@ -173,7 +240,7 @@ if (process.argv[2] === '--arrival') {
   // the Continue prep: half the caps; the time cap ends it; the call cap ends it
   let clk = 0; PR.setPrepClock(() => clk); PR.beginPrep('resume');
   ok(PR.prepView().max_calls === Math.round(PR.PREP.CALLS * PR.PREP.SHORT) && PR.prepView().kind === 'resume', 'a Continue prep has half the calls');
-  clk = PR.PREP.MS; PR.prepTick(); ok(!PR.prepActive() && PR.prepView().why === 'time', 'the time cap ends it');
+  dmAct('regions'); clk = PR.PREP.MS; PR.prepTick(); ok(!PR.prepActive() && PR.prepView().why === 'time', 'the time cap ends it (counted from the first call, #733)');
   PR.beginPrep('opening'); for (let i = 0; i < PR.PREP.CALLS; i++) dmAct('regions');
   ok(!PR.prepActive() && PR.prepView().why === 'calls', `the call cap ends it (${PR.PREP.CALLS} calls)`); PR.setPrepClock(null);
   // the arrival: a death queues the recruit; nothing opens in the Crypt; it opens in town
@@ -227,6 +294,49 @@ if (process.argv[2] === '--arrival') {
   HE.fall(d3, 'a third test'); step(1 / 60);
   ok(SLT.slotted().slots[s3] != null && !(SLT.slotted().arrivals || []).length && !S.table, 'with no host (npm run sim) the seat is refilled at once, no scene');
   console.log(fail ? 'ARRIVAL FAILED ' + fail : 'ARRIVAL OK'); process.exit(fail ? 1 : 0);
+}
+
+// ---- a company of mixed peoples at its first table (#771), in the Stepping Lands: ELDMOOR_WORLD=stepping node scripts/tablecheck.mjs --hall ----
+if (process.argv[2] === '--hall') {
+  const A = await import('../src/sim/arrival.js'), PC = await import('../src/sim/pace.js'), HE = await import('../src/sim/heroes.js'), {inRange} = await import('../src/sim/reach.js');
+  const {cleanSetup, defaultSetup, applyPreset} = SIM, {CITY} = await import('../src/world/map.js'), {gatherNote} = await import('./pacing.mjs');
+  let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
+  const mixed = () => {const s = defaultSetup(771, 'stepping', 1); ['ashfolk', 'mirekin', 'mirekin', 'ashfolk', 'thornhide'].forEach((r, i) => s.heroes[i].race = r); return s};
+  const world = () => {init({setup: cleanSetup(mixed())}); const M = SLT.slotHeroes(SLT.slotted()); SIM.setRunnerLinks(x => M.includes(x) ? 'connected' : 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; return M};
+  const murk = CITY.find(c => c.name === 'Murkstead'), send = L => {for (const [i, a] of L.entries()) {a.x = murk.x0 + 3 + i; a.y = murk.y0 + 5}};
+  // 1. the bug: session zero seats all five
+  let M = world(); step(1 / 60); let sc = S.table;
+  ok(sc && sc.kind === 'opening' && sc.ids.length === 5, `session zero opens at once with all five of a mixed company (${sc && sc.ids.length})`);
+  settle(); ok(T.tableView(M[0]).answered === '0/5', 'the table waits on five answers: ' + T.tableView(M[0]).answered);
+  for (const a of M) ok(PA(a.id, 'scene_act', {option: 'introduce'}).ok, a.name + ' introduces themself');
+  let g = 0; while (S.table && g++ < 60 * 60) step(1 / 60);
+  ok(!S.table && sc.beats.length === 5 && M.every(a => M.every(b => a === b || (a.talkHeard || {})[b.id])), 'all five sat at one table and have met');
+  // 2. a member out of range: the opening holds, says why and where, and opens once they are back
+  M = world(); const far = [M[3], M[4]]; send(far); step(1 / 60);
+  let w = A.openingWait();
+  ok(!S.table && A.openingDue() && w && w.names.join() === far.map(a => a.name).join() && w.where === SLT.slotted().hall, 'members out of range hold session zero: ' + JSON.stringify(w));
+  const br = PC.paceBrief(far[0].id).brief, br2 = PC.paceBrief(M[0].id).brief;
+  ok(/walk there/.test(br.gather) && /SESSION ZERO/.test(gatherNote(br)) && /stay close/.test(br2.gather), 'the turn header tells the absent to walk there and the others to stay');
+  ok((far[0].playEv || []).some(e => /first table/.test(e.text) && e.text.includes('move_to ' + SLT.slotted().hall)), 'the absent are told at once, with the way');
+  ok(SIM.dmAct('dm_status').prep.opening_waits_for.length === 2, 'the DM sees who the table waits for');
+  const snap = JSON.parse(JSON.stringify(snapshot())); restore(snap); M = SLT.slotHeroes(SLT.slotted());
+  ok(S.opening.queue[0].hold && A.openingWait().names.length === 2, 'the hold survives a save');
+  const hall = homeOf(M[0]), back = () => {for (const [i, a] of M.entries()) {a.x = hall.spots.square.x + i * .5; a.y = hall.spots.square.y}}; back(); step(1 / 60); sc = S.table;
+  ok(sc && sc.kind === 'opening' && sc.ids.length === 5 && !A.openingWait(), 'once they are in range the table opens with all five');
+  // 3. the wait has an end: it opens with those present and the frame names who is missing
+  M = world(); const late = M[4]; send([late]); step(1 / 60); ok(!S.table && A.openingWait(), 'one member out of range: held');
+  S.gameMin += A.ARRIVE.GATHER_MIN; send([late]); step(1 / 60); sc = S.table;
+  const fr = sc ? sc.frame.map(p => typeof p === 'string' ? p : p.t || p.name || '').join('') : '';
+  ok(sc && sc.ids.length === 4 && !sc.ids.includes(late.id) && fr.includes(late.name + ' has not reached the table') && !fr.split(late.name + ' has')[0].includes(late.name), 'past the wait it opens with those present, the frame naming who is missing: ' + fr.slice(0, 160));
+  // 4. arrivals: the newcomer stands with the company, whatever town it was born to
+  const pair = () => {const s = applyPreset('pairs-and-solo', mixed()); init({setup: cleanSetup(s)}); delete S.opening; const C2 = SIM.S.companies.find(c => c.ids.length === 2), L = F_.members(C2); SIM.setRunnerLinks(x => L.includes(x) ? 'connected' : 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; return {C2, L}};
+  let {C2, L} = pair(); HE.fall(L[1], 'a test'); step(1 / 60); g = 0; while (!(S.table && S.table.kind === 'arrival') && g++ < 240) step(1 / 60); sc = S.table;
+  let nh = sc && S.agents.find(a => a.id === sc.ctx.recruit);
+  ok(nh && nh.town === C2.hall && inRange(L[0], nh) && homeOf(nh).name === C2.hall, `a company's newcomer comes to its town and calls it home (${nh && nh.town}, ${nh && dist(L[0], nh).toFixed(1)} tiles off)`);
+  ({C2, L} = pair()); HE.fall(L[1], 'a test'); const lead = L[0]; lead.state = 'hunt'; lead.x = murk.gate.x + 8; lead.y = murk.gate.y; lead.dest = null; lead.pq = []; step(1 / 60); C2.arrivals[0].since = S.gameMin - A.ARRIVE.WAIT_DAYS * 1440 - 1;
+  g = 0; while (!(S.table && S.table.kind === 'arrival') && g++ < 240) {lead.state = 'hunt'; step(1 / 60)} sc = S.table; nh = sc && S.agents.find(a => a.id === sc.ctx.recruit);
+  ok(nh && dist(lead, nh) < 3 && nh.state !== 'town' && sc.ctx.at === lead.name + '\'s side' && !sc.ctx.setting, 'the wait run out in the field: the newcomer comes to the company, not to an empty gate: ' + (sc && sc.ctx.at));
+  console.log(fail ? 'HALL FAILED ' + fail : 'HALL OK'); process.exit(fail ? 1 : 0);
 }
 
 // ---- talk round the fire and the debrief (#571), in a child with a fresh world: node scripts/tablecheck.mjs --fireside ----
@@ -287,7 +397,7 @@ if (process.argv[2] === '--fireside') {
   ok(sb && sb.kind === 'fireside' && sb.ctx.rounds === 6 && sb.ctx.tk === 'death', `a big event makes a 6-round fireside on it (${sb && sb.ctx.topic})`);
   // a listener's line is an emote (#646): the live member listens with a short act, the others see "<name> <act>", it is no spoken line
   let emoted = null; k = 0;
-  while (S.table === sb && k++ < 60 * 600) {if (!emoted && sb.phase === 'turn' && sb.ids[sb.i] === live.id && !sb.acts[live.id]) emoted = P.playerAct(live.id, 'scene_act', {option: 'listen', line: 'pokes the fire with a stick'}); step(1 / 60)}
+  while (S.table === sb && k++ < 60 * 600) {if (!(emoted && emoted.ok) && sb.phase === 'turn' && sb.ids[sb.i] === live.id && !sb.acts[live.id]) emoted = P.playerAct(live.id, 'scene_act', {option: 'listen', line: 'pokes the fire with a stick'}); step(1 / 60)}
   {const eb = sb.beats.find(b => b.id === live.id && b.k === 'listen' && /pokes the fire/.test(b.res || '')), el = (other.chat || []).find(e => e.emote && /pokes the fire/.test(e.text));
     ok(emoted && emoted.ok && eb && !eb.line, 'a listener line at the fire is an emote: the beat is a listen with no spoken line');
     ok(el && el.from === live && el.text === 'pokes the fire with a stick' && !(other.chat || []).some(e => !e.emote && /pokes the fire/.test(e.text)), 'the emote shows to the others as "<name> <act>" (a chat line of kind emote), never as speech');
@@ -302,10 +412,25 @@ if (process.argv[2] === '--fireside') {
   if (sd) {k = 0; while (S.table === sd && !(sd.wk && sd.wk[live.id]) && k++ < 600) step(1 / 60); P.playerAct(live.id, 'scene_act', {option: 'speak', line: 'Too close. I owe you all a drink.'})} k = 0; while (S.table === sd && k++ < 60 * 60) step(1 / 60); // answered once woken (#682: seats are woken 1.5 s apart)
   ok(sd && /talked it over/.test(sd.summary) && !S.table, 'the debrief plays one round: ' + (sd && sd.summary));
   // 3b. the start gate holds the world (#559): no fire opens while it holds, and it opens once the hold lifts
-  CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; field(); SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
+  CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; field(); for (const x of S.agents) if (SLT.inSlots(x)) x.adv = null; S.adventures = (S.adventures || []).filter(h => h.phase !== 'open'); if (S.table && S.table.ctx && S.table.ctx.adv != null) {S.tables = {}; S.table = null} /* a job's scene is not what this asks about, and the member left in town would take one */ SIM.setGateHold(true); CM.leaderRest(live, 4); run(8);
   ok(!S.table, 'while the start gate holds the world no fireside opens');
   SIM.setGateHold(false); k = 0; while (!(S.table && S.table.kind === 'fireside') && k++ < 600) step(1 / 60);
   ok(S.table && S.table.kind === 'fireside', 'once the hold lifts the waiting fireside opens'); k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
+  // 3c. the fire asks, never a member (#750): a quiet day's question names only the one asked, who gets answer; a DM frame that quotes a member is cut
+  CM.breakCampNow('called'); {const Fq = SLT.slotted(); Fq.fire.last -= 1e4; Fq.joined = {}; for (const x of M) {x.goal = null; if (x.tiers) x.tiers.marks = []}}
+  setDmSeat(true); camp(); const sq = S.table, to = sq ? M.find(x => x.id === sq.ctx.to) : null;
+  ok(sq && sq.kind === 'fireside' && sq.ctx.tk === 'question' && to && sq.ctx.topic.startsWith('The fire puts a question to ' + to.name + ': ') && !/has a question/.test(sq.ctx.topic) && !M.some(x => x !== to && sq.ctx.topic.includes(x.name)),
+    `a quiet day's question is the fire's and names no asker (${sq && sq.ctx.topic})`);
+  ok(to && ((T.tableView(to) || {}).options || []).some(o => /^answer = Answer the question the fire puts to you: "/.test(o)) && sq.ids.filter(id => id !== to.id).every(id => !((T.tableView(M.find(x => x.id === id)) || {}).options || []).some(o => /^answer/.test(o))),
+    'the asked member is offered answer, nobody else');
+  k = 0; while (S.table === sq && !(sq.calls && sq.calls.length) && k++ < 600) {dmAct('table_call'); step(1 / 60)}
+  {const tq = dmAct('table_call'), sp = M.find(x => x !== to && x.player && sq.ids.includes(x.id));
+    ok(tq.call && /never by one of them/.test(tq.call.about) && sp, 'the frame call asks for the night\'s own question, never a member\'s');
+    const fq = tq.call && sp ? dmAct('table_answer', {call: tq.call.id, text: 'The fire sinks low. ' + sp.name + ' speaks quietly: \'' + to.name + ', before the night is out, what are you afraid of?\''}) : {};
+    ok(fq.ok && fq.spoke_for && fq.spoke_for.join() === sp.name && fq.said === 'The fire sinks low.' && !M.some(x => (x.chat || []).some(e => e.text.includes(sp.name + ' speaks quietly'))),
+      'a DM frame that quotes a member is cut to its narration; nobody hears the made-up line (' + JSON.stringify(fq).slice(0, 140) + ')');
+    ok((S.dmLog || []).some(e => e.detail && e.detail.scene === 'fireside' && e.detail.spoke_for === (sp && sp.name)), 'the frame\'s DM log entry carries spoke_for')}
+  k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
   // 4. no host: a camp opens no fireside
   CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; SIM.setRunnerLinks(null); field(); CM.leaderRest(live, 4); run(30);
   ok(!S.table && !SLT.slotted().fireQ, 'with no host (npm run sim) a camp opens no fireside');
@@ -328,7 +453,7 @@ if (process.argv[2] === '--interrogate') {
   T.TABLE.speed = 1; T.TABLE.mode = 'auto'; IQ.IQ.LIVE_MS = 1500;
   const home = homeOf(M[0]).gate, spot = zonePoint(zoneFor(8, home), null, home);
   for (const m of S.mobs) if (m.alive && dist(m, spot) < 16) {m.alive = false; m.gone = true}
-  const talker = S.mobs.find(m => m.alive && !m.gone && !m.elite && TRD.canParley(m));
+  const talker = kindMob('talker');
   ok(!!talker, 'a creature with speech to question (' + (talker && talker.type) + ')');
   const place = (q) => {M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'fight'; x.hidden = false; x.dest = null; x.hp = maxHp(x); x.pq = []; x.target = q; x.eff = {}; x.mcr = {}});
     q.x = spot.x + 1; q.y = spot.y; q.lvl = 8; q.maxhp = 4000; q.hp = 600; q.cd = 99; q.fledOnce = true; q.hit = .001; q.target = M[0]; q.eff = {}; q.ab = []};
@@ -342,6 +467,7 @@ if (process.argv[2] === '--interrogate') {
   const opts = sc ? T.optionsFor(sc, live).map(o => o.k) : [];
   ok(['ask', 'threaten', 'release', 'watch'].every(k => opts.includes(k)) && !opts.includes('read'), 'options: ask, threaten, release, watch (read only once something was said): ' + opts.join(', '));
   ok(talker.alive && !talker.gone && dist(talker, spot) < 4, 'the yielded foe is held where it yielded');
+  delete sc.ctx.watch; // this case is the let-go ending: where the spot falls decides whether a watch is near enough to take them (the reflex then hands them over); the hand-over ending has its own cases below
   let k = 0; while (S.table === sc && !(sc.calls && sc.calls.length) && k++ < 600) {dmAct('table_call'); step(1 / 60)}
   let tc = dmAct('table_call');
   ok(tc.ok && tc.call && tc.call.kind === 'voice' && tc.scene.kind === 'interrogation' && /held for questions/.test(tc.call.about), 'the DM agent is asked to voice the prisoner (table_call)');
@@ -374,7 +500,7 @@ if (process.argv[2] === '--interrogate') {
   forceNext(.02); r = K.apply(q2, live, {k: 'threaten'});
   ok(q2.ctx.said[2].k === 'silent' && q2.ctx.up === 0 && /say nothing/.test(r), 'a bad miss is silence; a failed threat hardens them (+2, after the read\'s -2): ' + r);
   // 4. hand over near a town: the watch pays each member, the creature is taken
-  const gate = CITY.find(c => c.fac === live.fac).gate, t2 = S.mobs.find(m => m.alive && !m.gone && !m.elite && TRD.canParley(m) && m !== talker);
+  const gate = CITY.find(c => c.fac === live.fac).gate, t2 = kindMob('talker', [talker]);
   M.forEach((x, i) => {x.x = gate.x + 6 + (i % 3) * .6; x.y = gate.y + 2; x.state = 'hunt'; x.target = null; x.hidden = false}); t2.x = gate.x + 7; t2.y = gate.y + 2.5; t2.target = null;
   SLT.slotted().iqQ = {at: Math.round(S.gameMin), foe: {kind: 'mob', id: t2.id}, ids: M.map(x => x.id), anchor: live.id};
   g = 0; while (!(S.table && S.table.kind === 'interrogation') && g++ < 600) step(1 / 60); sc = S.table;
@@ -386,12 +512,12 @@ if (process.argv[2] === '--interrogate') {
   ok(sc.calls.every(c => c.by === 'scripted') && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'interrogation' && e.detail.fill && e.detail.why === 'gone'), 'a DM that does not poll: its reflexes voice the prisoner, logged as fills (why: gone)');
   // 5. the camp: an ambush on the watch carries the camp spot; a fireside too
   CM.CAMP.AMBUSH_P = 1; const why = CM.leaderRest(live, 4); M.forEach(x => {x.state = 'hunt'}); // the scene opens on the camp's next roll
-  const field = () => {for (const [i, x] of M.entries()) {x.state = 'hunt'; x.x = home.x + 14 + (i % 3) * .5; x.y = home.y + 2 + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.hp = maxHp(x)}};
-  field(); CM.leaderRest(live, 4); g = 0; while (!(S.table && S.table.kind === 'ambush') && g++ < 60 * 300) step(1 / 60); const am = S.table;
+  const field = () => {for (const [i, x] of M.entries()) {x.state = 'hunt'; x.x = spot.x + (i % 3) * .5; x.y = spot.y + (i % 2) * .5; x.hidden = false; x.dest = null; x.target = null; x.pq = []; x.adv = null; x.hp = maxHp(x)} if (S.table && S.table.kind === 'choice') {S.tables = (S.tables || []).filter(t => t !== S.table); S.table = null}}; // no job under way: its choice scene waits on the live member and holds the table
+  field(); SLT.slotted().camp = null; CM.leaderRest(live, 4); g = 0; while (!(S.table && S.table.kind === 'ambush') && g++ < 60 * 300) step(1 / 60); const am = S.table;
   ok(am && am.ctx.camp && Math.abs(am.ctx.camp.x - SLT.slotted().camp.x) < .01, 'an ambush on the watch carries the camp spot (the scene plays round the fire)' + (am ? '' : ' (' + why + ')'));
   // 6. no host: a yield queues nothing
   T.TABLE.mode = 'off'; T.tableHold(0); T.TABLE.mode = 'auto'; SIM.setRunnerLinks(null); delete SLT.slotted().iqQ;
-  const t3 = S.mobs.find(m => m.alive && !m.gone && !m.elite && TRD.canParley(m) && m !== talker && m !== t2); place(t3);
+  const t3 = kindMob('talker', [talker, t2]); place(t3);
   sc = T.openScene('elite', 'Talk test 2', ['Another voice.'], {mob: t3.id}); if (sc) {sc.end = 'yield'; g = 0; while (S.table === sc && g++ < 600) step(1 / 60)}
   ok(!SLT.slotted().iqQ && !(S.table && S.table.kind === 'interrogation'), 'with no host (npm run sim) a yield opens no interrogation');
   console.log(fail ? 'INTERROGATE FAILED ' + fail : 'INTERROGATE OK'); process.exit(fail ? 1 : 0);
@@ -487,7 +613,7 @@ if (process.argv[2] === '--parley') {
   const byId = id => S.agents.find(x => x.id === id);
   for (const m of S.mobs) if (m.alive && dist(m, spot) < 16) {m.alive = false; m.gone = true}
   const fam = m => TRD.canParley(m);
-  const pick = want => S.mobs.find(m => m.alive && !m.gone && !m.elite && !m.used && (want === 'talker' ? fam(m) : !fam(m)));
+  const pick = kindMob;
   const setup = (q, opt = {}) => {q.used = true; M = M.map(x => byId(x.id));
     M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'fight'; x.hidden = false; x.dest = null; x.hp = maxHp(x); x.pq = []; x.target = q; x.eff = {}; x.mcr = {}});
     q.x = spot.x + 1; q.y = spot.y; q.lvl = opt.lvl || 9; q.maxhp = 4000; q.hp = opt.hp || 4000; q.cd = 99; q.fledOnce = true; q.hit = .001; q.target = M[0]; q.eff = {}; q.ab = opt.ab || []; // tricks only where a case asks for them
@@ -589,7 +715,7 @@ if (process.argv[2] === '--use') {
   let M = SLT.slotMembers(SLT.slotted()).map(m => m.hero); const home = homeOf(M[0]).gate, spot = zonePoint(zoneFor(8, home), null, home);
   const byId = id => S.agents.find(x => x.id === id);
   for (const m of S.mobs) if (m.alive && dist(m, spot) < 16) {m.alive = false; m.gone = true}
-  const setup = () => {const q = S.mobs.find(m => m.alive && !m.gone && !m.elite && !m.used && !TRD.canParley(m)); q.used = true; M = M.map(x => byId(x.id));
+  const setup = () => {const q = kindMob('beast'); q.used = true; M = M.map(x => byId(x.id));
     M.forEach((x, i) => {x.x = spot.x + (i % 3) * .6; x.y = spot.y + Math.floor(i / 3) * .6; x.state = 'fight'; x.hidden = false; x.dest = null; x.hp = maxHp(x); x.pq = []; x.target = q; x.eff = {}; x.mcr = {}; x.wardT = 0; x.potCd = 0; x.inv = {list: []}});
     q.x = spot.x + 1; q.y = spot.y; q.lvl = 9; q.maxhp = 4000; q.hp = 4000; q.cd = 99; q.fledOnce = true; q.hit = .001; q.target = M[0]; q.eff = {}; q.ab = [];
     SLT.slotted().tableSeen = {}; const sc = T.openScene('elite', 'Pack test', ['Something stirs in the reeds.'], {mob: q.id}); sc.foeAt = sc.ids.length;
@@ -978,13 +1104,13 @@ if (process.argv[2] === '--staged') {
   const UNTAGGED_KINDS = ['lever', 'camp', 'hooks', 'pick', 'roll', 'branch', 'complication'];
   const tag = e => e.detail && (e.detail.by === 'dm-agent' || e.detail.by === 'scripted');
   // mock DM: 'answer' answers every call at once, 'silent' polls but never answers, 'away' never polls
-  const play = (mode, maxS = 120) => {let f = 0, opened = null, maxPause = 0;
+  const play = (mode, maxS = 120) => {let f = 0, opened = null, maxPause = 0, f0 = -1;
     while (f < 60 * maxS) {const g = S.gameMin; step(1 / 60); f++;
-      if (S.table && S.table.ctx.staged != null) {opened = opened || S.table; if (S.table.pause && S.table.phase !== 'frame' && S.gameMin !== g) maxPause = 1;
+      if (S.table && S.table.ctx.staged != null) {opened = opened || S.table; if (f0 < 0) f0 = f; if (S.table.pause && S.table.phase !== 'frame' && S.gameMin !== g) maxPause = 1;
         if (mode !== 'away') {const t = dmAct('table_call'); if (mode === 'answer' && t.call) {const c = t.call; dmAct('table_answer', {call: c.id, text: 'DM line ' + c.id + ': the ' + c.kind + ' lands hard.', ...(c.legal ? {pick: c.legal[c.legal.length - 1]} : {})})}}
         if (A.player && !S.table.acts[A.id] && S.table.phase === 'turn') {const st = act(A, 'status'); const o = st.table && st.table.options; if (o && o.length) act(A, 'scene_act', {option: o[0].split(' = ')[0], line: 'On my word.'})}}
       if (!S.table && S.staged.cur.phase === 'done') break}
-    return {opened, secs: f / 60, maxPause}};
+    return {opened, secs: f / 60, sceneSecs: f0 < 0 ? 0 : (f - f0) / 60, maxPause}}; // secs includes the cast's walk to the member (it depends on where they stand); sceneSecs is the table's own time
   console.log('staged scenes (issue #132)');
   T.TABLE.speed = 1; T.TABLE.mode = 'auto';
   const CAST = {meeting: {role: 'drover', name: 'Hesk', want: 'find my lost ox before the frost', voice: 'slow and worried', choices: {help: 'Promise Hesk to find the ox'}},
@@ -1074,7 +1200,7 @@ if (process.argv[2] === '--staged') {
   fresh(); const poll0 = ST.STAGE.POLL_MS; ST.STAGE.POLL_MS = 0; // as if the last poll were long ago
   r = dmAct('stage_scene', {kind: 'social', near: A.name, frame: 'A toll-keeper leans on a pike across the track.', cast: {role: 'sellsword', want: 'two silver for the ford'}, reason: 'no runner'});
   const t0 = Date.now(); p = play('away');
-  ok(r.ok && p.opened && p.opened.calls.every(c => c.by === 'scripted') && !p.opened.dmMiss && p.secs < 30, `no runner listening: the scripted DM fills at once (scene over after ${p.secs.toFixed(1)} s game-step time)`);
+  ok(r.ok && p.opened && p.opened.calls.every(c => c.by === 'scripted') && !p.opened.dmMiss && p.sceneSecs < 30, `no runner listening: the scripted DM fills at once (scene over after ${p.sceneSecs.toFixed(1)} s game-step time, ${p.secs.toFixed(1)} s with the walk)`);
   ST.STAGE.POLL_MS = poll0;
   T.TABLE.dmMs = 6000;
   // late and illegal answers
@@ -1394,6 +1520,9 @@ console.log('everyone answers at once');
  const PB = C.propById(sc.ctx.prop);
  ok(PB.status === 'passed' && sc.beats.map(b => b.id).join() === sc.ids.join() && sc.beats.every(b => b.by === 'agent'), `the last answer resolves it at once, in slot order (${PB.result})`);
  ok(!CP.campOf(), 'the camp breaks');
+ {const key = sc.company + ':' + sc.id, rec = (S.tableLog || []).find(r => r.key === key), ln = (o3.chat || []).find(e => e.text === 'Dawn is up.'); // the watcher's scene record (#734)
+  ok(rec && rec.kind === 'decision' && rec.prop === sc.ctx.prop && rec.acts.length === 5 && rec.acts.find(x => x.id === o3.id).said && rec.result === PB.result + '.' && rec.frame && rec.ids.join() === sc.ids.join(), 'the closed scene leaves a write-only record for the Chat (frame, acts, result): ' + (rec && rec.result));
+  ok(ln && ln.sk === key && ln.opt === 'yes' && !ln.rfx, 'a table line carries its scene and the act it went with')}
  stepUntil(() => !S.table, 10);
 
  // a silent but connected member's reflex comes after the live wait, side by side (not summed)
@@ -1480,7 +1609,7 @@ console.log('talking takes presence');
  for (const x of mem) if (!PP.votes[x.id] && PP.status === 'open') act(x, 'vote', {proposal_id: PP.id, vote: 'yes', reason: 'ok'});
  ok(PP.status !== 'open' && !PP.votes[RB.id] && /Passed 4-0/.test(PP.result), 'a vote counts only the members present, and settles without the absent one: ' + PP.result);
  const cq = act(RA, 'propose', {kind: 'crypt', details: 'Down we go'});
- ok(!cq.ok && /whole Fellowship together/.test(JSON.stringify(cq)), 'a Crypt call needs everyone together');
+ ok(!cq.ok && /whole Fellowship/.test(JSON.stringify(cq)), 'a Crypt vote needs everyone together');
  // meeting plans
  gather(); awayB(); for (const x of RM) x.memories = null;
  const pl = C.makeMeeting(RA, 'the ford at Mirefen', 6);
@@ -1522,7 +1651,8 @@ T.TABLE.mode = 'off'; T.TABLE.speed = 1; // outside Table mode: the Crypt call i
 const reset = () => {if (CRYPT.group) for (const a of CRYPT.group.mem) {a.state = 'hunt'; a.hidden = false} CRYPT.group = null; CRYPT.cd = 0};
 // everyone of the faction safe in town (in the Crypt pool, and nothing attacks them there)
 const field = () => {for (const a of S.agents) if (a.fac === 0 && a.state !== 'dead') {const c = homeOf(a); a.lvl = SLT.inSlots(a) ? 8 : 6; a.state = 'town'; a.townStep = 2; a.wait = 9; a.x = c.gate.x; a.y = c.gate.y - 1; a.target = null; a.pq = []; a.hidden = false; a.raid = false; a.hp = maxHp(a)}};
-for (const x of RM) link(x, 'none');
+// no host at all (npm run sim): the reflex draft (#826: with a host the world never asks, see initiatecheck)
+const hostLinks = x => LINK[x.id] || 'none'; SIM.setRunnerLinks(null);
 ok(RM.every(x => x.player && SIM.reflexMay(x)), 'no runner holds any member: their reflexes play them and vote (#148)');
 field(); const others = S.agents.filter(a => a.fac === 0 && !SLT.inSlots(a) && a.state !== 'dead').slice(0, 2); for (const a of others) a.lvl = 8;
 let formed = null; for (let k = 0; k < 400 && !formed; k++) {reset(); field(); for (const a of others) a.lvl = 8; S.dmLogSeq = S.dmLogSeq; step(1 / 60); const g = CRYPT.group; if (g && g.fac === 0) formed = g.mem.slice();}
@@ -1531,11 +1661,12 @@ reset(); field(); for (const a of others) a.lvl = 8; RM[4].state = 'ghost'; // o
 let split = false; for (let k = 0; k < 400; k++) {reset(); field(); for (const a of others) a.lvl = 8; RM[4].state = 'ghost'; step(1 / 60); const g = CRYPT.group; if (g && g.mem.some(a => SLT.inSlots(a))) {split = true; break}}
 ok(!split, 'with one member unable to go, none of them is drafted');
 ok(SLT.slotted().log.some(e => e.kind === 'council' && /not all of/.test(e.parts.map(p => typeof p === 'string' ? p : '').join(''))), 'the log says they stayed together');
-// an agent party is asked, not drafted
-for (const x of RM) link(x, 'waiting'); reset(); field(); for (const a of others) a.lvl = 8; SLT.slotted().cool = {};
+// an agent party is never asked and never drafted (#826): the leader's own proposal is the road
+SIM.setRunnerLinks(hostLinks); for (const x of RM) link(x, 'waiting'); reset(); field(); for (const a of others) a.lvl = 8; SLT.slotted().cool = {};
 let prop = null; for (let k = 0; k < 400 && !prop; k++) {reset(); field(); for (const a of others) a.lvl = 8; step(1 / 60); prop = C.openProps().find(q => q.kind === 'crypt'); if (CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))) break}
-ok(prop && !(CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))), `an agent-played Fellowship gets a proposal instead of a draft: "${prop && prop.details}"`);
+ok(!prop && !(CRYPT.group && CRYPT.group.mem.some(a => SLT.inSlots(a))), 'a background muster opens no vote for an agent-played Fellowship and takes none of them');
 reset(); field();
+{const r = act(C.leaderOfF(), 'propose', {kind: 'crypt', details: 'Down we go'}); ok(r.ok, 'the leader\'s own proposal goes'); prop = C.openProps().find(q => q.kind === 'crypt')}
 for (const a of SLT.slotHeroes(SLT.slotted())) if (!prop.votes[a.id]) act(a, 'vote', {proposal_id: prop.id, vote: 'yes', reason: 'Together.'});
 ok(prop.status === 'passed' && CRYPT.group && SLT.slotHeroes(SLT.slotted()).every(a => CRYPT.group.mem.includes(a) && a.cryptOk), `they vote yes and set out together (${prop.result})`);
 step(1 / 60); step(1 / 60);
@@ -1571,6 +1702,16 @@ ok(SLT.slotHeroes(SLT.slotted()).every(a => a.state === 'dungeon'), 'agent membe
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--arrival'], {encoding: 'utf8', env: {...process.env}});
   process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
   ok(ch.status === 0 && /ARRIVAL OK/.test(ch.stdout || ''), 'session zero (prep, DM frame, introductions, met) and arrivals (never in the Crypt, DM or scripted voice, the oath, the letter, no host = at once)')}
+
+// ---- 5d1. the oath is chosen (#800): a fresh world in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--opening'], {encoding: 'utf8', env: {...process.env}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /OPENING OK/.test(ch.stdout || ''), 'the first table asks: a member swears its own words and the next fire names them; a silent member\'s thread is never narrated')}
+
+// ---- 5d2. a company of mixed peoples at its first table (#771): the Stepping Lands in a child ----
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--hall'], {encoding: 'utf8', env: {...process.env, ELDMOOR_WORLD: 'stepping'}});
+  process.stdout.write(ch.stdout || ''); if (ch.stderr) process.stderr.write(ch.stderr);
+  ok(ch.status === 0 && /HALL OK/.test(ch.stdout || ''), 'session zero seats a mixed company of five, holds for members out of range and opens without them past the wait; a newcomer stands with the company')}
 
 // ---- 5e. talk round the fire and the debrief (#571): a fresh world in a child ----
 {const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fireside'], {encoding: 'utf8', env: {...process.env}});
