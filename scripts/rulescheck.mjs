@@ -161,5 +161,12 @@ console.log('patch notes: one player-facing note per PR (docs/patchnotes/<PR>.md
   }
 }
 
+// ---- 8. no code hidden after a // comment (#933) ----
+console.log('\ncomments: no code hides after a // comment');
+{
+  const r = spawnSync(process.execPath, [join(ROOT, 'scripts/commentcodecheck.mjs')], {cwd: ROOT, encoding: 'utf8'});
+  ok(r.status === 0, 'no statement written after a // comment on the same line (scripts/commentcodecheck.mjs)' + (r.status === 0 ? '' : '\n    ' + r.stdout.trim().split('\n').slice(1).join('\n    ')));
+}
+
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');
 process.exit(fail ? 1 : 0);
