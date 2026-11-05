@@ -33,6 +33,7 @@ import {record} from './history.js';
 import {log,gold} from './chronicle.js';
 import {companyOf} from './company.js';
 import {sceneOf} from './scenes.js';
+import {listFor,listedUnits,mine,goodRef,TRADE,SCROLL_LVL as MKT_SCROLL} from './market.js';
 
 export const CRAFT={
   LEARN_LVL:5,     // scripted: level at which a hero with a gathering trade takes up the crafting trade that uses it
@@ -41,6 +42,9 @@ export const CRAFT={
   PER_VISIT:3,     // scripted: crafts in one town visit
   KEEP_X:3,        // scripted: units of a material kept for the next visit, as a multiple of a recipe's need
   OVER:1.25,       // scripted: a consumable is crafted only when its cost stays within this multiple of the shop price
+  MARKET_LOW:2,    // scripted (#783): a crafter makes a consumable for the book when fewer than this many units are listed
+  MARKET_X:.7,     // scripted (#783): ...and only when its cost stays within this multiple of the shop price (it must pay)
+  MARKET_PER_VISIT:1, // scripted (#783): market crafts in one town visit
   MAX_N:5,         // agent tool: crafts in one call
 };
 // The crafting trade that uses a gathering trade's materials (scripted choice; herbalists who read lean to scribing).
@@ -166,8 +170,26 @@ export function townCraft(a){if(a.player)return 0;ensureCraft(a);let k=0;
         if(r.out.kind==='use'&&c.total>USES[r.out.id].price*r.out.n*CRAFT.OVER)break;
         if(!buyMats(a,c)||!canCraft(a,r,{where:'town'}).ok)break;
         craftOne(a,r,{by:'script',where:'town'});k++}}}
+  k+=marketCraft(a);
   if(k){for(const id of Object.keys(USES))if(USES[id].buff&&count(a,id)&&!mealOn(a)&&useItem(a,id).ok)stat('meals');
     if(count(a,"Wayfarer's Pack")&&!invOf(a).pack)useItem(a,"Wayfarer's Pack")}
+  return k}
+// For the book (#783): a scripted crafter with gold to spare makes one consumable nobody has listed (under MARKET_LOW units), when its
+// cost, materials bought included, stays within MARKET_X of the shop price, and lists it at once at the shop price (buyers pay
+// at most that). Meals and scrolls need a buyer: a scroll only from the level a hero would buy it. No RNG.
+function marketCraft(a){let k=0;
+  for(const p of craftProfs(a)){if(k>=CRAFT.MARKET_PER_VISIT||mine(a).length>=TRADE.MAX_PER_HERO)break;
+    const R=recipesFor(p.id,skillBand(Math.max(1,p.skill))).slice().sort((x,y)=>y.band-x.band);
+    for(const r of R){const U=r.out.kind==='use'&&USES[r.out.id];if(!U||U.kind==='pack'||U.kind==='map'||listedUnits(r.out.id)>=CRAFT.MARKET_LOW)continue;
+      if(U.kind==='scroll'&&a.lvl<(MKT_SCROLL[r.out.id]||U.lvl))continue;
+      if(U.kind==='potion'&&U.lvl>a.lvl+2)continue;
+      const c=costOf(a,r);if(!c||a.gold-c.total<CRAFT.KEEP+TRADE.RESERVE||c.total>U.price*r.out.n*CRAFT.MARKET_X)continue;
+      const before=count(a,r.out.id);
+      if(!buyMats(a,c)||!canCraft(a,r,{where:'town'}).ok)continue;
+      craftOne(a,r,{by:'script',where:'town'});k++;
+      const made=Math.min(r.out.n,count(a,r.out.id)-before),e=invOf(a).list.find(x=>x.kind==='use'&&x.id===r.out.id);
+      if(made>0&&e){e.n-=made;if(e.n<=0)invOf(a).list.splice(invOf(a).list.indexOf(e),1);listFor(a,{use:r.out.id,n:made},goodRef(r.out.id))}
+      break}}
   return k}
 // Materials a scripted crafter keeps from the sale: units per id (KEEP_X times what its recipes in band need).
 export function keepFor(a){if(a.player)return null;const P=craftProfs(a);if(!P.length)return null;const o={};

@@ -34,6 +34,10 @@ const T=()=>S.tradeStats||(S.tradeStats={listed:0,sold:0,lapsed:0,gold:0,fees:0,
 // lists as gear and keeps it.maker/makerId (the item object travels whole). A use stack carries no maker, so its listing notes the seller's trade (l.maker).
 const CRAFTED=new Set(RECIPES.filter(r=>r.out.kind==='use').map(r=>r.out.id)),PROF_OF=Object.fromEntries(RECIPES.filter(r=>r.out.kind==='use').map(r=>[r.out.id,r.prof]));
 export const craftedUse=id=>CRAFTED.has(id)&&!!USES[id];
+// Scrolls a scripted hero uses/crafts only from this level (restock buys them at the same levels).
+export const SCROLL_LVL={'Scroll of Hearthward':8,'Scroll of the Steadfast Hour':10};
+// Units of a crafted good on the book now (the market crafters read it to see whether supply is low).
+export const listedUnits=id=>listings().reduce((n,l)=>n+(l.kind==='use'&&l.good===id?l.n:0),0);
 const SURPLUS={potion:4,ration:2,pack:1,scroll:2,map:1};   // units a scripted hero keeps of its own before it lists the rest
 const crafted=l=>!!(l.maker||(l.kind==='gear'&&l.item&&l.item.maker));
 export const listings=()=>S.listings||(S.listings=[]);
@@ -93,11 +97,14 @@ export function scriptedBuy(a,need){if(a.player)return 0;const L=listings();if(!
   if(need)for(const id in need){const short=need[id]-count(a,id);if(short<=0)continue;
     for(const l of L.slice().sort((x,y)=>x.ask-y.ask)){if(l.kind!=='good'||l.good!==id||l.seller===a.id||l.ask>goodRef(id)*1.1||a.gold-l.ask<TRADE.RESERVE)continue;
       const k=Math.min(short,l.n,Math.floor((a.gold-TRADE.RESERVE)/l.ask));if(k>0&&buyListing(a,l,k).ok){bought++;break}}}
-  // crafted potions and packs it would otherwise buy at the shop (a meal or a scroll waits for its own craft): at most the shop price
+  // crafted potions and packs it would otherwise buy at the shop (and, #783, a meal or a scroll): at most the shop price
   const want=Math.min(4,1+Math.floor(a.lvl/4));
   for(const l of L.slice().sort((x,y)=>x.ask-y.ask)){if(l.kind!=='use'||l.seller===a.id||!craftedUse(l.good)||l.ask>goodRef(l.good)||a.gold-l.ask<TRADE.RESERVE)continue;
     const U=USES[l.good];let k=0;
     if(U.kind==='potion'&&U.lvl<=a.lvl+2)k=Math.min(l.n,want-countKind(a,'potion'));
     else if(U.kind==='pack'&&!invOf(a).pack&&!count(a,l.good)&&a.lvl>=U.lvl+1)k=1;
-    k=Math.min(k,Math.floor((a.gold-TRADE.RESERVE)/l.ask));if(k>0&&buyListing(a,l,k).ok){bought++;if(U.kind==='pack')useItem(a,l.good)}}
+    // a meal it has none of (eaten at once) and the scrolls it would buy at the shop (#783)
+    else if(U.kind==='ration'&&U.buff&&!count(a,l.good)&&!(a.meal&&a.meal.until>S.gameMin))k=1;
+    else if(U.kind==='scroll'&&a.lvl>=(SCROLL_LVL[l.good]||U.lvl)&&!count(a,l.good))k=1;
+    k=Math.min(k,Math.floor((a.gold-TRADE.RESERVE)/l.ask));if(k>0&&buyListing(a,l,k).ok){bought++;if(U.kind==='pack'||U.kind==='ration')useItem(a,l.good)}}
   return bought}

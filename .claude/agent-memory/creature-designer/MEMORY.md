@@ -8,3 +8,4 @@
 - [Smith temper #13](project_smith.md) — gold sink: +1 ilvl per temper, caps, no repair, hooks
 - [Hero trades #14](project_hero_trades.md) — order book S.listings, fee/lapse, scripted buy/sell, auction_* tools
 - [Crafted at AH #719](project_ah_crafted.md) — listing kind use, price covers USES, volume low by design
+- [Market crafters #889](project_market_crafters.md) — marketCraft levers, balance result, hash note
