@@ -1,3 +1,4 @@
+import {PRICES} from './providers/anthropic.mjs';
 // Runner pacing (issue #126): a runner's turns follow the game, not a stopwatch. Shared by the hero
 // runner (scripts/agent-player.mjs) and the Fellowship runner (scripts/fellowship.mjs); plain Node.
 //
@@ -67,7 +68,7 @@ export function failTracker(maxFails) {
 // Did a local-loop turn (scripts/local-agent.mjs result) do anything?
 // (a turn with no call, every call rejected, or a narration repeating the last one with no world-changing call is empty)
 // null (neither worked nor failed; also a turn whose calls failed because the game page did not answer: a hidden or reloading tab is not the runner's fault, failTracker leaves its count): a turn Ollama aborted twice for repeating tokens (#221) with no call made.
-export const localWorked = r => r && r.looped && !r.tools ? null : r && r.gameDown && !r.acts ? null : !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.foreign);
+export const localWorked = r => r && r.looped && !r.tools ? null : r && r.gameDown && !r.acts ? null : !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.repeatAct && !r.foreign && !(r.chatbot && !r.acts));
 
 // makePacer({base, hero, runner, heartbeat, minGap, log, stopped}) -> {next(), turnDone(), state}
 //   next(): waits for the next turn. -> {wake:'now'|'soft'|'heartbeat', why, table, clock} or {dead} / {gone, why} / {stopped}
@@ -188,7 +189,9 @@ export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
 What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return gatherNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `\nYour memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
+  return gatherNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + (b && b.growth ? `
+${b.growth}` : '') + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `
+Your memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
 // header; when it is done, stale or was never stated, the turn asks first "What are you trying to do now?" (any mind: the
@@ -199,7 +202,8 @@ export function aimNote(b) {
   const m = b && b.aim; if (!m || typeof m !== 'object') return '';
   const lead = m.leader ? `\nYour leader's aim: ${String(m.leader).slice(0, 260)}.` : '';
   const line = m.line ? String(m.line).slice(0, 260) : '';
-  if (!m.ask || b.scene || b.table) return (line && !m.ask ? `\nYour aim: ${line} (intent changes it, or sets it down when done).` : line ? `\nYour aim: ${line}.` : '') + lead;
+  const errand = m.errand && !b.scene && !b.table ? `\n${String(m.errand).slice(0, 200)}` : ''; // in town on an errand: the next step, named (#727)
+  if (!m.ask || b.scene || b.table) return (line && !m.ask ? `\nYour aim: ${line} (intent changes it, or sets it down when done).` : line ? `\nYour aim: ${line}.` : '') + errand + lead;
   const why = String(m.why || '').slice(0, 120);
   return `\n${AIM_ASK} ${line ? 'Your aim was: ' + line + '; ' + why : why.charAt(0).toUpperCase() + why.slice(1)}. Say it first with intent {goal, why, until} (one call), then act on it.${m.wait_limit ? ' Until you do, ' + String(m.wait_limit).replace(/^with no aim, /, '') + '.' : ''}` + lead;
 }
@@ -337,6 +341,24 @@ export function sceneGrab({due, abort, onGrab = null, ms = SCENE_GRAB_MS, every 
   }, every);
   if (t.unref) t.unref();
   return {stop: () => clearInterval(t), grabbed: () => fired};
+}
+// #747: an aborted query sends no result message, so its spend would never reach the run budget. grabSpend() watches the stream:
+// every assistant message carries the usage of its model call (one call can repeat under the same id as it streams; the largest
+// figure per field wins). grabSpend(...).cost(model, {sent}) prices what was reported with the Anthropic price table (cache reads at
+// 0.1x and cache writes at 1.25x the input rate) -> {usd, how: 'reported'}; with nothing reported (cut before the first model call
+// finished) it estimates from the characters sent (system + prompt, 3 chars a token, all at the full input rate, plus GRAB_EST_OUT
+// output tokens) -> {usd, how: 'estimated'}. An unpriced model counts as the dearest listed. No RNG, no network.
+export const GRAB_EST_OUT = 400;
+export function grabSpend() {
+  const calls = new Map(); let n = 0;
+  return {
+    add(msg) {const u = msg && msg.message && msg.message.usage; if (!u) return; const id = msg.message.id || ('anon' + n++), c = calls.get(id) || {in: 0, out: 0, cr: 0, cw: 0};
+      c.in = Math.max(c.in, u.input_tokens || 0); c.out = Math.max(c.out, u.output_tokens || 0); c.cr = Math.max(c.cr, u.cache_read_input_tokens || 0); c.cw = Math.max(c.cw, u.cache_creation_input_tokens || 0); calls.set(id, c)},
+    reported: () => calls.size,
+    cost(model, {sent = 0} = {}) {
+      const p = PRICES[model] || Object.values(PRICES).reduce((a, b) => b.out > a.out ? b : a);
+      if (calls.size) {let usd = 0; for (const c of calls.values()) usd += (c.in * p.in + c.cr * p.in * .1 + c.cw * p.in * 1.25 + c.out * p.out) / 1e6; return {usd, how: 'reported', calls: calls.size}}
+      return {usd: (Math.ceil(sent / 3) * p.in + GRAB_EST_OUT * p.out) / 1e6, how: 'estimated', calls: 0}}};
 }
 export const GRAB_RESUME = 'Your turn was paused so the Table scene could be answered, and it has been (see the state header). Carry on from what you were doing; do not repeat what you already did.';
 

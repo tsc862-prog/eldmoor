@@ -159,6 +159,21 @@ console.log('save and restore');
  r = act(A3, 'self'); ok(r.ok && A3.persona.hist.length === 0 && r.beliefs === '(none named yet)', 'an old save migrates (no history)');
  nextDay(); ok(act(A3, 'become', {field: 'wants', text: 'A fresh start.', why: 'the old save'}).ok && A3.persona.hist.length === 1, 'and grows from there')}
 
+console.log('role words (#863)');
+{const BARE = /\b(Tank|Healer|Damage|DPS)\b/, mates = SLT.slotHeroes(SLT.slotted()), seen = [];
+ for (const h of mates) {
+   seen.push(['fellowCard', JSON.stringify(PE.fellowCard(h))], ['snapshot', JSON.stringify(PE.personaSnapshot(h, mates, 'The Test'))],
+     ['backstory', JSON.stringify(h.backstory)], ['memory', JSON.stringify(h.memory)], ['history', JSON.stringify(h.history || [])],
+     ['look', JSON.stringify(act(h, 'look', {target: h === A ? B.name : A.name}))]);
+   if (h.player) seen.push(['status', JSON.stringify(act(h, 'status'))], ['self', JSON.stringify(act(h, 'self'))], ['brief', JSON.stringify(paceBrief(h.id, {self: true}))]);
+ }
+ seen.push(['orders', systemPrompt({name: 'X', level: 1, people: 'human', cls: 'Mage', faction: 'Concord', home: 'Highgate', fellowship: PE.fellowCard(A)})]);
+ const bad = seen.filter(([, t]) => BARE.test(t));
+ ok(!bad.length, 'no hero-facing text carries Tank, Healer, Damage or DPS' + (bad.length ? ': ' + bad.map(([k, t]) => k + ' ...' + t.match(new RegExp('.{0,30}' + BARE.source + '.{0,20}'))[0]).join(' | ') : ''));
+ const fc = PE.fellowCard(A);
+ ok(fc.role === A.cls.toLowerCase() && fc.companions.every(c => /\(\w+ L\d+\)/.test(c)), 'the place is a word from the class: ' + fc.role);
+ ok(/ as its [a-z]+ because /.test(A.backstory.paras.joined), 'the joined line names the class, not a game role')}
+
 console.log('hardcore');
 {const D = S.agents.find(x => x.id === B.id); D.state = 'dead'; D.cause = 'a test';
  r = act(D, 'become', {field: 'wants', text: 'x', why: 'y'}); ok(!r.ok && r.dead, 'a dead hero changes nothing (it dies with the hero)');

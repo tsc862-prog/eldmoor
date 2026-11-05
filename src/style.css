@@ -433,7 +433,16 @@ button.frrh:hover,button.frrh:focus-visible{border-bottom-color:var(--gold)}
 .pfhpt{position:absolute;inset:0;font-size:14px;line-height:12px;text-align:center;color:#fff;text-shadow:1px 1px 0 #000;font-variant-numeric:tabular-nums}
 .pfdo,.pftg,.pfrep{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pftg{color:#ffb060}
-.pftg:empty,.pfrep:empty,.pfchips:empty{display:none}
+.pfdo{min-height:17px}
+/* fixed-height slots: the frame row is the same height in every state (#843) */
+.pfsl{position:relative;overflow:hidden}
+.pfsl1{height:17px}.pfsl2{height:15px}
+.pfsl>*{position:absolute;left:0;right:0;top:0}
+.pfsl1>.pfdown{background:inherit;height:17px}
+.pfsl1>.pfdown:not([hidden])~*,.pfsl1>.pfdown:not([hidden]){z-index:1}
+.pfsl2>.pfchips{flex-wrap:nowrap;overflow:hidden}
+.pfchips:not(:empty)~.pfrep{display:none}
+.pffoot{min-height:15px}
 .pfchips{display:flex;flex-wrap:wrap;gap:3px}
 .chip{font-family:var(--px);font-size:6px;padding:2px 3px;border:1px solid currentColor;letter-spacing:.04em;white-space:nowrap}
 .chip.c-good{color:#9ad0ff} .chip.c-bad{color:var(--red)} .chip.c-dim{color:var(--dim)} .chip.c-crypt{color:#c58cff} .chip.c-warn{color:var(--amber)} .chip.c-oath{color:var(--gold)}
@@ -457,7 +466,7 @@ button.runbtn.off{opacity:.55}
   .pf{font-size:14px;padding:3px 4px}
   .pfport{width:20px;height:24px}
   .pfname{font-size:7px}
-  .pftg,.pfrep,.pfchips{display:none}
+  .pfsl{display:none}
 }
 /* the World group: the world panels, folded under one heading while a Fellowship rides */
 .worldgrp{border-style:dashed}
@@ -555,6 +564,16 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .log.chat li.chl.sys{color:var(--dim);font-size:15px;line-height:1.1}
 .log.chat li.chl.sys .hn{font-weight:normal}
 .log.chat li.chl.sys-result{color:var(--gold)}
+/* A Table scene as one exchange (#734): a gold rail down its rows, a pixel-font header, the act dimmed after each line */
+.log.chat li.chl.scg{border-left:2px solid rgba(242,193,78,.45);background:rgba(242,193,78,.04);padding-left:calc(9ch + 6px)}
+.log.chat li.chl.scg>time{left:6px}
+.log.chat li.chl.scg-h{margin-top:6px;color:var(--ink);font-size:16px;border-left-color:var(--gold)}
+.log.chat li.chl.scg-end{margin-bottom:6px}
+.log.chat li.chl.scg-r{color:var(--gold)}
+.log.chat li.chl.scg.sys-prop{color:var(--ink)} /* a vote's question reads like the frame, not a side note */
+.scgt{font-family:var(--px);font-size:8px;color:var(--gold);letter-spacing:.04em;margin-right:2px}
+.log.chat li.chl.scf .scft{font-style:italic}
+.chopt{font-size:16px}
 .chatdm{height:clamp(150px,26vh,300px);overflow-y:auto}
 .chatdm li.dimmed{opacity:.55}
 .chatdm li[role=button]{cursor:pointer}
@@ -624,6 +643,13 @@ button.tbtn.danger{border-color:var(--red)}
 .dmseat .dmnotes{margin-left:auto}
 .dmfdo{color:#d9c27a;overflow-wrap:anywhere}
 .dmfdo:empty,.dmfstg:empty{display:none}
+/* calm (#848): one line while the seat is healthy; counters and the runner line behind Details, everything on an alert */
+.dmfsum{margin-left:auto}
+.dmfmore{font-size:6px;padding:2px 4px}
+.dmf.calm .dmfdo,.dmf.calm .dmfact,.dmf.calm .dmffol,.dmf.calm .dmfstg{display:none}
+.dmf.calm .dmffull{flex-direction:row;align-items:center;flex-wrap:wrap;gap:3px 10px}
+.dmf.calm .dmffoot{margin-left:0}
+.dmf:not(.calm) .dmfsum{display:none}
 .dmfact,.dmffol,.dmfstg{color:var(--dim);overflow-wrap:anywhere}
 .dmffoot{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
 .dmfrun{min-width:0;flex:1 1 auto}
@@ -949,6 +975,27 @@ button.tnmore{align-self:flex-start}
 .tnl{margin:4px 0 0;padding-left:18px;font-size:18px;line-height:1.15;color:#d8d4c4;overflow-wrap:anywhere}
 .tnl li{margin:2px 0}
 
+/* ---- whole-map view (#844): no corner minimap, a quiet legend in the side bars ---- */
+.screen.wholemap .minimap{display:none}
+.maplegend{position:absolute;top:12px;bottom:60px;overflow:hidden;pointer-events:none;color:var(--dim,#8a8fa8);font:24px/1.3 'VT323',monospace;display:flex;flex-direction:column;gap:2px}
+.maplegend[hidden]{display:none}
+.maplegend.mlL{left:14px}.maplegend.mlR{right:14px}
+.maplegend h3{margin:0 0 10px;font:13px 'Press Start 2P',monospace;color:#c8ccdc;letter-spacing:.04em}
+.maplegend .mlsub{margin:8px 0 6px;font:11px 'Press Start 2P',monospace;color:#8a8fa8}
+.maplegend .mlrow{display:flex;gap:10px;align-items:baseline;opacity:.8}
+.maplegend .mlrow.here{opacity:1;color:#e8e8f0}
+.maplegend .mln{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.maplegend .mlb{color:#d8b24c;white-space:nowrap}
+.maplegend .mlw{white-space:nowrap;font-size:20px}
+.maplegend .mlrow.co{color:#e8e8f0;opacity:.9}
+.maplegend .mlrow.co.fol{color:#ffd24a;opacity:1}
+/* Company tab, Lately (#845) */
+.fellately{margin-top:10px}
+.fellately .flately{margin:4px 0 0;padding:0;list-style:none;max-height:none;overflow:visible}
+body:not(.docked) .fellately .flately{max-height:320px;overflow-y:auto}
+.fellately .flately li{padding:3px 0;border-top:1px solid rgba(255,255,255,.06)}
+.fellately .flately time{color:#8a8fa8;margin-right:6px}
+.storyempty{padding:8px 4px}
 /* #847: the setup and title pages at wide widths. Scoped to .setup and .title; narrow widths keep the grid. */
 .sprofd>summary{cursor:pointer;list-style:revert}
 .sprofd>summary:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
