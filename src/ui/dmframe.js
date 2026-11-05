@@ -21,8 +21,10 @@ import {pageBusy,busyText} from './pagewatch.js'; // the page watchdog (#736)
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
 const setText=(n,v)=>{v=v==null?'':String(v);if(n._v!==v){n._v=v;n.textContent=v}};
 const setCls=(n,c)=>{if(n._c!==c){n._c=c;n.className=c}};
+const setAttr=(n,k,v)=>{if(n['_a'+k]!==v){n['_a'+k]=v;n.setAttribute(k,v)}};
 const setTitle=(n,v)=>{v=v||'';if(n._t!==v){n._t=v;if(v)n.setAttribute('title',v);else n.removeAttribute('title')}};
 let node=null,refs=null;
+const X={open:false}; // the full block shown by a click on Details; an alert or a prep shows it by itself (#848)
 
 const LINK={connected:'agent connected',waiting:'agent waiting',none:'no DM runner'};
 // The runner's own words for what it waits on, else its last output line.
@@ -39,7 +41,7 @@ export function dmFrameData(){const open=dmSeatOn(),r=runnerByKey('dm'),on=!!(r&
   const link=dmLink(),pb=link!=='off'&&link!=='offline'?pageBusy():null; // #736: a page that froze reads page busy
   return {open:true,link:pb?'pagebusy':link,linkText:pb?busyText(pb):LINK[link]||LINK_TEXT[link]||link,mind:(dmRunnerTag()||'')+(prepView().state==='running'?(dmRunnerTag()?' · ':'')+'preparing':dmReadyWord()?(dmRunnerTag()?' · ':'')+READY_TEXT[dmReadyWord()]:''),ready:dmReadyWord(),prep:prepView().state==='running',now:nowLine(r),last:r&&r.lastTurnAgo!=null&&!DONE_STATE[r.state]?r.lastTurnAgo:null,
     turns:r?r.turns:0,cost:r?r.cost:0,
-    narr:(today.narr||0)+'/'+DMA.NARRATE_PER_DAY,levers:(today.pulls||0)+'/'+DMA.PULLS_PER_DAY,scenes:sv.today,
+    narr:(today.narr||0)+'/'+DMA.NARRATE_PER_DAY,narrN:today.narr||0,levers:(today.pulls||0)+'/'+DMA.PULLS_PER_DAY,scenes:sv.today,
     staged:sv.cur?sv.cur.title+' · '+sv.cur.kind+(sv.cur.hours_left!=null?' · '+sv.cur.hours_left+' h left':''):'',
     pending:whenPending(),
     share:fs.share==null?null:Math.round(fs.share*100),acts:fs.acts,notes}}
@@ -49,11 +51,13 @@ function build(){const f=el('div','dmf');f.tabIndex=0;f.setAttribute('role','but
   r.chip=el('div','dmfchip');r.chipTxt=el('span','dm','DM: no seat yet');r.chip.append(r.chipTxt);
   r.full=el('div','dmffull');
   const top=el('div','dmftop');r.lbl=el('span','dmflbl','DM');r.link=el('span','mlink');r.mind=el('span','dmfmind');
-  top.append(r.lbl,r.link,r.mind);
+  r.sum=el('span','dmfsum dm');r.more=el('button','mini dmfmore','Details');r.more.type='button';r.more.dataset.dmmore='1';r.more.setAttribute('aria-expanded','false');r.more.title='Show or hide the counters and the runner line';
+  top.append(r.lbl,r.link,r.mind,r.sum,r.more);
   r.alert=el('div','dmfalert');r.alert.setAttribute('role','alert');r.alert.hidden=true;r.now=el('div','dmfdo');r.act=el('div','dmfact');r.stg=el('div','dmfstg');r.when=el('div','dmfstg');r.fol=el('div','dmffol');
   const foot=el('div','dmffoot');r.notes=el('button','mini','Notes 0');r.notes.dataset.dmnotes='1';r.notes.title='Open the Dungeon Master panel on its Notes';r.run=el('span','dmfrun');foot.append(r.notes,r.run);
   r.full.append(top,r.alert,r.now,r.act,r.stg,r.when,r.fol,foot);f.append(r.chip,r.full);
   f.addEventListener('click',e=>{const t=e.target;if(t&&t.closest&&(t.closest('[data-runact]')||t.closest('select')))return;
+    if(t&&t.closest&&t.closest('[data-dmmore]')){X.open=!X.open;renderDmFrame();return}
     openDmPanel(t&&t.closest&&t.closest('[data-dmnotes]')?'notes':null)});
   f.addEventListener('keydown',e=>{if((e.key==='Enter'||e.key===' ')&&e.target===f){e.preventDefault();openDmPanel(null)}});
   refs=r;return f}
@@ -62,7 +66,8 @@ function build(){const f=el('div','dmf');f.tabIndex=0;f.setAttribute('role','but
 export function mountDmFrame(parent){node=build();parent.append(node);return node}
 
 export function renderDmFrame(){if(!node)return;const x=dmFrameData(),r=refs;
-  setCls(node,'dmf'+(x.open?'':' closed'));r.chip.hidden=x.open;r.full.hidden=!x.open;
+  const gone0=x.open?gateMissing().find(m=>m.kind==='dm'):null,calm=x.open&&!gone0&&(x.link==='connected'||x.link==='waiting')&&!x.prep&&(!x.ready||x.ready==='ready')&&!x.staged&&!x.pending.length&&!X.open;
+  setCls(node,'dmf'+(x.open?'':' closed')+(calm?' calm':''));r.chip.hidden=x.open;r.full.hidden=!x.open;
   if(!x.open)return;
   {const gone=gateMissing().find(m=>m.kind==='dm');setText(r.alert,gone?'DM runner gone: the world is paused. '+whyMissing(gone)+'. Restart DM, or Start anyway in the bar over the map.':'');r.alert.hidden=!gone}
   setText(r.link,x.linkText);setCls(r.link,'mlink '+x.link);setText(r.mind,x.mind);
@@ -76,4 +81,5 @@ export function renderDmFrame(){if(!node)return;const x=dmFrameData(),r=refs;
     setTitle(r.when,P.map(e=>(e.kind==='when'?'When #'+e.id+': '+e.label+' → '+e.action:'Watch #'+e.id+': wake the DM when '+e.label)+' ('+e.hours_left+' h left)').join('\n'))}
   setText(r.fol,(x.share==null?'No DM actions yet':'Fellowship '+x.share+'% of '+x.acts+' DM actions')+(x.last!=null?' · last turn '+agoText(x.last)+' ago':'')+(x.turns?' · '+x.turns+' turn'+(x.turns===1?'':'s')+(x.cost?' · $'+x.cost.toFixed(3):''):''));
   setText(r.notes,'Notes '+x.notes);
+  setText(r.sum,x.narrN+' narration'+(x.narrN===1?'':'s')+' today');setAttr(r.more,'aria-expanded',String(X.open));
   const k=dmRunnerSig();if(r.run._k!==k){r.run._k=k;r.run.replaceChildren(dmRunnerControl())}}
