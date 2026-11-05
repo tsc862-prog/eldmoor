@@ -31,6 +31,7 @@ import {combatStats} from './stats.js';
 import {record,timeline,first} from './history.js';
 import {bestUse,useItem} from './inv.js';
 import {notify} from './notify.js';
+import {engage as loreEngage,slain as loreSlain} from './lore.js'; // what a hero learns of a creature it fights here, as in the open (#188): agent heroes only, no RNG
 import {setCrawlHook,payClear,clearXp} from './dungeon.js';
 import {tableOn,openScene,setSceneKind,sceneFor} from './table.js';
 import {moment,setReflectHold} from './reflect.js'; // no reflection while a crawl runs; one moment when it ends (#687)
@@ -74,6 +75,9 @@ export const species=type=>VARIANTS[type]||BESTIARY[baseId(type)]||null;
 const hitsOf=f=>f.hits||Math.max(1,Math.round(((ROLES[(species(f.type)||{}).role]||ROLES.brute).hp)*2));
 const foeName=f=>f.name||(species(f.type)?species(f.type).name||f.type:'the foe');
 const liveFoes=cr=>cr.foes.filter(f=>f.hp>0);
+// A crawl foe as lore.js reads a creature: a site species is its variant, a room's own name makes it a named foe (the keeper).
+const loreMob=(f,id)=>{const sp=species(f.type)||{};return {kind:'mob',id,type:f.type,v:VARIANTS[f.type]?f.type:undefined,lvl:f.lvl,name:f.name,named:!!f.name&&f.name!==sp.name}};
+const loreRoom=(g,cr)=>{for(const a of members(g))if(a.player)cr.foes.forEach((f,k)=>loreEngage(a,loreMob(f,'crawl'+(g.site==null?'c':g.site)+':'+cr.i+':'+k)))};
 
 // ---- the group enters ----
 export function startCrawl(g){if(!crawlFits(g))return false;
@@ -103,6 +107,7 @@ function frameOf(g,room){const cr=g.crawl,rem=liveFoes(cr),by={};for(const f of 
 function openRound(g){const cr=g.crawl,room=roomsOf(g)[cr.i];
   if(!cr.foes){cr.foes=buildFoes(room,cr.lvl,cr,dunOf(g));cr.rd=0;cr.stats.rooms++;
     if(room.alvl!=null)cr.cap=Math.max(room.rounds||CRAWL.ROUNDS,Math.ceil(cr.foes.reduce((t,f)=>t+f.hp,0)/(Math.max(1,cr.crew||1)*.6))+1)} // a site room (#69): a small crew gets the rounds its blows need
+  if(cr.rd===0)loreRoom(g,cr);
   placed(g); // the party at the stair, the foes at the den (#744)
   cr.guard=[];cr.back=[];cr.shield=0;cr.edge=Math.round(g.bonus||0); // the site scene's choices at the stair (sim/table.js g.bonus) tip every roll of the crawl
   return openScene('crawl',room.name+(cr.rd?' (round '+(cr.rd+1)+')':''),frameOf(g,room),g.site!=null?{room:cr.i,rd:cr.rd,site:g.site}:{room:cr.i,rd:cr.rd},companyById(cr.co)||undefined)}
@@ -164,7 +169,7 @@ function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=ac
   case 'strike':{if(!f)return 'the room is quiet';const d=ri(1,20),dc=CRAWL.DC+Math.floor(f.lvl/2),t=d+skill(a,cr,f);cr.stats.blows++;
     if(d===1){cr.open=(cr.open||[]);cr.open.push(a.id);return 'missed badly and left an opening'}
     if(t<dc&&d<20)return 'missed';
-    const n=d===20?2:1;f.hp-=n;return f.hp<=0?'struck down '+f.name:d===20?'a crushing blow':'hit '+f.name}
+    const n=d===20?2:1;f.hp-=n;if(f.hp<=0&&a.player)loreSlain(a,loreMob(f,'crawl'));return f.hp<=0?'struck down '+f.name:d===20?'a crushing blow':'hit '+f.name}
   case 'guard':cr.guard.push(a.id);return 'drew the foes';
   case 'hold':cr.shield++;cr.guard.push(a.id);return 'held the line';
   case 'ward':{let n=0;for(const b of standing(g))n+=heal(b,maxHp(b)*.08);cr.edge+=1;return n?'mended the group':'steadied the group'}
