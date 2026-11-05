@@ -10,7 +10,7 @@
 import {defaultSetup,validateSetup,cleanSetup,applyPreset,suggestName,CLAUDE_MODELS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,asV2} from '../sim/index.js';
 import {companies,slotMembers,slotted,SLOT_KEYS} from '../sim/company.js';
 import {S} from '../sim/state.js';
-import {slotsOf,groupsOf,MAX_HEROES,CLASSIC,seatCap,seatNote,hallTowns} from '../sim/setup.js';
+import {slotsOf,groupsOf,MAX_HEROES,CLASSIC,seatCap,seatNote,hallTowns,prologueOf} from '../sim/setup.js';
 import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
@@ -196,6 +196,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage'),halls=
     const fn=el('input','sinput');fn.type='text';fn.maxLength=40;fn.placeholder='Fellowship name: chosen for you';fn.value=s.name||'';fn.dataset.f='fname';
     wrow.append(field('Fellowship name',fn))}
   wrow.append(field('Other heroes',select('others',[['full','The usual roster'],['none','None: the company and whoever the DM brings']],s.others==='none'?'none':'full','Whether the world has background heroes of its own')));
+  wrow.append(field('Opening',select('prologue',[['delve','A first delve'],['none','Straight to the hall']],prologueOf(s),'A company of two or more starts at the mouth of a small dungeon near its hall, then comes home to the open world; a solo keeps its short opening')));
   wsec.append(wrow);page.append(wsec);
 
   const fsec=el('section','ssec');
@@ -240,6 +241,7 @@ function refreshFinal(){const a=document.activeElement,tag=a&&a.dataset&&a.datas
 function onChange(e){const t=e.target;if(!t||!t.dataset||!t.dataset.f)return;const f=t.dataset.f,v=t.value;st.confirm=false;st.error='';
   if(f==='world')st.setup.world=v;
   else if(f==='others'){if(v==='none')st.setup.others='none';else delete st.setup.others}
+  else if(f==='prologue')st.setup.prologue=v; // cleanSetup keeps it only when it differs from the default
   else if(f==='hall'){if(v)st.setup.hall=v;else delete st.setup.hall}
   else if(f==='fac'){st.setup.fac=+v;for(const h of st.setup.heroes){h.fac=+v;delete h.race;delete h.name}}
   else if(f.startsWith('hfac:')){const k=f.slice(5),h=heroAt(k);h.fac=+v;delete h.race;delete h.name;h.start={town:'home'};if(idx(k)===0)st.setup.fac=+v}
