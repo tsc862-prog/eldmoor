@@ -521,6 +521,15 @@ world(); {const [a, k] = foes(); markPlayer(k, true); setRunnerLinks(x => x === 
   for (let i = 0; i < 60 && !CRYPT.group; i++) {CRYPT.cd = 0; dungeonCheck(.1)} ok(CRYPT.group && !CRYPT.group.mem.includes(hurt), 'a wounded background hero is left out of a Crypt party'); CRYPT.group = null}
 }
 
+// Stats cache (#730) and wounds (#656): the cached combat totals never hide a wound. The cache is warm before each change.
+world(); {const {WOUND} = await import('../src/sim/wounds.js'), TD = await import('../src/sim/tend.js'), {combatStats} = await import('../src/sim/stats.js'); const a = hero(0);
+  const full = maxHp(a), sp0 = combatStats(a).speed; combatStats(a); combatStats(a); // warm: two cached hits
+  TD.takeWound(a, 'a test', null); ok(maxHp(a) < full && Math.abs(maxHp(a) - full * (1 - WOUND.HP)) <= 1, 'cache on: max HP drops at once on a wound (' + full + ' -> ' + maxHp(a) + ')');
+  ok(combatStats(a).speed < sp0, 'and speed with it');
+  const one = maxHp(a); TD.takeWound(a, 'a test', null); ok(maxHp(a) < one, 'a second wound lowers it again with no other change');
+  S.gameMin += WOUND.DAYS * 1440 + 1; TD.woundTick(); ok(!a.wounds.length && Math.abs(maxHp(a) - full) <= 1 && combatStats(a).speed === sp0, 'when the wounds close max HP and speed are back at once');
+  TD.takeWound(a, 'a test', null); maxHp(a); a.wounds.pop(); ok(Math.abs(maxHp(a) - full) <= 1, 'a wound dropped by hand shows too');}
+
 // 8. Determinism: two runs from the same seed give the same downings and deaths.
 const run = () => {seed = 0x1234; forced.length = 0; init({fellowship: false}); for (let i = 0; i < 2400; i++) step(.5);
   const D = downStats(); return JSON.stringify([D, S.facStats, S.agents.map(a => [a.id, a.state, a.lvl, Math.round(a.hp)])])};
