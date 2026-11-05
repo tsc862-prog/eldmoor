@@ -9,12 +9,12 @@
 // the cooler retry at 0.4 plays like mock-tools), mock-slow (the start gate's warm-up call, issue #222, answers after WARM_SLOW_MS,
 // then plays like mock-tools), mock-down (every call fails: a crashed warm-up), mock-busy (issue #515: every tool-loop call takes
 // BUSY_MS, look, status, rest, wait, so a member is nearly always mid-turn; a scene answer (format with option) comes in SCENE_MS
-// with press or the first option). Each turn it plays status,
+// with press or the first option), mock-pose (issue #801: the same emote every turn). Each turn it plays status,
 // rest 20, a bad tool (fly), wait 20, then narrates.
 // startMockOllama() -> {url, seen (every /api/chat body; seen.final counts closing calls), close()}
 import http from 'node:http';
 
-export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b', 'mock-busy:1b'];
+export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b', 'mock-busy:1b', 'mock-pose:1b'];
 export const WARM_SLOW_MS = 2500; // mock-slow's warm-up answer takes this long (issue #222)
 export const MOCK_BUSY = {BUSY_MS: 1200, SCENE_MS: 150}; // mock-busy's tool-loop call and scene answer times (issue #515); a check may change them
 // Embeddings (issue #553): startMockOllama({embed: true}) also lists the model MOCK_EMBED_MODEL and answers POST /api/embed with a
@@ -110,6 +110,12 @@ export async function startMockOllama({embed = false} = {}) {
         const plan = [['party_say', {text: `Hello friends! I am ${who} of the Concord, sworn to recover the Fenlight Lantern.`}], ['wait', {minutes: 10}]];
         if (!body.tools || n >= plan.length) return send(200, {...done, message: {role: 'assistant', content: `${who} greeted the party.`}});
         return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: plan[n][0], arguments: plan[n][1]}}]}});
+      }
+      if (body.model === 'mock-pose:1b') { // issue #801 (qwen2.5:14b live): one emote, the same words every turn, then narrates
+        const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
+        if (en) return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: en[0], line: 'Here.'})}});
+        if (!body.tools || n >= 1) return send(200, {...done, message: {role: 'assistant', content: 'I struck a pose with my cloak flaring.' + ' '.repeat(n)}});
+        return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: 'emote', arguments: {text: 'strikes a pose with his cloak flaring out'}}}]}});
       }
       if (body.model === 'mock-zh:1b') // answers in Chinese, never calling a tool (issue #126, the owner's live bug)
         return send(200, {...done, message: {role: 'assistant', content: '我将带领团队去见萨满奥兹雷克，询问新的任务。'}});
