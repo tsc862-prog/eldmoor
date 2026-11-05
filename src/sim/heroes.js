@@ -6,6 +6,8 @@ import {writeSighting} from './sightings.js';
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {outpostHonor,outpostDest} from './outposts.js';
 import {SPEED} from '../world/tiles.js';
+import {standAt} from '../world/passable.js';
+import {pathLeg,pathReached,pathStep,clearLine,HOLD,DONE} from './path.js'; // paths, not straight lines (#794)
 import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {assignRace,homeOf} from '../data/races.js';
 import {FAC,genName} from '../data/factions.js';
@@ -76,7 +78,7 @@ export function makeHero(f,cls,guild,wait,name){
   assignBackstory(a);
   rollScores(a); // six ability scores and skill training, after the people and trade are known
   a.hp=maxHp(a);
-  const c=homeOf(a);a.x=c.x0+2+rnd()*7;a.y=c.y0+4+rnd()*3;
+  const c=homeOf(a);Object.assign(a,standAt(c.x0+2+rnd()*7,c.y0+4+rnd()*3)); // not inside a building (#793)
   S.agents.push(a);
   // Trait reveal for recruits (not the opening roster): "Thrakash is reckless and greedy; Grimhold will remember that."
   if(S.gameMin>0&&rnd()<.3)log(a,' is ',{t:traitPhrase(a),c:'gd'},'; ',c.name,' will remember that.');
@@ -87,9 +89,15 @@ export function seedLevel(a,lvl){lvl=Math.max(1,Math.min(20,Math.round(lvl)));if
   for(let l=a.lvl+1;l<=lvl;l++)if(l%5===0)growScores(a,l);
   a.lvl=lvl;a.xp=0;a.hp=maxHp(a);return a}
 
-export function moveTo(e,x,y,dt,sp){const dx=x-e.x,dy=y-e.y,d=Math.hypot(dx,dy);if(d<.12){e.moving=false;return true}
-  const st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt*(1-woundSpeed(e));e.moving=true;if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
-  if(st>=d){e.x=x;e.y=y;e.moving=false;return true}e.x+=dx/d*st;e.y+=dy/d*st;return false}
+// One tick's walk toward (x,y), around whatever is solid (sim/path.js, #794). True on arrival, or as near as the ground allows.
+export function moveTo(e,x,y,dt,sp){let st=-1;
+  for(let k=0;k<12;k++){if(Math.hypot(x-e.x,y-e.y)<.12){e.moving=false;e.path=null;return true}
+    const q=pathLeg(e,x,y);if(q===DONE){e.moving=false;return true}if(q===HOLD){e.moving=false;return false}
+    if(st<0){st=sp*SPEED[tileAt(e.x,e.y)]*speedMul(zoneAt(e.x,e.y))*dt*(1-woundSpeed(e));if(!(st>=0)){e.moving=false;return false}e.moving=true} // a bad pace walks nowhere
+    const dx=q.x-e.x,dy=q.y-e.y,d=Math.hypot(dx,dy);if(Math.abs(dx)>.05)e.face=dx>0?1:-1;
+    if(st<d){const nx=e.x+dx/d*st,ny=e.y+dy/d*st;if(pathStep(e,nx,ny)){e.x=nx;e.y=ny}else e.moving=false;return false}
+    e.x=q.x;e.y=q.y;st-=d;pathReached(e)} // a leg's end inside this tick: the rest of the step goes on along the next
+  return false}
 
 export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
   while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)levelGrowth(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
@@ -204,7 +212,7 @@ export function turnIn(a){if(a.quest&&a.quest.have>=a.quest.need){const M=MOBS[a
 
 export function findMob(a){let best=null,bs=1e9;const L=leaderOf(a),range=(L?5:9)*sightMul(a.zone),lq=L&&L.quest?L.quest.type:null;
   for(const m of nearMobs(a.x,a.y,range)){if(!m.alive||(m.target&&m.target!==a)||held(m)||MOBS[m.type].z!==a.zone||m.lvl>a.lvl+(wounded(a)?0:1)||m.spared>S.gameMin)continue; // spared: talked down at the Table (#296)
-    const d=dist(a,m);if(d>range)continue;const s=d-(a.quest&&a.quest.type===m.type||m.type===lq?4:0);if(s<bs){bs=s;best=m}}return best}
+    const d=dist(a,m);if(d>range||!clearLine(a,m))continue;const s=d-(a.quest&&a.quest.type===m.type||m.type===lq?4:0);if(s<bs){bs=s;best=m}}return best}
 
 // A background hero badly wounded stays in town to mend (state 'mend'); a company rides on as one, an agent decides for itself.
 const mendHold=a=>!a.player&&a.company==null&&a.wounds.length>=WOUND.MEND_AT;

@@ -359,6 +359,19 @@ Sample lines:
 - "Vexzar brings the pilgrim safe to the gate of Grimhold... rolls 20. +3 honor and a gift of 19g."
 - "Pellora and party are ambushed by 2 Rookscar bandits on the Mirefen road... rolls 12+3 vs 14. The bandits break and run; 20g in their purses."
 
+## Road traffic
+
+The people between the towns (issue #796). Nobody here fights or has a name of their own: they are presence, seen in passing.
+Carters belong to neither faction and take their loads to any gate; the road is the one place the Concord and the Warband
+buy from each other without a word said.
+
+- **Carts** go by their load: a salt cart, a grain cart, an ale cart, a timber cart, a wool cart, a hide cart, a pelt cart, a silk
+  cart, a moss cart. The last five carry what the auction house trades (Hoar Wool, Thick Hide, Wolf Pelt, Silk Bundle, Fen Moss).
+- **Travellers** on foot: a pedlar, a pilgrim, a tinker, a drover, a road courier, a wandering minstrel. They also walk to the
+  outposts and the dungeon mouths at the ends of the roads, and back. Nobody takes the road to a wyrm's lair for choice.
+- **Guards**: a guard of the town on its gate road, day and night; a watchman of the nearest town on each bridge, by day.
+- A cart that never arrives reads in the Chronicle as "A salt cart never came off the road in Mirefen."
+
 ## Landmarks
 - **The Sunken Crypt**: dungeon in southern Mirefen. Boss: **Lich-Warden Vesk**. Groups of 4-5.
   - **The stair sign and the captain's word** (#448): the game never turns a company away from the stair for level; the danger is read in the world. A weathered sign is nailed to the stair-post: "Those who went below were tried blades; you are not. Turn back." A hero below Mirefen's band who sees the stair marks the Crypt dangerous in what it knows. The gate captain, asked by a green blade, says: "The Sunken Crypt is not a place for green blades. Those who went down before you were tried, and the stair has kept more of them than the bards admit. Grow first, then go, and go together."
@@ -778,6 +791,10 @@ herbs or ore buys them at the auction house.
 Name check (2026-11-02): all of the above pass; no franchise proper nouns, no duplicates inside canon. Nits: "Fenmire"
 sits one letter-shuffle from the zone Mirefen (kept as the cook's joke, but never use it as a place name); Rimebloom and
 Rimeblood differ by one syllable (plant and potion, kept); "Shaghorn Horn" repeats itself, acceptable as a trade-name.
+
+## Beasts of the yard and field, and town life (issue #795)
+
+Ambient animals that are not creatures of the bestiary: nothing fights them and nobody hunts them. Town yards keep chickens, dogs, cats and goats; the open country keeps deer and hares (meadow, highland, tundra; the tundra hare is white), and crows and gulls (gulls by water). Hares and deer bolt from a hero and come home; birds take wing and glide back later. A few trees hold roosting birds that burst out when a hero passes. Each town's gate is flanked by two guards in a tabard of the town's colours, a third walks the wall opposite, the smithy's forge smokes through the working day, the inn's hearth at breakfast and from the afternoon, stalls open in the plaza in market hours (shut in rain and at night), lamps are lit at dusk and a pennant flies over the hall. No new named people or places.
 
 ## Townsfolk
 Every town has six named residents (`src/data/npcs.js` roles and lines, `src/sim/npcs.js`

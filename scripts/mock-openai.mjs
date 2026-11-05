@@ -10,16 +10,18 @@
 // must answer a tool_call id of the assistant message before it, ids unique, arguments JSON strings.
 // startMockOpenAI() -> {url (the base, ends in /v1), seen (every chat body), problems, set(mode, n), close()}
 import http from 'node:http';
+import {schemaFill, toolsProblem, isDmTurn, dmTurnMessage, strictProblem} from './mock-dm.mjs';
 
 export const KEY = 'sk-test-key';
 export const MODELS = ['gpt-6-luna', 'gpt-6-astra', 'gpt-4o-mini', 'gpt-future-1', 'text-embedding-3-small', 'whisper-1', 'dall-e-3', 'omni-moderation-latest', 'gpt-4o-realtime-preview', 'gpt-5.3-codex'];
 const answer = f => {const p = f && f.properties || {};
   if (p.choice) return {choice: p.choice.enum[0], crypt: false, reason: 'The bog keeps its own counsel.', line: 'Hold.'};
+  if (p.text || p.option) return schemaFill(f); // a DM voice, a forced scene answer
   if (p.long) return {long: 'I remember the fen and the cold.'}; if (p.crypt) return {crypt: true, reason: 'Why not.'}; return {line: 'Mud and patience.'}};
 const PLAN = [['status'], ['rest', {minutes: '20'}], ['fly'], ['wait', {minutes: 20}]];
 
 export async function startMockOpenAI() {
-  const st = {mode: 'ok', rateLeft: 0}, seen = [], problems = [], auths = [];
+  const st = {mode: 'ok', rateLeft: 0, cached: 0}, seen = [], problems = [], auths = [];
   const server = http.createServer((req, res) => {
     const send = (code, o, h = {}) => {res.writeHead(code, {'content-type': 'application/json', ...h}); res.end(JSON.stringify(o))};
     auths.push(req.headers.authorization || '');
@@ -42,7 +44,9 @@ export async function startMockOpenAI() {
           if (!m.tool_call_id || !open.includes(m.tool_call_id)) problems.push('tool message answers no open call: ' + m.tool_call_id); else open.splice(open.indexOf(m.tool_call_id), 1);
         } else if (open.length) problems.push('assistant tool calls unanswered before a ' + m.role + ' message: ' + open.join(','));
       }
-      const usage = {prompt_tokens: 1000, completion_tokens: 20, total_tokens: 1020};
+      const tp = toolsProblem(body); if (tp) return send(400, {error: {message: tp, type: 'invalid_request_error'}});
+      const sp = body.response_format && body.response_format.type === 'json_schema' && strictProblem(body.response_format.json_schema.schema); if (sp) return send(400, {error: {message: 'Invalid schema for response_format: ' + sp, type: 'invalid_request_error'}});
+      const usage = {prompt_tokens: 1000, completion_tokens: 20, total_tokens: 1020, ...(st.cached ? {prompt_tokens_details: {cached_tokens: st.cached}} : {})}; // st.cached (#728)
       const reply = (message, finish = 'stop') => send(200, {id: 'chatcmpl-mock', object: 'chat.completion', model: body.model + '-2026-01-01', usage, choices: [{index: 0, finish_reason: finish, message}]});
       if (st.mode === 'refusal') return reply({role: 'assistant', content: null, refusal: "I can't help with that."});
       if (st.mode === 'length') return reply({role: 'assistant', content: '{"choice":"Thorn'}, 'length');
@@ -52,6 +56,7 @@ export async function startMockOpenAI() {
         return reply({role: 'assistant', content: JSON.stringify(a), refusal: null});
       }
       if (rf && rf.type === 'json_object') return reply({role: 'assistant', content: JSON.stringify({tool: 'end', args: {}, narration: 'The hero waited.'})});
+      if (isDmTurn(body)) {const m = dmTurnMessage(body); return reply(m, m.tool_calls ? 'tool_calls' : 'stop')}
       // a scripted agent turn: count the assistant tool-call messages since the last plain user message
       const last = body.messages.map((m, i) => m.role === 'user' && !/^Result of/.test(m.content) ? i : -1).filter(i => i >= 0).pop();
       const n = body.messages.slice(last + 1).filter(m => m.role === 'assistant').length;
@@ -61,5 +66,5 @@ export async function startMockOpenAI() {
     });
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
-  return {url: `http://127.0.0.1:${server.address().port}/v1`, seen, problems, auths, set: (mode, n = 0) => {st.mode = mode; st.rateLeft = n}, close: () => server.close()};
+  return {url: `http://127.0.0.1:${server.address().port}/v1`, seen, problems, auths, set: (mode, n = 0) => {st.mode = mode; st.rateLeft = n}, setCached: n => {st.cached = n}, close: () => server.close()};
 }

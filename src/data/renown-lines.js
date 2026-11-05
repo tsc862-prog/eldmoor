@@ -5,6 +5,7 @@ export const RUMOUR_LINES={
   innkeeper:['Heard it over the taps last night: {text}','Between you and the barrel: {text}','Every table in the house had the same tale tonight: {text}'],
   captain:['Word at the gate: {text}','The watch has talked of little else: {text}','Carters in off the road all say the same: {text}'],
   bard:['There is a verse going round the square: {text}','I had it from a drover, so it is half true at least: {text}','Sung or spoken, it is the news: {text}'],
+  road:['Word from the last town, friend: {text}','They talk of nothing else back there: {text}','Mind how you go. They are saying: {text}'],
 };
 export const PROCLAIM_LINES={
   person:['Hear me! From this day they are known as {name} {title}.','Mark it, all of you: {name}, {title}. That is how this town will speak of them.','Raise a cup to {name} {title}, and remember the name.'],
