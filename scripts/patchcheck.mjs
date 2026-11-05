@@ -30,7 +30,7 @@ const {solidAt, solidWhy} = await import('../src/world/passable.js');
 // A child: a world where every Table fight plays on a patch, its hash printed.
 if (argv[0] === '--forced') {
   PT.FIELD.ALL = true; init();
-  for (let i = 0; i < 60 * 60 * 12; i++) step(1 / 60);
+  for (let i = 0; i < 60 * 60 * 24; i++) step(1 / 60);
   let h = 0; for (const a of S.agents) h = (Math.imul(h, 31) + Math.round(a.x * 100) + a.hp * 7 + a.lvl) | 0;
   console.log('HASH ' + h + ' scenes:' + ((S.patchStats || {}).scenes || 0)); process.exit(0);
 }
