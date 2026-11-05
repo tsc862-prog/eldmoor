@@ -266,7 +266,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const sc0 = !refl && b0 ? sceneDue(b0.scene, m.sess) : null;
     if (sc0) {const first = await claudeScene(m, model, sc0, tc);
       if (first && first.tools) {m.sess.turns++; m.turns++; m.scenes++; m.tools += first.tools;
-        reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: first.narration || '', seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: first.in, tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['scene', 'forced-scene', 'scene-first']});
+        reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: first.narration || '', seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['scene', 'forced-scene', 'scene-first']});
         saveSession(m.sess, {url: base}); return true}}
     const ac = new AbortController(); aborts.add(ac); m.ac = ac; let rested = false;
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the turn resumes
