@@ -34,7 +34,10 @@ const zoneOf=m=>MOBS[m.type].z;
 const zonePop=z=>{let n=0;for(const m of S.mobs)if(!m.gone&&!m.elite&&!m.add&&zoneOf(m)===z)n++;return n};
 
 // The stat block a mob fights with (data/bestiary.js): its species or site variant.
-export const blk=m=>blockOf(m.type,m.v,m.role);
+// #730: remembered on the mob (a non-enumerable field, so saves never see it) against the three fields blockOf keys on;
+// blockOf's own answer for a key never changes, so this returns exactly what it would.
+export const blk=m=>{const c=m._blk;if(c!==undefined&&c.type===m.type&&c.v===m.v&&c.role===m.role)return c.b;
+  const b=blockOf(m.type,m.v,m.role);if(Object.isExtensible(m)){const e={type:m.type,v:m.v,role:m.role,b};if(c!==undefined)m._blk=e;else Object.defineProperty(m,'_blk',{value:e,writable:true,enumerable:false,configurable:true})}return b};
 // E: an ELITES entry turns the spawn into that named elite (level and multipliers from the table; the elite
 // template adds its one extra ability). opt: lvl, variant (a VARIANTS key), name, title, abilities (replaces
 // the block's), role-free multipliers hpMul / hitMul, add (a summoned lesser kin: no respawn, no loot),

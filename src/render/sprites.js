@@ -698,7 +698,13 @@ const WEAPON={
 // skin and hair of the hero's people (a.skin, a.hair from data/races.js; a hero made
 // without a race falls back to the faction's first skin tone and dark hair).
 // frame 0 is the idle pose; frame 1 steps the legs apart and lifts the weapon arm.
+// Per hero, the four canvases (ghost x frame) last returned, kept while its look (faction, class, race, skin, hair) holds:
+// the renderer asks for every hero in view each frame, and this skips building the cache key string (#716).
+const HSC=new WeakMap();
 export function heroSprite(a,ghost,frame=0){
+  let m=HSC.get(a);if(!m||m.fac!==a.fac||m.cls!==a.cls||m.race!==a.race||m.skin!==a.skin||m.hair!==a.hair){m={fac:a.fac,cls:a.cls,race:a.race,skin:a.skin,hair:a.hair,c:[null,null,null,null]};HSC.set(a,m)}
+  const i=(ghost?2:0)+(frame?1:0);return m.c[i]||(m.c[i]=heroSpriteOf(a,ghost,frame))}
+function heroSpriteOf(a,ghost,frame){
   frame=frame?1:0;const skin=a.skin||FAC[a.fac].skin[0],hair=a.hair||'#2a2020';
   const key='h'+a.fac+a.cls+(a.race||'')+skin+hair+(ghost?'g':'')+frame;if(sprCache[key])return sprCache[key];
   const {rows,map}=heroArt(a,ghost,frame);return sprite(key,rows,map)}
@@ -771,6 +777,7 @@ export function buntingSprite(wpx,frame=0){frame=frame?1:0;const key='bunt'+wpx+
 
 // Fellowship face portraits (#367): generated head-and-shoulders faces, see portrait.js.
 export {portrait,portraitPixels,PORTRAIT_W,PORTRAIT_H} from './portrait.js';
+import {setHeadSource} from './portrait.js';
 
 // ---- the 32 px tier on the world map (#177, render/tile.js) ----
 // A procedural sprite drawn on the world map: scaled up by PROC_SCALE to stand as tall as a generated 32x48 frame and
@@ -814,3 +821,40 @@ export function sheetFrame(e,dir,col){
   const id=e.kind==='hero'?heroSheetId(e.cls,e.race):e.kind==='mob'?MOB_ID[e.type]:null;if(!id)return null;
   const c=sheetOf(id,e.kind==='hero'?e.fac:0);if(!c)return null;
   FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}
+
+// ---- scene figures (#862) ----
+// One helper for every room view (interior.js, crawlview.js, raidview.js): the entity's current sheet frame when its
+// sheet is loaded (a hero by class and people with the faction tabard, a creature, and townsfolk once their sheets land,
+// all through sheetFrame), else the outlined procedural sprite. The rooms draw at one unit a procedural pixel, so a sheet
+// frame (32x48 art px = 16x24 units) is drawn K units per unit to stand a little taller than the old 12 px figure.
+// Returns ONE shared object, valid until the next call (no allocation per frame):
+//   img, sx, sy, sw, sh  the source rectangle to drawImage
+//   dw, dh               its size in room units, including the 1 px outline of a procedural canvas
+//   ox, oy               the destination offset from the feet's centre (px, py): drawImage(img,sx,sy,sw,sh,px+ox,py+oy,dw,dh)
+//   w, h                 the figure's own width and height without outline: shadows, rings, name plates, bars (top = py - h)
+//   mirror               true when the caller must flip it to face left (a procedural sprite faces right; a sheet has a left view)
+//   sheet                true when it is a generated frame
+export const SCENE_K=.75;
+const SF={img:null,sx:0,sy:0,sw:0,sh:0,dw:0,dh:0,ox:0,oy:0,w:0,h:0,mirror:false,sheet:false};
+// face: 1 faces right, -1 left (down/up are not used by rooms). col: 0 stand, 1 or 2 a step. ghost: the pale procedural figure.
+export function sceneFigure(e,face,col,k=SCENE_K,ghost=false){
+  const G=ghost?null:sheetFigure(e,face,col,k);if(G)return G;
+  const s=proceduralOf(e,col?1:0,ghost);if(!s)return null;
+  const o=outlined(s);SF.img=o;SF.sx=0;SF.sy=0;SF.sw=SF.dw=o.width;SF.sh=SF.dh=o.height;SF.w=s.width;SF.h=s.height;SF.ox=-Math.floor(s.width/2)-1;SF.oy=-s.height-1;SF.mirror=face<0;SF.sheet=false;return SF}
+function sheetFigure(e,face,col,k){const G=sheetFrame(e,face<0?1:2,col);if(!G)return null;
+  SF.img=G.img;SF.sx=G.sx;SF.sy=G.sy;SF.sw=G.fw;SF.sh=G.fh;SF.w=SF.dw=G.fw/ART*k;SF.h=SF.dh=G.fh/ART*k;SF.ox=-SF.dw/2;SF.oy=-SF.dh;SF.mirror=false;SF.sheet=true;return SF}
+// A creature of a bestiary type by its generated sheet only (null while it has none: the view keeps its own procedural art,
+// the dungeon's rimmed foes and site creatures that are not in MOBS). No allocation: one key object per type.
+const MOB_KEY=new Map();
+export function sceneCreature(type,face,col,k=SCENE_K){let e=MOB_KEY.get(type);if(!e)MOB_KEY.set(type,e={kind:'mob',type});return sheetFigure(e,face,col,k)}
+function proceduralOf(e,fr,ghost){
+  if(e.kind==='mob'){const M=MOBS[e.type];return M&&SPR[M.spr]?sprite(e.type+fr,SPR[M.spr][fr],M.col):null}
+  if(e.role&&e.kind!=='hero')return npcSprite(e,fr);
+  if(e.cls)return heroSprite(e,ghost,fr);return null}
+// Draws it with its feet at (px, py), mirrored when it faces left and has no left view.
+export function drawFigure(ctx,F,px,py){
+  if(F.mirror){ctx.save();ctx.translate(px,0);ctx.scale(-1,1);ctx.drawImage(F.img,F.sx,F.sy,F.sw,F.sh,F.ox,py+F.oy,F.dw,F.dh);ctx.restore()}
+  else ctx.drawImage(F.img,F.sx,F.sy,F.sw,F.sh,px+F.ox,py+F.oy,F.dw,F.dh)}
+
+// Party-frame and sheet faces crop from the hero's front frame (#862); the procedural face while no sheet is loaded.
+setHeadSource(a=>a.kind==='hero'?sheetFrame(a,0,0):null);
