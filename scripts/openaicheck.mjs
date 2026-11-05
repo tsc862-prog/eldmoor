@@ -15,6 +15,7 @@
 //      (claim tag, session file, "| run $" turn lines, the budget stopping the run, no key / unknown
 //      model refusals) and a one-turn Fellowship of OpenAI members.
 // Usage: npm run openaicheck
+import {mkTmp} from './tmp.mjs';
 import {fitTools, TOOL_DESC_MAX} from './providers/openai.mjs';
 import {dmMindCases} from './dm-mind-cases.mjs';
 import http from 'node:http';
@@ -163,7 +164,7 @@ console.log('agent loop over the OpenAI adapter');
 }
 
 // ---------------------------------------------------------------- end to end
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-openaicheck-'));
+const tmp = mkTmp('eldmoor-openaicheck-');
 const kids = [];
 const cleanEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OPENAI_API_KEY: KEY, OPENAI_BASE_URL: mock.url, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // no reflection turns (#179) where turn counts are exact
 delete cleanEnv.OPENAI_MODEL;
