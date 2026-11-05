@@ -67,6 +67,7 @@ const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {ZONES, ZPTS, zoneAt, LANDMARKS} = await import('../src/world/map.js');
+const {spotErr: SPOTERR} = await import('../src/sim/levers.js');
 (await import('../src/sim/outposts.js')).OP.ON = false; // the DM scenarios below set their own fixtures; contested outposts (#11) move hunters and would shift them (outposts have their own check)
 // a spot well inside its region (not within 11 tiles of a border): a staged cast lands 6-10 tiles away, and over a border it would stand in ground far above a level-2 party, which changes which refusal comes first
 const awayFromSites = p => LANDMARKS.every(l => Math.hypot(p.x - l.x, p.y - l.y) > 9); // a fixture spot never sits on the Crypt or the lair (a pull there is refused for its own reasons)
@@ -547,7 +548,8 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
     'mark_place near the Fellowship puts a shrine on open ground by them' + (r.ok ? ' at ' + r.at.x + ',' + r.at.y : ': ' + r.error));
   const zl = zoneAt(pl.x, pl.y);
   r = dmAct('mark_place', {kind: 'ruin', near: 'the lantern stone', reason: 'a second marker in that region'});
-  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: {x: pl.x + 4, y: pl.y}}, reason: 'a second marker in that region'});
+  const at2 = [[4, 0], [-4, 0], [0, 4], [0, -4], [3, 3], [-3, -3], [3, -3], [-3, 3]].map(([dx, dy]) => ({x: pl.x + dx, y: pl.y + dy})).find(p => !SPOTERR(p, {region: zl})) || {x: pl.x + 4, y: pl.y}; // ground the lever would take, so the cooldown is what refuses it
+  const pv = dmAct('pull_lever', {lever: 'mark_place', params: {kind: 'ruin', at: at2}, reason: 'a second marker in that region'});
   ok(r.ok === false && /^Refused: cooldown/.test(r.error) && pv.ok === false && /^Refused: cooldown/.test(pv.error) && !r.usage, 'a second mark_place in ' + ZONES[zl] + ' meets the lever\'s cooldown, as pull_lever does: ' + r.error);
   r = dmAct('mark_place', {kind: 'ruin', near: '0,0', reason: 'off the map'});
   ok(r.ok === false && /no open ground at 0,0/.test(r.error) && /mark_place needs at: a point/.test(r.error), 'mark_place on bad ground says what the lever needed: ' + r.error.slice(0, 100));
@@ -895,6 +897,23 @@ console.log('NPC conversations');
     const nr = dmAct('narrate', {text: long, near: A.name}), ns = dmAct('npc_say', {npc: String(smith.id), text: long});
     ok(nr.ok && nr.narrated === long && ns.ok && ns.said === long && long.length > 600, `narrate and npc_say keep a ${long.length}-character line whole`);
     ok(dmAct('npc_say', {npc: String(smith.id), text: 'x'.repeat(5000)}).said.length === DMA.NPC_SAY_MAX, `with a technical ceiling of ${DMA.NPC_SAY_MAX} characters`)}
+  // the DM never speaks for a member (#750): a voiced line that quotes an agent-played member is cut, logged and told; a description passes
+  {beside(A, smith); beside(B, smith, 1.5); S.table = {ids: [A.id, B.id], beats: []}; S.dmAgent.day.narr = 0; const sp0 = dmAct('dm_status').spoke_for_today || 0;
+    const keep = A.name + '\'s eyes settle on ' + B.name + ' across the fire.';
+    const q = dmAct('narrate', {near: 'table', text: keep + ' ' + A.name + ' speaks quietly: \'' + B.name + ', before the night is out, I would know one thing. What are you afraid of?\''});
+    ok(q.ok && q.spoke_for && q.spoke_for.join() === A.name && /members speak for themselves/.test(q.warning) && q.narrated === keep && !(B.chat || []).some(e => /afraid of/.test(e.text)) && !/afraid of/.test(S.table.narr.text),
+      'a frame that quotes a member is cut to its narration and the DM is told (' + JSON.stringify(q).slice(0, 160) + ')');
+    const le = (S.dmLog || []).find(e => e.detail && e.detail.voice === 'narrate');
+    ok(le && le.detail.spoke_for === A.name && !/afraid of/.test(le.detail.text), 'the DM log entry of that call carries spoke_for: ' + (le && le.detail.spoke_for));
+    const d = dmAct('narrate', {near: 'table', text: A.name + ' turns his symbol over in his hands. The innkeeper tells ' + B.name + ': "Not tonight."'});
+    ok(d.ok && !d.spoke_for && /symbol over/.test(d.narrated) && /Not tonight/.test(d.narrated), 'a frame that describes a member (and a person speaking to one) passes whole');
+    const all = dmAct('npc_say', {npc: String(smith.id), text: '"Hold the line," says ' + B.name + '.'});
+    ok(all.ok === false && all.spoke_for && all.spoke_for.join() === B.name && /spoke for/.test(all.error) && !(A.chat || []).some(e => /Hold the line/.test(e.text)), 'a line that is nothing but a member\'s words is refused, nobody hears it');
+    A.talkSaid = ['Your gate tax is robbery, captain.'];
+    const own = dmAct('narrate', {near: 'table', text: 'The fire hisses. ' + A.name + ' says: "Your gate tax is robbery, captain."'});
+    ok(own.ok && !own.spoke_for && /robbery/.test(own.narrated), 'a quote of what the member really said stays');
+    ok(dmAct('dm_status').spoke_for_today === sp0 + 2, 'dm_status counts spoke_for_today (' + dmAct('dm_status').spoke_for_today + ')');
+    S.table = null}
   // whisper and dream (#523): reach, day limits, delivery on waking
   {beside(A, smith); beside(B, smith, 20); S.table = null;
     const near = dmAct('whisper', {hero: A.name, text: 'The ledger is false.', as: String(smith.id)});

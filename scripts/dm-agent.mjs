@@ -98,6 +98,7 @@ export function dmSystemPrompt(st) {
     DM_RENOWN_ORDERS,
     '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
+    '- In narrate, npc_say, whisper, dream and table_answer: ' + NO_WORDS.trim(),
     '',
     'Each turn: dm_status (read fellowship_needs first), hear (what they said aloud since you last listened), notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, levers as needed), update notes, pull at most a few levers, and end with one short sentence of what you prepared.',
   ].join('\n');
@@ -207,7 +208,11 @@ export const POLL_IDLE = 2500, POLL_HOT = 400;
 export const VOICE_WAIT_MS = 20000;
 // After a poll: sleep only when it came back early without a call (the host did not hold it).
 const pollRest = (t0, waitMs) => waitMs > 0 && Date.now() - t0 >= Math.min(waitMs / 2, 1000);
+// One line every DM voice carries (#750): the members are agent-played and only their own agents give them words; the game cuts a quote
+// attributed to one of them (sim/spokefor.js) and tells the voice so.
+export const NO_WORDS = 'Never quote a hero or put words in a hero\'s mouth (only an arrival\'s newcomer, when a call asks you to voice them): you may describe what they do, not what they say (they speak for themselves; a line that quotes one is cut). ';
 export const TABLE_SYSTEM = 'You are the Dungeon Master\'s voice at the table in Eldmoor, a hardcore fantasy world (original setting; no names from other games or books). ' +
+  NO_WORDS +
   'A scene is being played: one you staged, the opening of the campaign (session zero: frame it as the company first sits down), a newcomer’s arrival (voice the newcomer), or a company’s talk round its camp fire (frame the night and open the talk on the topic given; never speak for the heroes), or a hero going down (describe the downing, a death save or its end, true to the dice given). Each request is one call: frame the scene, voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
   'Write what can be seen, heard or smelled, as much as the moment needs; usually a few vivid sentences. The Cast line is the truth: voice and describe only what it lists, and invent no one else (no men, bandits or leaders when the cast is creatures). Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
 export function tablePrompt(t) {
@@ -234,7 +239,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
           if (!j || typeof j.text !== 'string') log(`[table] call ${c.id} ${c.kind}: the model's reply was not JSON; the scripted DM fills it`);
           else {
             const a = await tool(base, 'table_answer', {call: c.id, text: j.text, ...(c.legal ? {pick: j.pick} : {})});
-            log(`[table] call ${c.id} ${c.kind}${a.pick ? ' ' + a.pick : ''}: ${a.ok ? '"' + short(a.said || '', 140) + '"' : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s, ${r.usage ? r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
+            log(`[table] call ${c.id} ${c.kind}${a.pick ? ' ' + a.pick : ''}: ${a.ok ? '"' + short(a.said || '', 140) + '"' : 'x ' + short(a.error, 100)}${a.spoke_for ? ' (spoke for ' + a.spoke_for.join(', ') + ': cut)' : ''} | ${((Date.now() - t0) / 1000).toFixed(1)} s, ${r.usage ? r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
           }
         } catch (e) {log(`[table] call ${c.id} ${c.kind}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s (${left} at pickup); the scripted DM fills it`)}
         continue;
@@ -255,6 +260,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
 // npc_say {conv} and at most one npc_offer. A late, failed or refused answer changes nothing: the scripted DM has it.
 export const TALK_POLL_IDLE = 1500, TALK_POLL_HOT = 400;
 export const TALK_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), voicing one of its people. ' +
+  NO_WORDS +
   'A hero of the Fellowship is talking to them. Answer as that person, in their own voice, as much as the moment needs (usually a few sentences), true to their role, mood, what they want and what they know. ' +
   'You may add one follow-up from the legal list: trade (they open their stock), rumour (a lead the hero can act on: put it in about, and a region name if it has a place), job (work posted for the hero), combat (they turn hostile; only when the hero truly provoked it), blessing (priests and hermits), leave (they end it), or none. ' +
   'Most answers need none; a merchant asked about goods trades, a worried person may give a rumour or a job. Never decide what the hero thinks or does. ' +
@@ -360,6 +366,7 @@ export function companionVoice({base, adapter, model, effort = 'low', log = () =
 // effect kinds), then ruling_answer; a refused answer (an illegal effect) is logged and the scripted DM rules at the deadline.
 export const RULING_POLL_IDLE = 1500, RULING_POLL_HOT = 400;
 export const RULING_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), ruling on what a hero tries. ' +
+  NO_WORDS +
   'The hero may try anything; you decide which skill it tests and how hard it is (easy 8, fair 12, hard 15, heroic 18), and what follows a success and a failure, drawn only from the legal effects. ' +
   'The game rolls the dice; you never decide the result, what a hero thinks or chooses, and never touch level, XP, gold or life (a wound is at most 15% and never below 10% HP). ' +
   'Most attempts deserve none or one small effect: a clever idea a reveal (a fact they learn, a place, a creature) or someone warming to them, a reckless one a small wound or exposed. ' +
@@ -627,7 +634,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const t0 = Date.now(), tc = turnCollector(); let tools = 0, result = null, limited = false, failed = null;
     const rd = rollDue(sess, rollAt, {busy: st === prepSt && !!prepSt, legacy: /haiku/i.test(model)}); // between turns (waitTurn never returns with a scene or a vote open), never in the prep (#787)
     if (rd) {rollSession(sess, setAsideDm); saveSess(); log('  ' + rd.line)}
-    const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping}); // under the app supervisor: one of the Claude slots for this turn
+    const freeSlot = await takeClaudeSlot(base, log, {stopped: () => stopping, member: 'DM', tools: () => tools, onLost: () => {if (turnAbort) turnAbort.abort()}}); // under the app supervisor: one of the Claude slots for this turn
     turnAbort = new AbortController();
     const prepping = st === prepSt && !!prepSt, prepTimer = prepping ? setTimeout(() => {if (turnAbort) turnAbort.abort()}, prepSt.prep.max_seconds * 1000) : null;
     const q = query({prompt: prepping ? prepPrompt(st) : dmTurnPrompt(sess.turns, st) + (sess.rolled ? DM_RESUME : '') + wishNote(st, sess) + talkNote(st) + whenNote(st, {watch: sess.lastWatch, fired: sess.lastFired}), options: {
