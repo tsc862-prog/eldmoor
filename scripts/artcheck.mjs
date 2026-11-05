@@ -53,7 +53,7 @@ import {summarize,render,staleIncoming,IN_GAME_KINDS} from './art/review.mjs';
 import {reviewFixture} from './art/fixtures.mjs';
 import {decodePng,encodePng,pngSize} from './art/png.mjs';
 import {resolvePalette,hexToRgb,downscale} from './art/post.mjs';
-import {postProcess,detectGrid,expandPalette,colorCount} from './art/post-texture.mjs';
+import {postProcess,detectGrid,expandPalette,colorCount,pieceStats,pieceOf} from './art/post-texture.mjs';
 
 let fails=0;const ok=(c,m)=>{if(c)console.log('  ok  '+m);else{fails++;console.log('  FAIL '+m)}};
 const man=loadManifest();
@@ -97,7 +97,18 @@ const pixelArt=(size=1024,block=8,{off=3,seed=7,flat=false}={})=>{let r=seed>>>0
   return {w:size,h:size,data:d}};
 // A transition answer: pixel-art green ground above, grey-brown stone below. A prop answer: a textured blob on white.
 const twoGrounds=()=>{const a=pixelArt(),b=pixelArt(1024,8,{seed:11});for(let y=512;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4;a.data[o]=b.data[o+1];a.data[o+1]=b.data[o+1]*.85;a.data[o+2]=b.data[o+1]*.75}return a};
+// Corner and inner answers: B (stone) fills a quarter disc at the bottom right (corner), or everything but a quarter disc at the top left (inner).
+const discGrounds=inner=>{const a=pixelArt(),b=pixelArt(1024,8,{seed:11});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){const inDisc=inner?x*x+y*y>=520*520:(1023-x)**2+(1023-y)**2<520*520;
+  if(inDisc){const o=(y*1024+x)*4;a.data[o]=b.data[o+1];a.data[o+1]=b.data[o+1]*.85;a.data[o+2]=b.data[o+1]*.75}}return a};
 const propArt=()=>{const a=pixelArt(1024,8,{seed:13});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++)if((x-512)**2+(y-560)**2>360**2){const o=(y*1024+x)*4;a.data[o]=a.data[o+1]=a.data[o+2]=255}return a};
+// A structured answer (2026-11-03 ice, mud, snow, swamp): 8 px cells of mild noise with a dark mortar cell every mx-th column
+// and my-th row, the cell after it a half shade, so the lines sit on every 3rd cell and a multiple of the real period (24)
+// scores as high as the period itself.
+const wallArt=(size=1024,block=8,{off=3,mx=3,my=3,seed=5}={})=>{let r=seed>>>0;const rnd=()=>((r=(r*1664525+1013904223)>>>0)/4294967296);
+  const n=Math.ceil(size/block)+1,d=new Uint8Array(size*size*4),cells=[];for(let i=0;i<n*n;i++)cells.push(rnd());
+  for(let y=0;y<size;y++)for(let x=0;x<size;x++){const cx=Math.floor((x-off)/block)+1,cy=Math.floor((y-off)/block)+1,t=cells[Math.max(0,cy)*n+Math.max(0,cx)],o=(y*size+x)*4,
+    k=((cx%mx===0)?.4:(cx%mx===1)?.8:1)*((cy%my===0)?.4:(cy%my===1)?.8:1)*(.93+t*.07);d[o]=170*k;d[o+1]=150*k;d[o+2]=120*k;d[o+3]=255}
+  return {w:size,h:size,data:d}};
 // Town answers (slice 3): a wall or gate is grey stone blocks with mortar; a building a roof band over a wall with a door, on white.
 const stoneArt=()=>{const a=pixelArt(1024,8,{seed:17});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4,g=a.data[o+1],m=(y%64<8)||((x+((y>>6)&1)*64)%128<8),v=m?50:90+g*.6;a.data[o]=v;a.data[o+1]=v*.95;a.data[o+2]=v*1.05}return a};
 const houseArt=()=>{const a=stoneArt();for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){const o=(y*1024+x)*4;if(x<160||x>864||y<160||y>900){a.data[o]=a.data[o+1]=a.data[o+2]=255;continue}
@@ -116,6 +127,15 @@ const houseArt=()=>{const a=stoneArt();for(let y=0;y<1024;y++)for(let x=0;x<1024
 {const grass=man.assets.find(a=>a.id==='tile:grass'),gpal=resolvePalette(grass.palette,PAL).colors,src=pixelArt();
   const g=detectGrid(src);ok(g.found&&Math.abs(g.x.s-8)<=.25&&Math.abs(g.y.s-8)<=.25,`the model's pixel grid is found (${g.x.s}x${g.y.s}, offset ${g.x.o})`);
   const g2=detectGrid(pixelArt(1024,8.5,{off:0,seed:9}));ok(g2.found&&Math.abs(g2.x.s-8.5)<=.25,`a fractional grid too (${g2.x.s})`);
+  // the 2026-11-03 stripes: a structured image's lines sit on multiples of the real period, the pick used to land on 24 and the tile was cut from a 43 px native image scaled up
+  {const wall=wallArt(),was=detectGrid(wall,4,false),now=detectGrid(wall,4);
+    ok(was.x.s>8&&was.y.s>8,`regression fixture: the first period found on a wall is a multiple of the real one (${was.x.s}x${was.y.s})`);
+    ok(now.x.s===8&&now.y.s===8,`the real pixel size is found under the multiples (${now.x.s}x${now.y.s})`);
+    const wt=postProcess(wall,{...grass,post:{...grass.post,minColors:2}},gpal,PAL.MARK.outline);ok(/^12[78]x12[78]$/.test(wt.notes.native)&&wt.notes.grid==='8x8',`the wall tile is cut from the 128 px native image, no scaled-up stripes (${wt.notes.native})`);
+    const was2=postProcess(wall,{...grass,post:{...grass.post,minColors:2,fundamental:false}},gpal,PAL.MARK.outline);ok(!/^12[78]x12[78]$/.test(was2.notes.native),'post.fundamental false keeps the old pick (so an accepted tile can stay as it was)');
+    const g16=detectGrid(pixelArt(1024,16,{seed:3}));ok(g16.x.s===16&&g16.y.s===16,`a true 16 px grid stays 16 (${g16.x.s}x${g16.y.s})`);
+    const holes=pixelArt(1024,8,{seed:3});for(let y=0;y<1024;y++)for(let x=0;x<1024;x++){if((x-3+64)%64<8&&y>40){const o=(y*1024+x)*4;holes.data[o]=holes.data[o+1]=holes.data[o+2]=20}}
+    const gh=detectGrid(holes);ok(gh.x.s===8&&gh.y.s===8,`a few strong lines do not move the grid (${gh.x.s}x${gh.y.s})`)}
   // the first real run's failure: the whole image voted down to 16 px came out 1-2 colours
   const old=downscale(src,16,16,gpal,'mode');ok(colorCount(old)<=2,`regression fixture: the old area vote gives ${colorCount(old)} colour(s)`);
   const t=postProcess(src,grass,gpal,PAL.MARK.outline),t2=postProcess(src,grass,gpal,PAL.MARK.outline);
@@ -129,6 +149,21 @@ const houseArt=()=>{const a=stoneArt();for(let y=0;y<1024;y++)for(let x=0;x<1024
   {const w=expandPalette(['#3f8a3a','#2a6e2c'],PAL.TIER_SHADES[32].minPalette,PAL.TIER_SHADES[32].factors),w64=expandPalette(['#3f8a3a','#2a6e2c'],PAL.TIER_SHADES[64].minPalette,PAL.TIER_SHADES[64].factors);
     ok(w.length===PAL.TIER_SHADES[32].minPalette&&w64.length>w.length&&w.slice(2).every(c=>PAL.shadesOf('#3f8a3a').includes(c)||PAL.shadesOf('#2a6e2c').includes(c)),`the tiers widen a palette with the palette module's shades (${w.length} at 32, ${w64.length} at 64)`)}
   {const t64=postProcess(src,grass,gpal,PAL.MARK.outline,{tier:64,hint:8});ok(t64.w===64&&t64.h===64,`the 64 tier crops ${t64.w}x${t64.h} from the same model image`)}}
+// Transition pieces (2026-11-03: four of five autotiles were a scene or a wall, the fifth random blotches; all came out as noise).
+// The dual grid wants A on top and B below (edge), B in the bottom-right quarter (corner), A in the top-left quarter (inner).
+{const {fixtures}=await import('./art/fixtures.mjs'),F=fixtures(man,32),bad=[];let n=0;
+  for(const [id,im] of Object.entries(F))if(id.startsWith('autotile:')){n++;const st=pieceStats(im,pieceOf(id));if(!st.ok)bad.push(`${id} ${JSON.stringify(st)}`)}
+  ok(n>=20&&!bad.length,`every drawn fixture piece (${n}: edges, corners, inner corners) passes the piece check`+(bad.length?': '+bad.join('; '):''));
+  const edge=man.assets.find(a=>a.id==='autotile:grass-road'),epal=resolvePalette(edge.palette,PAL).colors;
+  const rej=(img,e=edge)=>{try{postProcess(img,e,epal,PAL.MARK.outline);return null}catch(err){return err}};
+  const a=rej(pixelArt()),b=rej(propArt()),c=rej(stoneArt());
+  ok(a&&a.kind==='flat'&&/not an edge piece/.test(a.message),'one ground all over is not an edge piece: '+(a&&a.message));
+  ok(b&&b.kind==='flat'&&c&&c.kind==='flat','a blob on white and a stone wall are not edge pieces either (rejected like a flat one: raw kept, redrawn later)');
+  ok(!rej(twoGrounds()),'a real two-ground answer (green above, stone below) passes');
+  const cor=man.assets.find(a=>a.id==='autotile:grass-road-corner'),mid=twoGrounds();
+  ok(rej(mid,cor)&&rej(mid,cor).kind==='flat','the same top-and-bottom answer is not a corner piece (B must be in the bottom-right quarter only)');
+  ok(!rej(pixelArt(),{...edge,post:{...edge.post,shape:false}}),'post.shape false skips the piece check');
+  ok(pieceOf('autotile:fen-ash')==='edge'&&pieceOf('autotile:fen-ash-corner')==='corner'&&pieceOf('autotile:fen-ash-inner')==='inner','piece kind comes from the id')}
 {const e={kind:'sprite',size:[16,16],post:{transparent:true,outline:true}},pal=['#3f8a3a','#2a6e2c','#45923c'];
   const a=postProcess(synth(256,256),e,pal,PAL.MARK.outline),b=postProcess(synth(256,256),e,pal,PAL.MARK.outline);
   ok(a.w===16&&a.h===16,'a sprite is scaled to 16x16');ok(Buffer.from(a.data).equals(Buffer.from(b.data)),'deterministic');
@@ -225,10 +260,10 @@ try{
   // the building recipe (#763): a prompt that asks for the flat look gets a flat top-down house in its style's flat palette
   const FB=await import('./art/fixtures-buildings.mjs'),flatOf=s=>encodePng(FB.flatBuilding(PAL.FLAT[s],[96,64]));
   const FX=await import('./art/fixtures.mjs'),sheetOf=id=>encodePng(FX.sheetArt(man.assets.find(a=>a.id===id)));
-  const MOCK={tile:img,two:encodePng(twoGrounds()),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt()),hero:sheetOf('sprite:hero-warrior'),beast:sheetOf('sprite:mob-wolf'),
+  const MOCK={tile:img,two:encodePng(twoGrounds()),corner:encodePng(discGrounds(false)),inner:encodePng(discGrounds(true)),prop:encodePng(propArt()),stone:encodePng(stoneArt()),house:encodePng(houseArt()),hero:sheetOf('sprite:hero-warrior'),beast:sheetOf('sprite:mob-wolf'),
     'flat-stone':flatOf('stone'),'flat-timber':flatOf('timber'),'flat-crypt':flatOf('crypt'),'flat-lair':flatOf('lair')},
     flatKind=pr=>/limestone/.test(pr)?'flat-stone':/tarred timber/.test(pr)?'flat-timber':/crypt/.test(pr)?'flat-crypt':/dragon's nest/.test(pr)?'flat-lair':null,
-    mockKind=pr=>/character sprite sheet/.test(pr)?'hero':/creature sprite sheet/.test(pr)?'beast':/town wall|town gate/.test(pr)?'stone':/thick black outline/.test(pr)&&flatKind(pr)?flatKind(pr):/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/transition tile/.test(pr)?'two':'tile';
+    mockKind=pr=>/character sprite sheet/.test(pr)?'hero':/creature sprite sheet/.test(pr)?'beast':/town wall|town gate/.test(pr)?'stone':/thick black outline/.test(pr)&&flatKind(pr)?flatKind(pr):/one building alone/.test(pr)?'house':/plain white background/.test(pr)?'prop':/rounded quarter circle/.test(pr)?(/in the top-left corner/.test(pr)?'inner':'corner'):/transition tile|upper half is/.test(pr)?'two':'tile';
   const srv=http.createServer((req,res)=>{let body='';req.on('data',c=>body+=c);req.on('end',()=>{
     const u=new URL(req.url,'http://x');S.headers.push(req.headers);
     if(req.method==='GET'&&u.pathname.startsWith('/api/models/')){S.lookups++;const id=u.pathname.slice(12);res.setHeader('content-type','application/json');
@@ -683,6 +718,57 @@ console.log('tiers: index, loader, fallback, generation settings');
     const q=loadQueue(old),ix=loadIndex(old);
     ok(q.incoming['tile:grass@32']&&q.incoming['tile:grass@32'].file==='tile/grass.png'&&q.rejected['tile:mud@32']===1&&q.next[0]==='tile:swamp@32'&&ix.assets['tile:grass@32'].tier===32,'the owner\'s queue and incoming index from before tiers (2026-11-03) carry over as the 32 tier')}
   finally{rmSync(old,{recursive:true,force:true})}}
+
+console.log('portrait library: pick by hash, fallback, absent (#710)');
+// The faces of kind portrait (ids portrait:<race>-<cls>-<sex>-<nn>) drawn by scripts/art/fixtures.mjs portraitFixtures, through
+// the PNG codec, installed with setAssetPixels; render/portrait.js libraryFace picks one, else the code face of #367.
+{const A=await import('../src/render/assets.js'),Pt=await import('../src/render/portrait.js'),{portraitFixtures}=await import('./art/fixtures.mjs');
+  const pid=A.parsePortraitId;
+  ok(JSON.stringify(pid('portrait:hallowan-warrior-f-03'))==='{"race":"hallowan","cls":"warrior","sex":"f","nn":3}'&&JSON.stringify(pid('portrait:townsfolk-guard-01'))==='{"race":"townsfolk","cls":"guard","sex":"","nn":1}'&&pid('tile:grass')===null&&pid('portrait:hallowan')===null,
+    'portrait ids parse as people, class (or townsfolk role), sex and number');
+  const hero=(id,name,race,cls)=>({id,name,race,cls,fac:race==='ashfolk'||race==='mirekin'||race==='thornhide'?1:0,skin:'#d8a878',hair:'#2a2020'});
+  const H1=hero(3,'Kerin','hallowan','Warrior'),H2=hero(4,'Fena','hallowan','Priest'),H3=hero(5,'Bo','tarrow','Hunter'),H4=hero(6,'Ugra','ashfolk','Rogue');
+  A.provideAssets(null,{});
+  ok([H1,H2,H3,H4].every(a=>Pt.libraryFace(a)===null)&&A.portraitAssets('hallowan').length===0,'no index (no assets/ folder): no library face, every hero draws the code face');
+  const real=loadIndex(ASSETS);A.provideAssets(real,{});
+  ok(A.portraitAssets('hallowan').length===Object.values(real.assets||{}).filter(e=>/^portrait:hallowan-/.test(e.id||'')).length,'the repo index: the listing matches its portrait entries ('+A.portraitAssets('hallowan').length+' for hallowan)');
+  A.provideAssets({assets:{'portrait:tarrow-hunter-m-01@32':{id:'portrait:tarrow-hunter-m-01',kind:'portrait',tier:32,file:'portrait/32/tarrow-hunter-m-01.png',w:64,h:64}}},{});
+  {const l=Pt.libraryFace(H3);ok(l==='portrait:tarrow-hunter-m-01'&&A.assetPixels(l)===null,'indexed but the PNG absent or not loaded: the face is picked, its pixels are null, so portrait() draws the code face')}
+  A.provideAssets(null,{});
+  const ids=['portrait:hallowan-warrior-m-01','portrait:hallowan-warrior-f-01','portrait:hallowan-warrior-f-02','portrait:hallowan-mage-f-01','portrait:ashfolk-rogue-m-01','portrait:townsfolk-guard-01'];
+  const fx=portraitFixtures(ids,64),install=list=>{for(const id of list){const im=decodePng(encodePng(fx[id]));A.setAssetPixels(id,A.pixelsOf(im.w,im.h,im.data))}};
+  ok(ids.every(id=>fx[id].w===64&&fx[id].h===64)&&new Set(ids.map(id=>Buffer.from(fx[id].data).toString('base64'))).size===ids.length,'a 64 px fixture face per id, each different');
+  install(ids);
+  const warriors=A.portraitAssets('hallowan','Warrior');
+  ok(warriors.join()==='portrait:hallowan-warrior-f-01,portrait:hallowan-warrior-f-02,portrait:hallowan-warrior-m-01'&&A.portraitAssets('hallowan').length===4&&A.portraitAssets('townsfolk','guard').length===1,'the listing per people and class, per people, and per townsfolk role, sorted');
+  const f1=Pt.libraryFace(H1);
+  ok(warriors.includes(f1),`people x class: Kerin (hallowan Warrior) gets a warrior face (${f1})`);
+  ok(A.portraitAssets('hallowan',H2.cls).length===0&&A.portraitAssets('hallowan').includes(Pt.libraryFace(H2)),`no hallowan Priest face: Fena falls back to a hallowan face (${Pt.libraryFace(H2)})`);
+  ok(Pt.libraryFace(H3)===null,'no tarrow face at all: Bo draws the code face');
+  ok(Pt.libraryFace(H4)==='portrait:ashfolk-rogue-m-01','a people with one face: that face');
+  ok(Pt.libraryFace({...H1})===f1&&Pt.libraryFace({...H1,hp:1,x:9,state:'dead'})===f1,'the pick is a pure function of id and name (other fields, a reload, a save: the same face)');
+  {const many=[];for(let i=0;i<300;i++)many.push(Pt.libraryFace(hero(i,'Hero'+i,'hallowan','Warrior')));const by=warriors.map(w=>many.filter(m=>m===w).length);
+    ok(by.every(n=>n>50),`the pick spreads over the faces available (${by.join(' / ')} of 300)`);
+    const renamed=[];for(let i=0;i<300;i++)renamed.push(Pt.libraryFace(hero(i,'Other'+i,'hallowan','Warrior')));
+    ok(renamed.filter((v,i)=>v!==many[i]).length>100,'a New World that reuses ids (new names) picks other faces ('+renamed.filter((v,i)=>v!==many[i]).length+' of 300 differ)')}
+  // index order never matters: remove and install again in reverse
+  for(const id of ids)A.setAssetPixels(id,null);install([...ids].reverse());
+  ok(Pt.libraryFace(H1)===f1&&Pt.libraryFace(H2)===Pt.libraryFace({...H2}),'installed in another order: the same faces');
+  // the frame: 5:6, never transparent, the faction backdrop, dead grey, ghost blue, deterministic
+  {const p=A.assetPixels(f1),px=Pt.libraryPixels(H1,p),dead=Pt.libraryPixels(H1,p,'dead'),gh=Pt.libraryPixels(H1,p,'ghost'),x2=Pt.libraryPixels(H1,p,'',Pt.FRAME_W*2,Pt.FRAME_H*2);
+    const rg=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+    ok(Pt.FRAME_W===Pt.PORTRAIT_W*2&&Pt.FRAME_H===Pt.PORTRAIT_H*2&&px.length===Pt.FRAME_W*Pt.FRAME_H&&x2.length===px.length*4&&px.every(v=>/^#[0-9a-f]{6}$/.test(v)),`a library face fills the ${Pt.FRAME_W}x${Pt.FRAME_H} frame (and ${Pt.FRAME_W*2}x${Pt.FRAME_H*2} on a 2x screen) with no hole`);
+    ok(JSON.stringify(Pt.libraryPixels(H1,p))===JSON.stringify(px)&&new Set(px).size>8,`deterministic, ${new Set(px).size} colours`);
+    ok(px[0]===px[1]&&px[0]!==Pt.libraryPixels(H4,p)[0],'the top of the frame is the faction backdrop (another faction, another backdrop)');
+    ok(dead.every(h=>{const [r,g,b]=rg(h);return Math.abs(r-g)<2&&b>=g&&b-g<8})&&gh.every(h=>{const [r,,b]=rg(h);return b>=r}),'fallen faces are grey and ghosts pale blue, as with the code face')}
+  ok(Pt.portraitPixels(H1).length===Pt.PORTRAIT_W*Pt.PORTRAIT_H,'the code face is still there beside the library');
+  // a partial library shrinking: remove the warrior faces, Kerin falls back to the people, then the code face
+  for(const w of warriors)A.setAssetPixels(w,null);
+  ok(Pt.libraryFace(H1)==='portrait:hallowan-mage-f-01','warrior faces removed: Kerin falls back to the one hallowan face left');
+  A.setAssetPixels('portrait:hallowan-mage-f-01',null);
+  ok(Pt.libraryFace(H1)===null&&Pt.libraryFace(H4)==='portrait:ashfolk-rogue-m-01','every hallowan face removed: the code face; other peoples keep theirs');
+  for(const id of ids)A.setAssetPixels(id,null);A.provideAssets(null,{});
+  ok([H1,H2,H3,H4].every(a=>Pt.libraryFace(a)===null),'library removed: back to the code face for everyone')}
 
 for(const [mode,title] of [['--autotile','autotile rules with fixture PNGs (slice 2)'],['--towns','towns and landmarks with fixture PNGs (slice 3)']]){console.log(title);
 for(const world of ['eldmoor','stepping']){

@@ -698,7 +698,13 @@ const WEAPON={
 // skin and hair of the hero's people (a.skin, a.hair from data/races.js; a hero made
 // without a race falls back to the faction's first skin tone and dark hair).
 // frame 0 is the idle pose; frame 1 steps the legs apart and lifts the weapon arm.
+// Per hero, the four canvases (ghost x frame) last returned, kept while its look (faction, class, race, skin, hair) holds:
+// the renderer asks for every hero in view each frame, and this skips building the cache key string (#716).
+const HSC=new WeakMap();
 export function heroSprite(a,ghost,frame=0){
+  let m=HSC.get(a);if(!m||m.fac!==a.fac||m.cls!==a.cls||m.race!==a.race||m.skin!==a.skin||m.hair!==a.hair){m={fac:a.fac,cls:a.cls,race:a.race,skin:a.skin,hair:a.hair,c:[null,null,null,null]};HSC.set(a,m)}
+  const i=(ghost?2:0)+(frame?1:0);return m.c[i]||(m.c[i]=heroSpriteOf(a,ghost,frame))}
+function heroSpriteOf(a,ghost,frame){
   frame=frame?1:0;const skin=a.skin||FAC[a.fac].skin[0],hair=a.hair||'#2a2020';
   const key='h'+a.fac+a.cls+(a.race||'')+skin+hair+(ghost?'g':'')+frame;if(sprCache[key])return sprCache[key];
   const {rows,map}=heroArt(a,ghost,frame);return sprite(key,rows,map)}

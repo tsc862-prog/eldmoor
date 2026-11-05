@@ -75,8 +75,10 @@
 - [Slot and scene](slot-scene.md) — #687 slot wait watches due (scene:true first), queued why + miss cause, wait holds at an answered scene
 - [DM reserved slot](dm-reserved-slot.md) — #733 RUNNER_DM_SLOTS, heroes held during prep, prep clock from first call + HARD_MS, _poll
 - [Scene grab](scene-grab.md) — #737 sceneGrab aborts mid-turn Claude query after 15 s due, resume, queued countdown
+- [Grab cost](grab-cost.md) — #747 grabSpend: aborted scene-grab query cost counted (reported usage else estimate), grab-cost flag
 - [localcheck pacing flake #762](localcheck-pacing-downed.md) — downed-companion urgent event woke the test hero; DOWN.REACH/SEE zeroed in section A; no parallel runs
 - [Companion voice](companion-voice.md) — #764 compvoice.js: companion_call/say, per-listener memory, no-repeat fill, PER_DAY 6, hooks, pitfalls
+- [OpenAI cached cost](openai-cached-cost.md) — #728 PRICES.cached, usage.cached, turn line split, tokensCached, mock setCached
 - [Session size](session-size.md) — #787 roll + compaction net: CLI threshold math, Haiku 100k line, real cost per turn, mock pitfalls
 - [Check flakes](check-flakes.md) — #324/#378 hunt: SAVECHECK_SEED, crawlcheck PARTS, upcheck lock, not reproduced
 - [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons

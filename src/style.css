@@ -564,6 +564,16 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .log.chat li.chl.sys{color:var(--dim);font-size:15px;line-height:1.1}
 .log.chat li.chl.sys .hn{font-weight:normal}
 .log.chat li.chl.sys-result{color:var(--gold)}
+/* A Table scene as one exchange (#734): a gold rail down its rows, a pixel-font header, the act dimmed after each line */
+.log.chat li.chl.scg{border-left:2px solid rgba(242,193,78,.45);background:rgba(242,193,78,.04);padding-left:calc(9ch + 6px)}
+.log.chat li.chl.scg>time{left:6px}
+.log.chat li.chl.scg-h{margin-top:6px;color:var(--ink);font-size:16px;border-left-color:var(--gold)}
+.log.chat li.chl.scg-end{margin-bottom:6px}
+.log.chat li.chl.scg-r{color:var(--gold)}
+.log.chat li.chl.scg.sys-prop{color:var(--ink)} /* a vote's question reads like the frame, not a side note */
+.scgt{font-family:var(--px);font-size:8px;color:var(--gold);letter-spacing:.04em;margin-right:2px}
+.log.chat li.chl.scf .scft{font-style:italic}
+.chopt{font-size:16px}
 .chatdm{height:clamp(150px,26vh,300px);overflow-y:auto}
 .chatdm li.dimmed{opacity:.55}
 .chatdm li[role=button]{cursor:pointer}
@@ -804,6 +814,7 @@ button.tbtn.danger{border-color:var(--red)}
 .dgbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:5px 8px;background:rgba(8,10,20,.88);border-top:2px solid var(--edge)}
 .dgback{font-family:var(--px);font-size:8px;padding:5px 8px;min-height:26px;background:#1a1d2c;color:var(--gold);border:1px solid var(--gold);cursor:pointer}
 .dgback:focus-visible,.dglink:focus-visible{outline:2px solid var(--gold)}
+.dgname{cursor:pointer;text-decoration:underline dotted}.dgname:focus-visible{outline:2px solid var(--gold)} /* a DM-made site's name in a hero's Log opens its dungeon view (#642) */
 .dgtxt{flex:1 1 240px;min-width:0;font-size:16px;line-height:1.1;color:#e8e4d0}
 .dgname{font-family:var(--px);font-size:8px;color:#9ae0b8;letter-spacing:.04em}
 .dgrooms{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:3px 10px;margin:0;padding:0;list-style:none;font-size:15px;color:var(--dim)}
