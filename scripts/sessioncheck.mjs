@@ -8,6 +8,7 @@
 //   4. `npm run fellowship`: every member rolls, the run record counts it. 5. `npm run dm`: the DM rolls at its own point and re-reads
 //      its notes. 2b. A wait with turn_over ends the turn with no further model call, through the real /mcp route (#868). 6. A "fresh" line on stdin rolls at the next safe moment. 7. AGENT_HEAR_WAKE_MIN. 8. The report's context table.
 // Sessions go to a temporary folder (AGENT_LOGS, CLAUDE_CONFIG_DIR), never to logs/agents/ or the owner's ~/.claude.
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync} from 'node:fs';
@@ -22,7 +23,7 @@ import {ctxSection, compareMinds} from './mind-compare.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0; const ok = (c, m) => {console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) fail++};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-session-'));
+const tmp = mkTmp('eldmoor-session-');
 
 // ---------------------------------------------------------------- 1. the rules
 console.log('the rules');
