@@ -6,7 +6,8 @@
 //   3. `npm run agent` end to end on a headless world: `ctx` on the turn line, a roll at the roll point, the old file in old/, the new
 //      session told to read its journal, standing orders and persona block and claim unchanged; held back while a scene is open.
 //   4. `npm run fellowship`: every member rolls, the run record counts it. 5. `npm run dm`: the DM rolls at its own point and re-reads
-//      its notes. 2b. A wait with turn_over ends the turn with no further model call, through the real /mcp route (#868). 6. A "fresh" line on stdin rolls at the next safe moment. 7. AGENT_HEAR_WAKE_MIN. 8. The report's context table.
+//      its notes. 2b. A wait with turn_over ends the turn with no further model call, through the real /mcp route (#868). 2c. Lazy tools (#808): the schemas of
+//      the cold tools leave the prompt, a deferred tool is found and called, and how much the prompt shrinks; the runners with the switch on and off. 6. A "fresh" line on stdin rolls at the next safe moment. 7. AGENT_HEAR_WAKE_MIN. 8. The report's context table.
 // Sessions go to a temporary folder (AGENT_LOGS, CLAUDE_CONFIG_DIR), never to logs/agents/ or the owner's ~/.claude.
 import http from 'node:http';
 import {spawn} from 'node:child_process';
@@ -17,7 +18,7 @@ import {fileURLToPath} from 'node:url';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {ROLL, rollPoint, compactWindow, compactThreshold, withCompactWindow, ctxOf, ctxText, rollDue, rollSession, askFresh} from './session-roll.mjs';
 import {paceSettings} from './pacing.mjs';
-import {ctxSection, compareMinds} from './mind-compare.mjs';
+import {ctxSection, toolLoadSection, compareMinds} from './mind-compare.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0; const ok = (c, m) => {console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) fail++};
@@ -79,8 +80,12 @@ function mockApi() {
       const tool = (j.tools || []).map(t => t.name).find(n => (m.toolRe || /__(status|dm_status)$/).test(n)) || null;
       const sys = typeof j.system === 'string' ? j.system : (j.system || []).map(x => x.text).join('\n');
       const text = JSON.stringify(j.messages), userText = j.messages.filter(x => x.role === 'user').flatMap(x => Array.isArray(x.content) ? x.content : [{type: 'text', text: x.content}]).filter(x => x.type === 'text').map(x => x.text).join('\n');
-      m.calls.push({n: m.calls.length + 1, sys, chars: text.length, msgs: j.messages.length, tool: !!tool, isResult, userText, model: j.model});
-      const content = tool && !isResult && !summary ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: tool, input: {}}] : [{type: 'text', text: 'The road goes on.'}];
+      // #808: what the model would really read: a deferred tool's schema is in the request but not in the prompt
+      const toolsIn = j.tools || [], loaded = toolsIn.filter(t => !t.defer_loading);
+      m.calls.push({n: m.calls.length + 1, sys, chars: text.length, msgs: j.messages.length, tool: !!tool, isResult, userText, model: j.model, sent: toolsIn.map(t => t.name), loaded: loaded.map(t => t.name), toolChars: JSON.stringify(loaded).length, text, result: j.messages.slice(-3).flatMap(x => Array.isArray(x.content) ? x.content : []).filter(x => x.type === 'tool_result')});
+      if (m.refuse && toolsIn.some(t => t.defer_loading)) {m.refused = (m.refused || 0) + 1; res.writeHead(400, {'content-type': 'application/json'}); return res.end('{"type":"error","error":{"type":"invalid_request_error","message":"tools.1: defer_loading is not supported on this model"}}')}
+      const planned = !summary && toolsIn.length && m.plan && m.plan.length ? m.plan.shift() : null; // a scripted call, in order, before the mock's usual ones
+      const content = planned ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: planned.name, input: planned.input || {}}] : tool && !isResult && !summary ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: tool, input: {}}] : [{type: 'text', text: 'The road goes on.'}];
       const usage = {input_tokens: 5, cache_read_input_tokens: m.ctx(m.calls[m.calls.length - 1]), cache_creation_input_tokens: 100, output_tokens: 7};
       const msg = {id: 'msg_' + m.calls.length, type: 'message', role: 'assistant', model: j.model, content: [], stop_reason: null, stop_sequence: null, usage}, stop = content[0].type === 'tool_use' ? 'tool_use' : 'end_turn';
       if (!j.stream) {res.writeHead(200, {'content-type': 'application/json'}); return res.end(JSON.stringify({...msg, content, stop_reason: stop}))}
@@ -88,7 +93,7 @@ function mockApi() {
       const ev = (t, d) => res.write(`event: ${t}\ndata: ${JSON.stringify({type: t, ...d})}\n\n`), c = content[0];
       ev('message_start', {message: msg});
       if (c.type === 'text') {ev('content_block_start', {index: 0, content_block: {type: 'text', text: ''}}); ev('content_block_delta', {index: 0, delta: {type: 'text_delta', text: c.text}})}
-      else {ev('content_block_start', {index: 0, content_block: {...c, input: {}}}); ev('content_block_delta', {index: 0, delta: {type: 'input_json_delta', partial_json: '{}'}})}
+      else {ev('content_block_start', {index: 0, content_block: {...c, input: {}}}); ev('content_block_delta', {index: 0, delta: {type: 'input_json_delta', partial_json: JSON.stringify(c.input)}})}
       ev('content_block_stop', {index: 0}); ev('message_delta', {delta: {stop_reason: stop, stop_sequence: null}, usage: {output_tokens: 7}}); ev('message_stop', {}); res.end();
     });
   });
@@ -157,10 +162,73 @@ console.log('the real CLI: a wait with turn_over ends the turn with no further m
   api.toolRe = null; srv.close();
 }
 
+// ---------------------------------------------------------------- 2c. lazy tools on the real CLI (#808)
+// Through the relay's real /mcp route with every hero tool. A deferred tool's schema is not in the prompt until the hero looks it up; the mock counts
+// the schemas that are not deferred, which is what the model would read. Tokens are chars / 3.6, the estimate #808 used: a live run reads ctx instead.
+console.log('the real CLI: lazy tools');
+{
+  const {attachPlay} = await import('./relay-mcp.mjs'), {tableHooks} = await import('./pacing.mjs'), {PLAYER_TOOLS} = await import('../src/data/player-tools.js');
+  const {ALWAYS_LOAD, LAZY_GROUPS, ALWAYS_LOAD_META, SEARCH_TOOL, lazyOn, toolOptions, withLazyEnv, lazyRec, markLazy} = await import('./lazy-tools.mjs');
+  const names = PLAYER_TOOLS.map(t => t.name), wire = n => 'mcp__eldmoor__' + n, cold = names.filter(n => !ALWAYS_LOAD.includes(n));
+  ok(ALWAYS_LOAD.every(n => names.includes(n)) && new Set(ALWAYS_LOAD).size === ALWAYS_LOAD.length, `the list names real tools, once each (${ALWAYS_LOAD.length} of ${names.length})`);
+  ok(['self', 'become', 'swear_oath', 'keep_oath', 'renounce_oath', 'journal_read', 'journal_write', 'journal_search', 'remember', 'recall', 'update_memory', 'forget', 'pin', 'attempt', 'scene_act', 'wait', 'vote', 'say', 'party_say', 'use_ability'].every(n => ALWAYS_LOAD.includes(n)), 'self, become, the oaths, the journal, the memory tools, attempt and what a scene needs always load');
+  ok(Object.keys(LAZY_GROUPS).length === 3 && !lazyOn({}) && !lazyOn({AGENT_LAZY_TOOLS: '0'}) && !lazyOn({AGENT_LAZY_TOOLS: ''}) && lazyOn({AGENT_LAZY_TOOLS: '1'}), 'AGENT_LAZY_TOOLS is off unless set to 1');
+  const off = toolOptions(false, 'u?hero=1'); ok(off.url === 'u?hero=1' && off.tools.length === 0 && off.allowedTools.join() === 'mcp__eldmoor' && !withLazyEnv({}, false).ENABLE_TOOL_SEARCH && !Object.keys(lazyRec(false, [])).length, 'off, the query options, the environment and the turn line are as they were');
+  {const s = {lazyTools: true}; markLazy(s, false); ok(!('lazyTools' in s), 'and a session file gains no field')}
+  const seen = o => {const s = {}; rollSession(s, () => null); return Object.assign(s, {sessionId: 's', ctx: 1000}, o)}; // past the fresh ask of section 1
+  ok(rollDue(seen({lazyTools: true}), 80000, {lazy: false}).why === 'tools' && rollDue(seen(), 80000, {lazy: true}).line === '[session rolled: lazy tools on]', 'a session started the other way rolls');
+  ok(rollDue(seen(), 80000, {lazy: false}) === null && rollDue(seen(), 80000) === null && rollDue(seen({sessionId: null}), 80000, {lazy: true}) === null && rollDue(seen(), 80000, {lazy: true, busy: true}) === null, 'nothing else does, and never mid-scene');
+  const asked = [], be = {call: async (id, tool, args) => {asked.push(tool); return tool === 'wait' && answer ? answer : {ok: true, tool, args}}, dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes: [{id: 1, name: 'Mock', alive: true}]})}; let answer = null;
+  const srv = http.createServer((q, s) => {s.writeHead(404); s.end('{}')}); attachPlay(srv, {backend: be, log: () => {}});
+  await new Promise(r => srv.listen(0, '127.0.0.1', r)); const mcpUrl = `http://127.0.0.1:${srv.address().port}/mcp?hero=1`;
+  const list = u => fetch(u, {method: 'POST', headers: {'content-type': 'application/json', accept: 'application/json, text/event-stream'}, body: JSON.stringify({jsonrpc: '2.0', id: 1, method: 'tools/list', params: {}})}).then(r => r.json()).then(j => j.result.tools);
+  const plainList = await list(mcpUrl), lazyList = await list(mcpUrl + '&lazy=1');
+  ok(plainList.length === names.length && plainList.every(t => !t._meta), 'without ?lazy=1 the relay lists every tool with no _meta');
+  ok(lazyList.map(t => t.name).join() === names.join(), 'with it, every tool too: none is removed');
+  ok(lazyList.filter(t => t._meta && t._meta[ALWAYS_LOAD_META] === true).map(t => t.name).sort().join() === [...ALWAYS_LOAD].sort().join(), 'and exactly the list carries anthropic/alwaysLoad');
+  ok(JSON.stringify(lazyList.map(({_meta, ...t}) => t)) === JSON.stringify(plainList), 'the schemas are the same either way');
+  const play = async (lazy, plan, resume, extra = {}) => {const to = toolOptions(lazy, mcpUrl), before = api.calls.length; let id = resume, res = null; api.plan = plan.slice();
+    const q = query({prompt: 'turn', options: {model: 'claude-haiku-5-5', systemPrompt: 'You keep the road.', resume, mcpServers: {eldmoor: {type: 'http', url: to.url, headers: {'X-Eldmoor-Hero': '1'}, timeout: 30000}}, tools: to.tools, allowedTools: to.allowedTools, permissionMode: 'dontAsk', settingSources: [], maxTurns: 8, cwd: tmp, env: withLazyEnv({...base}, lazy), ...extra}});
+    for await (const m of q) {if (m.type === 'system' && m.subtype === 'init') id = m.session_id; else if (m.type === 'result') res = m}
+    return {id, res, calls: api.calls.slice(before)}};
+  api.toolRe = /^$/; api.ctx = () => 3000;
+  const plain = await play(false, []), lazy = await play(true, []), p0 = plain.calls[0], l0 = lazy.calls[0];
+  ok(p0.loaded.length === names.length && names.every(n => p0.sent.includes(wire(n))) && !p0.sent.includes(SEARCH_TOOL), `off: all ${names.length} schemas in the prompt, no ${SEARCH_TOOL}`);
+  const hot = l0.loaded.filter(n => n.startsWith('mcp__')).map(n => n.slice(14));
+  ok(hot.slice().sort().join() === [...ALWAYS_LOAD].sort().join() && l0.loaded.includes(SEARCH_TOOL), `on: the ${ALWAYS_LOAD.length} always-loaded schemas and ${SEARCH_TOOL}`);
+  ok(cold.every(n => !l0.sent.includes(wire(n))), `the other ${cold.length} schemas are not in the request at all`);
+  ok(cold.every(n => l0.text.includes(wire(n))), 'each of them is named in the prompt, so a hero knows it is there');
+  const saved = p0.toolChars - l0.toolChars, listChars = l0.chars - p0.chars, tok = c => Math.round(c / 3.6), net = saved - listChars;
+  console.log(`  size: schemas ${p0.toolChars} -> ${l0.toolChars} chars (about ${tok(p0.toolChars)} -> ${tok(l0.toolChars)} tokens), the names list +${listChars} chars, net -${net} chars, about ${tok(net)} tokens a call`);
+  ok(net > .4 * p0.toolChars, `the prompt loses about ${tok(net)} tokens a call: ${Math.round(net / p0.toolChars * 100)}% of the tool schemas (#808 expected 9.6-13k with 24 to 44 tools kept)`);
+  const cheap = await play(true, [{name: wire('scene_act'), input: {option: 'hold', line: 'I stand.'}}, {name: wire('wait'), input: {minutes: 10}}, {name: wire('become'), input: {field: 'voice', text: 'plain', why: 'the road'}}]);
+  ok(asked.slice(-3).join() === 'scene_act,wait,become' && !cheap.calls.some(c => c.result.some(r => r.is_error)), 'scene_act, wait and become need no lookup');
+  const looked = await play(true, [{name: SEARCH_TOOL, input: {query: 'select:' + wire('gambits'), max_results: 5}}, {name: wire('gambits'), input: {}}]);
+  const ref = looked.calls[1].result.flatMap(r => Array.isArray(r.content) ? r.content : []).find(x => x.type === 'tool_reference');
+  ok(ref && ref.tool_name === wire('gambits'), `${SEARCH_TOOL} finds a deferred tool by name: ${ref && ref.tool_name}`);
+  ok(looked.calls[1].sent.includes(wire('gambits')) && !looked.calls[1].loaded.includes(wire('gambits')), 'its schema comes with the next call, marked deferred: the API opens it where the search result stands, the cached prefix stays');
+  ok(asked[asked.length - 1] === 'gambits' && looked.res.subtype === 'success', 'and the call reaches the game');
+  const asBare = await play(true, [{name: SEARCH_TOOL, input: {query: 'select:shop', max_results: 5}}]), bare = asBare.calls[1].result.flatMap(r => Array.isArray(r.content) ? r.content : []);
+  ok(bare.some(x => x.type === 'tool_reference' && x.tool_name === wire('shop')), 'by the short name the tool map gives too (select:shop)');
+  const words = await play(true, [{name: SEARCH_TOOL, input: {query: 'auction house', max_results: 5}}]), found = words.calls[1].result.flatMap(r => Array.isArray(r.content) ? r.content : []).filter(x => x.type === 'tool_reference').map(x => x.tool_name);
+  ok(found.some(n => /auction/.test(n)), `and by words: ${found.map(n => n.slice(14)).join(', ')}`);
+  const next = await play(true, [{name: wire('gambits'), input: {}}], looked.id);
+  ok(next.calls[0].sent.includes(wire('gambits')) && asked[asked.length - 1] === 'gambits', 'a tool looked up stays there on the next turn of the session');
+  ok(next.calls[0].chars > looked.calls[0].chars && (next.calls[0].text.match(/deferred tools are now available/g) || []).length === 1, 'and the names list is not repeated on a resume');
+  const blind = await play(true, [{name: wire('recipes'), input: {}}]);
+  ok(asked[asked.length - 1] === 'recipes', 'a hero who calls a deferred tool straight from the tool map still reaches the game');
+  answer = {ok: true, waited_min: 0, turn_over: true, why: 'Your turn is over: end it here.'}; let over = 0;
+  const rest = await play(true, [{name: wire('wait'), input: {}}], undefined, {hooks: tableHooks({idle: () => {}, onOver: () => over++})}); answer = null;
+  ok(over === 1 && rest.calls.length === 1, 'turn_over ends the turn as before (#868)');
+  api.refuse = true; asked.length = 0; const told = await play(true, [{name: wire('status'), input: {}}]); api.refuse = false;
+  ok(api.refused >= 1 && told.res && told.res.subtype === 'success' && asked.includes('status'), `an endpoint that refuses deferral costs a retry, not the turn (${api.refused} refused, then ${told.calls[told.calls.length - 1].loaded.length} schemas sent)`);
+  api.toolRe = null; api.plan = null; srv.close();
+}
+
 // ---------------------------------------------------------------- 3. the hero runner end to end
 const envDir = join(tmp, 'envdir'); (await import('node:fs')).mkdirSync(envDir); writeFileSync(join(envDir, '.env'), ''); // --env: never the owner's .env
 const childEnv = {...process.env, ...base, AGENT_LOGS: tmp, AGENT_MODEL: 'claude-haiku-5-5', DM_MODEL: 'claude-sonnet-5-5', AGENT_REFLECT: '0'};
-delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT; delete childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW; delete childEnv.AGENT_HEAR_WAKE_MIN; delete childEnv.SESSION_ROLL_TOKENS; delete childEnv.DM_ROLL_TOKENS; delete childEnv.ELDMOOR_SUPERVISED;
+delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT; delete childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW; delete childEnv.AGENT_HEAR_WAKE_MIN; delete childEnv.SESSION_ROLL_TOKENS; delete childEnv.DM_ROLL_TOKENS; delete childEnv.ELDMOOR_SUPERVISED; delete childEnv.AGENT_LAZY_TOOLS; delete childEnv.ENABLE_TOOL_SEARCH;
 const kids = [];
 function start(args, {wait = null, env = childEnv, stdin = 'ignore'} = {}) {
   const p = spawn(process.execPath, args, {cwd: ROOT, env, stdio: [stdin, 'pipe', 'pipe']}); kids.push(p); let out = '';
@@ -251,6 +319,25 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   ok(!/session rolled/.test(run.out()), 'and still no roll with the table open');
   px.table = false;
 }
+// Lazy tools in the hero runner (#808): the switch on rolls the old session, a deferred tool is looked up and called in the game, the turn line says so; off again rolls back.
+const cold = 'mcp__eldmoor__gambits', turnLines = () => {try {return readdirSync(join(tmp, 'behavior')).flatMap(d => readFileSync(join(tmp, 'behavior', d, 'turns.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l)))} catch {return []}};
+{
+  api.ctx = () => 26000; api.calls.length = 0; api.plan = [{name: 'ToolSearch', input: {query: 'select:' + cold, max_results: 5}}, {name: cold, input: {}}];
+  const run = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '2', '--min-gap', '0', '--heartbeat', '5', '--budget', '1', '--no-reflect'], {env: {...childEnv, AGENT_LAZY_TOOLS: '1'}});
+  await run.done; api.plan = null;
+  ok(/\[tools\] lazy loading on: \d+ in the prompt, \d+ found with ToolSearch/.test(run.out()) && /\[session rolled: lazy tools on\]/.test(run.out()), 'npm run agent with AGENT_LAZY_TOOLS=1: it says so, and the session of before rolls');
+  ok(/\| ctx 26k \| tool search 1 \| turn \$/.test(run.out()), 'the turn line carries ctx and the lookups');
+  const lazyCalls = api.calls.filter(c => c.tool); // the warm-up has no tools
+  ok(lazyCalls.length && lazyCalls.every(c => c.loaded.includes('ToolSearch') && c.loaded.length < 60), `every call has the short list (${lazyCalls[0] && lazyCalls[0].loaded.length} schemas)`);
+  const L = await until(() => {const t = turnLines().find(x => x.toolSearch === 1); return t || null}, 5000);
+  ok(L && L.ctx === 26105 && (L.flags || []).includes('lazy-tools') && L.tools.some(t => t.name === 'ToolSearch') && L.tools.some(t => t.name === 'gambits' && t.ok), 'the behavior line has ctx, toolSearch, the flag and both calls');
+  ok(readSess(hero.id).lazyTools === true, 'the session is marked');
+  api.calls.length = 0;
+  const back = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1', '--no-reflect']);
+  await back.done;
+  ok(/\[session rolled: lazy tools off\]/.test(back.out()) && !/lazy loading on|tool search \d/.test(back.out()) && !('lazyTools' in readSess(hero.id)), 'with the switch off again it rolls back, and no word of it stays');
+  const fullCalls = api.calls.filter(c => c.tool); ok(fullCalls.length && fullCalls.every(c => !c.sent.includes('ToolSearch') && c.loaded.length > 100), `and every schema is sent again (${fullCalls[0] && fullCalls[0].loaded.length})`);
+}
 world.p.kill(); px.close(); await sleep(300);
 
 // ---------------------------------------------------------------- 4. the Fellowship runner
@@ -268,6 +355,13 @@ console.log('npm run fellowship on a headless Fellowship');
   ok(rec && rec.members.reduce((t, m) => t + (m.rolls || 0), 0) === rolled, `the run record counts the rolls (${rec && rec.members.map(m => m.rolls).join(', ')})`);
   ok(rec && rec.members.some(m => m.ctx != null), 'and the last size');
   ok(oldFiles().length >= 1 + rolled, 'each member\'s old file lies in old/');
+  // Lazy tools for a company runner (#808)
+  api.ctx = () => 26000; api.calls.length = 0;
+  const lazyRun = start(['scripts/fellowship.mjs', '--url', FW, '--env', join(envDir, '.env'), '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1', '--provider', 'anthropic', '--model', 'claude-haiku-5-5'], {env: {...childEnv, AGENT_LAZY_TOOLS: '1'}});
+  await lazyRun.done;
+  const lazyTurns = (lazyRun.out().match(/\| tool search 0 \| turn \$/g) || []).length;
+  ok(/\[tools\] lazy loading on/.test(lazyRun.out()) && lazyTurns >= 5, `npm run fellowship with the switch on: every member's turn line says so (${lazyTurns})`);
+  ok(api.calls.filter(c => c.tool).every(c => c.loaded.includes('ToolSearch') && c.loaded.length < 60), 'and every member plays with the short list');
   fw.p.kill(); await sleep(300);
 }
 
@@ -277,8 +371,9 @@ console.log('npm run dm on a headless world');
   const dport = port + 701, DW = `http://127.0.0.1:${dport}`;
   const dw = start(['scripts/play-headless.mjs', '--dm', '--agents', '0', '--port', String(dport), '--quiet', '--speed', '8', '--world', join(tmp, 'dworld.json')], {wait: /^\[play\] headless world at /m});
   await dw.until; api.ctx = () => 155000; api.calls.length = 0;
-  const run = start(['scripts/dm-agent.mjs', '--url', DW, '--env', join(envDir, '.env'), '--max-turns', '2', '--cadence', '5', '--min-gap', '0', '--budget', '1', '--no-table-voice', '--no-talk-voice', '--no-companion-voice', '--no-ruling-voice']);
+  const run = start(['scripts/dm-agent.mjs', '--url', DW, '--env', join(envDir, '.env'), '--max-turns', '2', '--cadence', '5', '--min-gap', '0', '--budget', '1', '--no-table-voice', '--no-talk-voice', '--no-companion-voice', '--no-ruling-voice'], {env: {...childEnv, AGENT_LAZY_TOOLS: '1'}});
   await run.done;
+  {const dc = api.calls.filter(c => c.tool), mine = l => l.filter(n => n.startsWith('mcp__')); ok(dc.length && dc.every(c => !c.sent.includes('ToolSearch') && mine(c.sent).length > 50 && mine(c.sent).length === mine(c.loaded).length), `AGENT_LAZY_TOOLS leaves the DM as it is: heroes only (#808): ${dc[0] && mine(dc[0].loaded).length} schemas, sent ${dc[0] && dc[0].sent.length}`)}
   ok(/\| ctx 155k \| turn \$/.test(run.out()), 'the DM\'s turn line carries ctx');
   ok(/\[session rolled: 155k tokens\]/.test(run.out()), 'a Sonnet DM rolls at its own point');
   ok(/compaction net at 157k tokens/.test(run.out()), 'with its net above it');
@@ -315,6 +410,11 @@ console.log('the behavior report');
   ok(/under 50k\|1\|1\|\$0\.0040/.test(md) && /200k\+\|1\|1\|\$0\.0600/.test(md), 'cost per turn by prompt size');
   const row = compareMinds(T, [], []).rows[0];
   ok(row.rolls === 1 && row.ctx.length === 3 && row.t1 - row.t0 === 120000, 'the Mind comparison has what turns per minute and context need');
+  const tbl = (h, r) => [h.join('|'), ...r.map(x => x.join('|'))].join('\n');
+  ok(!toolLoadSection(T, tbl).length, 'no lazy turn logged: the report has no tool loading section (#808)');
+  const lz = (ctx, ts) => ({...t('hero:1', ctx, .004, '2026-11-04T02:00:00Z', ['lazy-tools']), toolSearch: ts, tools: [{name: 'wait'}, ...(ts ? [{name: 'ToolSearch'}, {name: 'gambits'}] : [])]});
+  const tl = toolLoadSection([...T, lz(30000, 1), lz(50000, 0)], tbl).join('\n');
+  ok(/all in the prompt\|claude-haiku-5-5\|3\|40k\|90k/.test(tl) && /lazy\|claude-haiku-5-5\|2\|30k\|30k\|2\|0\.5\|gambits 1/.test(tl), 'with one: both ways side by side, floor, median, calls and lookups a turn, the tools looked up');
 }
 
 for (const k of kids) try {k.kill()} catch {}
