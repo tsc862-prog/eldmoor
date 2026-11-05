@@ -348,7 +348,7 @@ export let chunkGen=0;
 let artOn=null;
 const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_CANOPY,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
 export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
-onAssets(()=>{chunks.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))}); // a tile asset arrived (or the index changed): repaint on the next request
+onAssets(id=>{if(id&&/^portrait:/.test(id))return;chunks.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))}); // a tile asset arrived (a face is not terrain, #710) (or the index changed): repaint on the next request
 
 // Cached canvas for chunk (cx,cy): min(CH,W-cx*CH) by min(CH,H-cy*CH) tiles at k pixels a tile (TILE, or U with no
 // terrain asset). c.uw and c.uh give its size in world units (tiles * U), which is what the renderer scales it to.

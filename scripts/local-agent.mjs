@@ -467,9 +467,10 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
   }
   if (aim && !stat.dead) { // what the hero means to do next (#535): one intent, refused or not
     on('tool', 'intent', aim); stat.tools++;
-    let r; try {r = await call('intent', aim)} catch (e) {r = {ok: false, error: String(e.message || e)}}
+    let r; try {r = await call('intent', {...aim, forced: 'yes'})} catch (e) {r = {ok: false, error: String(e.message || e)}} // forced: a finished aim copied word for word is dropped (#727)
     on('result', typeof r === 'string' ? r : JSON.stringify(r));
-    if (r && r.ok !== false) {stat.calls.push({name: 'intent', ok: true}); stat.aimed = aim.goal} else {stat.rejected++; stat.calls.push({name: 'intent', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
+    if (r && r.ok !== false && r.dropped) {stat.calls.push({name: 'intent', ok: true}); stat.aimDropped = true}
+    else if (r && r.ok !== false) {stat.calls.push({name: 'intent', ok: true}); stat.aimed = aim.goal} else {stat.rejected++; stat.calls.push({name: 'intent', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
   }
   if (oath && !stat.dead) { // what the hero makes of its past (#800): one swear_oath, refused or not
     on('tool', 'swear_oath', oath); stat.tools++;
@@ -484,7 +485,7 @@ export async function reflectTurn({ask, call, sess, moment, prompt, context = ''
     if (r && r.ok !== false) {stat.calls.push({name: 'wish', ok: true}); stat.wished = wsh.tool} else {stat.rejected++; stat.calls.push({name: 'wish', ok: false, error: String(r && r.error || 'error').slice(0, 140)})}
   }
   stat.answered = !!notes; stat.wrote = stat.notes.length;
-  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) + (stat.became ? ` Something in them has changed (${stat.became}).` : '') + (stat.aimed ? ` Next: ${stat.aimed}.` : '') : '';
+  stat.narration = notes ? (stat.wrote ? `Reflects (${moment && moment.kind || 'a pause'}) and keeps ${stat.wrote} memor${stat.wrote > 1 ? 'ies' : 'y'}: ${stat.notes.map(t => '"' + t + '"').join(', ')}.` : `Reflects (${moment && moment.kind || 'a pause'}): nothing worth keeping today.`) + (stat.became ? ` Something in them has changed (${stat.became}).` : '') + (stat.aimed ? ` Next: ${stat.aimed}.` : '') + (stat.aimDropped ? ' (stale aim dropped)' : '') : '';
   if (keep && (stat.wrote || stat.became || stat.aimed)) {const L = sess.local = sess.local || {mode: 'tools', history: [], tokensIn: 0, tokensOut: 0, seconds: 0, dropped: 0};
     L.history.push({role: 'user', content: 'A moment to reflect: ' + String(moment && moment.why || ''), turn: 1}, {role: 'assistant', content: stat.narration});
     L.tokensIn += stat.in; L.tokensOut += stat.out; L.dropped += trimHistory(L.history, LOCAL_DEFAULTS.historyChars); L.seconds += (Date.now() - t0) / 1000}
