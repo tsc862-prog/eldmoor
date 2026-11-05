@@ -230,7 +230,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
       const p0 = Date.now(), t = await tool(base, 'table_call', waitMs > 0 ? {wait_ms: waitMs} : {});
       const hot = !!(t && t.ok && (t.scene || t.staged));
       if (t && t.ok && t.call && t.call.id !== seen && t.call.seconds_left > .8) {
-        seen = t.call.id; const c = t.call, t0 = Date.now();
+        seen = t.call.id; const c = t.call, t0 = Date.now(), left = `left ${Number(c.seconds_left).toFixed(1)} s`; // #885: the seconds the call had at pickup
         try {
           const ms = Math.max(800, c.seconds_left * 1000 - 400); // past the call's budget the answer is worthless: abort it (the Ollama adapter honours only the signal)
           const r = await adapter.call({system: TABLE_SYSTEM, user: tablePrompt(t), schema: tableSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
@@ -239,9 +239,9 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
           if (!j || typeof j.text !== 'string') log(`[table] call ${c.id} ${c.kind}: the model's reply was not JSON; the scripted DM fills it`);
           else {
             const a = await tool(base, 'table_answer', {call: c.id, text: j.text, ...(c.legal ? {pick: j.pick} : {})});
-            log(`[table] call ${c.id} ${c.kind}${a.pick ? ' ' + a.pick : ''}: ${a.ok ? '"' + short(a.said || '', 140) + '"' : 'x ' + short(a.error, 100)}${a.spoke_for ? ' (spoke for ' + a.spoke_for.join(', ') + ': cut)' : ''} | ${((Date.now() - t0) / 1000).toFixed(1)} s, ${r.usage ? r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+            log(`[table] call ${c.id} ${c.kind}${a.pick ? ' ' + a.pick : ''}: ${a.ok ? '"' + short(a.said || '', 140) + '"' : 'x ' + short(a.error, 100)}${a.spoke_for ? ' (spoke for ' + a.spoke_for.join(', ') + ': cut)' : ''} | ${((Date.now() - t0) / 1000).toFixed(1)} s, ${r.usage ? r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
           }
-        } catch (e) {log(`[table] call ${c.id} ${c.kind}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM fills it`)}
+        } catch (e) {log(`[table] call ${c.id} ${c.kind}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s (${left} at pickup); the scripted DM fills it`)}
         continue;
       }
       if (t && t.ok && pollRest(p0, waitMs)) continue; // a held long poll came back empty: ask again at once
@@ -398,7 +398,7 @@ export function rulingVoice({base, adapter, model, effort = 'low', log = () => {
       const p0 = Date.now(), t = await tool(base, 'ruling_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
       const c = t && t.ok && t.call;
       if (c && c.call !== seen && c.seconds_left > .8) {
-        seen = c.call; const t0 = Date.now();
+        seen = c.call; const t0 = Date.now(), left = `left ${Number(c.seconds_left).toFixed(1)} s`; // #885
         try {
           const ms = Math.max(800, c.seconds_left * 1000 - 400);
           const r = await adapter.call({system: RULING_SYSTEM, user: rulingPrompt(c), schema: rulingSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
@@ -407,9 +407,9 @@ export function rulingVoice({base, adapter, model, effort = 'low', log = () => {
           if (!j || typeof j.text !== 'string' || !j.text.trim()) log(`[ruling] call ${c.call}: the model's reply was not usable; the scripted DM rules`);
           else {
             const a = await tool(base, 'ruling_answer', {call: c.call, skill: j.skill, dc: j.dc, effects: effectList(j.effects), fail_effects: effectList(j.fail_effects), text: j.text, fail_text: j.fail_text || '', note: j.note || ''});
-            log(`[ruling] ${c.hero ? c.hero.name : '?'} "${short(c.attempt && c.attempt.what || '', 60)}": ${j.skill} ${j.dc} -> ${a.ok ? (a.outcome || 'ruled') + (a.roll ? ' (' + a.roll + ')' : '') : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+            log(`[ruling] ${c.hero ? c.hero.name : '?'} "${short(c.attempt && c.attempt.what || '', 60)}": ${j.skill} ${j.dc} -> ${a.ok ? (a.outcome || 'ruled') + (a.roll ? ' (' + a.roll + ')' : '') : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
           }
-        } catch (e) {log(`[ruling] call ${c.call}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; the scripted DM rules`)}
+        } catch (e) {log(`[ruling] call ${c.call}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s (${left} at pickup); the scripted DM rules`)}
         continue;
       }
       if (t && t.ok && pollRest(p0, waitMs)) continue; // a held long poll came back empty: ask again at once
