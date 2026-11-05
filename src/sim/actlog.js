@@ -6,7 +6,7 @@
 // save files do not grow by ~300 entries x 100+ heroes). Every hero records, so the watcher can open anyone.
 //
 // A fight opens on the first hit or hurt and is settled after FIGHT_GAP game minutes with no combat entry (a pack
-// of three boars is one fight). Result: 'died' (death), 'fled' (flee, or it ended with no kill), 'won' (a kill),
+// of three boars is one fight). Result: 'died' (death), 'fled' (only after a flee), 'won' (a kill, or kill xp shared from a companion's), 'over' (ended with the foe alive),
 // 'ongoing' while the last combat entry is within the gap. miss/dodge/block are in the kind list but the combat
 // code rolls no such outcome today, so nothing records them.
 import {S} from './state.js';
@@ -17,11 +17,11 @@ const store=a=>a._al||(Object.defineProperty(a,'_al',{value:{b:[],n:0,f:[],cur:n
 export const nameOf=e=>!e?null:e.kind==='hero'?e.name:e.kind==='boss'?'Kragmaw':e.name||(MOBS[e.type]&&MOBS[e.type].name)||'a foe';
 
 function close(st,t){const c=st.cur;if(!c)return;
-  c.end=c.last;c.result=c.died?'died':c.fled?'fled':c.kills>0?'won':'fled';
+  c.end=c.last;c.result=c.died?'died':c.fled?'fled':c.kills>0||c.xp>0?'won':'over';
   st.f.push(c);if(st.f.length>FCAP)st.f.shift();st.cur=null}
 const settle=(st,t)=>{if(st.cur&&t-st.cur.last>FIGHT_GAP)close(st,t)};
 function open(st,t,foe){settle(st,t);
-  if(!st.cur)st.cur={id:++st.fid,foe,start:t,end:t,last:t,dealt:0,taken:0,healed:0,abilities:{},items:{},crits:0,kills:0,died:false,fled:false,result:'ongoing'};
+  if(!st.cur)st.cur={id:++st.fid,foe,start:t,end:t,last:t,dealt:0,taken:0,healed:0,abilities:{},items:{},crits:0,kills:0,xp:0,died:false,fled:false,result:'ongoing'};
   st.cur.last=t;return st.cur}
 function put(st,e){const i=st.n%CAP;st.b[i]=e;st.n++}
 
@@ -29,7 +29,7 @@ function put(st,e){const i=st.n%CAP;st.b[i]=e;st.n++}
 export function actHit(a,t,d,crit){if(a.kind!=='hero')return;const st=store(a),T=S.gameMin,c=open(st,T,nameOf(t));
   c.dealt+=d;if(crit)c.crits++;put(st,{t:T,kind:'hit',who:a.name,target:nameOf(t),name:null,amount:d,crit:!!crit,fight:c.id})}
 export function actHurt(h,src,d,note){if(h.kind!=='hero')return;const st=store(h),T=S.gameMin,c=open(st,T,nameOf(src));
-  c.taken+=d;put(st,{t:T,kind:'hurt',who:h.name,target:nameOf(src),name:note||null,amount:d,fight:c.id})}
+  c.taken+=d;put(st,{t:T,kind:'hurt',who:nameOf(src),target:h.name,name:note||null,amount:d,fight:c.id})}
 export function actHeal(a,on,amt,name){if(amt<=0)return;const T=S.gameMin;
   if(a.kind==='hero'){const st=store(a);settle(st,T);if(st.cur){st.cur.healed+=amt;st.cur.last=T}
     put(st,{t:T,kind:'heal',who:a.name,target:nameOf(on),name:name||null,amount:amt,fight:st.cur?st.cur.id:undefined})}
@@ -54,6 +54,7 @@ export function actFlee(a){if(a.kind!=='hero')return;const st=store(a),T=S.gameM
   put(st,{t:T,kind:'flee',who:a.name,target:null,name:null,amount:null,fight:st.cur?st.cur.id:undefined});close(st,T)}
 // xp, loot and level: a note, no fight bookkeeping.
 export function actNote(a,kind,name,amt){if(a.kind!=='hero')return;const st=store(a),T=S.gameMin;
+  if(kind==='xp'&&st.cur&&T-st.cur.last<=FIGHT_GAP)st.cur.xp++; // shared kill xp: a companion's kill is still a win
   put(st,{t:T,kind,who:a.name,target:null,name:name||null,amount:amt==null?null:amt,fight:st.cur?st.cur.id:undefined})}
 
 // ---- read API ----
