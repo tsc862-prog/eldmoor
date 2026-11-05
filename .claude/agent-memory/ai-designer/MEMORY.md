@@ -1,4 +1,6 @@
+- [First delve #922](first_delve.md) — prologue.js flow, default in one line, stored only when it differs, hook seams kept off crawl.js/table.js, tuning
 - [Party rules](party_rules.md) — why followers have their own state, duelers stay, regroup exists, zone = weakest member, 50% outnumbered flee
+- [Companies initiate #826](companies_initiate.md) — inMuster keyed on hasLinks, solo go_crypt/join_raid, raid vote lapse, askCompany seam for call_to
 - [Own oaths #800](own_oaths.md) — goal is an offered thread until sworn; swornOf is the one reader; dice stay in goals.js; keep_oath for words
 - [Mirefen PvP dynamics](pvp_dynamics.md) — Mirefen hero-time drives deaths; clustering multiplies duel pairs; how to instrument deaths headlessly
 - [Chatter rules](chatter_rules.md) — say() in chat.js, private RNG, lazy per-hero fields, spot at 2+ levels, merge-safe one-line inserts
@@ -33,7 +35,7 @@
 - [Reflex moves #347/#348](reflex_moves.md) — reflex members heal with class moves only (reflexMay), reflex spec pick; Antler Ward's spec-only widened rally
 - [Table items #360](table_items.md) — use:<slug> round options via useItem, when each item is offered, same-party potions, reflex unchanged
 - [Camp refusals #400](camp_refusals.md) — campBlock text, second break_camp = yes vote, non-leader break_camp proposes, refusals name the next call
-- [Sim perf #433](sim_perf.md) — hash-identical speedups: within() box+hypot, non-enumerable hero caches, LOD flag off by default
+- [Sim perf #433/#730](sim_perf.md) — hash-identical speedups: fewer combatStats calls, count-reset grids, greet snapshot; measure by A/B not self time
 - [Emergent parties #402](emergent_parties.md) — companies of 1-8 (5 minds), single faction, together default; owner decisions 2026-11-03
 - [Company model #438](company_model.md) — company.js, accessor shims (S.fellowship, a.fellow, p.fellow), companySeq ids, save v7, hash proof
 - [Setup v2 #453](setup_v2.md) — together = the five places, apart = company per group, v1 migration by index, slotsView, hash proof
@@ -60,6 +62,7 @@
 - [Apart companycheck #459](apart_companycheck.md) — companycheck-apart.mjs sections, fixture traps (links/seat not reset by init), heir-wait fix
 - [Starved company #530](starved_company.md) — serveStarved in dm.js refill, LEAD 120, busy not skipped, dmcheck bound 360
 - [Fireside #571](fireside.md) — fireside/debrief kinds, table.js next/liveMs/onSceneEnd hooks, hasLinks gate, 600-char lines, copy refusal, townsfolk hmem
+- [DM spoke for #750](dm_spoke_for.md) — fire asks the question; spokefor.js cuts DM quotes of agent heroes in dmagent run(); newcomer and own-words exempt
 - [Sight events #570](sight_events.md) — sighthero.js: you-see events on coming into sight, seeker stops on sight, In sight header, Looking for
 - [Sworn vows #526](sworn_vows.md) — swear_oath/renounce_oath, a.vow, costs, DM thread kinds, persona import-cycle trap
 - [Night sight #583](night_sight.md) — sightFor(a,z): night 0.6 for agent heroes only, towns exempt, hash unchanged
@@ -68,6 +71,7 @@
 - [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut
 - [Talk setting #431](talk_setting.md) — talk scenes open on tavern/chapel/smithy/gate by where the person stands; field keeps the cut
 - [Gambits #617](gambits.md) — per-hero rules run by autopilot/fight reflex; presets = old policy rule for rule; hashcheck autopilot row guards it
+- [DM sites #69/#642](dm_sites.md) — create_site/enter_site, raid flag+lockout, background parties, scripted raiseSite, siteRoom injection, private LCG
 - [Vision scene #639](vision_scene.md) — stage_scene vision: rest/place trigger, vision.js registered from index (cycle), summary hides reveal
 - [DM sites #69](dm_sites.md) — create_site/enter_site, crawl by g.site, alvl gap scaling, round cap, wireSites cycle, private LCG
 - [Gambit hold #630](gambit_hold.md) — hold action stops the clock until the agent acts; release paths, limits, cautious preset only
@@ -78,6 +82,8 @@
 - [PvP mercy #657](pvp_mercy.md) — mercy.js: downs not kills, finish/spare odds, life-debts, bled = no credit, finish = guild grudge
 - [Bequeath #631](bequeath.md) — will.js: fall() hook (not slay/goDown), act:false for deathbed wills, estate until heir rests, company only
 - [Honour duels #633](honour_duels.md) — challenge.js: ctx.ids actors, HP floor no downing, hash scripted answer, leader swap, check pitfalls
+- [Town errands #727](town_errands.md) — arrival now-wake + 120 min leave hold, errand aims wait in town, already-here, forced stale-aim drop, errand-unacted
+- [Fight log #773](fight_log_773.md) — hurt who=attacker; won via shared xp; over vs fled
 - [Gambit cap 30 #779](gambit_cap_30.md) — MAX 30, a.gambitWrote counts hero-written rules and use_ability ones for the report
 - [Watch clock and DM downed call #655](watch_clock_downcall.md) — WATCH_TICK 20 gated on Table Off+agent+hasLinks, kin wake per save, downcall.js non-blocking DM call
 - [Wounds and tending #656](wounds_tending.md) — wounds.js leaf, who tends, priest is the existing NPC, scripted rest rules, balance read
@@ -85,6 +91,7 @@
 - [Log outcome tags #785](log_outcome_tags.md) — OUTCOME regex in history.js leaves src off outcome lines; add new outcome openings there
 - [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap
 - [Wait is not progress #790](wait_not_progress.md) — wait cap 240, level condition -> hunt, 12 h town-idle guard, refusals list the board
+- [Errands inside #790](errand_wait.md) — #732 + #802: an errand is a capped wait, stale unless run, guard outranks it and ARRIVE_HOLD
 - [Paths #794](paths_794.md) — path.js rules: near lines skip A*, mob limit, clearLine, reachable goal swap, road shoulders, fixture traps
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
 - [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing

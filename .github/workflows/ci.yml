@@ -60,6 +60,7 @@ jobs:
       - {name: Pack and inventory, run: npm run invcheck}
       - {name: Bestiary, run: npm run bestiarycheck}
       - {name: Class abilities and specialisations, run: npm run movecheck}
+      - {name: Score growth chosen by agent heroes, run: npm run scorecheck}
       - name: Headless sim (10 game-hours)
         run: npm run sim -- 10 | tee sim.txt
       - name: Sanity-check the sim summary
@@ -171,6 +172,7 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: Dungeon crawl room by room, run: npm run crawlcheck}
+      - {name: First delve, run: npm run prologuecheck}
       - {name: DM-made dungeon sites, run: npm run sitecheck}
       - {name: Camp and rest, run: npm run campcheck}
       - {name: Town autopilot and danger edges, run: npm run townpilotcheck}
@@ -188,6 +190,8 @@ jobs:
       - {name: Brain policy and relay (mock model), run: npm run braincheck}
       - {name: Table mode and staged scenes, run: npm run tablecheck}
       - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
+      - {name: Talk guard (introductions and repeats; refused talk counted), run: npm run talkcheck}
+      - {name: Companies initiate the Crypt and raids, run: npm run initiatecheck}
       - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
       - {name: DM rumours and names for deeds (seed_rumour and bestow), run: npm run rumourcheck}
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}

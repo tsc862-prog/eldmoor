@@ -65,7 +65,7 @@ const dunOf=g=>g&&g.site!=null?siteById(g.site)||CRYPT:CRYPT;
 const roomsOf=g=>dunOf(g).rooms||[];
 var SITE_END=null;export function setSiteEnd(f){SITE_END=f} // sim/sites.js: pays a cleared site, marks a ruin
 // The crawl runs for a group the Fellowship is in, in a dungeon with rooms, while Table mode is on (Watch mode keeps the roll).
-// The company is the first group member who rides in one (a drafted company comes first, see council.js unitDraft); a solo is a company of one.
+// The company is the first group member who rides in one (a company in a group comes first, see council.js unitDraft); a solo is a company of one.
 const coOf=g=>{for(const a of g.mem){const C=companyOf(a);if(C)return C}return null};
 export const crawlFits=g=>!!(g&&coOf(g)&&roomsOf(g).length&&tableOn());
 const lvlOf=g=>{const L=g.mem.filter(a=>crewOf(g).includes(a));return Math.max(1,Math.round(L.reduce((t,a)=>t+a.lvl,0)/Math.max(1,L.length)))};
@@ -92,7 +92,7 @@ function buildFoes(room,lvl,cr,D){const out=[],fl=room.alvl!=null?room.alvl+((D&
   for(const f of room.foes)for(let k=0;k<scaleN(f.n,cr);k++){const h=hitsOf(f);out.push({type:f.type,name:foeName(f),hp:h,hits:h,atk:f.atk||1,lvl:Math.max(1,fl)})}
   return out}
 // A foe above the party hits harder in a site room (its level is its own); the Crypt's rooms keep their written hit.
-const hitOf=(room,f,cr)=>{if(room.alvl==null)return room.hit;const d=f.lvl-cr.lvl;return room.hit*Math.max(.12,Math.min(1.8,d>=0?1+.08*d:1+.1*d))};
+const hitOf=(room,f,cr)=>{if(room.alvl==null)return room.hit;const d=f.lvl-cr.lvl;return room.hit*Math.max(.12,Math.min(1.8,d>=0?1+.08*d:1+.1*d))*(f.ph||1)}; // f.ph: a raid site boss's phase (sim/sites.js, #642)
 const woundedWord=a=>isDown(a)?(a.down.stable?' (down, stable)':' (down, bleeding)'):a.hp<maxHp(a)*.35?' (badly hurt)':a.hp<maxHp(a)*.65?' (hurt)':'';
 function frameOf(g,room){const cr=g.crawl,rem=liveFoes(cr),by={};for(const f of rem)by[f.name]=(by[f.name]||0)+1;
   const list=Object.keys(by).map(n=>by[n]>1?by[n]+' '+(species((rem.find(f=>f.name===n)||{}).type)||{}).pl||n+'s':n).join(' and ');
@@ -197,7 +197,7 @@ function strikeBack(g,room,cr,rearguard){const out=[],foes=rearguard?[pickA(live
 const goneDown=r=>r.dn.length?' '+r.dn.map(x=>x.name).join(' and ')+(r.dn.length>1?' go':' goes')+' down.':'';
 function outcome(sc){const g=grp(sc);if(!g)return '';const cr=g.crawl,room=roomsOf(g)[cr.i];cr.stats.rounds++;let tail;
   const foes=liveFoes(cr);
-  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){if(!isDown(b))heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP/roomsOf(g).length))} // the downed lie where they fell: only a heal brings them up
+  if(!foes.length){tail='The last of them goes down.';for(const b of members(g)){if(!isDown(b))heal(b,maxHp(b)*CRAWL.BREATH);gainXp(b,Math.round(clearXp(b)*CRAWL.ROOM_XP*(dunOf(g).xp||1)/roomsOf(g).length))} // the downed lie where they fell: only a heal brings them up
     if(sc.beats.some(b=>b.k==='retreat'))tail+=' Those who fell back come forward again.';
     if(cr.i+1>=roomsOf(g).length){cr.end='clear';cr.foes=null}
     else{cr.i++;cr.foes=null;cr.rd=0;cr.gap=CRAWL.GAP;tail+=' The way on is open.'}

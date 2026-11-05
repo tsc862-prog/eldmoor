@@ -70,7 +70,7 @@ export function companyCard(a){const C=companyOf(a);if(!C||C.ids.length<2)return
 export function roomFor(C,b){if(C.ids.length>=PARTY.MAX)return C.name+' already holds '+PARTY.MAX+' heroes, the most a company can.';
   if(b.player&&minds(C).length>=PARTY.MINDS)return C.name+' already has '+PARTY.MINDS+' who choose their own road, the most a company can; '+b.name+' cannot join it.';
   return null}
-export function pending(C){if(C.wait&&(C.wait.crypt||C.wait.raid))return 'Your company is answering a call to the Crypt or a raid; settle that first.';
+export function pending(C){if(C.wait&&(C.wait.crypt||C.wait.raid))return 'Your company is set on the Crypt or a raid; settle that first.';
   if(openProps(C).some(P=>P.kind==='crypt'||P.kind==='raid'))return 'A vote on the Crypt or a raid is open in your company; settle it first.';return null}
 // Said aloud: the offer is heard by everyone in earshot (in-game channels, #123). -> {text, heard} or {error}.
 function sayAloud(a,text,dflt){let t=dflt;if(text!=null&&String(text).trim()){const L=spokenLine(a,text,OFFER.LEN);if(L.error)return {error:L.error};t=L.text}
@@ -281,7 +281,7 @@ function prepareMerge(a,F,o){
   if(!inRange(la,lb))return no(la.name+' and '+lb.name+', the two leaders, must be within shouting range (about '+COUNCIL.SHOUT+' tiles) of each other. move_to the other company first.');
   if(tableView(la)||tableView(lb))return no('A scene is open at the table for one of the companies; finish it first.');
   if(openProps(B).some(P=>P.kind==='merge'))return no(nm(B)+' already has a merge vote open; wait for it to settle.');
-  if(pending(F)||pending(B))return no(pending(F)||'The other company is answering a call to the Crypt or a raid; wait until that is settled.');
+  if(pending(F)||pending(B))return no(pending(F)||'The other company is set on the Crypt or a raid; wait until that is settled.');
   return {details:'ride together with '+nm(B),fields:{},other:B}}
 // -> {error} or the plan (no() wraps errors as {ok:false,error}).
 export const prepare=(a,F,kind,o)=>kind==='expel'?prepareExpel(a,F,o):prepareMerge(a,F,o);

@@ -14,13 +14,15 @@ import {dmgTaken} from './stats.js';
 import {raidPull,goalEvent} from './goals.js';
 import {record,timeline} from './history.js';
 import {bossPull} from './narrator.js';
-import {unitDraft,raidReserve} from './council.js';
+import {unitDraft,raidReserve,inMuster} from './council.js';
 import {companyOf} from './company.js';
 import {rivalDeed} from './rivals.js';
 import {raidFirst,raidCore,focusCount} from './guildfocus.js';
 
 export const RAID_LVL=14;
-const RAID_COOLDOWN=240,RAID_FULL=5,RAID_GEAR=9; // entry level, party size that needs no gear check, average gear score otherwise
+const RAID_COOLDOWN=240;export const RAID_FULL=5,RAID_GEAR=9; // party size that needs no gear check, average gear score otherwise
+// The raid muster's size rule, shared with raid sites (sim/sites.js, #642): 5 or more, or 4 whose average gear score is 9+.
+export const raidSized=c=>c.length>=RAID_FULL||c.length>=4&&c.reduce((t,a)=>t+a.gear,0)/c.length>=RAID_GEAR;
 // Runs the template's phases, signature moves and enrage; Kragmaw has one phase, one breath and no enrage,
 // so this plays exactly the fight the rebalance tuned. Adds are declared by templates but spawned by the crawl rework.
 const tplOf=boss=>BOSSES[boss.tpl||'kragmaw'];
@@ -45,16 +47,20 @@ export function updBoss(dt){const boss=S.boss,agents=S.agents,T=tplOf(boss);
     for(const a of agents)if(a.raid&&a.fac===f&&a.state==='raid'){gainXp(a,T.loot.xp);a.gold+=T.loot.gold;if(rnd()<T.loot.p)getEpic(a,pickA(T.loot.epics),T.loot.src);goalEvent(a,'boss')}
     for(const a of agents)if(a.raid){a.raid=false;goHome(a)}}}
 
+// A solo's join_raid (#826): it falls in with its faction's muster already out. Returns false when none is.
+export function joinRaid(a){if(!S.boss.alive||!S.raidOn[a.fac])return false;
+  a.raidOk=true;a.raid=true;a.raidIdx=S.agents.filter(b=>b.raid&&b.fac===a.fac).length;a.state='raid';a.target=null;a.dest=null;a.pq=[];a.hp=Math.max(a.hp,maxHp(a)*.8);
+  record(a,'Joined the raid on ',{t:'Kragmaw',c:'gd'},'’s lair.');log(a,' rides to join the ',fac(a.fac),' raid on Kragmaw’s lair.');return true}
 export function raidCheck(dt){const boss=S.boss,agents=S.agents;
   for(let f=0;f<2;f++){if(S.raidOn[f]&&!agents.some(a=>a.raid&&a.fac===f)){S.raidOn[f]=false;if(boss.alive){log('The ',fac(f),' raid on Kragmaw ended in defeat.');timeline('raid','The ',fac(f),' raid on Kragmaw ended in defeat.');S.raidT=Math.max(S.raidT,RAID_COOLDOWN)}}}
   const rf=raidReserve(); // the Fellowship's muster comes first (#135): its faction is checked every few seconds and no background muster beats it
   S.raidT-=dt;if(S.raidT>0)return;S.raidT=rf>=0?6:45+rnd()*30;if(!boss.alive)return;
   const f=rf>=0?rf:ri(0,1);if(S.raidOn[f])return;
-  const pool=agents.filter(a=>a.fac===f&&(a.lvl>=RAID_LVL||companyOf(a))&&['hunt','travel','town','return'].includes(a.state)).sort((x,y)=>(rf>=0&&(companyOf(y)?1:0)-(companyOf(x)?1:0))||(raidPull(y)-raidPull(x))||(raidFirst(y)-raidFirst(x))||(y.lvl-x.lvl)); // a Wyrmhunt guild's members (sim/guildfocus.js) muster first
+  const pool=agents.filter(a=>a.fac===f&&(a.lvl>=RAID_LVL||companyOf(a))&&['hunt','travel','town','return'].includes(a.state)&&inMuster(a,'raid')).sort((x,y)=>(rf>=0&&(companyOf(y)?1:0)-(companyOf(x)?1:0))||(raidPull(y)-raidPull(x))||(raidFirst(y)-raidFirst(x))||(y.lvl-x.lvl)); // a Wyrmhunt guild's members (sim/guildfocus.js) muster first
   const cand=unitDraft(pool,pool,6,'raid'); // oath-bound (legend, Kragmaw heirloom) first; the Fellowship (#68) all together or not at all
   if(rf>=0&&!cand.some(a=>companyOf(a)))return; // reserved: background raiders only join under the Fellowship
   const core=cand.length>=4&&raidCore(cand); // a Wyrmhunt core goes without the gear check
-  if(cand.length<4||(cand.length<RAID_FULL&&!core&&cand.reduce((t,a)=>t+a.gear,0)/cand.length<RAID_GEAR))return;S.raidOn[f]=true;if(core)focusCount('raids');
+  if(cand.length<4||(!core&&!raidSized(cand)))return;S.raidOn[f]=true;if(core)focusCount('raids');
   cand.forEach((a,i)=>{a.raid=true;a.raidIdx=i;a.state='raid';a.target=null;a.dest=null;a.hp=Math.max(a.hp,maxHp(a)*.8)});
   for(const a of cand)record(a,'Mustered with '+(cand.length-1)+' others to raid ',{t:'Kragmaw',c:'gd'},'’s lair.');
   log(fac(f),' musters ',String(cand.length),' heroes to raid Kragmaw’s lair.');timeline('raid',fac(f),' mustered '+cand.length+' heroes to raid Kragmaw’s lair.')}
