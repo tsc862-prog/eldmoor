@@ -113,7 +113,7 @@ if (process.argv[2] === '--rounds') {
     M.slice(1).forEach(x => {x.x = spot.x + 40}); q.lvl = 12; q.hit = 50; const lone = M[0]; lone.hp = 1;
     const sf = T.openScene('elite', 'Fall test', ['A brute.'], {mob: q.id}); sf.foeAt = 0; let g = 0;
     while (S.table && g++ < 60 * 120) {const c = S.table; if (c.phase === 'turn') for (const id of c.ids) if (!c.acts[id] && (id === lone.id ? lone.state !== 'dead' : true)) PA(id, 'scene_act', {option: 'strike'}); step(1 / 60)} // the far members answer too (their strike only closes in), so a foe's miss in round 1 never leaves the table waiting on them
-    const good = !S.table && lone.state === 'dead' && (sf.fell || []).includes(lone.id) && / fell./.test(sf.summary) && sf.rd <= TRD.TR.ROUNDS;
+    const good = !S.table && lone.state === 'dead' && (sf.fell || []).includes(lone.id) && / fell./.test(sf.summary) && sf.rd <= TRD.TR.ROUNDS_MAX;
     console.log((good ? 'FALL ok' : 'FALL bad') + ' (round ' + sf.rd + '): ' + sf.summary); process.exit(0);
   }
   const sc = T.openScene('elite', 'Order test', ['A brute.'], {mob: q.id}); let f = 0;
@@ -302,7 +302,7 @@ if (process.argv[2] === '--hall') {
   const {cleanSetup, defaultSetup, applyPreset} = SIM, {CITY} = await import('../src/world/map.js'), {gatherNote} = await import('./pacing.mjs');
   let fail = 0; const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
   const mixed = () => {const s = defaultSetup(771, 'stepping', 1); ['ashfolk', 'mirekin', 'mirekin', 'ashfolk', 'thornhide'].forEach((r, i) => s.heroes[i].race = r); return s};
-  const world = () => {init({setup: cleanSetup(mixed())}); const M = SLT.slotHeroes(SLT.slotted()); SIM.setRunnerLinks(x => M.includes(x) ? 'connected' : 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; return M};
+  const world = () => {init({setup: cleanSetup({...mixed(), prologue: 'none'})}); const M = SLT.slotHeroes(SLT.slotted()); SIM.setRunnerLinks(x => M.includes(x) ? 'connected' : 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; return M};
   const murk = CITY.find(c => c.name === 'Murkstead'), send = L => {for (const [i, a] of L.entries()) {a.x = murk.x0 + 3 + i; a.y = murk.y0 + 5}};
   // 1. the bug: session zero seats all five
   let M = world(); step(1 / 60); let sc = S.table;
@@ -1263,7 +1263,7 @@ const stepUntil = (cond, maxS) => {let f = 0, moved = 0; while (!cond() && f < 6
 
 // ---- 1. a rescue scene at 1x: the table waits for a silent but connected agent ----
 // Sections 1-2 test the turn flow in one round (TR.ROUNDS 1); section 2b plays the combat rounds (#276).
-const ROUNDS0 = TRD.TR.ROUNDS; TRD.TR.ROUNDS = 1;
+const ROUNDS0 = TRD.TR.ROUNDS_MAX; TRD.TR.ROUNDS_MAX = 1;
 T.TABLE.speed = 1; T.TABLE.turnMs = 7000; T.TABLE.mode = 'auto';
 place(); let m = mobNear(); const victim = rest[0]; startFight(victim, m);
 T.tableTick(); // the trigger rules (step() runs them after the heroes move)
@@ -1340,7 +1340,7 @@ ok(!S.table && !T.TABLE.drop && SLT.slotted().log.filter(e => e.kind === 'table'
 link(RA, 'connected'); link(RB, 'waiting');
 
 // ---- 2b. combat rounds (#276): the foe takes its turn, every blow shows its d20, the scene ends on a fall ----
-TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
+TRD.TR.ROUNDS_MAX = 3; T.TABLE.speed = 1; T.TABLE.drop = null; // 2b below pins a short cap so each case stays short; the #875 cases after it use the real one
 {const fieldR = () => {field3(); RM.forEach(x => {x.state = 'fight'})};
  const foeAt = (lvl, hpMul) => {const q = S.mobs.filter(x => x.alive && !x.gone && !x.elite && !x.staged).sort((p, r) => dist(p, spot) - dist(r, spot))[0]; q.x = spot.x + 1; q.y = spot.y; q.lvl = lvl; q.maxhp = Math.round((25 + lvl * 16) * hpMul); q.hp = q.maxhp; q.cd = 99; q.fledOnce = true; q.ab = []; return q}; // no creature tricks: conditions have their own section (#296)
  const elite = q => {for (const x of RM) {x.target = q} q.target = RM[0]; SLT.slotted().tableSeen = {}; return T.openScene('elite', 'A test of rounds', ['Something big comes out of the brush.'], {mob: q.id})};
@@ -1354,10 +1354,10 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  const tv = act(RM[0], 'status').table, bf = T.bannerOf().foe;
  ok(bf && bf.id === q.id && bf.name && bf.hp === q.hp && bf.maxhp === q.maxhp && bf.target === RM[0].id && bf.pack === 1, `the banner gets the foe as data (#285): ${JSON.stringify(bf)}`);
  ok(tv && tv.foe && tv.foe.name === bf.name && /^[a-z ]+$/.test(tv.foe.looks), `a member sees the foe by name and look, no numbers: ${JSON.stringify(tv && tv.foe)}`);
- ok(tv && Array.isArray(tv.initiative) && tv.initiative.some(n => /\(foe\)$/.test(n)) && /^1 of up to/.test(tv.round || ''), `the member sees the round and the order with the foe: ${tv && tv.initiative && tv.initiative.join(', ')}`);
+ ok(tv && Array.isArray(tv.initiative) && tv.initiative.some(n => /\(foe\)$/.test(n)) && tv.round === 1, `the member sees the round and the order with the foe: ${tv && tv.initiative && tv.initiative.join(', ')}`);
  p1 = stepUntil(() => !S.table, 30);
  const fb = scR.beats.filter(b => b.by === 'foe'), mb = scR.beats.filter(b => b.by !== 'foe');
- ok(!S.table && scR.rd === TRD.TR.ROUNDS && [1, 2, 3].every(r => fb.some(b => b.rd === r)), `the foe takes a turn in each of ${scR.rd} rounds (${fb.length} foe beats)`);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS_MAX && [1, 2, 3].every(r => fb.some(b => b.rd === r)), `the foe takes a turn in each of ${scR.rd} rounds (${fb.length} foe beats)`);
  const r1 = scR.beats.filter(b => b.rd === 1), fi = r1.findIndex(b => b.by === 'foe');
  ok(fi === Math.min(scR.foeAt, r1.length - 1), `in round 1 the foe acts at its place in the order (${fi})`);
  ok(fb.filter(b => b.k === 'attack').every(b => rollRe.test(b.res)) && mb.filter(b => b.k === 'strike' && !/closing in/.test(b.res)).every(b => rollRe.test(b.res)), `every attack shows its roll: ${fb[0] && fb[0].res}; ${(mb.find(b => b.k === 'strike') || {}).res}`);
@@ -1389,7 +1389,7 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  T.TABLE.liveMs = 120000; link(quiet, 'none');
  // (e) at 3x with reflexes only: every round resolves in one step
  T.TABLE.speed = 3; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
- ok(!S.table && scR.rd === TRD.TR.ROUNDS && scR.beats.filter(b => b.by === 'foe').length >= scR.rd && scR.phase === 'outcome', `at 3x the whole fight (${scR.rd} rounds) resolves at once with a summary: ${scR.summary}`);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS_MAX && scR.beats.filter(b => b.by === 'foe').length >= scR.rd && scR.phase === 'outcome', `at 3x the whole fight (${scR.rd} rounds) resolves at once with a summary: ${scR.summary}`);
  T.TABLE.speed = 1;
  // (g) the watcher's step mode (#285): hold after each round until Next round; auto after stepS; 3x and instant never hold
  T.TABLE.step = 'hold'; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
@@ -1403,14 +1403,34 @@ TRD.TR.ROUNDS = ROUNDS0; T.TABLE.speed = 1; T.TABLE.drop = null;
  ok(held() && scR.rd === 2 && scR.beats.some(b => b.rd === 2), `hold: round 2 plays and holds again (${scR.beats.filter(b => b.rd === 2).length} beats)`);
  T.TABLE.step = 'auto'; T.TABLE.stepS = 1; const a0 = S.gameMin;
  p1 = stepUntil(() => !S.table, 30);
- ok(!S.table && scR.rd === TRD.TR.ROUNDS && S.gameMin > a0, `auto: the held round goes on after ${T.TABLE.stepS} s and the fight ends after round ${scR.rd} (${p1.secs.toFixed(1)} s)`);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS_MAX && S.gameMin > a0, `auto: the held round goes on after ${T.TABLE.stepS} s and the fight ends after round ${scR.rd} (${p1.secs.toFixed(1)} s)`);
  T.TABLE.step = 'hold'; T.TABLE.speed = 3; fieldR(); q = foeAt(8, 40); q.hit = .001; scR = elite(q);
- ok(!S.table && scR.rd === TRD.TR.ROUNDS, `at 3x step mode never holds: ${scR.rd} rounds at once`);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS_MAX, `at 3x step mode never holds: ${scR.rd} rounds at once`);
  T.TABLE.speed = 1; T.TABLE.step = 'off'; T.TABLE.stepS = 4;
+ // (h) a fight plays until it is decided (#875): the real cap, a foe that falls after round 3 ends it by the kill
+ TRD.TR.ROUNDS_MAX = ROUNDS0; for (const x of RM) link(x, 'none');
+ {let best = null; for (const mul of [2, 3, 4, 6, 8, 12, 16]) {fieldR(); q = foeAt(8, mul); q.hit = .001; scR = elite(q); stepUntil(() => !S.table, 60); if (scR.rd > 3 && !q.alive) {best = {mul, rd: scR.rd, s: scR.summary, c: scR.capped}; break}}
+  ok(best && best.rd > 3 && best.rd < TRD.TR.ROUNDS_MAX && !best.c && /^The foe is down\./.test(best.s), `a fight that outlasts round 3 goes on until the foe falls: ${best ? 'x' + best.mul + ' foe fell in round ' + best.rd + ' - ' + best.s : 'no foe lasted past 3 rounds and died'}`)}
+ // (i) the hard cap: a foe that cannot be worn down in time closes the scene at TR.ROUNDS_MAX with a capped beat and a DM log line
+ fieldR(); q = foeAt(8, 400); q.hit = .001; const dcap = S.dmLogSeq; scR = elite(q); stepUntil(() => !S.table, 120);
+ ok(!S.table && scR.rd === TRD.TR.ROUNDS_MAX && scR.capped === 'cap' && scR.beats.some(b => b.k === 'capped') && q.alive && /grinds on/.test(scR.summary) && S.dmLog.some(e => e.id > dcap && e.kind === 'table' && e.detail && e.detail.capped === 'cap'),
+   `the hard cap closes a fight that will not end after ${scR.rd} rounds (scene-capped beat, DM log line): ${scR.summary}`);
+ ok((SLT.slotted().tableStats.capped || 0) >= 1, 'the capped count is kept');
+ // (j) the stall rule: three rounds in a row with no HP change on either side hand it to the world
+ fieldR(); q = foeAt(8, 400); q.hit = .001; const pin = e => {const v = e.hp; Object.defineProperty(e, 'hp', {get: () => v, set() {}, configurable: true}); return () => Object.defineProperty(e, 'hp', {value: v, writable: true, configurable: true, enumerable: true})};
+ const unpin = [q, ...RM].map(pin); const sprev = TRD.TR.HIT; TRD.TR.HIT = -50; // nobody's health can change, as if every blow were turned aside
+ scR = elite(q); stepUntil(() => !S.table, 120); TRD.TR.HIT = sprev; unpin.forEach(f => f());
+ ok(!S.table && scR.capped === 'stall' && scR.beats.some(b => b.k === 'capped' && /grinds on/.test(b.text)), `no blow that tells for ${TRD.TR.STALL} rounds closes the scene as a stall (${scR.capped} after ${scR.rd} rounds)`);
+ // (k) a slow agent is waited for once even in a long fight
+ T.TABLE.liveMs = 1500; link(quiet, 'waiting'); fieldR(); q = foeAt(8, 400); q.hit = .001; scR = elite(q); p1 = stepUntil(() => !S.table, 120);
+ ok(!S.table && scR.rd >= 6 && scR.beats.filter(b => b.id === quiet.id).length === scR.rd && p1.secs <= T.TABLE.frameS + T.TABLE.outcomeS + T.TABLE.liveMs / 1000 + 1, `a slow agent is waited for once, not each of ${scR.rd} rounds (${p1.secs.toFixed(1)} s)`);
+ T.TABLE.liveMs = 120000; link(quiet, 'none');
+ TRD.TR.ROUNDS_MAX = 3;
  // (f) the order agents answer in never changes the rolls (a child, twice)
  const me3 = fileURLToPath(import.meta.url), rf = spawnSync(process.execPath, [me3, '--rounds', 'fwd'], {encoding: 'utf8'}), rr = spawnSync(process.execPath, [me3, '--rounds', 'rev'], {encoding: 'utf8'});
  const lf3 = (rf.stdout || '').trim().split('\n').pop(), lr3 = (rr.stdout || '').trim().split('\n').pop(); if (rf.stderr) process.stderr.write(rf.stderr);
  ok(/^ROUNDS \[\[/.test(lf3) && lf3 === lr3, `combat rounds answered in initiative order and in reverse give the same rolls: ${lf3.slice(0, 160)}`);
+ TRD.TR.ROUNDS_MAX = ROUNDS0;
 }
 link(RA, 'connected'); link(RB, 'waiting');
 
