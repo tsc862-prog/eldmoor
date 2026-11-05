@@ -34,7 +34,8 @@ import {MOBS} from '../data/mobs.js';
 import {DM_TOOLS,NOTE_SECTIONS} from '../data/dm-tools.js';
 import {parseCampaign,campaignText} from './campaign.js'; // the campaign seed (owner request)
 import {dmlog} from './dmlog.js';
-import {fileWish} from './wish.js'; // #663
+import {spokeFor,VOICE_FIELDS,spokeNote} from './spokefor.js'; // the DM never speaks for a member (#750)
+import {fileWish,wishInvite} from './wish.js'; // #663
 import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS,validate as leverValidate} from './levers.js';
 import {log as chronLog} from './chronicle.js';
 import {setWhen,setWatch,cancel as whenCancel,whensView,whenStatus,whenTick,setWhenHooks} from './dmwhen.js'; // deferred actions and chosen wakes (#635)
@@ -55,13 +56,16 @@ import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded p
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {compCall,compSay,compSummary} from './compvoice.js'; // scripted companions of an agent company, voiced by the DM (#764)
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
-import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf} from './company.js';
+import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf,SLOTS,placeWord} from './company.js';
+// The word for a company place in the DM's views (#863): the class in it, or the classes that could fill it; never Tank, Healer or DPS.
+const seatWord=m=>m.hero?placeWord(m.hero.cls):(SLOTS.find(s=>s.key===m.slot)||{cls:['companion']}).cls.join(' or ').toLowerCase();
 import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
 import {wounded} from './wounds.js';
 import {woundSpanWord} from './tend.js'; // lasting wounds in the DM's needs (#656)
 import {listen,unheard,unheardTotal,earOf,carriesOf,hear as hearRead,sightOf,survey as surveyAt,worldStanding} from './dmsight.js'; // what the DM sees of the companies' life (#558)
 import {installRumourLever,rumoursView} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever,epithetView} from './epithet.js'; // bestow (#638)
+import {trafficView} from './traffic.js'; // who is on the road (#796)
 import {installSummonLever,summonView,summonedAlive,SUMMON} from './summon.js'; // summon_hero (#780)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
@@ -277,6 +281,7 @@ function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
     ...(F?{fellowship_regions:fo?[...fo.zones].map(z=>ZONES[z]):[],note:'Fellowship first: start an event only when nothing is pending for them, in a region they ride (fellowship_regions) or are headed to, and say why it serves their story.'}:{})}}
 
 // companies_needs is shown once a company other than the Fellowship rides (with the Fellowship alone dm_status reads as before).
+const roadTraffic=()=>{const v=trafficView(S.agents.filter(a=>a.company!=null&&a.state!=='dead'));return v?{road_traffic:v}:{}};
 const manyCompanies=()=>{const fs=focuses();return fs.length>1||fs.length===1&&!fs[0].company.slots};
 export const COMPANIES_FIRST='Every company is a thread: serve the company at the head of companies_needs first (the followed company first only when it must choose), then each other company in turn, the one longest without you next; a split-off member is a thread of its own, and a solo is the most fragile.';
 const unheardOf=D=>{const u=unheard(D),n=u.reduce((t,r)=>t+r.lines,0);return {total:n,by_company:u,...(n?{note:'Words were said aloud that you have not heard: read hear first.'}:{})}};
@@ -294,14 +299,15 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
+    ...roadTraffic(), // carts and travellers, nearest the companies first: stage_scene near "traffic:<n>" (#796)
     ...(compSummary()?{companions:compSummary()}:{}), // scripted companions of agent companies speak through you (#764)
     ...(S.sites?{sites:sitesView()}:{}), // the dungeon sites you raised (#69): state hidden, discovered, entered, cleared or collapsed
     proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,
-    fellowship:F?{name:F.name,minds:mindsOf(F),members:slotMembers(slotted()).map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:m.label,lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:m.label,empty:true})}:null,
+    fellowship:F?{name:F.name,minds:mindsOf(F),members:slotMembers(slotted()).map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:seatWord(m),lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:seatWord(m),empty:true})}:null,
     unheard:unheardOf(D),since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
-    your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},
+    your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},spoke_for_today:day.spoke||0, // lines cut because they put words in a member's mouth (#750)
     ...(downCallSummary()?{downed:downCallSummary()}:{}), // a hero down: voice it through table_call (#655)
     ...(noOthers()?{others:'none: no background heroes ride here, only the companies and whoever you bring (summon_hero)'}:{}), // the world setting (#780)
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
@@ -321,9 +327,9 @@ function dmLogRead(n,kind){const k=LOG_KINDS[kind]||null,out=[];
   return {ok:true,log:out}}
 
 function fellowshipView(){const F=slotted();if(!F)return {ok:true,fellowship:null,note:'No Fellowship rides in this world yet.'};
-  const members=slotMembers(slotted()).map(m=>{const a=m.hero;if(!a)return {role:m.label,empty:true};
+  const members=slotMembers(slotted()).map(m=>{const a=m.hero;if(!a)return {role:seatWord(m),empty:true};
     const P=a.persona||{},M=a.memory||{};
-    return {...heroLine(a),...sightOf(a),role:m.label,persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
+    return {...heroLine(a),...sightOf(a),role:seatWord(m),persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
       oath:swornOf(a)?a.goal.text:null,...(threadOf(a)?{offered_thread:threadText(a)}:{}),vow:a.vow?a.vow.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
       stances:Object.fromEntries(Object.entries(M.stances||{}).filter(([id])=>!(P.stanceBy&&P.stanceBy[id]==='self')).slice(0,6).map(([id,s])=>{const b=S.agents.find(x=>String(x.id)===String(id));return [b?b.name:'#'+id,String(s).slice(0,120)]}))}});
   return {ok:true,fellowship:{name:F.name,faction:facName(F.fac),hall:F.hall||null,founded_day:F.day||null,minds:mindsOf(F),members,
@@ -444,7 +450,7 @@ function pullLever(a,via){const day=today(),D=dmState(),name0=clean(a.lever,40),
   const refuse=(why,usage)=>leverRefuse(name,why,usage,reason,params&&typeof params==='object'?params:String(a.params).slice(0,200),via);
   const call=via?via.usage:'call it as pull_lever {"lever":"'+(name||'<name>')+'","params":{...},"reason":"one sentence"}';
   if(!name)return refuse('lever is required (one of: '+leverNames().join(', ')+')',call);
-  if(!LEVERS[name])return refuse('no such lever "'+name+'"; levers: '+leverNames().join(', '));
+  if(!LEVERS[name])return refuse('no such lever "'+name+'"; levers: '+leverNames().join(', ')+'.'+wishInvite(dmState()));
   const usage=via?via.usage+'. The lever: '+leverUsage(name):leverUsage(name)+'; '+call;
   if(!params)return refuse('params must be an object such as {"region":"'+ZONES[0]+'"}',usage);
   if(name==='named_foe')return refuse('named foes are raised by the scripted DM inside a running scene');
@@ -767,7 +773,7 @@ const GROUND_ERR=/open ground|walkable|tiles of|inside|too close|off the map|unk
 export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();
   const lv=LEVERS[lo]?lo:Object.keys(LEVERS).filter(n=>lo.includes(n)).sort((x,y)=>y.length-x.length)[0];
   if(lv&&leverNames().includes(lv))return {ok:false,error:'"'+s+'" is not a tool'+(lv===lo?'':'; it looks like the lever '+lv)+'. Levers are pulled through pull_lever: pull_lever {"lever":"'+lv+'","params":{...},"reason":"one sentence"}. '+leverUsage(lv)+'.'+(flatOf(lv)?' Or call '+flatOf(lv)+' (flat arguments): '+FLAT_USAGE[flatOf(lv)]+'.':''),hint:'pull_lever',lever:lv,usage:leverUsage(lv)};
-  return {ok:false,error:'Unknown DM tool "'+s+'". Tools: '+DM_TOOLS.map(t=>t.name).join(', ')+'. World levers ('+leverNames().join(', ')+') go through pull_lever.'}}
+  return {ok:false,error:'Unknown DM tool "'+s+'". Tools: '+DM_TOOLS.map(t=>t.name).join(', ')+'. World levers ('+leverNames().join(', ')+') go through pull_lever.'+wishInvite(dmState())}}
 // One DM tool call: validated, answered, never thrown. The seat must be open.
 export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
@@ -776,7 +782,7 @@ export function dmAct(tool,args={}){
   if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
-  const prepping=prepActive();prepCall(tool); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
+  const prepping=prepActive();prepCall(tool,args); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
   try{r=run(tool,args)}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
   if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene'||tool==='mark_danger'||tool==='custom_foe')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
@@ -784,7 +790,29 @@ export function dmAct(tool,args={}){
   if(!((tool==='table_call'||tool==='npc_call'||tool==='ruling_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
   return r}
 // One tool, answered (dmAct's bookkeeping aside); a when fires its action through it too (#635).
-function run(tool,args){let r;
+// The DM never speaks for a member (#750): every DM-voiced text is cut of quotes attributed to a living agent-played hero before the tool
+// runs (sim/spokefor.js); the call's DM log entry carries spoke_for, the result tells the DM, dm_status counts spoke_for_today. A when
+// that fires later goes through here too. The newcomer of an arrival scene is voiced by the DM until sworn (#452): its own voice and
+// oath calls are not cut for that name. A quote that repeats the member's own words (a scene line, a say, an attempt) stays.
+function voiceGuard(tool,args){const F=VOICE_FIELDS[tool];if(!F)return null;
+  const heroes=S.agents.filter(a=>a.kind==='hero'&&a.player&&a.state!=='dead');if(!heroes.length)return null;
+  let c=null;if(tool==='table_answer'){const sc=ourScene()||findScene(x=>x.ctx&&x.ctx.staged!=null),id=Math.round(Number(args.call));c=sc&&(sc.calls||[]).find(x=>x.id===id)||null}
+  const voiced=c&&(c.kind==='voice'||c.kind==='oath')&&c.who?String(c.who):null,names=heroes.map(a=>a.name).filter(n=>n!==voiced),allow={};
+  for(const a of heroes){const L=(a.talkSaid||[]).slice();for(const sc of allScenes())for(const b of sc.beats||[])if(b.id===a.id&&b.line)L.push(b.line);
+    for(const r of (S.rulings&&S.rulings.cur)||[])if(r.hero===a.id&&r.what)L.push(r.what);allow[a.name]=L}
+  const out={...args},cut=[];let gone=false;
+  for(const f of F){if(typeof args[f]!=='string')continue;const g=spokeFor(args[f],{names,allow});if(!g.cut.length)continue;out[f]=g.text;
+    if(f===F[0]&&!g.text&&!(c&&c.kind==='complication'))gone=true;for(const n of g.cut)if(!cut.includes(n))cut.push(n)}
+  if(!cut.length)return null;const g={args:out,cut,seq:S.dmLogSeq||0};
+  if(gone){spokeLog(g,tool);g.res={ok:false,error:spokeNote(cut)+' Nothing else was left in it: answer again in your own voice (the narrator or the person), describing what they do.',spoke_for:cut}}
+  return g}
+function spokeLog(g,tool){const day=today();day.spoke=(day.spoke||0)+1;const n=g.cut.join(', ');let hit=false;
+  for(const e of S.dmLog||[]){if(e.id<=g.seq)break;(e.detail||(e.detail={})).spoke_for=n;hit=true}
+  if(!hit)dmlog('agent',null,['The DM spoke for '+n+' ('+tool+'): that line was cut'],{by:'dm-agent',spoke_for:n,tool},{heroes:[]})}
+function run(tool,args){const g=voiceGuard(tool,args&&typeof args==='object'?args:{});if(g&&g.res)return g.res;
+  const r=run0(tool,g?g.args:args);if(!g)return r;spokeLog(g,tool);
+  return r&&typeof r==='object'?{...r,spoke_for:g.cut,warning:spokeNote(g.cut)}:r}
+function run0(tool,args){let r;
   switch(tool){
     case 'dm_status':r=status();break;
     case 'read_timeline':r=timelineRead(args.n);break;
@@ -840,7 +868,7 @@ function whenFields(){const w=whenStatus();return w?{whens:w.whens,watches:w.wat
 // a hero); a staged scene is previewed. Only shape errors refuse: what may change by then (who is where, the day's limits)
 // is checked again, for real, when it fires. who: the action names the hero who trips it ({who}), so hero and place reads wait.
 function whenCheck(tool,a,o={}){
-  if(tool==='pull_lever'){const name=leverAlias(clean(a.lever,40));if(!LEVERS[name]||!leverNames().includes(name))return {error:'no such lever "'+clean(a.lever,40)+'"; levers: '+leverNames().join(', ')};
+  if(tool==='pull_lever'){const name=leverAlias(clean(a.lever,40));if(!LEVERS[name]||!leverNames().includes(name))return {error:'no such lever "'+clean(a.lever,40)+'"; levers: '+leverNames().join(', ')+'.'+wishInvite(dmState())};
     if(name==='named_foe')return {error:'named foes are raised by the scripted DM inside a running scene'};if(o.who)return null;
     const params=aliasParams(clean(a.lever,40),leverParams(name,a));if(!params)return {error:'params must be an object',usage:leverUsage(name)};
     const v=leverValidate(LEVERS[name],params);return typeof v==='string'?{error:'the lever '+name+': '+v,usage:leverUsage(name)}:null}

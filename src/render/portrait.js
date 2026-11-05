@@ -204,13 +204,27 @@ export function libraryPixels(a,p,mode='',tw=FRAME_W,th=FRAME_H){
 // A cached canvas per look (the key carries everything the pixels depend on). Browser only.
 const cache=new Map();
 onAssets(id=>{if(id==null||/^portrait:/.test(id))cache.clear()}); // a library face arrived (or the index changed)
+// The head of a generated hero sheet (#862): sprites.js registers a function that gives the hero's front, standing frame
+// ({img, sx, sy, fw, fh}) or null while no sheet is loaded; a living face then crops from it, else it is the pixel face
+// below. (A hook, not an import, so Node can still read portraitPixels without the sprite module.)
+let headSrc=null;
+export function setHeadSource(fn){headSrc=fn}
 export function portraitKey(a,mode=''){return [a.id,a.name,a.race||'',a.cls,a.fac,a.skin||'',a.hair||'',slotKeyOf(a)==='tank'?'T':'',mode].join('|')}
 // Device pixels per CSS pixel for library faces (1 on the owner's screen; 2 or 3 on a dense one), whole.
 const dpr=()=>Math.max(1,Math.min(3,Math.round((typeof devicePixelRatio==='number'&&devicePixelRatio)||1)));
-export function portrait(a,mode=''){const lib=libraryFace(a),p=lib&&assetPixels(lib),k=dpr(),key=portraitKey(a,mode)+(p?'|'+lib+'|'+k:'');
+// A W x H crop of the frame's head and shoulders at one art pixel per face pixel (the frames then show at 2x like the
+// pixel faces), centred on the frame and starting a pixel above the crown, over the faction-tinted backdrop.
+function headCrop(a,G){const c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d');
+  const f=FAC[a.fac]||FAC[0];x.fillStyle=mix(BG,f.color,.16);x.fillRect(0,0,W,H);
+  const t=document.createElement('canvas');t.width=G.fw;t.height=G.fh;const tx=t.getContext('2d');tx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,0,0,G.fw,G.fh);
+  const d=tx.getImageData(0,0,G.fw,G.fh).data;let top=0;for(;top<G.fh;top++){let hit=false;for(let i=0;i<G.fw;i++)if(d[(top*G.fw+i)*4+3]>8){hit=true;break}if(hit)break}
+  x.imageSmoothingEnabled=false;x.drawImage(t,Math.floor((G.fw-W)/2),Math.max(0,top-1),W,H,0,0,W,H);return c}
+// A library face (a generated face for this hero) wins; else the head of the hero's generated sheet (#862); else the pixel face.
+export function portrait(a,mode=''){const lib=libraryFace(a),p=lib&&assetPixels(lib),k=dpr(),G=!p&&!mode&&headSrc?headSrc(a):null,key=portraitKey(a,mode)+(p?'|'+lib+'|'+k:G?'|sheet':'');
   let c=cache.get(key);if(c)return c;
-  const w=p?FRAME_W*k:W,h=p?FRAME_H*k:H,px=p?libraryPixels(a,p,mode,w,h):portraitPixels(a,mode);
-  c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d'),img=x.createImageData(w,h);
-  for(let i=0;i<px.length;i++){const v=px[i];if(!v)continue;const o=i*4;img.data[o]=parseInt(v.slice(1,3),16);img.data[o+1]=parseInt(v.slice(3,5),16);img.data[o+2]=parseInt(v.slice(5,7),16);img.data[o+3]=255}
-  x.putImageData(img,0,0);c._lib=p?lib:null;
+  if(G){c=headCrop(a,G);c._lib=null}
+  else{const w=p?FRAME_W*k:W,h=p?FRAME_H*k:H,px=p?libraryPixels(a,p,mode,w,h):portraitPixels(a,mode);
+    c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d'),img=x.createImageData(w,h);
+    for(let i=0;i<px.length;i++){const v=px[i];if(!v)continue;const o=i*4;img.data[o]=parseInt(v.slice(1,3),16);img.data[o+1]=parseInt(v.slice(3,5),16);img.data[o+2]=parseInt(v.slice(5,7),16);img.data[o+3]=255}
+    x.putImageData(img,0,0);c._lib=p?lib:null}
   if(cache.size>200)cache.clear();cache.set(key,c);return c}

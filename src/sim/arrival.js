@@ -31,6 +31,7 @@
 //   C.arrivals [{slot?, cls, fallen, name, lvl, since}]                   recruits waiting for the next camp or town
 import {S,clockStr,dayNo,noOthers} from './state.js';
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
+import {standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
@@ -53,7 +54,7 @@ import {prepActive} from './prep.js';
 import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {TABLE,openScene,setSceneKind,tableOn,sceneFor,callSeen,callLeft} from './table.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
-import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf} from './company.js';
+import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf,placeWord} from './company.js';
 import {inRange} from './reach.js';
 
 export const ARRIVE={
@@ -198,11 +199,11 @@ function makeRecruit(C,q){if(isFellowship(C))return seatRecruit(C,q);
   if(!joinCompany(C,a).ok)return null;markPlayer(a,true);if(q.fallen!=null)a.succeeds=q.fallen;return a}
 function place(C,a,where){const ld=leadOf(C)||a,town=isFellowship(C)?C.hall:ld.town||a.town;
   if(a.town&&a.town!==town){a.born=a.born||a.town;a.town=town} // home is where the company is (#771); their people's town stays in their origin text
-  if(where==='road'){a.x=ld.x+1.2;a.y=ld.y+.9;a.zone=ld.zone;a.state='hunt';a.dest=null;a.moving=false;return ld.name+'\'s side'} // the wait ran out in the field: they come to the company, not to an empty gate
-  if(where==='camp'){const g=C.camp;a.x=g.x+1.2;a.y=g.y+.9;a.state='camp';a.camp=g.ids.length;a.dest=null;a.moving=false;if(!g.ids.includes(a.id))g.ids.push(a.id);return 'the camp\'s edge'}
+  if(where==='road'){Object.assign(a,standAt(ld.x+1.2,ld.y+.9));a.zone=ld.zone;a.state='hunt';a.dest=null;a.moving=false;return ld.name+'\'s side'} // the wait ran out in the field: they come to the company, not to an empty gate
+  if(where==='camp'){const g=C.camp;Object.assign(a,standAt(g.x+1.2,g.y+.9));a.state='camp';a.camp=g.ids.length;a.dest=null;a.moving=false;if(!g.ids.includes(a.id))g.ids.push(a.id);return 'the camp\'s edge'}
   const c=homeOf(ld),gt=c.gate||c.qg;if(gt){a.x=gt.x;a.y=gt.y}a.state='town';a.townStep=1;return 'the gate of '+c.name}
 function openArrival(C,q,where){const lead=leadOf(C);if(where==='town'&&lead&&lead.state!=='town')where='road';
-  const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=q.slot?lcRoleOf(q.slot):roleOf(a.cls);
+  const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=placeWord(a.cls);
   const title='A newcomer: '+a.name;
   const frame=[a,', a level '+a.lvl+' '+a.cls.toLowerCase()+', comes to '+at+', sent to take ',gd(q.name),'\'s place as the company\'s '+role+'.'];
   const ctx={arrival:1,recruit:a.id,fallen:q.fallen,fname:q.name,role,slot:q.slot||null,skip:[a.id],anchor:ld?ld.id:null,at,...(where==='town'?{setting:'tavern',town:homeOf(leadOf(C)||a).name}:{})};
