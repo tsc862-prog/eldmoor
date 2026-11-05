@@ -86,6 +86,22 @@ if (process.argv[2] === '--hash') {
   console.log('HASH ' + h); process.exit(0);
 }
 
+// ---- day-one child (#910): a prep turn on a held new world, before the first tick, posts a hook and it lands on the board ----
+if (process.argv[2] === '--dayone') {
+  init({fellowship: false}); setDmSeat(true); // no step() yet: the scripted DM has not run its first tick
+  const {CITY} = await import('../src/world/map.js'), out = {had: !!S.adventures, errs: []};
+  const call = (t, a) => {try {return dmAct(t, a)} catch (e) {out.errs.push(t + ': ' + e.message); return {ok: false}}};
+  for (const t of ['dm_status', 'hooks', 'levers', 'regions', 'npcs', 'read_dm_log', 'read_timeline', 'world_standing', 'survey']) call(t, t === 'survey' ? {near: CITY[0].name} : {});
+  const r = call('post_hook', {town: CITY[0].name, tpl: 'rescue', giver: 'captain', reason: 'the opening job for the table'});
+  out.ok = !!r.ok; out.err = r.error || null;
+  out.onBoard = !!r.ok && (S.adventures || []).some(h => h.id === r.effect.hook && h.phase === 'open' && h.town === CITY[0].name);
+  const p = call('place_person', {role: 'hermit', near: CITY[0].name, reason: 'day one'}), m = call('mark_place', {kind: 'ruin', near: CITY[0].name, reason: 'day one'});
+  out.pp = !!p.ok; out.mp = !!m.ok; out.ppErr = p.error || null; out.mpErr = m.error || null;
+  const T0 = CITY[0].name, more = [['set_condition', {kind: 'fog', near: T0, reason: 'x'}], ['seed_rumour', {town: T0, text: 'a light on the road', reason: 'x'}], ['stage_scene', {kind: 'meeting', near: T0, frame: 'a stranger waits', reason: 'x'}], ['narrate', {text: 'Dawn.', near: T0}], ['npc_say', {npc: 'x', text: 'hi'}], ['notes_write', {section: 'plans', title: 'a', text: 'b'}], ['when', {trigger: 'night_falls', action: 'narrate', args: {text: 'dusk', near: T0}, reason: 'x'}]];
+  out.crash = []; for (const [t, a] of more) {const x = call(t, a); if (/Cannot read|undefined|is not a function/.test((x && x.error) || '')) out.crash.push(t + ': ' + x.error.slice(0, 80))}
+  console.log('DAYONE ' + JSON.stringify(out)); process.exit(0);
+}
+
 // ---- session zero child (issue #437): the opening framed by the DM agent's call, or by the DM's reflexes when no runner listens (#561: the seat is always open) ----
 if (process.argv[2] === '--opening') {
   const A = await import('../src/sim/arrival.js'), T = await import('../src/sim/table.js'), F_ = await import('../src/sim/company.js'), PL = await import('../src/sim/player.js');
@@ -491,6 +507,11 @@ ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
 }
 
 // ---------------------------------------------------------------- 1a. flat lever tools (issue #413)
+console.log('day one (#910): a prep turn on a held new world');
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--dayone'], {encoding: 'utf8'}); if (ch.stderr) process.stderr.write(ch.stderr);
+  const l = (ch.stdout || '').split(/\r?\n/).find(x => x.startsWith('DAYONE ')), d = l ? JSON.parse(l.slice(7)) : {};
+  ok(d.had === false && d.ok && d.onBoard, 'post_hook before the scripted DM ever ticked lands on the town board (#910)' + (d.err ? ': ' + d.err.slice(0, 120) : ''));
+  ok(d.pp && d.mp && d.errs && !d.errs.length && d.crash && !d.crash.length, 'the other DM tools and levers a prep turn can call raise no error on day one' + (d.crash ? ' ' + d.crash.join('; ') : ''))}
 console.log('flat lever tools: post_hook, place_person, mark_place');
 {const {zoneFor, zonePoint, CITY, LANDMARKS} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js'), {focus, reserveOf} = await import('../src/sim/dmfocus.js'), {LEVERS} = await import('../src/sim/levers.js');
   const L = SLT.slotHeroes(SLT.slotted()), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
