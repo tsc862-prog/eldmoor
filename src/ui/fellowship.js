@@ -123,7 +123,10 @@ function syncChronBtn(){const F=!!slotted()||companies().length>0,camp=F&&story=
   if(b){b.hidden=!F||camp;b.setAttribute('aria-pressed',String(focus))}
   if(t){t.hidden=!F;for(const x of t.children)x.setAttribute('aria-pressed',String(x.dataset.story===(camp?'camp':'chron')))}
   if(tt&&tt.textContent!==(F?'Story':'Chronicle'))tt.textContent=F?'Story':'Chronicle';
-  if(lg)lg.hidden=camp;if(cp)cp.hidden=!camp}
+  if(lg)lg.hidden=camp;if(cp)cp.hidden=!camp;
+  const em=$('logEmpty'); // an empty Chronicle says why (#845): the filter, or nothing logged yet
+  if(em&&lg){const none=!camp&&!lg.children.length,txt=!none?'':(focus&&F?'Nothing in the world’s story names your companies yet. Companies only is on; press it to see every line.':S.chronicle.length?'Nothing logged for this region yet.':'Nothing has happened yet. The Chronicle fills as the world plays.');
+    if(em.hidden===none)em.hidden=!none;if(em.textContent!==txt)em.textContent=txt}}
 
 // ---- the panel ----
 // tabSel: null (the followed company), 'all', or a company id. With one company there is no tab bar.
@@ -168,6 +171,7 @@ function topView(node,C){const fel=!!C.slots&&slotted()===C;
   else{const ul=el('ul','tlist fthreads');th.slice(0,moreThreads?th.length:THREADS).forEach((t,i)=>{const li=el('li','th-'+t.kind);li.setAttribute('data-k','th'+i);parts(li,t.parts);ul.append(li)});box.append(ul);
     if(th.length>THREADS){const mb=el('button','mini',moreThreads?'Show fewer':'+'+(th.length-THREADS)+' more');mb.dataset.fact='more';box.append(mb)}}
   node.append(box);
+  latelyView(node,C);
   hallView(node,C);
   if(drawer==='members'){const mm=el('div','feldrawer felmem');mm.setAttribute('data-k','members');mm.append(el('div','fth-h dm','Members and minds'));
     if(fel){const md=mindsOf(C); // always agents (#148): the choice is the model, on the runners below
@@ -202,6 +206,15 @@ function allView(node){const L=companies(),F=followedCompany();
 const hallMeta=r=>[r.region,r.band?'Lv '+r.band[0]+'-'+r.band[1]:null,'posted day '+r.day,
   r.oath?r.oath.name+(r.oath.thread?'’s past':'’s oath'):null,r.elite?'elite '+r.elite.name+(r.elite.lvl!=null?' (Lv '+r.elite.lvl+')':'')+(r.elite.alive?'':', slain'):null,
   'by '+r.by].filter(Boolean).join(' · ');
+// Lately (#845): the company's last lines from its log (the Story tab's Campaign log), newest first, so the Company tab
+// shows what just happened. Rows are keyed so the feed patches in place.
+const LATELY=12;
+function latelyView(node,C){const L=(C.log||[]).slice(0,LATELY),box=el('div','fellately');box.setAttribute('data-k','lately');
+  box.append(el('div','fth-h dm','Lately'+(L.length?' (last '+L.length+')':'')));
+  if(!L.length){box.append(el('div','dm','Nothing yet. What the company does, finds and loses shows here.'));node.append(box);return}
+  const ul=el('ul','tlist flately');for(const e of L){const li=el('li');li.setAttribute('data-k',keyOf(e));li.append(el('time',null,'Day '+e.day+' '+e.t),' ');parts(li,e.parts);ul.append(li)}
+  box.append(ul);node.append(box)}
+const latelySig=C=>(C.seq||0)+':'+(C.log||[]).length;
 const hallSig=C=>hallBoard(C).map(r=>r.id+':'+r.title+':'+hallMeta(r)).join('~');
 function hallView(node,C){const L=hallBoard(C),box=el('div','felhall');box.setAttribute('data-k','hall');
   box.append(el('div','fth-h dm','Hall board'+(L.length?' ('+L.length+')':'')));
@@ -321,7 +334,7 @@ function companySig(C){const fel=!!C.slots&&slotted()===C,fo=followedCompany();
   return 'C'+C.id+'|'+cname(C)+'|'+msg+'|'+confirmDisband+'|'+menuOpen+'|'+drawer+'|'+moreThreads+'|'+companyThreads(C).map(t=>plainOf(t.parts)).join('~')+'|'+
   (fel?mindsOf(C)+'|'+(mindsOf(C)==='agent'?runnerSig(null):''):companyRunnerSig(C))+'|'+cam.view+'|'+(fo?fo.id:'')+'|'+(cam.sel?cam.sel.id:'')+'|'+
   companyCols(C).map(m=>m.hero?m.hero.id+':'+m.hero.name+':'+(m.hero.state==='dead')+':'+enriching(m.hero)+':'+mindRowSig(m.hero):'-').join(',')+'|'+
-  (fel&&slotParty(slotted())?slotParty(slotted()).leader.id:'')+'|'+(fel?campLine()||'':'')+'|'+hallSig(C)+'|'+(C.past||[]).length+'|'+(fel&&C.enrich?C.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode()}
+  (fel&&slotParty(slotted())?slotParty(slotted()).leader.id:'')+'|'+(fel?campLine()||'':'')+'|'+hallSig(C)+'|'+latelySig(C)+'|'+(C.past||[]).length+'|'+(fel&&C.enrich?C.enrich.calls:0)+'|'+reqTotals.sent+'|'+reqTotals.failed+'|'+devMode()}
 function allSig(){const fo=followedCompany();
   return 'all|'+(fo?fo.id:'')+'|'+cam.view+'|'+companies().map(C=>C.id+':'+cname(C)+':'+members(C).length+':'+companyThreads(C).length+':'+hallBoard(C).length+':'+(C.slots?runnerSig(null):companyRunnerSig(C))).join(',')}
 

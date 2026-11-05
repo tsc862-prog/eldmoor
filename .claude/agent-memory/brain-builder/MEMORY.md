@@ -82,6 +82,7 @@
 - [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons
 - [Repeat act](repeat-act.md) — #801 runner flag: REPEAT_ACTS allowlist, repeated-act anomaly, mock-pose, act:false not counted
 - [DM every mind](dm-every-mind.md) — #824 PROVIDERS one list, compat DM, mindSwitched, budget in waits, fitTools 1024, dm-mind-cases, pitfalls
+- [Role words](role-words.md) — #863 placeWord(cls): class word for a company place, never Tank/Healer/Damage; personacheck guard
 - [Chatbot voice](chatbot-voice.md) — #837 chatbotVoice guard, refusal note, FP count 0/1646, flag plumbing
 - [Slot stall](slot-stall.md) — #868 turn_over + PostToolUse continue:false, scene slot, lease beats/tickets, real leak, measured calls
 - [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
