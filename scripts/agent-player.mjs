@@ -61,7 +61,7 @@ import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, tableHooks, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -329,7 +329,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
-    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, // under the app supervisor: one of the Claude slots for this turn
+    const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, member: st.name, tools: () => tools, onLost: () => {if (turnAbort) turnAbort.abort()}, // under the app supervisor: one of the Claude slots for this turn
       due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, // #687: its own scene opened meanwhile
       onDue: async () => {const r = await (await fetch(base + '/play/pace', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({hero: heroId, runner: RUNNER, queued: true, why: 'slot'}), signal: AbortSignal.timeout(4000)})).json();
         if (r && r.queued) console.log(`[scene] answer queued behind a Claude slot: the table waits up to ${r.extra_s} s more (${r.scene})`)}});
@@ -344,7 +344,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         console.log(`[turn ${sess.turns}] scene answer first | ${model} | tokens in ${first.in} / out ${first.out} | ${money(first.cost)} | run ${money(spent)}`);
         reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
         saveSess(); fails.ok(true); continue}}
-    turnAbort = new AbortController();
+    turnAbort = new AbortController(); let rested = false;
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the next turn carries on
     const grab = sceneGrab({due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, abort: () => turnAbort.abort(),
       onGrab: () => console.log(`  [scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
@@ -355,7 +355,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Hero': String(heroId), 'X-Eldmoor-Runner': runner}, timeout: 90000}},
       tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
       settings: {autoCompactEnabled: true}, maxTurns: refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
-      cwd: join(ROOT, 'logs'), env: childEnv,
+      cwd: join(ROOT, 'logs'), env: childEnv, hooks: tableHooks({idle: on => freeSlot.idle(on), onOver: () => {rested = true; console.log('  [table: nothing to wait for here; the turn ends and pacing wakes it]')}}), // #868
     }});
     try {for await (const m of q) {
       if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; if (!refl) delete sess.rolled; saveSess(); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => console.log('  ' + s))}}
@@ -396,7 +396,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
     if (refl) {const wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; await closeReflection(base, heroId, RUNNER, refl.id, wrote); console.log(`  [reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(rd ? ['session-rolled'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(rd ? ['session-rolled'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSess(); if (grab.grabbed() && !failed && !stopReq) resume = true;
     if (fails.ok(!failed && (tools > 0 || !!refl)) && !ended) ended = fails.why();
   }

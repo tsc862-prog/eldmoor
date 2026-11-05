@@ -73,7 +73,7 @@ import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
-import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
+import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, tableHooks, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let LOG_FILE = join(LOGS, 'fellowship.log'); const RUNS_FILE = join(LOGS, 'fellowship-runs.jsonl'); // AGENT_LOGS moves them for tests
@@ -86,7 +86,7 @@ export function fellowshipPrompt(st) {
     `FELLOWSHIP: you ride with ${f.fellowship || 'a Fellowship'} as its ${f.role || 'member'}. Four companions share your one road; their names, roles and how you see them are in status.fellowship.companions. status.fellowship also holds your voice, wants, fears, quirk, a line you would never say, your backstory and your memories: play from them, in that voice.`,
     '- Talk to your companions with party_say, a shout your companions hear only within about 12 tiles (the result says who heard and who was too far away; earshot tells you beforehand), and catch up with party_read. DISTANCE CUTS YOU OFF: beyond that range nobody hears you, only companions within it hear a proposal or vote, and lead_to reaches only those near. If you must separate, agree aloud where and when to meet again (leave_party with where and when_hours, or a split proposal with meet_at and meet_in_hours), write it in your notes (remember), and keep to it. A paid courier (send_courier, hired at a town gate) is the only way to reach someone out of range, and it takes game hours. When you come back from a long absence, ask what you missed; when a companion returns, tell them what they missed, in your own words. Keep it short and in character. Your companions and the DM are other minds: you know only what they say in the game and what your hero sees.',
     '- You already know your companions: do not introduce yourself again, and do not repeat a line or a question (each turn shows what was said lately). Talk to move the party forward: propose, vote, lead_to, or answer a question you were asked. The game refuses a line you already said.',
-    '- Decisions that need everyone (take a job, answer a Crypt or raid call, split up) go through propose(kind, details) and vote(proposal_id, yes|no, reason). Vote on every open proposal (status.proposals, or an event) with a reason in your own voice.',
+    '- Decisions that need everyone (take a job, go down into the Crypt, raid Kragmaw, split up) go through propose(kind, details) and vote(proposal_id, yes|no, reason). Vote on every open proposal (status.proposals, or an event) with a reason in your own voice.',
     '- The leader (status.party_leader) chooses where the party goes with lead_to; everyone else follows. If you are the leader, lead: pick hunting grounds and jobs that suit the weakest of you, from what the party has seen and been told. leave_party splits you off for a while and costs you the others\' trust; do it only for a reason your character would have.',
     '- TABLE MODE: when status, look or wait show "table", the world is paused for a scene and every second counts. Act at once with scene_act(option, line), using one of the options listed, with a short line in your voice. Do not look around first. You may answer as soon as the scene opens; it happens on your turn. Then wait.',
     '- Hardcore still holds: one life each. Protect each other.',
@@ -207,8 +207,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
 
   // One turn: one query() to the member's own session.
   // --claude-concurrency N: at most N Claude member turns at once (the API org's concurrent-request cap is
-  // shared with the relay); the others queue, scene turns first. Local members never wait. Default: no cap.
-  const claudeMax = Math.max(0, Number(opt('claude-concurrency', env.FELLOWSHIP_CLAUDE_CONCURRENCY || 0)) || 0);
+  // shared with the relay); the others queue, scene turns first. Local members never wait. Default: no cap. Under the supervisor its
+  // slots are the cap (#868): a queue here would hold a member whose scene opens where the supervisor's scene-first order cannot see it.
+  const claudeMax = process.env.ELDMOOR_RUNNER_KEY ? 0 : Math.max(0, Number(opt('claude-concurrency', env.FELLOWSHIP_CLAUDE_CONCURRENCY || 0)) || 0);
   let claudeLive = 0; const claudeQ = [];
   const slot = scene => claudeMax && claudeLive >= claudeMax ? new Promise(r => {if (scene) claudeQ.unshift(r); else claudeQ.push(r)}).then(() => {claudeLive++}) : (claudeLive++, Promise.resolve());
   const free = () => {claudeLive--; const n = claudeQ.shift(); if (n) n()};
@@ -225,7 +226,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (m.local) return await (refl ? localReflect(m, b, w) : localMemberTurn(m, scene, w));
       await slot(scene || m.due);
       m.slotWait = true; // #687: the supervisor's slot wait watches the member's own scene (served first, the table told)
-      try {return await withClaudeSlot(base, () => {m.slotWait = false; return claudeTurn(m, scene, w, refl)}, s => out(m.name, s), {stopped: () => !!stopping, due: () => !!m.due, onDue: () => reportQueued(m, 'slot')})} finally {m.slotWait = false; free()}
+      try {return await withClaudeSlot(base, () => {m.slotWait = false; return claudeTurn(m, scene, w, refl)}, s => out(m.name, s), {stopped: () => !!stopping, due: () => !!m.due, onDue: () => reportQueued(m, 'slot'), member: m.name, tools: () => m.tools, onLease: rel => {m.lease = rel}, onLost: () => {if (m.ac) m.ac.abort()}})} finally {m.slotWait = false; free()}
     } finally {m.inTurn = false}
   }
   // A member's own scene answer waits behind other work in this runner (its turn in flight, or other members' calls on the one
@@ -267,7 +268,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (first && first.tools) {m.sess.turns++; m.turns++; m.scenes++; m.tools += first.tools;
         reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: first.narration || '', seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['scene', 'forced-scene', 'scene-first']});
         saveSession(m.sess, {url: base}); return true}}
-    const ac = new AbortController(); aborts.add(ac);
+    const ac = new AbortController(); aborts.add(ac); m.ac = ac; let rested = false;
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the turn resumes
     const grab = sceneGrab({due: () => m.due, abort: () => ac.abort(), onGrab: () => out(m.name, `[scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
     const q = query({prompt, options: {
@@ -276,7 +277,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${m.id}&runner=${encodeURIComponent(runnerId)}`, headers: {'X-Eldmoor-Hero': String(m.id), 'X-Eldmoor-Runner': runnerId}, timeout: 90000}},
       tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
       settings: {autoCompactEnabled: true}, maxTurns: scene || refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
-      cwd: join(ROOT, 'logs'), env: childEnv,
+      cwd: join(ROOT, 'logs'), env: childEnv, hooks: tableHooks({idle: on => {if (m.lease) m.lease.idle(on)}, onOver: () => {rested = true; out(m.name, '[table: nothing to wait for here; the turn ends and pacing wakes it]')}}), // #868
     }});
     const sceneS = [];
     try {for await (const msg of q) {
@@ -286,7 +287,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         m.sess.ctx = ctxOf(msg.message.usage) ?? m.sess.ctx; // the last call's prompt: what the price line is measured on (#787)
         for (const b of msg.message.content || []) {
           if (b.type === 'text' && b.text.trim()) {out(m.name, b.text.trim()); tc.text(b.text); post(base, '/play/narrate', {hero: m.id, text: b.text.trim(), runner: runnerId}, 5000).catch(() => {})}
-          else if (b.type === 'tool_use') {tools++; tc.tool(b.name, b.id); out(m.name, `> ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 120) : ''})`)}
+          else if (b.type === 'tool_use') {tools++; m.tools++; tc.tool(b.name, b.id); out(m.name, `> ${String(b.name).replace(/^mcp__eldmoor__/, '')}(${b.input && Object.keys(b.input).length ? short(b.input, 120) : ''})`)}
         }
       } else if (msg.type === 'user' && Array.isArray(msg.message?.content)) {
         for (const b of msg.message.content) if (b.type === 'tool_result') {const c = Array.isArray(b.content) ? b.content.map(x => x.text || '').join('') : String(b.content || ''); out(m.name, `< ${short(c, 200)}`); tc.result(b.tool_use_id, c, b.is_error);
@@ -298,7 +299,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else if (result && result.subtype === 'error_max_turns') out(m.name, `turn hit the model-call cap; continuing next turn`);
       else {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`); failed = true}}
     grab.stop(); aborts.delete(ac);
-    m.sess.turns++; m.turns++; m.tools += tools; if (scene) m.scenes++;
+    m.sess.turns++; m.turns++; if (scene) m.scenes++;
     let turnCost = null, tin = null, tout = null, cread = null, cwrite = null;
     if (result) {
       const ud = usageDelta(m.sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)
@@ -316,7 +317,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let wrote = 0; if (refl) {wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; m.notes = (m.notes || 0) + wrote; m.reflections = (m.reflections || 0) + 1;
       await closeReflection(base, m.id, runnerId, refl.id, wrote); out(m.name, `[reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(m.sess.ctx != null ? {ctx: m.sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     m.rolledNow = false; saveSession(m.sess, {url: base});
     if (grab.grabbed() && !again && !stopping && !m.ended && !failed) {out(m.name, '[scene answered; resuming the turn]'); return (await claudeTurn(m, null, w, null, true)) || tools > 0}
     return !failed && (tools > 0 || !!refl);
