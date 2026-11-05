@@ -9,3 +9,5 @@ logs/
 # Daily art run (#177): images waiting for review and the run state stay local
 assets/incoming/
 assets/queue.json
+# Free art sets (#789): downloaded as-is, never committed
+assets/packs/

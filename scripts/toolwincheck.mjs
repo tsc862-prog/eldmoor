@@ -64,7 +64,7 @@ const fp = PC.paceBrief(A.id).brief.place; ok(fp === ZONES[zoneAt(A.x, A.y)], `h
 
 console.log('targets:');
 // a companion: B joins A's party, both in the field
-reset(B, {x: A.x + 2, y: A.y}, 'hunt'); rebuild();
+reset(B, {x: A.x + .2, y: A.y}, 'hunt'); rebuild(); // beside A: two tiles off may be over a river, in a land far above them
 const party = {id: ++S.uid, fac: A.fac, leader: A, mem: [A, B], zone: zoneAt(A.x, A.y), home: false}; A.party = B.party = party; S.parties.push(party);
 r = act(A, 'give', {index: 0, hero_id: 5}); ok(!r.ok && r.error.includes(B.name) && r.error.includes('id ' + B.id), `give to a guessed id lists the companions: ${r.error}`);
 r = act(A, 'use_item', {index: 99, target: B.name}); ok(!r.ok && /No usable item/.test(r.error), `use_item checks the item first: ${r.error}`);

@@ -16,6 +16,7 @@
 import {rnd,ri} from '../core/rng.js';
 import {ZONES,zoneFor,zonePoint,tileAt} from '../world/map.js';
 import {WALKABLE} from '../world/tiles.js';
+import {solidAt,standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {SLOTS} from '../data/items.js';
@@ -107,11 +108,11 @@ function openApart(setup){
   const made=[];
   for(const g of groupsOf(setup)){const lead=hs[g[0]],st=startOf(lead,setup.heroes[g[0]]),town=st.town,group=g.map(i=>hs[i]);
     for(const a of group){const was=homeOf(a).name;if(was!==town.name)a.born=was; // their people's town stays in their origin text (#771)
-      a.town=town.name;a.x=town.x0+2+rnd()*7;a.y=town.y0+4+rnd()*3;a.state='town';a.dest=null}
+      a.town=town.name;Object.assign(a,standAt(town.x0+2+rnd()*7,town.y0+4+rnd()*3));a.state='town';a.dest=null}
     if(st.lvl>1){for(const a of group){season(a,st.lvl);
         if(st.zone!=null&&a.zone!==st.zone){const p=zonePoint(st.zone,null,town.gate);a.zone=st.zone;a.x=p.x;a.y=p.y}}
       const p={x:group[0].x,y:group[0].y}; // a group out hunting stands together too (#771): season() drew each a point of its own
-      if(group.length>1)group.forEach((a,i)=>{const q=spreadAt(p,i,group.length);Object.assign(a,WALKABLE.includes(tileAt(q.x,q.y))?q:p)})}
+      if(group.length>1)group.forEach((a,i)=>{const q=spreadAt(p,i,group.length);Object.assign(a,WALKABLE.includes(tileAt(q.x,q.y))&&!solidAt(q.x,q.y)?q:p)})}
     else for(const a of group)record(a,'Set out from '+town.name+(group.length>1?' with '+group.filter(b=>b!==a).map(b=>b.name).join(' and '):' alone')+'.');
     const r=foundCompany(group,{hall:town.name,name:group.length>1?group.map(b=>b.name).join(' and '):group[0].name});
     if(!r.ok)continue;made.push(r.company);

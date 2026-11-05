@@ -385,6 +385,142 @@ world(); {const [a, k] = foes(); markPlayer(k, true); setRunnerLinks(x => x === 
   setRunnerLinks(null);}
 }
 
+// 10. Watch mode and the DM's downed call (#655).
+{const T = await import('../src/sim/table.js'), DC = await import('../src/sim/downcall.js'), DR = await import('../src/sim/dmreflex.js');
+ const {dmAct, setDmSeat} = await import('../src/sim/index.js');
+ const agent = a => {markPlayer(a, true); a.playEvSeen = a.playEvN || 0; return a};
+ const fresh = a => (a.playEv || []).filter(e => e.n > (a.playEvSeen || 0));
+ const wtick = (n = 1) => {for (let i = 0; i < n; i++) {rebuild(); S.gameMin += DOWN.WATCH_TICK; for (const x of busy()) downedStep(x, DOWN.WATCH_TICK / 6)}};
+ console.log('\nWatch mode and the DM\'s downed call (#655)');
+ const mode = T.TABLE.mode;
+
+ // the clock: Table Off, an agent hero and a host with links -> WATCH_TICK; any of them missing -> TICK
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(), b = agent(hero(1, 'Warrior')); mates(a, b); b.state = 'town'; b.x = a.x + 6;
+  T.TABLE.mode = 'off'; setRunnerLinks(() => 'connected');
+  down(a, m);
+  ok(a.down.next - a.down.at === DOWN.WATCH_TICK && /every 20 game minutes/.test(fresh(a).map(e => e.text).join(' ')), 'Watch mode: a downed agent hero saves every ' + DOWN.WATCH_TICK + ' game minutes');
+  b.playEvSeen = b.playEvN || 0;
+  d20(12); S.gameMin += DOWN.TICK; rebuild(); downedStep(a, 1);
+  ok(a.down.s === 0, 'no save at ' + DOWN.TICK + ' minutes');
+  S.gameMin += DOWN.WATCH_TICK - DOWN.TICK; rebuild(); downedStep(a, 1);
+  ok(a.down.s === 1 && a.down.next - a.down.at === 2 * DOWN.WATCH_TICK, 'the save comes at ' + DOWN.WATCH_TICK + ', the next ' + DOWN.WATCH_TICK + ' later');
+  const e = fresh(b).find(x => /still lies bleeding/.test(x.text));
+  ok(e && e.w === 2 && /1 of 3 saves made/.test(e.text) && /stabilize \{who:/.test(e.text), 'the companion in reach gets an urgent wake at the save: ' + (e && e.text.slice(0, 80)));
+  T.TABLE.mode = mode; setRunnerLinks(null);}
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(); T.TABLE.mode = 'off'; // no host: the old clock
+  down(a, m); ok(a.down.next - a.down.at === DOWN.TICK, 'Watch mode with no runner host keeps the ' + DOWN.TICK + '-minute clock');
+  T.TABLE.mode = mode;}
+ world(); {const a = hero(0, 'Warrior'), m = mob(); T.TABLE.mode = 'off'; setRunnerLinks(() => 'connected');
+  down(a, m); ok(a.down.next - a.down.at === DOWN.TICK, 'a scripted hero keeps the ' + DOWN.TICK + '-minute clock in Watch mode');
+  T.TABLE.mode = 'auto'; const c = agent(hero(1, 'Warrior')); down(c, m);
+  ok(c.down.next - c.down.at === DOWN.TICK, 'and so does an agent hero with the Table on');
+  T.TABLE.mode = mode; setRunnerLinks(null);}
+
+ // the DM's call: answered by the DM agent while it listens
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(), b = agent(hero(1, 'Warrior')); mates(a, b); b.state = 'town'; b.x = a.x + 6;
+  T.TABLE.mode = 'off'; setRunnerLinks(() => 'connected'); setDmSeat(true); DR.heard('table');
+  down(a, m);
+  const t = dmAct('table_call');
+  ok(t.ok && t.call && t.call.kind === 'downed' && t.call.id > DC.DCALL.ID_BASE && new RegExp(a.name).test(t.call.about) && t.call.seconds_left > 0 && t.scene && t.scene.kind === 'downed', 'table_call hands the DM the downing: ' + (t.call && t.call.about.slice(0, 70)));
+  const st = dmAct('dm_status');
+  ok(/never decide whether they live/.test(t.call.about) && st.downed && st.downed.waiting === 1, 'the call asks for words only; dm_status names it');
+  const r = dmAct('table_answer', {call: t.call.id, text: 'The blade slips and the warrior drops into the bracken, breath hitching.'});
+  ok(r.ok && r.kind === 'downed', 'table_answer voices it');
+  ok((b.chat || []).some(l => /drops into the bracken/.test(l.text) && l.from.kind === 'dm') && (a.chat || []).some(l => /bracken/.test(l.text)), 'the companion who saw it and the downed hear the line');
+  const L = S.dmLog.find(x => x.detail && x.detail.call === 'downed');
+  ok(L && L.detail.by === 'dm-agent' && !L.detail.fill && a.hp === 0 && a.state === 'downed', 'the DM log has it as the DM agent\'s; HP untouched');
+  ok(!dmAct('table_answer', {call: t.call.id, text: 'again'}).ok, 'a second answer to the same call is refused');
+  d20(12); wtick(); const s = dmAct('table_call');
+  ok(s.call && s.call.kind === 'downed' && /death save: success/.test(s.call.about) && /d20 12/.test(s.call.about), 'a save is a call too, with its dice');
+  d20(15, 18); wtick(2); // fills the save call (pending) and the stable end
+  const C = DC.downCallsOf(a.id);
+  ok(a.down && a.down.stable && C.some(c => c.kind === 'end' && /stable/.test(c.about)) && C.length <= DC.DCALL.PER_DOWN, 'the end (stable) is voiced, ' + C.length + ' calls for the downing (cap ' + DC.DCALL.PER_DOWN + ')');
+  setDmSeat(false); T.TABLE.mode = mode; setRunnerLinks(null);}
+
+ // the reflex fill: the DM silent past its budget, or gone
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(), b = agent(hero(1, 'Warrior')); mates(a, b); b.state = 'town'; b.x = a.x + 6;
+  T.TABLE.mode = 'off'; setRunnerLinks(() => 'connected'); setDmSeat(true); DR.heard('table');
+  down(a, m);
+  const c = S.downCalls.cur[0]; ok(c && c.state === 'wait', 'the call waits while the DM listens');
+  c.real -= 60000; DC.downCallTick();
+  const L = S.dmLog.find(x => x.detail && x.detail.call === 'downed');
+  ok(!S.downCalls.cur.length && L && L.detail.fill && L.detail.why === 'slow' && L.detail.by === 'scripted', 'past its budget the scripted DM fills it (fill, slow)');
+  ok((b.chat || []).some(l => /goes down/.test(l.text)), 'and the companion hears the scripted line: ' + ((b.chat || []).slice(-1)[0] || {}).text);
+  DR.gone();
+  const e = agent(hero(2, 'Warrior')); mates(a, b, e); down(e, m);
+  const G = S.dmLog.find(x => x.detail && x.detail.call === 'downed' && x.detail.hero === e.id);
+  ok(G && G.detail.fill && G.detail.why === 'gone' && !S.downCalls.cur.length, 'nobody listening: filled at once (fill, gone)');
+  setDmSeat(false); T.TABLE.mode = mode; setRunnerLinks(null);}
+ world(); {const a = agent(hero(0, 'Warrior')), m = mob(); T.TABLE.mode = 'off'; setDmSeat(true);
+  down(a, m); ok(!S.downCalls, 'no host with runner links: no call at all (seeded worlds unchanged)');
+  setDmSeat(false); T.TABLE.mode = mode;}
+}
+
+// 10. Wounds and tending (#656): every downing leaves one; max HP and speed drop, capped; a day comes off by a heal, at a camp or at the chapel.
+{const {WOUND} = await import('../src/sim/wounds.js'), TD = await import('../src/sim/tend.js'), {combatStats} = await import('../src/sim/stats.js');
+ const PL = await import('../src/sim/player.js'), {healOne, moveTo, fall, updAgent} = await import('../src/sim/heroes.js'), {ensureNpcs} = await import('../src/sim/npcs.js');
+ const {homeOf} = await import('../src/data/races.js'), {feared, keyOf, slain} = await import('../src/sim/lore.js'), {CITY, CRYPT} = await import('../src/world/map.js');
+ const {dungeonCheck} = await import('../src/sim/dungeon.js');
+ const asAgent = a => {markPlayer(a, true); a.pq = []; return a};
+ const up = a => {a.hp = 1; a.down = null; a.state = 'hunt'};
+ world(); {const a = hero(0), m = mob(), full = maxHp(a), sp = combatStats(a).speed;
+  down(a, m);
+  ok(a.wounds.length === 1 && a.wounds[0].days === WOUND.DAYS && a.wounds[0].cause.startsWith('a ') && a.wounds[0].day === Math.floor(S.gameMin / 1440) + 1, 'a downing adds a wound {cause, day, days}: ' + JSON.stringify(a.wounds[0]));
+  ok(Math.abs(maxHp(a) - full * .85) <= 1, 'max HP is 15% down (' + full + ' -> ' + maxHp(a) + ')');
+  ok(Math.abs(combatStats(a).speed - sp * .9) < 1e-9, 'speed is 10% down');
+  const b = hero(1); a.x = b.x = P.x; a.y = b.y = P.y; moveTo(a, P.x + 9, P.y, .1, 2); moveTo(b, P.x + 9, P.y, .1, 2); ok(Math.abs((a.x - P.x) / (b.x - P.x) - .9) < 1e-9, 'a wounded hero walks 10% slower');
+  ok(combatStats(a).bd.health.some(x => x.src === 'wound') && combatStats(a).bd.speed.some(x => x.src === 'wound'), 'the Stats breakdown names the wound');
+  up(a); const h = hero(0, 'Priest'); h.x = a.x; h.y = a.y; h.fac = a.fac; healOne(h, a); ok(a.hp <= maxHp(a) && a.hp > 1, 'a hero on 1 HP is healed as usual, under the lower max');}
+ world(); {const a = hero(0), m = mob(), full = maxHp(a), sp = combatStats(a).speed;
+  for (let i = 0; i < 4; i++) {down(a, m); up(a)}
+  ok(a.wounds.length === 4 && Math.abs(maxHp(a) - full * .7) <= 1, 'four wounds: max HP stops at 30% down (' + maxHp(a) + ' of ' + full + ')');
+  ok(Math.abs(combatStats(a).speed - sp * .7) < 1e-9, 'and speed stops at 30% down');
+  a.hp = full; TD.takeWound(a, 'a test', null); ok(a.hp <= maxHp(a), 'a wound never leaves HP above the max');
+  const c0 = TD.woundStats().closed; S.gameMin += WOUND.DAYS * 1440 + 1; TD.woundTick(); ok(a.wounds.length === 0 && Math.abs(maxHp(a) - full) <= 1 && TD.woundStats().closed === c0 + 5, 'after the days they close by themselves and max HP is back');
+  ok(a.hp <= maxHp(a) && a.hp > 0, 'closing leaves HP alone');}
+ world(); {const a = hero(0, 'Warrior'), m = mob(), h = hero(0, 'Priest'), g = hero(1, 'Warrior'); mates(a, h, g); h.x = a.x + 1; h.y = a.y; down(a, m);
+  const w = a.wounds[0]; rebuild();
+  healOne(h, a); ok(w.days === WOUND.DAYS, 'a heal that lifts the downed is the rescue, not a tending'); downedStep(a, .1);
+  ok(a.state !== 'downed', 'they are up');
+  h.healCd = 0; healOne(h, a); ok(w.days === WOUND.DAYS - 1 && a.tendDay, 'a heal on the wounded takes a day off');
+  h.healCd = 0; healOne(h, a); ok(w.days === WOUND.DAYS - 1, 'once a game day');
+  S.gameMin += 1440; h.healCd = 0; healOne(h, a); S.gameMin += 1440; h.healCd = 0; healOne(h, a); TD.woundTick(); ok(!a.wounds.length, 'days tended close it early');
+  TD.takeWound(h, 'a test', null); h.healCd = 0; healOne(h, h); ok(h.wounds[0].days === WOUND.DAYS, 'nobody tends their own wound');}
+ world(); {const a = asAgent(hero(0, 'Warrior')), b = asAgent(hero(1, 'Warrior')), h = asAgent(hero(0, 'Priest')); mates(a, b, h); h.x = b.x = a.x + 1; h.y = b.y = a.y;
+  TD.takeWound(a, 'a wolf', null); rebuild();
+  let r = PL.playerAct(b.id, 'tend', {who: a.name}); ok(!r.ok && /chapel priest/.test(r.error), 'on the road a non-healer is told the ways on: ' + r.error);
+  r = PL.playerAct(a.id, 'tend', {who: a.name}); ok(!r.ok && /own wound/.test(r.error), 'tend on yourself is refused');
+  h.healCd = 0; r = PL.playerAct(h.id, 'tend', {who: a.name}); ok(r.ok && a.wounds[0].days === WOUND.DAYS - 1 && h.healCd > 0, 'a healer\'s tend is a heal cast from range: a day off (' + r.how + ')');
+  r = PL.playerAct(h.id, 'tend', {who: a.name}); ok(!r.ok && /tomorrow/.test(r.error), 'tended today: refused, with when');
+  S.gameMin += 1440; a.state = b.state = 'camp'; a.company = b.company = 42; r = PL.playerAct(b.id, 'tend', {hero_id: a.id}); ok(r.ok && r.how === 'at the fire' && !a.wounds.length, 'at a company camp anyone tends: a day off, and two days tended plus one passed close it');
+  a.state = b.state = 'hunt'; a.company = b.company = null;
+  const dn = hero(2, 'Warrior'); mates(a, b, h, dn); dn.x = a.x + 1; dn.y = a.y; down(dn, mob()); rebuild(); r = PL.playerAct(b.id, 'tend', {}); ok(r.ok && r.going_to === dn.name, 'tend with no name still goes to the downed first (#658)');}
+ world(); {ensureNpcs(); const a = asAgent(hero(0)), c = CITY.find(x => x.fac === a.fac), sp = c.spots.chapel;
+  TD.takeWound(a, 'a boar', null); rebuild(); a.gold = 0;
+  let r = PL.playerAct(a.id, 'chapel_tend', {}); ok(!r.ok && /move_to chapel/.test(r.error), 'away from the chapel: told to walk there');
+  a.x = sp.x; a.y = sp.y; r = PL.playerAct(a.id, 'chapel_tend', {}); ok(!r.ok && /gold/.test(r.error), 'no gold, no dressing: ' + r.error);
+  a.gold = 500; const fee = TD.priestFee(a); r = PL.playerAct(a.id, 'chapel_tend', {}); ok(r.ok && r.paid === fee && a.gold === 500 - fee && a.wounds[0].days === WOUND.DAYS - 1, 'the priest takes a day off for ' + fee + 'g: ' + r.result);
+  r = PL.playerAct(a.id, 'chapel_tend', {}); ok(!r.ok && /tomorrow/.test(r.error), 'once a game day');
+  const s = PL.playerAct(a.id, 'status', {}); ok(s.wounds && s.wounds.length === 1 && /day/.test(s.wounds[0].closes_in), 'status names the wound in words: ' + JSON.stringify(s.wounds));
+  ok(/You carry a wound/.test(TD.woundLine(a)), 'the header line: ' + TD.woundLine(a));
+  const b = hero(1); b.gold = 500; TD.takeWound(b, 'a boar', null); TD.chapelVisit(b); ok(b.wounds[0].days === WOUND.DAYS - 1 && b.gold === 500 - TD.priestFee(b), 'a scripted hero sees the priest on its town visit');
+  setRunnerLinks(() => 'connected'); const g0 = a.gold; a.chapelDay = 0; TD.chapelVisit(a); setRunnerLinks(null); ok(a.gold === g0, 'an agent with a live runner spends its own gold');}
+ world(); {const a = asAgent(hero(0)), m = mob(); down(a, m);
+  ok(tiersOf(a).marks.some(k => k.k === 'wound'), 'a landmark on the wound'); ok(a.reflect && a.reflect.cur && a.reflect.cur.why.some(w => /wound/.test(w)), 'a reflection moment on the wound: ' + a.reflect.cur.why.join('; '));
+  ok(feared(a, m), 'the creature is learned as feared'); ok(!(a.playEv || []).some(e => /wound|fear/.test(e.text) && /\d/.test(e.text)), 'the words carry no numbers');
+  slain(a, m); ok(!a.lore.c[keyOf(m)].fear, 'killing one spends the fear');
+  TD.takeWound(a, 'Kragmaw', S.boss); ok(a.lore.c['n:Kragmaw'] && a.lore.c['n:Kragmaw'].fear, 'Kragmaw too');}
+ world(); {const a = hero(0), m = mob(); down(a, m); up(a); fall(a, 'a test'); ok(a.state === 'dead' && !a.wounds.length, 'a wound dies with the hero')}
+ world(); {const a = hero(0), m = mob(), b = hero(1); down(a, m); up(a);
+  const snap = JSON.parse(JSON.stringify(snapshot())), n = snap.agents.find(x => x.id === a.id), o = snap.agents.find(x => x.id === b.id); ok(n.wounds.length === 1, 'a.wounds is saved'); delete o.wounds;
+  restore(snap); const r1 = S.agents.find(x => x.id === a.id), r2 = S.agents.find(x => x.id === b.id); ok(r1.wounds.length === 1 && r1.wounds[0].days === WOUND.DAYS, 'and restored'); ok(Array.isArray(r2.wounds) && !r2.wounds.length, 'an old save\'s hero migrates to none');}
+ world(); {const a = hero(0); a.state = 'town'; a.townStep = 2; a.wait = 0; a.linger = 0; const g = homeOf(a).gate; a.x = g.x; a.y = g.y; TD.takeWound(a, 'a boar', null); TD.takeWound(a, 'a boar', null); updAgent(a, .1); ok(a.state === 'mend', 'two wounds: a background hero stays in town to mend');
+  a.wounds.pop(); updAgent(a, .1); ok(a.state === 'town' && a.townStep === 2, 'one wound left: it goes on');}
+ world(); {const L = S.agents.filter(x => x.fac === 0).slice(0, 6); for (const a of S.agents) a.state = 'town'; for (const a of L) {a.lvl = 14; a.state = 'hunt'}
+  for (const a of S.agents) if (!L.includes(a)) a.lvl = 1; const hurt = L[0]; TD.takeWound(hurt, 'a boar', null); CRYPT.group = null;
+  for (let i = 0; i < 60 && !CRYPT.group; i++) {CRYPT.cd = 0; dungeonCheck(.1)} ok(CRYPT.group && !CRYPT.group.mem.includes(hurt), 'a wounded background hero is left out of a Crypt party'); CRYPT.group = null}
+}
+
 // 8. Determinism: two runs from the same seed give the same downings and deaths.
 const run = () => {seed = 0x1234; forced.length = 0; init({fellowship: false}); for (let i = 0; i < 2400; i++) step(.5);
   const D = downStats(); return JSON.stringify([D, S.facStats, S.agents.map(a => [a.id, a.state, a.lvl, Math.round(a.hp)])])};

@@ -246,7 +246,7 @@ console.log('Agents panel');
   btn.click();ok(!pop.hidden&&btn.getAttribute('aria-expanded')==='true','it opens the Agents popover');
   // the runner poll is throttled in real time (5 s); an earlier step may have left the relay marked down, so wait for the stub to be read
   for(let i=0;i<250&&!pop.querySelector('select[data-agsess]');i++){await wait();uiSlow()}
-  const ss=pop.querySelector('select[data-agsess]');ok(!!ss,'the popover reads the relay');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
+  const ss=pop.querySelector('select[data-agsess]');ok(!!ss,'the popover reads the relay');ok(/No session budget is set/.test(pop.textContent),'with none set the popover says nothing caps the total (#807)');ss.value='5';ss.dispatch('change',{target:ss});await wait();await wait();uiSlow();
   ok(posts.some(p=>p.url.endsWith('/play/runner/limits')&&p.body.sessionBudget===5),'the session budget is sent to the relay');
   ok(/Spent \$0\.42 of \$5\.00/.test(pop.textContent),'the spend so far shows live against the budget');
   ok(/Agents · \$0\.42 \/ \$5\.00/.test(btn.textContent),'the button carries the spend: '+btn.textContent);
@@ -492,6 +492,20 @@ console.log('the DM prepares the table');
   const start=dmf.querySelector('.dmfrun').querySelector('[data-runact=start]');ok(!!start&&/Start DM/.test(start.textContent),'a stopped DM offers Start DM');
   document._ls.pointerdown.forEach(f=>f({button:0,target:start,preventDefault(){},stopPropagation(){}}));await wait();
   ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'),'Start DM goes to the relay');
+  // the DM's picker offers every provider a hero's has (#824), with the same price labels, and a pick reaches the relay
+  {const mp=await import('../src/ui/mindpick.js'),rn=await import('../src/ui/runners.js'),ds=await import('../src/ui/dmseat.js');
+   relay.health={providers:{ollama:{ok:true,models:['q:1b']},openai:{ok:true,models:['gpt-6-luna'],prices:{'gpt-6-luna':{in:.1,out:.5}}},huggingface:{ok:true,models:['meta-llama/Llama-3.3-70B-Instruct']},google:{ok:true,models:['gemini-3.8-flash'],free:true,prices:{'gemini-3.8-flash':{in:0,out:0}}}}};
+   const pf=globalThis.fetch;globalThis.fetch=async(url,o)=>String(url).endsWith('/health')?{ok:true,status:200,json:async()=>relay.health}:pf(url,o);
+   mp.mindChange({dataset:{mprov:'-1'},value:'ollama'});mp.pulledModels();for(let i=0;i<20&&!mp.openaiModels().length;i++)await wait();
+   const pick=rn.runnerPick('dm',...mp.mindLists()).children[0],vals=pick.children.map(o=>o.value),texts=pick.children.map(o=>o.textContent||o.text||'').join(' | ');
+   ok(['ollama:q:1b','openai:gpt-6-luna','huggingface:meta-llama/Llama-3.3-70B-Instruct','google:gemini-3.8-flash','anthropic:claude-haiku-5-5'].every(v=>vals.includes(v)),'the DM picker lists Claude, local, OpenAI, Hugging Face and Gemini: '+vals.join(', '));
+   ok(/\$0\.10 \/ \$0\.50/.test(texts),'with the price labels of a hero\'s picker: '+texts);
+   ok(/another provider|set aside/.test(pick.title)&&/notes/.test(pick.title),'its title says what a switch keeps and what it sets aside');
+   ok(ds.dmSeatSig().includes('gpt-6-luna'),'a list that arrives late rebuilds the seat');
+   document._ls.change.forEach(f=>f({target:{dataset:{runpick:'dm'},value:'openai:gpt-6-luna'}}));
+   posts.length=0;await rn.startRunner('dm');
+   ok(posts.some(p=>p.url.endsWith('/play/runner/start')&&p.body.kind==='dm'&&p.body.provider==='openai'&&p.body.model==='gpt-6-luna'),'Start DM sends the picked mind');
+   document._ls.change.forEach(f=>f({target:{dataset:{runpick:'dm'},value:''}}));globalThis.fetch=pf}
   const box=$('dmlog'),wb=$('worldbox');box.open=false;wb.open=false;dmf.dispatch('click',{target:dmf.querySelector('.dmfdo')});
   ok(box.open&&wb.open,'a click on the frame opens the Dungeon Master panel');
   box.open=false;dmf.dispatch('click',{target:dmf.querySelector('[data-dmnotes]')});
@@ -876,7 +890,7 @@ console.log('the DM prepares the table');
 {const fb=$('felbody'),P=await import('../src/sim/persona.js'),LV=await import('../src/ui/lifeview.js');
   const a=SLT.slotHeroes(SLT.slotted())[0];let sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id));
   if(!sb){fb.querySelector('[data-fact="drawer:members"]').click();uiFast();sb=fb.querySelectorAll('button').find(b=>b.dataset.fsheet==String(a.id))}sb.click();
-  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null);
+  const pins=fb.querySelectorAll('input').filter(i=>i.dataset&&i.dataset.fpin!=null&&i.dataset.fpin!=='oath'); // a sworn oath has its own pin (#800)
   ok(pins.length===P.PERSONA_ORDER.length+1,'pins: one per persona field and one for the stances ('+pins.length+')');
   ok(fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='beliefs')&&fb.querySelectorAll('textarea').some(t=>t.dataset.fw==='persona'&&t.dataset.fk==='traits'),'sheet editor: beliefs and traits boxes');
   const pw=pins.find(i=>i.dataset.fpin==='wants');pw.checked=true;pw.dispatch('change',{target:pw});uiFast();
@@ -1404,7 +1418,8 @@ console.log('the DM prepares the table');
   const pf=P.purposeOf(fol);ok(pf.kind==='follow'&&pf.line.startsWith('Following → '+lead.name+' (3 tiles)')&&pf.tether&&pf.tether.id===lead.id,'purpose: an agent follower names whom it follows, how far, and tethers ('+pf.line+')');
   // a waiting hero: in town, the party leader still there
   const c=CITY.find(t=>t.fac===waiter.fac)||CITY[0],kw={state:waiter.state,party:waiter.party,pq:waiter.pq,act:waiter.playActAt,x:waiter.x,y:waiter.y};
-  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;waiter.x=c.gate.x;waiter.y=c.gate.y;
+  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;// stand a little off the gate, away from the leader: the wait line is not drawn to someone within 0.8 tiles, and the leader may stand at the gate
+  waiter.x=c.gate.x;waiter.y=c.gate.y;for(const[dx,dy]of[[0,0],[2,1],[-2,1],[2,-1],[-2,-1],[3,0]]){waiter.x=c.gate.x+dx;waiter.y=c.gate.y+dy;if(Math.hypot(lead.x-waiter.x,lead.y-waiter.y)>1.5)break}
   const pw=P.purposeOf(waiter);ok(pw.kind==='wait'&&pw.line.startsWith('Waiting for '+lead.name)&&/40 min/.test(pw.line)&&pw.wait&&pw.wait.id===lead.id,'purpose: a waiting hero names whom it waits for and how long ('+pw.line+')');
   // a traveller on a walk order
   const kt={pq:trav.pq,state:trav.state,adv:trav.adv},dest={x:c.gate.x+6,y:c.gate.y+4};trav.adv=null;trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
@@ -1432,7 +1447,9 @@ console.log('the DM prepares the table');
   cam.sel=trav;cam.dpr=1;cam.sc=2;m=mk();const lab=[];FX.drawPurposeGround(m.ctx,S,cam,{drawText:t=>lab.push(t),blink:0});
   ok(m.L.strokes>=1&&from(trav,m.L)>=1,'overlays: the followed traveller gets its dotted road, from itself');ok(lab.includes('the old mill'),'overlays: the marker names what is there');
   cam.sel=fol;cam.hover=waiter;m=mk();FX.drawPurposeGround(m.ctx,S,cam,{drawText:()=>{},blink:0});
-  ok(from(fol,m.L)>=1&&from(waiter,m.L)>=1&&from(trav,m.L)===0&&from(hunter,m.L)===0,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else');
+  {const who=a=>a.name+' '+a.state+' ('+a.x.toFixed(2)+','+a.y.toFixed(2)+')'+(a.hidden?' hidden':''),n={fol:from(fol,m.L),waiter:from(waiter,m.L),trav:from(trav,m.L),hunter:from(hunter,m.L)},
+    bad=[n.fol>=1?'':'follower tether missing',n.waiter>=1?'':'waiter wait line missing (leader '+who(lead)+', distance '+Math.hypot(lead.x-waiter.x,lead.y-waiter.y).toFixed(2)+')',n.trav===0?'':'traveller drawn',n.hunter===0?'':'hunter drawn'].filter(Boolean);
+  ok(!bad.length,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else'+(bad.length?' ['+bad.join('; ')+'] counts '+JSON.stringify(n)+' fol='+who(fol)+' waiter='+who(waiter)+' trav='+who(trav)+' hunter='+who(hunter)+' lead='+who(lead):''))}
   // intent icons: close zoom with the switch on; off hides them except the focused hero's hourglass
   const cnt=(a,close)=>{let n=0;const ctx=new Proxy({},{get:(o,k)=>k==='fillRect'?()=>n++:typeof o[k]!=='undefined'?o[k]:()=>{},set:(o,k,v)=>{o[k]=v;return true}});FX.drawIntentIcon(ctx,S,cam,a,0,0,12,close);return n};
   const vi=$('vIcons');PV.setIcons(true);ok(cnt(hunter,true)>0&&cnt(hunter,false)===0,'icons: a hunter’s icon at close zoom, none far out');
@@ -1581,5 +1598,15 @@ console.log('page watchdog');
   ok(/page busy \(no answer for 16\.2 s\)/.test(ML.mindLabel(a).text),'a relay time-out on a silent page reads page busy as well: '+ML.mindLabel(a).text);
   PW.resetPageWatch();ok(ML.linkOf(a)==='connected','once it passes the label is live again');
   BR.bridgeFeed(null);PW.setPageLog(null)}
+// ---- #843/#848: the frame row never changes height; the DM bar is one line while calm ----
+{const fs=await import('node:fs'),css=fs.readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  const shape=()=>[...$('frames').querySelectorAll('.pf[data-hid]')].map(f=>f.children.map(c=>c.className.split(' ')[0]).join(','));
+  uiFast();const before=shape();ok(before.length>0&&before.every(x=>x==='pfkey,pftop,meter,purp,pfsl,pfsl,pffoot'),'frames: the same six parts in every frame ('+before[0]+')');
+  const f0=$('frames').querySelector('.pf[data-hid]'),sl=f0.querySelectorAll('.pfsl');
+  ok(sl.length===2&&sl[0].querySelector('.pftg')&&sl[0].querySelector('.pfdown')&&sl[1].querySelector('.pfchips')&&sl[1].querySelector('.pfrep'),'frames: target and downed share one fixed slot, chips and the replacement line the other');
+  ok(!/\.pf(tg|rep|chips):empty\{display:none\}/.test(css)&&/\.pfsl1\{height:17px\}/.test(css)&&/\.pfsl2\{height:15px\}/.test(css),'frames: nothing collapses when empty; the slots have fixed heights');
+  const m=sim.S.mobs.find(x=>x.alive&&!x.gone),a=sim.S.agents.find(x=>x.company!=null&&x.state!=='dead'&&!x.hidden);
+  if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
+  ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

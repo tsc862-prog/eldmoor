@@ -41,6 +41,7 @@
 import {rnd,ri,hash} from '../core/rng.js';
 import {CITY,LAIR,CRYPT,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
 import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
+import {solidAt,standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {USES} from '../data/items.js';
 import {campMeal,campLight} from './inv.js'; // rations and torches (sim/inv.js)
@@ -64,6 +65,7 @@ import {openScene,sceneFor} from './table.js';
 import {campCraft,fireRecipes} from './craft.js'; // cooking and brewing at the fire (#258)
 import {sceneOf} from './scenes.js';
 import {reflexMay} from './runlink.js';
+import {campTend} from './tend.js';
 import {compLine} from './compvoice.js'; // scripted companions of an agent company: the DM's voice (#764)
 import {advCampable} from './dm.js'; // a night camp may fall between an adventure's scenes (#325)
 
@@ -107,7 +109,7 @@ const soloSleeps=g=>!!g.solo&&g.watchIdx>=0&&g.watchIdx%2===1;
 export const isCamped=a=>!!(a&&a.state==='camp');
 
 // ---- the safe spot: asked of the world module ----
-const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!==PEAK};
+const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!==PEAK&&!solidAt(x,y)};
 function safe(x,y){if(!open(x,y))return false;
   for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(!open(x+dx,y+dy))return false;
   for(const c of CITY)if(x>=c.x0-CAMP.TOWN_MIN&&x<=c.x1+CAMP.TOWN_MIN&&y>=c.y0-CAMP.TOWN_MIN&&y<=c.y1+CAMP.TOWN_MIN)return false;
@@ -198,7 +200,7 @@ function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zo
   const t=types[ri(0,types.length-1)],M=MOBS[t];
   let p=null;for(let k=0;k<8&&!p;k++){const ang=rnd()*Math.PI*2,x=g.x+Math.cos(ang)*7,y=g.y+Math.sin(ang)*7;if(open(x,y))p={x,y}}
   if(!p)return null;
-  const m=spawnMob(t,null,{lvl:Math.max(M.lv[0]-2,Math.min(M.lv[1]+1,lvl)),add:true});m.xpMul=.6;m.x=p.x;m.y=p.y;m.home={...p};m.spawn={...p};return m}
+  const m=spawnMob(t,null,{lvl:Math.max(M.lv[0]-2,Math.min(M.lv[1]+1,lvl)),add:true});m.xpMul=.6;Object.assign(m,standAt(p.x,p.y));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};return m}
 function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors++;
   const avg=Math.round(L.reduce((s,a)=>s+a.lvl,0)/L.length),spot=check(w,'perception',CAMP.SPOT_DC-(g.lit?USES['Pitch Torch'].watch:0)),victim=L[ri(0,L.length-1)];
   const pass=spot.pass&&!soloSleeps(g); // a solo asleep is caught unroused whatever its roll (the same roll is still made: no dice added)
@@ -274,6 +276,7 @@ function campOne(F,dt){const g=F.camp&&F.camp.phase?F.camp:null;
     L.forEach((a,i)=>{const p=spotOf(g,i,L.length);if(!moveTo(a,p.x,p.y,dt,2.4))all=false;a.face=g.x>a.x?1:-1});
     if(all||now-g.start>CAMP.GATHER_MAX){g.phase='rest';g.restAt=Math.round(now);g.nextRoll=now+CAMP.ROLL_MIN;g.nextTalk=now+20;g.nextBond=now+180;g.watchIdx=-1;
       for(const a of L){a.moving=false;if(reflexMay(a))campCraft(a);campMeal(a,{meals:reflexMay(a)})} // supper: a reflex member cooks and brews first (#258); an agent's crafted meals are its own to eat
+      campTend(L); // wounds dressed at the fire (#656)
       for(const a of L)if(!g.lit&&a.inv&&a.inv.list.length)campLight(a)
       emit('rest',g,{why:g.why})}
     refreshDoing(L);
