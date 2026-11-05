@@ -306,6 +306,7 @@ export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k'
   li.append(e.courier?' sends word: ':e.whisper?': ':none?' calls out, but no one is near: ':e.party?' shouts: ':': ',e.text);
   if(e.by==='scripted'&&e.trigger==='npc')li.append(el('span','dm chscr',' scripted'));
   if(e.comp)li.append(el('span','dm chscr',' DM voice'+(e.by==='scripted'?' · scripted':''))); // a companion of an agent company, voiced by the DM (#764); the watcher only // the scripted DM's townsfolk, not the DM agent's words (#540)
+  if(e.opt!=null)li.append(el('span','dm chopt',' ('+(e.rfx?'reflex: ':'')+String(e.opt).replace(/^use:/,'use ')+')')); // the act this table line went with (#734)
   if(n>1)li.append(el('span','dm chx',' ×'+n));
   if(e.party&&!e.courier&&e.heard&&e.heard.length)li.append(el('span','dm chheard',' ('+e.heard.join(', ')+')'));return li}
 // The same speaker saying the same thing on the same channel back to back shows once with a count.
