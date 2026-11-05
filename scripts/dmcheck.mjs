@@ -24,6 +24,7 @@
 //   5. The runner end to end: `npm run dm -- --provider ollama` against a mock Ollama and a headless
 //      world opened with --dm: it claims the seat, reads, writes a note, pulls a lever, gets one
 //      refused, prints a cost line per turn and keeps its session in logs/agents/dm.json (resumed next run).
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn, spawnSync as realSpawnSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync, renameSync} from 'node:fs';
@@ -44,7 +45,7 @@ const kidPool = new Map(); let kidDir = null;
 const KID_LAUNCH = "const {spawnSync}=require('child_process'),fs=require('fs');const [out,j]=process.argv.slice(1);const {args,cwd,env}=JSON.parse(j);const r=spawnSync(process.execPath,args,{cwd,encoding:'utf8',env:{...process.env,...env}});fs.writeFileSync(out+'.tmp',JSON.stringify({stdout:r.stdout,stderr:r.stderr,status:r.status}));fs.renameSync(out+'.tmp',out)";
 function primeKids(list) {
   if (process.env.DMCHECK_SERIAL === '1') return;
-  kidDir = mkdtempSync(join(tmpdir(), 'dmcheck-kids-'));
+  kidDir = mkTmp('dmcheck-kids-');
   list.forEach(([args, env], i) => {
     const out = join(kidDir, i + '.json'), full = [fileURLToPath(import.meta.url), ...args];
     const k = realSpawn(process.execPath, ['-e', KID_LAUNCH, out, JSON.stringify({args: full, cwd: ROOT, env: env || {}})], {stdio: 'ignore'}); k.unref();
@@ -1351,7 +1352,7 @@ const mock = http.createServer((req, res) => {
 });
 await new Promise(res => mock.listen(0, '127.0.0.1', res));
 const OLLAMA = `http://127.0.0.1:${mock.address().port}`;
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-dmcheck-'));
+const tmp = mkTmp('eldmoor-dmcheck-');
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, RELAY_VERBOSE: '', AGENT_MIN_GAP: '0'};
 const kids = [];
 function start(args, ready) {
