@@ -181,7 +181,7 @@ world(); {const {markPlayer, playerAct} = await import('../src/sim/player.js'); 
   world(); {const a = hero(0), b = hero(1, 'Warrior'), m = mob(); const C = company(a, b); mates(a, b);
     m.maxhp = m.hp = 40000; m.hit = .001; m.cd = 99; m.x = a.x + 1; m.y = a.y;
     for (const x of [a, b]) {x.state = 'fight'; x.target = m}
-    const R0 = TRD.TR.ROUNDS; TRD.TR.ROUNDS = 1;
+    const R0 = TRD.TR.ROUNDS_MAX; TRD.TR.ROUNDS_MAX = 1;
     const sc = T.openScene('rescue', a.name + ' is going down', [a, ' is down.'], {hero: a.id, mob: m.id}, C);
     ok(sc && sc.rd === 1 && sc.ids.length === 2, 'a combat scene in rounds is open');
     rebuild(); a.hp = -3; (await import('../src/sim/heroes.js')).agentDie(a, m);
@@ -191,7 +191,7 @@ world(); {const {markPlayer, playerAct} = await import('../src/sim/player.js'); 
     ok(sc.rd >= 2 && sv.length >= 2 && sv.every((x, i) => x.rd === i + 1), 'the scene went on past TR.ROUNDS 1 while they bled: ' + sc.rd + ' rounds, a save in each (' + sv.map(x => x.res.replace(/^death save /, '')).join(' | ') + ')');
     ok(!sc.beats.some(x => x.by === 'foe' && /where they lie/.test(x.text)), 'the foe kept to the one standing (it does not finish)');
     ok(!(a.state === 'downed' && a.down && !a.down.stable) || sc.rd >= T.TABLE.DOWN_ROUNDS, 'when it ended nobody still bled (or the rescue cap was reached)');
-    TRD.TR.ROUNDS = R0;}
+    TRD.TR.ROUNDS_MAX = R0;}
 
   // (d) the foe strikes the downed only when nobody else stands
   world(); {const a = hero(0), m = mob(); const C = company(a);
@@ -520,6 +520,15 @@ world(); {const [a, k] = foes(); markPlayer(k, true); setRunnerLinks(x => x === 
   for (const a of S.agents) if (!L.includes(a)) a.lvl = 1; const hurt = L[0]; TD.takeWound(hurt, 'a boar', null); CRYPT.group = null;
   for (let i = 0; i < 60 && !CRYPT.group; i++) {CRYPT.cd = 0; dungeonCheck(.1)} ok(CRYPT.group && !CRYPT.group.mem.includes(hurt), 'a wounded background hero is left out of a Crypt party'); CRYPT.group = null}
 }
+
+// Stats cache (#730) and wounds (#656): the cached combat totals never hide a wound. The cache is warm before each change.
+world(); {const {WOUND} = await import('../src/sim/wounds.js'), TD = await import('../src/sim/tend.js'), {combatStats} = await import('../src/sim/stats.js'); const a = hero(0);
+  const full = maxHp(a), sp0 = combatStats(a).speed; combatStats(a); combatStats(a); // warm: two cached hits
+  TD.takeWound(a, 'a test', null); ok(maxHp(a) < full && Math.abs(maxHp(a) - full * (1 - WOUND.HP)) <= 1, 'cache on: max HP drops at once on a wound (' + full + ' -> ' + maxHp(a) + ')');
+  ok(combatStats(a).speed < sp0, 'and speed with it');
+  const one = maxHp(a); TD.takeWound(a, 'a test', null); ok(maxHp(a) < one, 'a second wound lowers it again with no other change');
+  S.gameMin += WOUND.DAYS * 1440 + 1; TD.woundTick(); ok(!a.wounds.length && Math.abs(maxHp(a) - full) <= 1 && combatStats(a).speed === sp0, 'when the wounds close max HP and speed are back at once');
+  TD.takeWound(a, 'a test', null); maxHp(a); a.wounds.pop(); ok(Math.abs(maxHp(a) - full) <= 1, 'a wound dropped by hand shows too');}
 
 // 8. Determinism: two runs from the same seed give the same downings and deaths.
 const run = () => {seed = 0x1234; forced.length = 0; init({fellowship: false}); for (let i = 0; i < 2400; i++) step(.5);

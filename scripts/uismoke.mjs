@@ -202,32 +202,32 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
 const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});(await import('../src/sim/council.js')).partySay(sp,'Hold the line at the ford.'); // a repeat said outside the agent tool (agents' own near-repeats are refused since #163)
   const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
   ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
-  select(mem[0]);setTab('chat');uiFast();const ul=tb().querySelector('.log');
+  select(mem[0]);setTab('chat');uiFast();
+  ok(/Chat panel/.test(tb().textContent)&&!tb().querySelector('.log.chat'),'dossier Mind > Chat holds no copy of the chat (#845): it points to the Chat panel');
+  const ul=$('chatList');
   const li=ul&&ul.children.find(x=>/Hold the line/.test(x.textContent));
-  ok(!!li&&/Hold the line at the ford. ×2/.test(li.textContent)&&/shouts: /.test(li.textContent)&&!!li.querySelector('.chheard'),'chat: repeated shout shows once with a count and who heard: '+(li&&li.textContent));
+  ok(!!li&&/Hold the line at the ford./.test(li.textContent)&&/shouts: /.test(li.textContent)&&!!li.querySelector('.chheard'),'chat: the shout shows with who heard it: '+(li&&li.textContent));
   ok(!!li&&!li.textContent.includes(sp.name+': '+sp.name),'chat: the own-name prefix is dropped');
   ok(!tb().querySelector('.ai-badge'),'chat: no mind or model badge');
   ok(!!li&&!li.querySelector('.chtag')&&li.querySelector('.hn').classList.contains('fmn'),'chat: no channel tag box, role-coloured name on the one line')
   ok(!!li&&li.querySelector('.chheard').textContent.includes(mem[0].name),'chat: the dim list names who heard: '+(li&&li.querySelector('.chheard')&&li.querySelector('.chheard').textContent));
   // an out-of-range shout (#182): "Fena calls out, but no one is near"
   {mem[0].chat.push({t:'12:00',d:Math.floor(sim.S.gameMin/1440)+1,from:sp,text:'Anyone out there?',trigger:'party',party:true,heard:[],far:[mem[2].name]});uiFast();
-   const lo=tb().querySelector('.log').children.find(x=>/Anyone out there/.test(x.textContent));
+   const lo=$('chatList').children.find(x=>/Anyone out there/.test(x.textContent));
    ok(!!lo&&/calls out, but no one is near/.test(lo.textContent)&&!lo.querySelector('.chheard'),'chat: a shout nobody heard reads "calls out, but no one is near": '+(lo&&lo.textContent))}
   // day stamps and separators (#168): "D3 13:57", a "Day N" row where the day changes; an older entry with no day keeps its bare time
   {const h=mem[0];const d0=Math.floor(sim.S.gameMin/1440)+1;h.chat.push({t:'23:58',d:d0+5,from:sp,text:'Stamp test A.',trigger:'x',party:true},{t:'01:10',d:d0+6,from:sp,text:'Stamp test B.',trigger:'x',party:true});
-   uiFast();const u2=tb().querySelector('.log.chat'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
+   uiFast();const u2=$('chatList'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
    ok(tm.some(t=>/^D\d+ \d\d:\d\d$/.test(t)),'chat: times carry the game day: '+tm.slice(0,3).join(', '));
    ok(u2.children.filter(x=>x.classList.contains('daysep')).length>=2,'chat: day separators appear where the day changes');
-   // #181: the dossier Chat tab is a per-hero filter of the chat panel's stream; the phone-width View group wraps
-   {const mine=tb().querySelector('.log.chat').textContent;h.chat.push({t:'09:00',d:d0+7,from:h,text:'Only-for-me test line.',trigger:'x'});
-    const other=mem.find(m=>m!==h&&m!==sp&&m.chat)||{chat:[]};other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
-    const t2=tb().querySelector('.log.chat').textContent;
-    ok(/Only-for-me/.test(t2)&&!/Only-for-other/.test(t2),'dossier chat: shows this heros slice of the stream only');
-    ok(tb().querySelector('.log.chat').children.length>0&&mine.length>0,'dossier chat: built from the stream');
-    const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   {const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
     ok(/\.group\{[^}]*flex-wrap:wrap/.test(css0),'phone width: the View button group wraps instead of widening the page')}
    const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8').match(/\.log\.chat li\.chl\{[^}]*\}/);
    ok(!!css&&!/text-indent:\s*-/.test(css[0]),'chat: no negative text-indent (the stamp cannot start left of the list box)')}}
+// Company tab Lately feed and the whole-map spots (#845, #844)
+{uiFast();const ly=$('felbody').querySelector('.fellately');ok(!!ly&&!!ly.querySelector('.fth-h'),'Company tab: a Lately feed sits under the threads');
+  const {companySpots}=await import('../src/render/wholemap.js');const sp=companySpots();
+  ok(sp.length>0&&sp.every(x=>x.name&&x.r>=5)&&sp.filter(x=>x.followed).length===1,'whole map: each company has a ring spot and a name, one followed: '+sp.map(x=>x.name).join(', '))}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 
 // The Agents panel (#145): limits and spend in one place, sent to the relay's supervisor
@@ -369,6 +369,51 @@ console.log('declutter');
    $('dmPane').children[0].children[0].click();uiFast();ok(/scripted scene opens/.test($('dmChatList').textContent)&&!!$('dmChatList').querySelector('.dimmed'),'the Scripted DM toggle shows its entries, dimmed');
    const row=$('dmChatList').querySelector('[data-dmid]');ok(row.tabIndex===0&&row.getAttribute('role')==='button','DM rows are keyboard focusable');
    $('chatTabs').children.find(b=>b.dataset.ctab==='chat').click()}}
+
+// ---- a Table scene as one exchange in the Chat (#734): header, frame or question, lines with their act, result ----
+console.log('chat scene groups');
+{const S=sim.S,F=SLT.slotted(),cl=$('chatList'),fb=$('chatFilter'),d=Math.floor(S.gameMin/1440)+3,gm=(d-1)*1440+18*60+21,t='18:21',t2='18:30';
+  const show=k=>{fb.children.find(b=>b.dataset.cf===k).click();uiFast();return cl.children.filter(c=>c.tagName==='LI'&&!c.classList.contains('daysep'))};
+  const kv=F.id+':97340',kc=F.id+':97341',ids=mem.map(a=>a.id),said=[];
+  const P={id:97340,by:mem[0].id,byName:mem[0].name,kind:'crypt',details:'A group is forming for The Sunken Crypt; do we all go?',at:gm,status:'failed',result:'Failed 2-3 ('+mem[0].name+' settles: not yet)',done:gm,votes:{}};
+  mem.forEach((a,i)=>P.votes[a.id]={v:i<2?'yes':'no',reason:i===1?'We all go down together.':'',by:i===4?'reflex':'agent',at:gm});
+  F.props.push(P);
+  const line=(a,text,sk,opt,rfx,tt)=>{const e={t:tt,d,from:a,text,trigger:'table',scene:true,sk,opt,fh:true,...(rfx?{rfx:1}:{})};for(const b of mem)b.chat.push(e);said.push(e);return e};
+  line(mem[1],'We all go down together.',kv,'yes',0,t);line(mem[2],'Not yet. I am level two.',kv,'no',0,t);
+  line(mem[0],'Now, while it turns!',kc,'strike',1,t2);line(mem[1],'On me. Get behind.',kc,'guard',0,t2);
+  const keep=S.tableLog;S.tableLog=(keep||[]).slice();
+  S.tableLog.push({key:kv,company:F.id,kind:'decision',title:'Put to the party: '+P.details,frame:mem[0].name+' puts it to the party: '+P.details+'. Everyone votes.',at:gm,end:gm,where:'Highgate',ids,prop:P.id,
+    acts:mem.map((a,i)=>({id:a.id,name:a.name,k:i<2?'yes':'no',by:i===4?'reflex':'agent',said:i===1||i===2})),result:P.result+'.'});
+  S.tableLog.push({key:kc,company:F.id,kind:'elite',title:'The Ashen Stalker',frame:'A grey shape drops from the ridge, eyes like coals.',at:gm+9,end:gm+12,where:'Mirefen',ids,
+    acts:mem.map((a,i)=>({id:a.id,name:a.name,k:i===1?'guard':i===3?'heal':'strike',by:i===0||i===4?'reflex':'agent',said:i<2})),result:'The Ashen Stalker is badly hurt. '+mem[4].name+' fell back. (3 rounds.)'});
+  const tbl=show('table'),tx=tbl.map(r=>r.textContent),H=tbl.filter(r=>r.classList.contains('scg-h'));
+  ok(H.length>=2&&/TABLE/.test(H[0].textContent)&&/The Ashen Stalker · elite foe · Mirefen/.test(H[0].textContent)&&/Put to the party: A group is forming for The Sunken Crypt; do we all go\? · vote · Highgate/.test(H[1].textContent),'Table: a header per scene, newest scene on top: '+H.slice(0,2).map(h=>h.textContent).join(' | '));
+  const iv=tbl.indexOf(H[1]),grp=tbl.slice(iv,iv+8).map(r=>r.textContent);
+  ok(/proposes: A group is forming/.test(grp[1])&&!/\[crypt/.test(grp[1]),'Table: the vote\'s question (the proposal) comes right under its header: '+grp[1]);
+  ok(/We all go down together\. \(yes\)/.test(grp.join('\n'))&&/Not yet\. I am level two\. \(no\)/.test(grp.join('\n')),'Table: each line has its act dimmed after the words');
+  ok(grp.some(x=>x.includes(mem[3].name)&&/\(no\)$/.test(x))&&grp.some(x=>x.includes(mem[4].name)&&/\(reflex: no\)$/.test(x)),'Table: a silent member\'s act shows, a reflex one as "(reflex: no)"');
+  ok(grp[2].includes(mem[0].name)&&/\(yes\)$/.test(grp[2])&&grp[3].includes(mem[1].name)&&grp[5].includes(mem[3].name)&&grp[6].includes(mem[4].name),'Table: lines and silent acts in seat order: '+grp.slice(2,7).join(' / '));
+  ok(/Failed 2-3/.test(grp[7])&&tbl[iv+7].classList.contains('scg-r')&&tbl[iv+7].classList.contains('scg-end'),'Table: the result closes the group: '+grp[7]);
+  ok(!tx.some(x=>/ votes (yes|no)/.test(x)),'Table: no separate vote rows (the lines carry the votes)');
+  const ic=tbl.indexOf(H[0]),cg=tbl.slice(ic,ic+8);
+  ok(cg.every(r=>r.classList.contains('scg'))&&/^DM: A grey shape/.test(cg[1].textContent.replace(/^D\d+ \d\d:\d\d/,'')),'Table: the combat group keeps together, the DM\'s frame under its header: '+cg[1].textContent);
+  ok(/Now, while it turns! \(reflex: strike\)/.test(cg.map(r=>r.textContent).join('\n'))&&/On me\. Get behind\. \(guard\)/.test(cg.map(r=>r.textContent).join('\n')),'Table: combat lines with their acts, a reflex line marked');
+  ok(/badly hurt/.test(cg[cg.length-1].textContent)&&cg[cg.length-1].classList.contains('scg-r'),'Table: the combat result closes its group: '+cg[cg.length-1].textContent);
+  ok(!!cl.querySelector('.scg-h .scgt')&&!!cl.querySelector('.chopt'),'Table: the header label and the dimmed act have their own classes');
+  const pty=show('party').map(r=>r.textContent).join('\n');
+  ok(/Put to the party: A group is forming.*· vote/.test(pty)&&/proposes: A group is forming/.test(pty)&&/votes no/.test(pty)&&/Failed 2-3/.test(pty)&&!/Ashen Stalker/.test(pty)&&!/I am level two/.test(pty),'Party: the vote\'s header, question, votes and result; not the combat scene, not the table lines');
+  const all=show('all'),at=all.map(r=>r.textContent),ks=all.map(r=>r.getAttribute('data-k'));
+  ok(at.filter(x=>/Put to the party: A group is forming/.test(x)).length===1&&at.filter(x=>/proposes: A group is forming/.test(x)).length===1&&!ks.some(k=>/^v97340-/.test(k||'')),'All: the vote group once (header, question, the lines carry the votes): '+at.filter(x=>/A group is forming|votes/.test(x)).join(' / '));
+  ok(new Set(ks).size===ks.length,'All: every row has its own key');
+  const node=all.find(r=>r.classList.contains('scg-h'));uiFast();ok(cl.children.includes(node),'All: the header is the same node after a refresh');
+  // live: an open scene's header says who it waits for
+  {const T=await import('../src/sim/table.js'),sc={id:97342,company:F.id,kind:'check',title:'A rotten bridge',frame:['The planks sag.'],ids:ids.slice(),i:0,phase:'turn',t:0,acts:{[mem[0].id]:{k:'steady',line:'',by:'agent'}},beats:[],ctx:{},pause:true,at:gm+20,all:true,w:{}};
+   const was=S.table;S.table=sc;let ok1=false,txt='';try{show('table');const h=cl.querySelector('[data-k="sh'+F.id+':97342"]');txt=h?h.textContent:'';ok1=/A rotten bridge · check/.test(txt)&&/1\/5 answered/.test(txt)}catch(e){txt=String(e)}finally{S.table=was}
+   ok(ok1,'Table: an open scene\'s header shows the answers so far live: '+txt);void T}
+  // the dossier's Chat tab points to the Chat panel (#845); the scene exchange lives there
+  select(mem[2]);setTab('chat');uiFast();ok(/Chat panel/.test(tb().textContent)&&!tb().querySelector('.scg-h'),'dossier Chat: a company member tab points to the Chat panel, which holds the scene exchange');
+  // clean up
+  F.props.splice(F.props.indexOf(P),1);S.tableLog=keep;if(!keep)delete S.tableLog;for(const b of mem)b.chat=b.chat.filter(e=>!said.includes(e));show('all')}
 
 // The run gate (#171): the world only runs while every required agent seat is connected
 console.log('run gate');
@@ -758,7 +803,7 @@ console.log('the DM prepares the table');
       {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[0].name+' (drawn)',res:'d20 1+4=5 vs AC 15 (a natural 1): missed',by:'foe',rd:2,roll:R(1,4,15,0,0,0,ms[0].name)}]};
   m.target=ms[0];S.table=sc;TB.renderTable(1);
   const t=()=>box.textContent,v=TB.combatView();
-  ok(!box.hidden&&/ROUND 2\/3/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+'/'+(v&&v.of)+')');
+  ok(!box.hidden&&/ROUND 2(?!\/)/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+', no "of")');
   const chips=box.querySelectorAll('.tci');
   ok(chips.length===ms.length+1&&chips[1].classList.contains('foe'),'combat banner: initiative order with the foe at its place ('+chips.length+' chips)');
   ok(chips[2].classList.contains('cur')&&/▶/.test(chips[2].textContent)&&!chips[1].classList.contains('cur'),'combat banner: the current actor is marked');
@@ -1633,5 +1678,15 @@ console.log('page watchdog');
   ok(/page busy \(no answer for 16\.2 s\)/.test(ML.mindLabel(a).text),'a relay time-out on a silent page reads page busy as well: '+ML.mindLabel(a).text);
   PW.resetPageWatch();ok(ML.linkOf(a)==='connected','once it passes the label is live again');
   BR.bridgeFeed(null);PW.setPageLog(null)}
+// ---- #843/#848: the frame row never changes height; the DM bar is one line while calm ----
+{const fs=await import('node:fs'),css=fs.readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  const shape=()=>[...$('frames').querySelectorAll('.pf[data-hid]')].map(f=>f.children.map(c=>c.className.split(' ')[0]).join(','));
+  uiFast();const before=shape();ok(before.length>0&&before.every(x=>x==='pfkey,pftop,meter,purp,pfsl,pfsl,pffoot'),'frames: the same six parts in every frame ('+before[0]+')');
+  const f0=$('frames').querySelector('.pf[data-hid]'),sl=f0.querySelectorAll('.pfsl');
+  ok(sl.length===2&&sl[0].querySelector('.pftg')&&sl[0].querySelector('.pfdown')&&sl[1].querySelector('.pfchips')&&sl[1].querySelector('.pfrep'),'frames: target and downed share one fixed slot, chips and the replacement line the other');
+  ok(!/\.pf(tg|rep|chips):empty\{display:none\}/.test(css)&&/\.pfsl1\{height:17px\}/.test(css)&&/\.pfsl2\{height:15px\}/.test(css),'frames: nothing collapses when empty; the slots have fixed heights');
+  const m=sim.S.mobs.find(x=>x.alive&&!x.gone),a=sim.S.agents.find(x=>x.company!=null&&x.state!=='dead'&&!x.hidden);
+  if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
+  ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

@@ -101,7 +101,39 @@ export const MOVES={
     fx:{taken:.8},dur:6,durR:2,use:'rally',desc:'A crown of green antlers over the company: every friend within five tiles takes blows at 80% for six seconds.'},
   dirtytrick:{name:'Dirty Trick',cls:'Rogue',spec:'trickster',kind:'control',lvl:10,cd:22,rounds:3,cost:null,target:'foe',range:'weapon',swing:false,
     fx:{delay:3,mark:1.2},dur:8,durR:2,save:{abil:'insight',stat:'wits'},use:'mark',desc:'Sand, a feint, a shout: the foe loses 3 seconds and, for eight, every blow on it does 20% more (a save resists both).'},
+  // ---- Level-15 capstones (issue #713, epic #79): one more active per path, learned at level 15 (appended after the level-10 rows) ----
+  gatewall:{name:'Gatewall',cls:'Warrior',spec:'warden',kind:'defend',lvl:15,cd:60,rounds:7,cost:null,target:'allies',range:5,swing:false,
+    fx:{taken:.72},dur:8,durR:2,use:'rally',desc:'Plant the shield as a gate and the company behind it: every friend within five tiles takes blows at 72% for eight seconds.'},
+  redharvest:{name:'Red Harvest',cls:'Warrior',spec:'reaver',kind:'attack',lvl:15,cd:40,rounds:5,cost:{hp:.08},target:'foes',range:2.2,swing:false,
+    fx:{dmg:1.4},use:'crowd',desc:'A reaping circle of the whole blade: 140% damage to every foe at your side, and it costs 8% of your health.'},
+  lastrune:{name:'Last Rune',cls:'Mage',spec:'runescribe',kind:'attack',lvl:15,cd:45,rounds:5,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:3.2,crit:.15},use:'burst',desc:'The rune that ends the sentence: 320% damage with a 15% better chance to crit.'},
+  deepwinter:{name:'Deep Winter',cls:'Mage',spec:'rimekeeper',kind:'control',lvl:15,cd:50,rounds:6,cost:null,target:'foes',range:4,swing:false,
+    fx:{dmg:.5,delay:4},save:{abil:'grit',stat:'wits'},use:'crowd',desc:'Winter falls on the whole fight: every foe within four tiles takes 50% damage and loses 4 seconds (half on a save).'},
+  hawkfall:{name:'Hawkfall',cls:'Hunter',spec:'stalker',kind:'attack',lvl:15,cd:45,rounds:5,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:3.4,crit:.25},use:'burst',desc:'The arrow that drops like a stooping hawk: 340% damage with a 25% better chance to crit.'},
+  deadfall:{name:'Deadfall',cls:'Hunter',spec:'trapper',kind:'control',lvl:15,cd:50,rounds:6,cost:null,target:'foe',range:'weapon',swing:false,
+    fx:{dmg:.8,delay:7},save:{abil:'reflex',stat:'insight'},use:'snare',desc:'A hidden pit and a weighted log: 80% damage and the foe loses 7 seconds before its next blow (half on a save).'},
+  bellreckoning:{name:'Bell of Reckoning',cls:'Priest',spec:'battlecleric',kind:'attack',lvl:15,cd:40,rounds:5,cost:null,target:'foes',range:2.5,swing:false,
+    fx:{dmg:1.2,delay:1.5},use:'crowd',desc:'A bell struck once over the fight: 120% damage to every foe within two and a half tiles, and each reels for 1.5 seconds.'},
+  seconddawn:{name:'Second Dawn',cls:'Priest',spec:'mender',kind:'heal',lvl:15,cd:60,rounds:7,cost:null,target:'allies',range:5,swing:false,
+    fx:{heal:{base:24,lvl:4,hp:.12}},use:'masshurt',desc:'The light comes up a second time: every friend within five tiles heals 24 + 4 per level + 12% of their health.'},
+  lastwhisper:{name:'Last Whisper',cls:'Rogue',spec:'cutthroat',kind:'attack',lvl:15,cd:45,rounds:5,cost:null,target:'foe',range:'weapon',swing:true,
+    fx:{dmg:4,crit:.2},use:'opener',desc:'The blow on a fresh, unhurt foe that it never hears: 400% damage with a 20% better chance to crit.'},
+  mirrortrick:{name:'Mirror Trick',cls:'Rogue',spec:'trickster',kind:'defend',lvl:15,cd:50,rounds:6,cost:null,target:'self',range:0,swing:false,
+    fx:{taken:.4,shake:3},dur:4,durR:1,use:'selfhurt',desc:'Three of you, and none of them where the blade falls: foes on you lose 3 seconds, and blows land at 40% for four.'},
+  battlesaga:{name:'Battle-Saga',cls:'Skald',spec:'warchanter',kind:'attack',lvl:15,cd:40,rounds:5,cost:null,target:'foes',range:3.5,swing:false,
+    fx:{dmg:1.1,delay:1},use:'crowd',desc:'The saga sung at full voice: 110% damage to every foe within three and a half tiles, and each loses 1 second.'},
+  evensong:{name:'Evensong',cls:'Skald',spec:'soothsinger',kind:'heal',lvl:15,cd:55,rounds:6,cost:null,target:'allies',range:5,swing:false,
+    fx:{heal:{base:14,lvl:3.5,hp:.08},taken:.88},dur:6,durR:2,use:'masshurt',desc:'The last song of the day: every friend within five tiles heals 14 + 3.5 per level + 8% of their health and takes blows at 88% for six seconds.'},
+  thornstorm:{name:'Thornstorm',cls:'Wildspeaker',spec:'thornbinder',kind:'control',lvl:15,cd:50,rounds:6,cost:null,target:'foes',range:4,swing:false,
+    fx:{dmg:.9,delay:2.5},save:{abil:'reflex',stat:'insight'},use:'crowd',desc:'The briars rise in a storm: every foe within four tiles takes 90% damage and loses 2.5 seconds (half on a save).'},
+  heartspring:{name:'Heart of Spring',cls:'Wildspeaker',spec:'springwarden',kind:'defend',lvl:15,cd:55,rounds:6,cost:null,target:'allies',range:5,swing:false,
+    fx:{taken:.7,heal:{base:6,lvl:2,hp:.03}},dur:8,durR:2,use:'rally',desc:'The green heart of the wood opens over the company: every friend within five tiles takes blows at 70% for eight seconds and is mended a little.'},
 };
+
+// The level the path capstones are learned at (issue #713).
+export const CAPSTONE_LVL=15;
 
 // Passives: always on from the level they are learned at. Keys (read by sim/stats.js and sim/moves.js):
 //   crit (+chance), defense (+share turned aside), health (+share of Health), takenBelow {hp, mul}
@@ -162,6 +194,6 @@ export const CONDITIONS={
   ward:  {name:'Warded',  rounds:0,save:null,    desc:'Blows on it land lighter (a ward ability); runs down with the rounds.'},
 };
 // The moves that leave a condition at the Table when the foe fails the move's own save (no second roll).
-export const MOVE_CONDS={rimering:'root',snare:'root',sinewcut:'root',rootbind:'root',thornfield:'root',thornring:'root',winterhold:'stun',dirtytrick:'stun'};
+export const MOVE_CONDS={rimering:'root',snare:'root',sinewcut:'root',rootbind:'root',thornfield:'root',thornring:'root',winterhold:'stun',dirtytrick:'stun',deepwinter:'stun',deadfall:'root',thornstorm:'root'};
 // What a creature's own trick (data/bestiary.js ABILITIES fx) leaves when its blow lands at the Table.
 export const FX_CONDS={poison:'poison',root:'root',slow:'root',fear:'stun',knockback:'stun'};
