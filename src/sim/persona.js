@@ -31,7 +31,7 @@ import {bond,FRIEND,CLOSE} from './bonds.js';
 import {topScores,SKILLS} from './abilities.js';
 import {ARCHETYPES} from '../data/archetypes.js';
 import {refreshStances} from './memory.js'; // a cycle (memory.js reads scriptedStance); only called at run time
-import {inSlots,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
+import {inSlots,slotKeyOf,slotted,placeWord} from './company.js'; // the slotted company (#588)
 
 const pick=(a,salt,list)=>list[Math.floor(hash(a.id|0,salt,7)*list.length)%list.length];
 const lc=t=>t?t.charAt(0).toLowerCase()+t.slice(1):'';
@@ -47,7 +47,7 @@ const goalTarget=a=>a.goal&&a.goal.target?a.goal.target:null;
 // ---- facts: what the sim knows about this hero, compact ----
 const NOTABLE=/^(Reached level (5|10|15|20)|Slew |Looted |Paid the blood debt|Avenged |Killed |Lost a |Now counts |Became friends|Saw through |Failed at |Cleared |Completed )/;
 export function factsOf(a){const r=raceOf(a),c=homeOf(a);
-  return {people:r.name,culture:r.culture,home:a.home||null,town:a.born||c.name,cls:a.cls,role:ROLE_NAME[roleOf(a)],lvl:a.lvl,
+  return {people:r.name,culture:r.culture,home:a.home||null,town:a.born||c.name,cls:a.cls,role:placeWord(a.cls),lvl:a.lvl,
     scores:topScores(a,3).join(', '),skills:(a.prof||[]).map(k=>SKILLS[k]?SKILLS[k].name:k).join(', '),
     origin:a.origin||null,trade:tradeOf(a),traits:(a.traits||[]).map(t=>t+(TRAITS[t]?': '+TRAITS[t].desc:'')),
     oath:a.goal&&!a.goal.offered?a.goal.text+(a.goal.done?' (kept)':''):null,...(threadOf(a)?{thread:threadText(a)}:{}),
@@ -157,8 +157,8 @@ export function buildBackstory(a,mates=[],fname='the Fellowship'){const f=a.fac=
   const flaw=a.name+' '+(tr?FLAW[tr]:'keeps a secret about the night they left home, and it is not a flattering one')+'.';
   const p=buildPersona(a,[]);
   const wants=a.name+' wants '+lc(p.wants).replace(/\.$/,'')+'. What keeps them awake is '+lc(p.fears).replace(/\.$/,'')+'.';
-  const role=ROLE_NAME[roleOf(a)];
-  const joined=a.name+' joined '+fname+' as its '+(role==='Damage'?'blade':lc(role))+' because '+(swornOf(a)?'one sword alone will not '+lc(a.goal.text):'the roads are getting worse and five live longer than one')+'.';
+  const role=placeWord(a.cls);
+  const joined=a.name+' joined '+fname+' as its '+role+' because '+(swornOf(a)?'one sword alone will not '+lc(a.goal.text):'the roads are getting worse and five live longer than one')+'.';
   const link=pickLink(a,mates),ltext=link?fill(LINK[link.kind]||LINK.debt,{name:a.name,other:link.name,home:v.home===(byId(link.id)||{}).home?v.home:'quarter of '+c.name}):'';
   const summary=(a.originShort?a.name+', '+a.originShort+', ':a.name+', a '+r.name+' '+a.cls.toLowerCase()+', ')+'who wants '+lc(p.wants).replace(/\.$/,'')+'.';
   return {src:'scripted',edited:false,at:S.gameMin,paras:{family,arms,defining,flaw,wants,joined,link:ltext},summary:summary.slice(0,BACKSTORY_FIELDS.summary),link,world:T}}
@@ -170,7 +170,7 @@ export const personaValue=(P,k)=>!P?'':k==='traits'?(Array.isArray(P.traits)?P.t
 
 // ---- relay snapshots and validated application ----
 const compOf=(b,a)=>({id:b.id,name:b.name,cls:b.cls,people:raceOf(b).name,home:b.home||null,trade:b.trade||null,lvl:b.lvl,bond:bond(a,b),
-  role:ROLE_NAME[roleOf(b)],origin:b.origin?String(b.origin).slice(0,160):null}); // never a companion's sheet, persona or memories (issue #123)
+  role:placeWord(b.cls),origin:b.origin?String(b.origin).slice(0,160):null}); // never a companion's sheet, persona or memories (issue #123)
 export function personaSnapshot(a,mates,fname){const P=a.persona||buildPersona(a,mates);
   return {name:a.name,fac:FAC[a.fac].name,fellowship:fname,facts:factsOf(a),backstory:a.backstory?a.backstory.summary:null,
     link:a.backstory&&a.backstory.link?a.backstory.link:null,companions:mates.filter(b=>b!==a).map(b=>compOf(b,a)),
@@ -221,8 +221,8 @@ export function authoredStance(a,b){const P=a&&a.persona;if(!P||!b)return '';con
 // ---- the compact block prompts and the agent player get ----
 export function fellowCard(a){if(!a||!inSlots(a))return null;const F=slotted(),P=a.persona,M=a.memory;
   const comp=(F?F.ids:[]).filter(id=>id!==a.id).map(byId).filter(alive).map(b=>{const st=(M&&M.stances&&M.stances[b.id])||(P&&P.stances&&P.stances[b.id])||'';
-    return b.name+' ('+(ROLE_NAME[roleOf(b)]||b.cls)+', '+b.cls+' L'+b.lvl+')'+(st?': '+st:'')});
-  const c={fellowship:F?F.name:null,role:ROLE_NAME[roleOf(a)]};
+    return b.name+' ('+b.cls+' L'+b.lvl+')'+(st?': '+st:'')});
+  const c={fellowship:F?F.name:null,role:placeWord(a.cls)};
   if(P){c.voice=P.voice;c.wants=P.wants;c.fears=P.fears;c.quirk=P.quirk;c.never_says=P.never_says}
   if(a.backstory)c.backstory=a.backstory.summary;
   if(M){if(M.long)c.memory_long=String(M.long).slice(0,500);const r=(M.recent||[]).slice(-5).map(e=>e.text);if(r.length)c.memory_recent=r}
