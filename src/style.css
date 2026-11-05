@@ -814,6 +814,7 @@ button.tbtn.danger{border-color:var(--red)}
 .dgbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:5px 8px;background:rgba(8,10,20,.88);border-top:2px solid var(--edge)}
 .dgback{font-family:var(--px);font-size:8px;padding:5px 8px;min-height:26px;background:#1a1d2c;color:var(--gold);border:1px solid var(--gold);cursor:pointer}
 .dgback:focus-visible,.dglink:focus-visible{outline:2px solid var(--gold)}
+.dgname{cursor:pointer;text-decoration:underline dotted}.dgname:focus-visible{outline:2px solid var(--gold)} /* a DM-made site's name in a hero's Log opens its dungeon view (#642) */
 .dgtxt{flex:1 1 240px;min-width:0;font-size:16px;line-height:1.1;color:#e8e4d0}
 .dgname{font-family:var(--px);font-size:8px;color:#9ae0b8;letter-spacing:.04em}
 .dgrooms{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:3px 10px;margin:0;padding:0;list-style:none;font-size:15px;color:var(--dim)}
