@@ -113,6 +113,22 @@ export function createRenderer(cv,screenEl){
   new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();initSceneView();
 
   function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
+  // Night tint by the hour: dusk and dawn are saturated (plum, then rose), full night a lifted deep blue, so the ground keeps its detail.
+  const nt=[0,0,0],nc=document.createElement('canvas'),nx=nc.getContext('2d'),NR=4;
+  function nightTint(){const h=(S.gameMin/60)%24,N=LIGHT.night,Wm=h>=12?LIGHT.dusk:LIGHT.dawn;
+    let f=h>=21||h<5?1:h>=12?(h-18)/3:(7-h)/2;f=clamp(f,0,1);f=f*f*(3-2*f);
+    for(let i=0;i<3;i++)nt[i]=Math.round(Wm[i]+(N[i]-Wm[i])*f);return nt}
+  function punch(x,y,r,a){const g=nx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,'rgba(0,0,0,'+a+')');g.addColorStop(.55,'rgba(0,0,0,'+a*.55+')');g.addColorStop(1,'rgba(0,0,0,0)');nx.fillStyle=g;nx.fillRect(x-r,y-r,r*2,r*2)}
+  function nightPass(sc,dk,sel,inView){
+    const w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR);if(nc.width!==w||nc.height!==h){nc.width=w;nc.height=h}
+    const c=nightTint();nx.setTransform(1,0,0,1,0,0);nx.globalCompositeOperation='source-over';nx.clearRect(0,0,w,h);
+    nx.fillStyle='rgba('+c[0]+','+c[1]+','+c[2]+','+(Math.pow(dk/.55,.5)*LIGHT.nightA)+')';nx.fillRect(0,0,w,h);
+    nx.globalCompositeOperation='destination-out';
+    const k=sc/NR,ox=cam.offX/NR,oy=cam.offY/NR; // light radii are in world units
+    let n=0;const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;punch(x*k+ox,y*k+oy,r*k,a*Math.min(1,dk/.4))};
+    for(const m of S.mobs){if(m.alive&&!m.hidden)lit(m,17,.6,6)}
+    for(const a of S.agents){if(a.hidden||a.state==="dead")continue;if(a===sel||a.company!=null)lit(a,a===sel?48:40,.95,7);else lit(a,28,.8,7)}
+    ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(nc,0,0,w,h,0,0,cv.width,cv.height);ctx.imageSmoothingEnabled=false}
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
   // A thin disposition ellipse at the feet (close zoom only), the same colours as the UI.
   function dispoRing(x,y,w,d){ctx.strokeStyle=(DISP[d]||DISP.neutral).color;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
@@ -238,7 +254,12 @@ export function createRenderer(cv,screenEl){
     drawWeather(ctx,S,cam,blink);
     // night: a blue wash, then light added back (lighter): lava fields glow, torches flicker,
     // crypt mouths breathe a faint green, the camp fire (camp.js)
-    const dk=darkness();if(dk>0){const N=LIGHT.night;ctx.fillStyle='rgba('+N[0]+','+N[1]+','+N[2]+','+dk+')';if(cut&&cut.edge)ctx.fillRect(vx0,vy0,vw,vh);else ctx.fillRect(0,0,W*T,H*T); // an outdoor scene's arena past the edge darkens too
+    const dk=darkness();if(dk>0){
+      // The night is a low-resolution light map (a quarter of the screen): the wash is laid at the hour's tint, then a soft hole is cut
+      // under each company member, the followed hero and (fainter) every other hero and foe in view, so people stay in colour and
+      // the dark stays dark everywhere else. One small canvas, a handful of gradients, one scaled blit a frame.
+      nightPass(sc,dk,sel,inView);
+      ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);
       ctx.globalCompositeOperation='lighter';
       const lg=lavaGlow(!S.boss.alive);ctx.globalAlpha=dk*.65;ctx.imageSmoothingEnabled=true;ctx.drawImage(lg,0,0,W,H,0,0,W*T,H*T);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1;
       const now=performance.now()/1000;
