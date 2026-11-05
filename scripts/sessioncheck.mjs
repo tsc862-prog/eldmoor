@@ -9,6 +9,7 @@
 //      its notes. 2b. A wait with turn_over ends the turn with no further model call, through the real /mcp route (#868). 2c. Lazy tools (#808): the schemas of
 //      the cold tools leave the prompt, a deferred tool is found and called, and how much the prompt shrinks; the runners with the switch on and off. 6. A "fresh" line on stdin rolls at the next safe moment. 7. AGENT_HEAR_WAKE_MIN. 8. The report's context table.
 // Sessions go to a temporary folder (AGENT_LOGS, CLAUDE_CONFIG_DIR), never to logs/agents/ or the owner's ~/.claude.
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync} from 'node:fs';
@@ -23,7 +24,7 @@ import {ctxSection, toolLoadSection, compareMinds} from './mind-compare.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0; const ok = (c, m) => {console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) fail++};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-session-'));
+const tmp = mkTmp('eldmoor-session-');
 
 // ---------------------------------------------------------------- 1. the rules
 console.log('the rules');

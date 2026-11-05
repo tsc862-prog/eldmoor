@@ -31,7 +31,7 @@ async function run() {
     '--world', join(OUT, 'world.json'), '--log-world', WORLD, '--no-relay']);
   for (let i = 0; i < 300 && !log.some(l => /headless world at /.test(l)); i++) await sleep(200);
   if (!log.some(l => /headless world at /.test(l))) throw new Error('the headless world did not start\n' + log.slice(-20).join('\n'));
-  const rflags = ['--url', base, '--provider', 'ollama', '--model', 'mock-tools:1b', '--ollama-url', mock.url];
+  const rflags = ['--url', base, '--provider', 'ollama', '--model', 'mock-table:1b', '--ollama-url', mock.url];
   kid('fellowship', ['scripts/fellowship.mjs', ...rflags, '--min-gap', '2', '--heartbeat', '60']);
   console.log(`[nightly] world on ${base}, runners started; playing ${MINUTES} real minutes at ${SPEED}x`);
   const end = Date.now() + MINUTES * 60000;

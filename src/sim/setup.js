@@ -18,6 +18,8 @@
 //         may hold both.
 //   others  'full' (the default, also when absent): the world's usual roster of background heroes. 'none' (#780): no roster;
 //         the setup's heroes and whoever the DM brings (summon_hero). Kept in S.setup, so a load keeps it.
+//   prologue  'delve' or 'none' (#922, sim/prologue.js): a first dungeon before the open world, for a company of two or more. Absent =
+//         PROLOGUE_DEFAULT (data/prologues.js); stored only when it differs. Needs a host with runner links and the Table on.
 //   fac   the together faction; for apart the default of a hero with none
 //   mind  {mode:'agent', provider:'anthropic'|'ollama'|'openai'|'huggingface'|'google', model}: an agent runner plays the hero through
 //         the game tools (the model is what its runner is started with). Agent heroes are always agent-played
@@ -47,6 +49,7 @@ import {PROVIDERS} from '../data/providers.js';
 import {markPlayer} from './player.js';
 import {setDmSeat} from './dmagent.js';
 import {PROF,MAX_PROF} from '../data/professions.js';
+import {PROLOGUE_DEFAULT,PROLOGUE_VALUES} from '../data/prologues.js';
 import {seedProfs} from './professions.js';
 import {hash} from '../core/rng.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js';
@@ -56,6 +59,9 @@ import {inSlots,slotted,SLOTS,SLOT_KEYS} from './company.js'; // the slotted com
 export const SETUP_VERSION=2;
 export const MODES=['together','apart'];
 export const OTHERS=['full','none']; // other heroes in the world (#780)
+// The first delve (#922): what a setup's opening is. Absent = the default, so only a difference is ever stored.
+export const prologueOf=s=>s&&PROLOGUE_VALUES.includes(s.prologue)?s.prologue:PROLOGUE_DEFAULT;
+const prologueField=s=>s&&PROLOGUE_VALUES.includes(s.prologue)&&s.prologue!==PROLOGUE_DEFAULT?{prologue:s.prologue}:{};
 // Seats (#455, #402 decision 6): agent heroes in the world, the DM outside the count. Five when any mind is paid
 // (Claude or OpenAI), up to ten when every mind is local (Ollama). MAX_HEROES is the most any setup may hold.
 export const SEATS={PAID:5,LOCAL:10};
@@ -96,7 +102,7 @@ export function slotsOf(s){s=asV2(s);const H=s&&Array.isArray(s.heroes)?s.heroes
 // The v1 editing shape of a together setup of the five (the setup page edits places until #454), or null.
 export function slotsView(s){s=asV2(s);if(!s||s.mode==='apart')return null;const map=slotsOf(s);if(!map)return null;
   const slots={};for(const k of SLOT_KEYS){const {fac,start,group,...h}=s.heroes[map[k]];slots[k]=clone(h)}
-  return {v:1,world:s.world,seed:s.seed,fac:s.fac,...(s.name?{name:s.name}:{}),...(s.hall?{hall:s.hall}:{}),...(s.others==='none'?{others:'none'}:{}),slots,dm:clone(s.dm||DEFAULT_DM())}}
+  return {v:1,world:s.world,seed:s.seed,fac:s.fac,...(s.name?{name:s.name}:{}),...(s.hall?{hall:s.hall}:{}),...(s.others==='none'?{others:'none'}:{}),...prologueField(s),slots,dm:clone(s.dm||DEFAULT_DM())}}
 
 // The archetype a hero gets: the chosen id, or for 'random' one picked from the seed and the hero's index (a hash,
 // so the world's random stream is untouched and the same seed gives the same picks). null = none.
@@ -143,7 +149,7 @@ export function applyPreset(name,base,ctx={}){const b=asV2(base);if(!b||!Array.i
   if(name==='last'){const l=cleanSetup(ctx.last);if(!l||!l.heroes.length)return null;
     if(l.dm)s.dm={...l.dm}; // cleanSetup: always an agent
     // the viewer's last heroes, kept whole when of the same faction (or apart); else only their minds, by index
-    if(l.mode==='apart'||l.fac===s.fac){s.mode=l.mode;s.fac=l.fac;s.heroes=clone(l.heroes);if(l.name)s.name=l.name;else delete s.name;if(l.hall)s.hall=l.hall;else delete s.hall;if(l.others)s.others=l.others;else delete s.others;return s}
+    if(l.mode==='apart'||l.fac===s.fac){s.mode=l.mode;s.fac=l.fac;s.heroes=clone(l.heroes);if(l.name)s.name=l.name;else delete s.name;if(l.hall)s.hall=l.hall;else delete s.hall;if(l.others)s.others=l.others;else delete s.others;if(l.prologue)s.prologue=l.prologue;else delete s.prologue;return s}
     s.heroes.forEach((h,i)=>{if(l.heroes[i])h.mind={...l.heroes[i].mind}});
     return s}
   return null}
@@ -183,6 +189,7 @@ export function validateSetup(s0){const out=[];
   const s=asV2(s0),H=Array.isArray(s.heroes)?s.heroes:null,mode=s.mode==null?'together':s.mode;
   if(!MODES.includes(mode))out.push('Pick Together or Apart.');
   if(s.others!=null&&!OTHERS.includes(s.others))out.push('Other heroes: the usual roster or none.');
+  if(s.prologue!=null&&!PROLOGUE_VALUES.includes(s.prologue))out.push('Opening: a first delve, or straight to the hall.');
   if(!(Number.isInteger(s.seed)&&s.seed>=0))out.push('The seed must be a whole number.');
   if(mode!=='apart'&&!FAC[s.fac])out.push('Pick a faction.');
   else if(mode!=='apart'&&s.hall&&!hallTowns(s.world,s.fac).includes(s.hall))out.push('The hall: '+s.hall+' is not a town of the '+FAC[s.fac].name+'.');
@@ -229,7 +236,7 @@ export function cleanSetup(s0){if(!s0||typeof s0!=='object')return null;const s=
       ...(mode==='apart'&&p.group!=null&&p.group!==''?{group:typeof p.group==='number'?p.group:String(p.group)}:{}),
       mind:agentOnly(p.mind)}}); // agents only (#148): an older page's scripted or AI mind becomes an agent
   const dm=s.dm&&(s.dm.mode==='agent'||s.dm.mode==='ai')&&s.dm.provider&&s.dm.model?{mode:'agent',provider:s.dm.provider,model:s.dm.model}:DEFAULT_DM(); // the DM is always an agent (#520): an older scripted DM becomes the default
-  return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,mode,fac,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),...(mode==='together'&&s.hall?{hall:String(s.hall)}:{}),...(s.others==='none'?{others:'none'}:{}),heroes,dm}}
+  return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,mode,fac,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),...(mode==='together'&&s.hall?{hall:String(s.hall)}:{}),...(s.others==='none'?{others:'none'}:{}),...prologueField(s),heroes,dm}}
 
 // ---- names ----
 // A name in a people's voice (the same tables as data/races.js, with the caller's dice so a reroll is cheap).

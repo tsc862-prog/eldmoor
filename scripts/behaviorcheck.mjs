@@ -11,6 +11,7 @@
 //   rules     a runner cannot write another seat's turn (#123), key-shaped text never reaches a file, files
 //             rotate by size, and the watch changes nothing in the world (same state with and without it)
 // No model, no network beyond 127.0.0.1, nothing written under logs/ (a temporary folder). Usage: npm run behaviorcheck.
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -22,7 +23,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 let seed = 0x5eed4129;
 const reseed = s => {seed = s >>> 0};
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
-const ROOT = mkdtempSync(join(tmpdir(), 'eldmoor-behavior-')); process.env.AGENT_LOGS = ROOT; process.env.BEHAVIOR_DIR = join(ROOT, 'behavior');
+const ROOT = mkTmp('eldmoor-behavior-'); process.env.AGENT_LOGS = ROOT; process.env.BEHAVIOR_DIR = join(ROOT, 'behavior');
 
 const SIM = await import('../src/sim/index.js');
 const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
