@@ -56,7 +56,9 @@ import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded p
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {compCall,compSay,compSummary} from './compvoice.js'; // scripted companions of an agent company, voiced by the DM (#764)
 import {focus,focuses,followedCompany,focusStats,touchedAt} from './dmfocus.js'; // the Fellowship first (issue #165), every company a thread (#450)
-import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf} from './company.js';
+import {openThreads as companyThreads,inSlots,partySlotted,slotHeroes,slotKeyOf,slotMembers,slotted,mindsOf,SLOTS,placeWord} from './company.js';
+// The word for a company place in the DM's views (#863): the class in it, or the classes that could fill it; never Tank, Healer or DPS.
+const seatWord=m=>m.hero?placeWord(m.hero.cls):(SLOTS.find(s=>s.key===m.slot)||{cls:['companion']}).cls.join(' or ').toLowerCase();
 import {allScenes,sceneOf,findScene} from './scenes.js'; // one open scene per company (#518)
 import {wounded} from './wounds.js';
 import {woundSpanWord} from './tend.js'; // lasting wounds in the DM's needs (#656)
@@ -301,7 +303,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     ...(compSummary()?{companions:compSummary()}:{}), // scripted companions of agent companies speak through you (#764)
     ...(S.sites?{sites:sitesView()}:{}), // the dungeon sites you raised (#69): state hidden, discovered, entered, cleared or collapsed
     proposals:props.map(P=>({id:P.id,kind:P.kind,details:P.details||null})),pending:!!sc||props.length>0,
-    fellowship:F?{name:F.name,minds:mindsOf(F),members:slotMembers(slotted()).map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:m.label,lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:m.label,empty:true})}:null,
+    fellowship:F?{name:F.name,minds:mindsOf(F),members:slotMembers(slotted()).map(m=>m.hero?{id:m.hero.id,name:m.hero.name,role:seatWord(m),lvl:m.hero.lvl,hp:pct(m.hero)+'%',doing:m.hero.state,where:where(m.hero)}:{role:seatWord(m),empty:true})}:null,
     unheard:unheardOf(D),since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
@@ -325,9 +327,9 @@ function dmLogRead(n,kind){const k=LOG_KINDS[kind]||null,out=[];
   return {ok:true,log:out}}
 
 function fellowshipView(){const F=slotted();if(!F)return {ok:true,fellowship:null,note:'No Fellowship rides in this world yet.'};
-  const members=slotMembers(slotted()).map(m=>{const a=m.hero;if(!a)return {role:m.label,empty:true};
+  const members=slotMembers(slotted()).map(m=>{const a=m.hero;if(!a)return {role:seatWord(m),empty:true};
     const P=a.persona||{},M=a.memory||{};
-    return {...heroLine(a),...sightOf(a),role:m.label,persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
+    return {...heroLine(a),...sightOf(a),role:seatWord(m),persona:a.persona?{voice:P.voice,wants:P.wants,fears:P.fears,quirk:P.quirk}:null,backstory:a.backstory?a.backstory.summary||null:null,
       oath:swornOf(a)?a.goal.text:null,...(threadOf(a)?{offered_thread:threadText(a)}:{}),vow:a.vow?a.vow.text:null,memory_long:M.long?String(M.long).slice(0,500):null,memory_recent:(M.recent||[]).slice(-5).map(e=>e.text),
       stances:Object.fromEntries(Object.entries(M.stances||{}).filter(([id])=>!(P.stanceBy&&P.stanceBy[id]==='self')).slice(0,6).map(([id,s])=>{const b=S.agents.find(x=>String(x.id)===String(id));return [b?b.name:'#'+id,String(s).slice(0,120)]}))}});
   return {ok:true,fellowship:{name:F.name,faction:facName(F.fac),hall:F.hall||null,founded_day:F.day||null,minds:mindsOf(F),members,

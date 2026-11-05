@@ -9,6 +9,7 @@ import {initControls} from './controls.js';
 import {initSaveUI} from './save.js';
 import {initMinds,renderMinds} from './minds.js';
 import {initLegends,renderLegends} from './legends.js';
+import {initMapLegend,renderMapLegend} from './maplegend.js'; // the whole-map view's side legend (#844)
 import {initFellowship,renderFellowship} from './fellowship.js';
 import {initTable} from './table.js';
 import {initRunAlert} from './runalert.js';
@@ -29,10 +30,10 @@ import {initSettings} from './settings.js'; // the Settings popover and the Worl
 import {trackDowned} from './downview.js'; // each death save as it lands (#659)
 
 export function initUI(renderer){
-  initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initTable();initRunAlert();initRunGate(k=>startRunner(k));
+  initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initMapLegend();initTable();initRunAlert();initRunGate(k=>startRunner(k));
   initSheet();initFrames();applyLayout();
   const minds=()=>{renderHero();renderFrames();renderFellowship();renderMinds()};
   initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents();initChatPanel();initSettings(()=>renderHero());initPurpose()}
 
-export function uiFast(){trackDowned();applyLayout();renderHero();renderClock();renderFellowship();renderFrames();renderSheet();renderChatPanel();renderMapTip()}
+export function uiFast(){trackDowned();applyLayout();renderHero();renderClock();renderFellowship();renderFrames();renderSheet();renderChatPanel();renderMapTip();renderMapLegend()}
 export function uiSlow(){renderTops();renderFacs();renderGuilds();renderFallen();renderMinds();renderTimeline();renderLegends();renderDmLog();renderDmSeat();renderAgents()}

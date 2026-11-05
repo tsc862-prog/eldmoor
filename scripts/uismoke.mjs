@@ -202,32 +202,32 @@ ok(tb().textContent.includes('Agent-played'),'Agent tab shown for the agent-play
 const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the ford.'});(await import('../src/sim/council.js')).partySay(sp,'Hold the line at the ford.'); // a repeat said outside the agent tool (agents' own near-repeats are refused since #163)
   const long=sim.playerAct(sp.id,'party_say',{text:'word '.repeat(50)});
   ok(long&&long.ok===false&&/Too long/.test(long.error||JSON.stringify(long)),'party_say over 200 characters is refused, not cut');
-  select(mem[0]);setTab('chat');uiFast();const ul=tb().querySelector('.log');
+  select(mem[0]);setTab('chat');uiFast();
+  ok(/Chat panel/.test(tb().textContent)&&!tb().querySelector('.log.chat'),'dossier Mind > Chat holds no copy of the chat (#845): it points to the Chat panel');
+  const ul=$('chatList');
   const li=ul&&ul.children.find(x=>/Hold the line/.test(x.textContent));
-  ok(!!li&&/Hold the line at the ford. ×2/.test(li.textContent)&&/shouts: /.test(li.textContent)&&!!li.querySelector('.chheard'),'chat: repeated shout shows once with a count and who heard: '+(li&&li.textContent));
+  ok(!!li&&/Hold the line at the ford./.test(li.textContent)&&/shouts: /.test(li.textContent)&&!!li.querySelector('.chheard'),'chat: the shout shows with who heard it: '+(li&&li.textContent));
   ok(!!li&&!li.textContent.includes(sp.name+': '+sp.name),'chat: the own-name prefix is dropped');
   ok(!tb().querySelector('.ai-badge'),'chat: no mind or model badge');
   ok(!!li&&!li.querySelector('.chtag')&&li.querySelector('.hn').classList.contains('fmn'),'chat: no channel tag box, role-coloured name on the one line')
   ok(!!li&&li.querySelector('.chheard').textContent.includes(mem[0].name),'chat: the dim list names who heard: '+(li&&li.querySelector('.chheard')&&li.querySelector('.chheard').textContent));
   // an out-of-range shout (#182): "Fena calls out, but no one is near"
   {mem[0].chat.push({t:'12:00',d:Math.floor(sim.S.gameMin/1440)+1,from:sp,text:'Anyone out there?',trigger:'party',party:true,heard:[],far:[mem[2].name]});uiFast();
-   const lo=tb().querySelector('.log').children.find(x=>/Anyone out there/.test(x.textContent));
+   const lo=$('chatList').children.find(x=>/Anyone out there/.test(x.textContent));
    ok(!!lo&&/calls out, but no one is near/.test(lo.textContent)&&!lo.querySelector('.chheard'),'chat: a shout nobody heard reads "calls out, but no one is near": '+(lo&&lo.textContent))}
   // day stamps and separators (#168): "D3 13:57", a "Day N" row where the day changes; an older entry with no day keeps its bare time
   {const h=mem[0];const d0=Math.floor(sim.S.gameMin/1440)+1;h.chat.push({t:'23:58',d:d0+5,from:sp,text:'Stamp test A.',trigger:'x',party:true},{t:'01:10',d:d0+6,from:sp,text:'Stamp test B.',trigger:'x',party:true});
-   uiFast();const u2=tb().querySelector('.log.chat'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
+   uiFast();const u2=$('chatList'),tm=[...u2.querySelectorAll('time')].map(x=>x.textContent);
    ok(tm.some(t=>/^D\d+ \d\d:\d\d$/.test(t)),'chat: times carry the game day: '+tm.slice(0,3).join(', '));
    ok(u2.children.filter(x=>x.classList.contains('daysep')).length>=2,'chat: day separators appear where the day changes');
-   // #181: the dossier Chat tab is a per-hero filter of the chat panel's stream; the phone-width View group wraps
-   {const mine=tb().querySelector('.log.chat').textContent;h.chat.push({t:'09:00',d:d0+7,from:h,text:'Only-for-me test line.',trigger:'x'});
-    const other=mem.find(m=>m!==h&&m!==sp&&m.chat)||{chat:[]};other.chat.push({t:'09:01',d:d0+7,from:other,text:'Only-for-other test line.',trigger:'x'});uiFast();
-    const t2=tb().querySelector('.log.chat').textContent;
-    ok(/Only-for-me/.test(t2)&&!/Only-for-other/.test(t2),'dossier chat: shows this heros slice of the stream only');
-    ok(tb().querySelector('.log.chat').children.length>0&&mine.length>0,'dossier chat: built from the stream');
-    const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+   {const css0=readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
     ok(/\.group\{[^}]*flex-wrap:wrap/.test(css0),'phone width: the View button group wraps instead of widening the page')}
    const css=readFileSync(new URL('../src/style.css',import.meta.url),'utf8').match(/\.log\.chat li\.chl\{[^}]*\}/);
    ok(!!css&&!/text-indent:\s*-/.test(css[0]),'chat: no negative text-indent (the stamp cannot start left of the list box)')}}
+// Company tab Lately feed and the whole-map spots (#845, #844)
+{uiFast();const ly=$('felbody').querySelector('.fellately');ok(!!ly&&!!ly.querySelector('.fth-h'),'Company tab: a Lately feed sits under the threads');
+  const {companySpots}=await import('../src/render/wholemap.js');const sp=companySpots();
+  ok(sp.length>0&&sp.every(x=>x.name&&x.r>=5)&&sp.filter(x=>x.followed).length===1,'whole map: each company has a ring spot and a name, one followed: '+sp.map(x=>x.name).join(', '))}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 
 // The Agents panel (#145): limits and spend in one place, sent to the relay's supervisor
@@ -1418,7 +1418,8 @@ console.log('the DM prepares the table');
   const pf=P.purposeOf(fol);ok(pf.kind==='follow'&&pf.line.startsWith('Following → '+lead.name+' (3 tiles)')&&pf.tether&&pf.tether.id===lead.id,'purpose: an agent follower names whom it follows, how far, and tethers ('+pf.line+')');
   // a waiting hero: in town, the party leader still there
   const c=CITY.find(t=>t.fac===waiter.fac)||CITY[0],kw={state:waiter.state,party:waiter.party,pq:waiter.pq,act:waiter.playActAt,x:waiter.x,y:waiter.y};
-  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;waiter.x=c.gate.x;waiter.y=c.gate.y;
+  waiter.state='town';waiter.pq=[];waiter.party={leader:lead,mem:[lead,waiter]};waiter.playActAt=S.gameMin-40;// stand a little off the gate, away from the leader: the wait line is not drawn to someone within 0.8 tiles, and the leader may stand at the gate
+  waiter.x=c.gate.x;waiter.y=c.gate.y;for(const[dx,dy]of[[0,0],[2,1],[-2,1],[2,-1],[-2,-1],[3,0]]){waiter.x=c.gate.x+dx;waiter.y=c.gate.y+dy;if(Math.hypot(lead.x-waiter.x,lead.y-waiter.y)>1.5)break}
   const pw=P.purposeOf(waiter);ok(pw.kind==='wait'&&pw.line.startsWith('Waiting for '+lead.name)&&/40 min/.test(pw.line)&&pw.wait&&pw.wait.id===lead.id,'purpose: a waiting hero names whom it waits for and how long ('+pw.line+')');
   // a traveller on a walk order
   const kt={pq:trav.pq,state:trav.state,adv:trav.adv},dest={x:c.gate.x+6,y:c.gate.y+4};trav.adv=null;trav.state='travel';trav.pq=[{kind:'move',legs:[{x:dest.x-2,y:dest.y,st:'hunt'},{x:dest.x,y:dest.y,st:'hunt'}],last:'hunt',label:'the old mill'}];
@@ -1446,7 +1447,9 @@ console.log('the DM prepares the table');
   cam.sel=trav;cam.dpr=1;cam.sc=2;m=mk();const lab=[];FX.drawPurposeGround(m.ctx,S,cam,{drawText:t=>lab.push(t),blink:0});
   ok(m.L.strokes>=1&&from(trav,m.L)>=1,'overlays: the followed traveller gets its dotted road, from itself');ok(lab.includes('the old mill'),'overlays: the marker names what is there');
   cam.sel=fol;cam.hover=waiter;m=mk();FX.drawPurposeGround(m.ctx,S,cam,{drawText:()=>{},blink:0});
-  ok(from(fol,m.L)>=1&&from(waiter,m.L)>=1&&from(trav,m.L)===0&&from(hunter,m.L)===0,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else');
+  {const who=a=>a.name+' '+a.state+' ('+a.x.toFixed(2)+','+a.y.toFixed(2)+')'+(a.hidden?' hidden':''),n={fol:from(fol,m.L),waiter:from(waiter,m.L),trav:from(trav,m.L),hunter:from(hunter,m.L)},
+    bad=[n.fol>=1?'':'follower tether missing',n.waiter>=1?'':'waiter wait line missing (leader '+who(lead)+', distance '+Math.hypot(lead.x-waiter.x,lead.y-waiter.y).toFixed(2)+')',n.trav===0?'':'traveller drawn',n.hunter===0?'':'hunter drawn'].filter(Boolean);
+  ok(!bad.length,'overlays: the followed follower’s tether and the hovered waiter’s wait line, no one else'+(bad.length?' ['+bad.join('; ')+'] counts '+JSON.stringify(n)+' fol='+who(fol)+' waiter='+who(waiter)+' trav='+who(trav)+' hunter='+who(hunter)+' lead='+who(lead):''))}
   // intent icons: close zoom with the switch on; off hides them except the focused hero's hourglass
   const cnt=(a,close)=>{let n=0;const ctx=new Proxy({},{get:(o,k)=>k==='fillRect'?()=>n++:typeof o[k]!=='undefined'?o[k]:()=>{},set:(o,k,v)=>{o[k]=v;return true}});FX.drawIntentIcon(ctx,S,cam,a,0,0,12,close);return n};
   const vi=$('vIcons');PV.setIcons(true);ok(cnt(hunter,true)>0&&cnt(hunter,false)===0,'icons: a hunter’s icon at close zoom, none far out');
@@ -1595,5 +1598,15 @@ console.log('page watchdog');
   ok(/page busy \(no answer for 16\.2 s\)/.test(ML.mindLabel(a).text),'a relay time-out on a silent page reads page busy as well: '+ML.mindLabel(a).text);
   PW.resetPageWatch();ok(ML.linkOf(a)==='connected','once it passes the label is live again');
   BR.bridgeFeed(null);PW.setPageLog(null)}
+// ---- #843/#848: the frame row never changes height; the DM bar is one line while calm ----
+{const fs=await import('node:fs'),css=fs.readFileSync(new URL('../src/style.css',import.meta.url),'utf8');
+  const shape=()=>[...$('frames').querySelectorAll('.pf[data-hid]')].map(f=>f.children.map(c=>c.className.split(' ')[0]).join(','));
+  uiFast();const before=shape();ok(before.length>0&&before.every(x=>x==='pfkey,pftop,meter,purp,pfsl,pfsl,pffoot'),'frames: the same six parts in every frame ('+before[0]+')');
+  const f0=$('frames').querySelector('.pf[data-hid]'),sl=f0.querySelectorAll('.pfsl');
+  ok(sl.length===2&&sl[0].querySelector('.pftg')&&sl[0].querySelector('.pfdown')&&sl[1].querySelector('.pfchips')&&sl[1].querySelector('.pfrep'),'frames: target and downed share one fixed slot, chips and the replacement line the other');
+  ok(!/\.pf(tg|rep|chips):empty\{display:none\}/.test(css)&&/\.pfsl1\{height:17px\}/.test(css)&&/\.pfsl2\{height:15px\}/.test(css),'frames: nothing collapses when empty; the slots have fixed heights');
+  const m=sim.S.mobs.find(x=>x.alive&&!x.gone),a=sim.S.agents.find(x=>x.company!=null&&x.state!=='dead'&&!x.hidden);
+  if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
+  ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
