@@ -153,7 +153,7 @@ other. The rules:
   reconnects and names the same heroes (same id and name, alive; a hero that is gone, renamed by a new world or dead is
   skipped). The page's bridge reconnects by itself after a relay restart. Options: `--relay-port N`, `--vite-port N`,
   `--no-open`, `--repo DIR` (the checkout `u` pulls). The old way, `npm run relay -- --runners` and `npm run dev` in two
-  terminals, still works. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
+  terminals, still works. Temp stays on the project drive (owner rule 2026-11-05): the launcher sets `TEMP`, `TMP` and `TMPDIR` for its children to `logs/tmp` (gitignored; `ELDMOOR_TMP` overrides) and sweeps entries older than a day at start; checks make their temp dirs with `mkTmp` from `scripts/tmp.mjs`, which removes them when the process exits. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run sessioncheck` (#787): Claude sessions kept small, on the real Agent SDK and its CLI binary against a mock Messages API (no key, no network): the compaction window through `query()`'s env, `getContextUsage().autoCompactThreshold`, a real `compact_boundary`, and hero, Fellowship and DM runners end to end (ctx on the turn line, a roll, held back at a scene, the old file, the resume prompt, a "fresh" line, `AGENT_HEAR_WAKE_MIN`, the report's table).

@@ -19,6 +19,7 @@
 //      agents' choice with no table timeout.
 // Sessions go to a temporary folder (AGENT_LOGS), never to logs/agents/.
 // Usage: npm run localcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:fs';
@@ -300,7 +301,7 @@ console.log('ollama adapter chat (mock server)');
 }
 
 // ---------------------------------------------------------------- 2. the runner, end to end
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
+const tmp = mkTmp('eldmoor-localcheck-');
 ctxFrom = seen.length;
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // AGENT_REFLECT=0: no reflection turns where turn counts are exact; H passes --reflect (#179) // pacing (issue #126) kept short for the old sections
 const kids = [];
