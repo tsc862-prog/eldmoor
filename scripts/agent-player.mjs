@@ -76,7 +76,7 @@ const flag = k => argv.includes('--' + k);
 export function systemPrompt(st) {
   const traits = (st.traits || []).join('; ');
   return [
-    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of Eldmoor (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
+    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of ${st.world || 'Eldmoor'} (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
     st.origin ? `Your past: ${st.origin}` : '',
     st.oath ? `Your oath: ${String(st.oath).replace(/[.!?]+$/, '')}.` : '',
     st.thread ? `A thread in your past, not an oath: ${st.thread} You have sworn nothing; what you swear, if anything, is yours to choose.` : '',
@@ -264,8 +264,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const claim = () => post(base, '/play/claim', {hero: heroId, runner, ...mind}, 5000).then(async r => ({status: r.status, ...(await r.json())})).catch(e => ({status: 0, error: e.message}));
   const c0 = await claim();
   if (c0.status !== 200) {console.error('[agent] ' + (c0.error || 'could not claim the hero')); process.exit(1)}
-  const beat = setInterval(() => claim().then(c => {if (c.status === 409) {console.error('[agent] ' + c.error); process.exit(1)}}), 10000); beat.unref();
-  const release = () => post(base, '/play/release', {hero: heroId, runner}, 3000).catch(() => {});
+  // A refresh still in flight when the runner lets go could land after the release and keep the claim; and under load one release call can time out. So the release waits for the refresh and tries up to 3 times (the claim would otherwise stand until it goes stale and the next runner for the hero is refused).
+  let beating = null;
+  const beat = setInterval(() => {beating = claim().then(c => {if (c.status === 409) {console.error('[agent] ' + c.error); process.exit(1)}}).finally(() => {beating = null})}, 10000); beat.unref();
+  const release = async () => {try {await beating} catch {} for (let i = 0; i < 3; i++) {const r = await post(base, '/play/release', {hero: heroId, runner}, 5000).catch(() => null); if (r && r.ok) return}};
   let turnAbort = null; // the Agent SDK turn in flight, so a stop ends it (and its subprocess) cleanly
   process.on('SIGINT', async () => {stopReq = true; if (turnAbort) turnAbort.abort(); await release(); process.exit(130)});
   // Started from the game (scripts/runners.mjs): a "stop" on stdin, or the relay going away, ends the run.

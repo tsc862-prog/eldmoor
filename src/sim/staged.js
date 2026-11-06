@@ -37,6 +37,7 @@ import {maxHp} from './heroes.js';
 import {check,socialSkill} from './abilities.js';
 import {buildEncounter,spawnFoe} from './encounterbuilder.js';
 import {pull,spotErr,takeBack} from './levers.js';
+import {markNamed,nameHint} from './dmnames.js'; // the names on the map (#1017)
 import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
 import {focus,focuses,nearMember} from './dmfocus.js';
 import {companies,companyOf,companyById,members as coMembers,slotHeroes,slotKeyOf,slotted} from './company.js'; // staging per company (#451)
@@ -45,7 +46,8 @@ import {leaderOf as companyLead} from './company.js';
 import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
-import {TABLE,openScene,tableOn,setSceneKind,setStageHooks,kindHooks,callSeen,callLeft} from './table.js';
+import {TABLE,openScene,tableOn,setSceneKind,setStageHooks,kindHooks,callSeen,callLeft,callKey} from './table.js';
+import {edgeOf,EDGE_NAMES} from './patch.js'; // the edge a staged foe comes from (#746)
 import {setProps} from './props.js';
 import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
 import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
@@ -167,7 +169,7 @@ function whereOf(near){const nt=nearText(near);if(nt.err)return {err:nt.err};con
   if(S.agents.some(a=>a.name.toLowerCase()===lo||String(a.id)===s))return {err:'only the Fellowship meets staged scenes; '+s+' is not one of them'};
   const town=CITY.find(c=>c.name.toLowerCase()===lo);if(town){const tz=zoneAt(town.gate.x,town.gate.y);
     return {err:'a staged scene happens out in the world, not inside '+town.name+'; pick a road spot ("x,y") or a region'+(tz!=null&&tz>=0?' (near: "'+ZONES[tz]+'")':'')}}
-  const pl=(S.places||[]).find(p=>p.name.toLowerCase()===lo);if(pl){const at=spotNear(pl,1,3)||{x:pl.x,y:pl.y};return {at,label:'at '+pl.name}}
+  const pl=markNamed(s);if(pl){const at=spotNear(pl,1,3)||{x:pl.x,y:pl.y};return {at,label:'at '+pl.name}}
   // a landmark (the Sunken Crypt, Kragmaw): the ground just outside it (issue #401)
   const lm=LANDMARKS.find(l=>{const n=l.name.toLowerCase();return n===lo||n.replace(/^the /,'')===lo.replace(/^the /,'')});
   if(lm){const e=(lm.exclude||0)+1,at=spotNear(lm,e,e+4);return at?{at,label:'near '+lm.name}:{err:'no open ground near '+lm.name}}
@@ -175,7 +177,7 @@ function whereOf(near){const nt=nearText(near);if(nt.err)return {err:nt.err};con
     let x=0,y=0;for(const p of P){x+=p.x;y+=p.y}const c={x:x/P.length,y:y/P.length},at=spotErr(c)?spotNear(c,1,6):{x:Math.round(c.x*10)/10,y:Math.round(c.y*10)/10};
     return at?{at,label:'in '+ZONES[z]}:{err:'no open ground in the middle of '+ZONES[z]}}
   const pls=(S.places||[]).map(p=>p.name).filter(Boolean).slice(0,8);
-  return {err:'unknown place "'+s+'". near takes "fellowship", a member ('+everyone().map(a=>a.name).join(', ')+')'+(companies().length>1?', a company (company:<id>)':'')+', "x,y", a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+')'+(pls.length?', a place ('+pls.join(', ')+')':'')+' or a region ('+ZONES.join(', ')+')'}}
+  return {err:'unknown place "'+s+'".'+nameHint(s)+' near takes "fellowship", a member ('+everyone().map(a=>a.name).join(', ')+')'+(companies().length>1?', a company (company:<id>)':'')+', "x,y", a landmark ('+LANDMARKS.map(l=>l.name).join(', ')+')'+(pls.length?', a place ('+pls.join(', ')+')':'')+' or a region ('+ZONES.join(', ')+')'}}
 
 // ---- the setting and the town (scene maps, issue #431 slice 2) ----
 // A meeting or social scene may play in a room from data/settings.js (setting) and in a real town, at one of its
@@ -321,7 +323,8 @@ export function stageScene(a,o={}){a=a&&typeof a==='object'?{...a}:{};delete a._
     C.dc=9+Math.ceil(P.avg/2)}
   G.seq=rid;today().n++;if(!nearAny(at))today().nw=(today().nw||0)+1;if(cmp){const c=today().c||(today().c={});c[cmp.id]=(c[cmp.id]||0)+1}G.stats.staged++;
   const title=clean(a.title,STAGE.TITLE_MAX)||defaultTitle(kind,C);
-  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},...(cmp&&!cmp.slots?{company:cmp.id}:{}),at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(o.minutes||(kind==='vision'?C.hours*60:town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN))),phase:'waiting',...(kind==='vision'?{trig:W.hero?'rest':'place'}:{}),scene:null,result:null,
+  const edge=fightKind(kind)?edgeOf(a.edge):null;if(given(a.edge)&&!edge)notes.push('edge is for an elite or ambush, and one of '+EDGE_NAMES.join(', ')+'; it was left out');
+  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},...(edge?{edge}:{}),...(cmp&&!cmp.slots?{company:cmp.id}:{}),at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(o.minutes||(kind==='vision'?C.hours*60:town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN))),phase:'waiting',...(kind==='vision'?{trig:W.hero?'rest':'place'}:{}),scene:null,result:null,
     ...(setId?{setting:setId}:{}),...(town?{town:town.name,spot}:{})};
   const where=whereLine(label,z,town,setId);if(ignored.length)notes.push('choices must map to the legal actions: '+STAGE_ACTS[kind].join(', '));
   G.cur=rec;
@@ -417,7 +420,7 @@ function meet(rec,a){const G=S.staged,F=slotted(),fight=rec.kind==='elite'||rec.
   LOG('frame',['Staged ',gd(rec.kind),' meets '+coName(recCo(rec))+': ',gd(rec.title),' ('+a.name+' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+').'],{staged:rec.id,kind:rec.kind,met:a.id});
   if(!tableOn()){finish(rec,null,'played out in the world (Table mode is off)');return false}
   rec.phase='open';
-  const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{}),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),dcUp:0,tally:{}};
+  const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{}),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),...(rec.edge?{edge:rec.edge}:{}),dcUp:0,tally:{}};
   const pre={ids:(rec.kind==='vision'?recMem(rec).filter(b=>living(b)&&!b.hidden&&(b===a||inRange(a,b))):recMem(rec)).map(b=>b.id)};say(pre,rec.frame,NARRATOR); // a vision: only those it takes see it (#639) // the frame reaches the members as narration (#123), before any line of the scene
   ctx.anchor=a.id; // an everyone-at-once scene takes the members within shouting range of the one they met (#182)
   {const K=kindHooks(rec.kind);if(K&&K.stagedCtx)Object.assign(ctx,K.stagedCtx(rec,recMem(rec).filter(living)),{staged:rec.id})} // an interrogation's truth, lie and resolve (sim/interrogate.js, #431 slice 3)
@@ -577,7 +580,7 @@ export function tableCall(){heard('table');const G=S.staged,rec=G&&G.cur&&G.cur.
       so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.ctx.cast||[]}:null,
     call:null};
   if(c){const waiting=sc.pause&&live(sc);if(waiting)callSeen(c); // the budget starts at pickup (#680)
-    out.call={id:c.id,kind:c.kind,about:c.about,...(c.legal?{legal:c.legal}:{}),...(c.who?{who:c.who}:{}),
+    out.call={id:c.id,key:callKey(sc,c),kind:c.kind,about:c.about,...(c.legal?{legal:c.legal}:{}),...(c.who?{who:c.who}:{}),
     seconds_left:waiting?callLeft(c):0,max_chars:STAGE.LINE_MAX}}
   return out}
 // table_answer: {call, text, pick}. Late, unknown or illegal answers are refused (and counted); the slot stays the scripted DM's.

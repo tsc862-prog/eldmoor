@@ -12,7 +12,9 @@
 // --speeds 0 measures a frozen world: the render and the panels alone.
 // The hero top-up is the probe's own hook (makeHero, as scripts/scalecheck.mjs does), run in the page; the sim has none.
 //   node scripts/perfprobe.mjs [--seconds 12] [--heroes 100] [--worlds eldmoor,stepping] [--views map,follow,night]
-//        [--speeds 1,8] [--seed 716|off] [--size 3440x1440] [--port 5901] [--url http://localhost:5901/] [--base DIR] [--no-profile] [--json out.json]
+//        [--speeds 1,8] [--seed 716|off] [--size 3440x1440] [--port 5901] [--url http://localhost:5901/] [--base DIR] [--cache-dir DIR] [--no-profile] [--json out.json]
+// --cache-dir keeps Vite's cache there and skips vite.config.js (loading it writes a temp file into node_modules): for a
+// worktree whose node_modules is a link to another checkout, which it must not write into.
 // --url uses a server that is already running (its own modules are imported for the hook); without it a Vite dev server
 // starts on --port and stops at the end. --base DIR also serves another checkout (on --port + 1) and measures it before
 // this one, world by world: a before/after on one machine, for example against main:
@@ -42,10 +44,10 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 // --- servers: the given URL, or our own Vite dev server on this checkout (watch off: the probe never edits files); with
 // --base DIR a second one on PORT+1 serves another checkout (for example origin/main extracted with git archive), and each
 // world is measured on both, one after the other, so a before/after compares runs minutes apart on one machine.
-const servers = [], SIDES = [];
+const servers = [], SIDES = [], CACHE_DIR = flagv('cache-dir', null);
 async function serve(root, port) {
   const {createServer} = await import('vite');
-  const sv = await createServer({root, configFile: join(root, 'vite.config.js'), logLevel: 'error', server: {port, strictPort: true, host: '127.0.0.1', watch: null, hmr: false}});
+  const sv = await createServer({root, logLevel: 'error', ...(CACHE_DIR ? {cacheDir: join(resolve(CACHE_DIR), String(port)), configFile: false, define: {__COMMIT__: '""'}} : {configFile: join(root, 'vite.config.js')}), server: {port, strictPort: true, host: '127.0.0.1', watch: null, hmr: false}});
   await sv.listen(); servers.push(sv); return `http://127.0.0.1:${port}/`;
 }
 const BASE_DIR = flagv('base', null);

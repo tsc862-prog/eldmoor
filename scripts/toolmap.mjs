@@ -8,7 +8,7 @@ import {DM_TOOLS} from '../src/data/dm-tools.js';
 
 export const MAP_HEAD = 'TOOL MAP (every tool you have, by situation; the situations above say when):';
 export const MAP_TAIL = '(end of tool map)';
-export const MAP_BUDGET_CHARS = 7200; // about 1.7k tokens; room for a dozen more tools
+export const MAP_BUDGET_CHARS = 7600; // about 1.9k tokens; room for a dozen more tools
 
 // group title -> tool names. Names that do not exist are caught by orderscheck; tools not listed land in "More tools".
 export const HERO_GROUPS = {

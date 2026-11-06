@@ -13,3 +13,8 @@
 - [Passability layer](project_passability.md) — #792 passable.js, forest mask 5x5, slice 2/3 seams, camp hash move
 - [Town plans](project_town_plans.md) — #793 buildings as data, doors, spots at doors, standAt, hash move reason
 - [Wending Vale world](project_vale_world.md) — #940 slice A third world vale: ladder rule, river span, region order gotcha, hashes
+- [World-loop checks](project_world_loop_checks.md) — #940B: checks loop WORLDS via scripts/worlds.mjs; one snapshot table; rulescheck guards a world's rows
+- [Vale town plans](project_vale_towns.md) — #940 slice C: kit footprints, ground option, rise rule, npc home standAt, via road off the river
+- [Vale spacing measure](project_vale_spacing.md) — #979: 144x60 cannot separate Vale towns; three overlapping pairs; growth proposed
+- [Map exits](project_map_exits.md) — #1013 1a: exits format, setWorld/MAP_ID, MAPS table, TESTLINK; Vale exits deferred
+- [World words](project_world_words.md) — #1003 WORDS tokens for world names in templates; worldtextcheck guards the Vale; what was left and why

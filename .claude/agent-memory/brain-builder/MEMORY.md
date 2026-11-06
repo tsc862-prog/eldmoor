@@ -56,6 +56,7 @@
 - [DM old saves](dm-old-saves.md) — #562 convertOldDm on restore, DM hard rule in CLAUDE.md, savecheck seat/flaky-regex pitfalls
 - [DM reflexes](dm-reflexes.md) — #561 dmreflex.js heard/alive/gone, no seat-closed paths, fill why slow|gone, dmShare arrival, RNG test pitfall
 - [Scene props](scene-props.md) — #592 sc.props data, examine/search/give_item hooks, cast.item, pitfalls
+- [Narrator voice](narrator-voice.md) — #554 local TTS: loopback engine, relay routes, hash cache, page queue rules, ttscheck
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
 - [Cost report](cost-report.md) — #799 sources, wake classes, game hours from digests, measured spend and lever evidence
 - [Tool map](tool-map.md) — #640 toolmap.mjs generated tool inventory in hero/DM orders, groups, budget, orderscheck assertions
@@ -88,6 +89,8 @@
 - [Chatbot voice](chatbot-voice.md) — #837 chatbotVoice guard, refusal note, FP count 0/1646, flag plumbing
 - [Slot stall](slot-stall.md) — #868 turn_over + PostToolUse continue:false, scene slot, lease beats/tickets, real leak, measured calls
 - [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
+- [Voice seconds left](voice-seconds-left.md) — #885 left N s on [ruling]/[table] lines; abort math
 - [sessioncheck scene flake](sessioncheck-scene-flake.md) — #898 fresh-line/roll flake = real Table scene holds the roll; play-headless --watch fix
 - [Nightly mock scenes](nightly-mock-scenes.md) — #822 reflex-scenes cause: mock-tools never answered scenes; mock-table, near-copy lines, 60 calls/min cap
 - [Long company run](long-company-run.md) — #926 longrun.mjs harness, scene dedupe key + wake spam + --warm fixes, what mock minds do and do not prove
+- [DM on stage](dm-on-stage.md) — #1017 causes of a silent DM, call keys, sceneframe, narrator voice protocol and caps, names, measured cost

@@ -1,18 +1,18 @@
 // Hero chatter: what heroes say, by trigger and faction. Owned by ai-designer (triggers)
 // and lore-keeper (voice). Every line is original to Eldmoor.
 // Voice: Concord [0] is formal and dry; Warband [1] is blunt and boastful.
-// Placeholders: {name} speaker, {target} other hero, {zone}, {mob}, {item}, {level}.
+// Placeholders: {name} speaker, {home} the speaker's home town, {target} other hero, {zone}, {mob}, {item}, {level}.
 // BARKS[trigger] = [concordLines, warbandLines]. CLASS_BARKS[trigger][fac][cls] adds class flavour.
 // The trigger list is documented in docs/LORE.md under "Voices"; sim/chat.js picks and cools down lines.
 export const BARKS={
   // Quest turned in at the quest giver.
   quest:[
-    ['Task concluded. The ledger balances.','Another writ fulfilled. Highgate will hardly notice.','Done, and done properly. Next.','I shall note it in the record. Modestly.','The {mob} are handled. For now.'],
+    ['Task concluded. The ledger balances.','Another writ fulfilled. {home} will hardly notice.','Done, and done properly. Next.','I shall note it in the record. Modestly.','The {mob} are handled. For now.'],
     ['Done. Pay me.','Dead things for coin. Fair trade.','Told you I would finish it. I finish things.','That was the easy part. Give me a harder one.','Fewer {mob} now. Much fewer, by my count.']],
   // Leaving the city gate for the hunting grounds.
   depart:[
     ['To {zone}, then. Mind the road.','Off to {zone}. Back for supper, I expect.','Gate behind, {zone} ahead. Orderly.','One more trip to {zone}. One more entry.','Let it be noted that I left on time.'],
-    ['{zone}! Something there owes me a fight.','Out the gate. Blood before breakfast.','Grimhold is too quiet. {zone} will fix that.','Walking to {zone}. Running is for the hunted.','Anyone who sees me coming had better be quick.']],
+    ['{zone}! Something there owes me a fight.','Out the gate. Blood before breakfast.','{home} is too quiet. {zone} will fix that.','Walking to {zone}. Running is for the hunted.','Anyone who sees me coming had better be quick.']],
   // Engaging a monster above your own level, or a named elite.
   spot:[
     ['A level {level} {mob}. This is ill-advised.','A {mob}, above my station. Proceeding.','Caution noted. Caution set aside.','A {mob}, and a large one. Steady.','Should this go poorly, say I was thorough.'],
@@ -24,7 +24,7 @@ export const BARKS={
   // Reaching a milestone level (every 5, or 15+).
   levelup:[
     ['Level {level}. Progress, duly recorded.','{level} now. The gear has yet to catch up.','Another level. The road stays long.','Level {level}. Mother would be quietly pleased.','Stronger. Marginally. It adds up.'],
-    ['Level {level}! Hear that, Grimhold?','{level}. Stronger than I was this morning.','Level {level}. The beasts should start worrying.','Still breathing, still climbing. {level}!','Another notch. {level}, and not done.']],
+    ['Level {level}! Hear that, {home}?','{level}. Stronger than I was this morning.','Level {level}. The beasts should start worrying.','Still breathing, still climbing. {level}!','Another notch. {level}, and not done.']],
   // Looting an epic item.
   epic:[
     ['{item}. Well. That is unexpected.','{item}. A fine piece. It will be cared for.','{item}. I shall try not to gloat. I shall fail.','{item}. Remarkable. Someone will want it back.','Logged: {item}. Value: do not ask.'],
@@ -51,8 +51,8 @@ export const BARKS={
     ['Pack hunt! {zone} will not know what hit it.','We go together. We come back with more.','Hold the line and I will hold yours. Mostly.','Follow {target}. Argue later.','Three axes beat one. Even I can count that far.']],
   // Standing about in the city.
   idle:[
-    ['The prices here are a quiet scandal.','Nothing to report. That is a report.','Highgate stone. Steady under the boots.','One day I shall sit down. Not this one.','Another market day. Another modest coin.'],
-    ['Grimhold smells of smoke and victory.','Too much standing. Not enough hitting.','Sharpening. Always sharpening.','Who sells ale here? Nobody? Disgraceful.','Rest is for the dead. I rest a little.']],
+    ['The prices here are a quiet scandal.','Nothing to report. That is a report.','{home} stone. Steady under the boots.','One day I shall sit down. Not this one.','Another market day. Another modest coin.'],
+    ['{home} smells of smoke and victory.','Too much standing. Not enough hitting.','Sharpening. Always sharpening.','Who sells ale here? Nobody? Disgraceful.','Rest is for the dead. I rest a little.']],
   // Party small talk after a while in the field.
   banter:[
     ['If we survive this, lunch is on me.','Is anyone counting? I am counting.','Fine weather for killing things. Or dying.','Try to keep up. I say that kindly.','Everyone still breathing? Splendid.'],
