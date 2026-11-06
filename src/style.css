@@ -1049,7 +1049,7 @@ html:has(body.cinema),body.cinema{overflow:hidden}
 body.cinema .shell{visibility:hidden}
 body.cinema .screen{visibility:visible;position:fixed;inset:0;z-index:30;width:auto;height:auto!important;max-width:none;aspect-ratio:auto;border:0;box-shadow:none;cursor:default;background:#000}
 body.cinema.cinidle .screen{cursor:none}
-body.cinema .hint,body.cinema .minimap{display:none}
+body.cinema .hint,body.cinema .minimap,body.cinema .nwbar{display:none} /* the run gate says the same over the map; the page bar sat on top of it */
 body.cinema #holdbar{bottom:72px!important}
 body.cinema .tbanner{background:rgba(8,10,20,.78);border-color:rgba(120,130,170,.35);box-shadow:none}
 .cinema{position:absolute;inset:0;z-index:4;pointer-events:none}
