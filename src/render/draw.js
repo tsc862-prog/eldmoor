@@ -186,7 +186,7 @@ export function createRenderer(cv,screenEl){
     if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
     drawTerrain(sc);warmChunks(cam.camX/T,cam.camY/T);ph(0);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
-    gradeAt((S.gameMin/60)%24,skyNow());drawCast(ctx,S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
+    gradeAt((S.gameMin/60)%24,skyNow());drawCast(S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
     if(S.boss.alive&&inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle=MARK.ember;for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
