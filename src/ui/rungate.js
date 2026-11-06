@@ -152,6 +152,8 @@ function paint(){const box=$('rgate');if(!box)return;
 
 // Start anyway (#222): waive the wait for every seat that holds the world now.
 export function startAnyway(){if(prepping&&!missing.length){endPrep('anyway');prepping=false}for(const m of missing)anyway.set(m.key,m.live?'live':'missing');checkAt=0;sig=null;checkRunGate(Date.now())}
+// The owner said go on without this seat: until its runner comes back its member's reflexes may decide (a Table scene, a vote), as the button says.
+export const seatWaived=a=>!!a&&anyway.has('hero:'+a.id);
 export const gatePrep=()=>prepping?prepView():null; // the smoke check and the panels
 
 // Start all: one Fellowship runner for the members, the DM runner for the DM, only where a seat is missing.
