@@ -20,6 +20,13 @@ export const FAUNA={
   cinderreach:{tier:2,species:['golem','drake','spider'],count:14,roadMinX:0,elite:'Scoriath'},
   rimeholt:  {tier:3,species:['rimehound','shaghorn','wolf'],count:12,roadMinX:0,elite:{name:'Whitemaw',title:'the Snow-Hound of Rimeholt',base:'rimehound'}},
   palereach: {tier:3,species:['rimehound','shaghorn','wight'],count:11,roadMinX:0,elite:'Ulfryn Coldmarrow'},
+  // The Wending Vale (epic #940, slice A): a first pass from the stock bestiary, one row a region; creature-designer refines it in slice D.
+  wendmouth: {tier:0,species:['wolf','boar','spider'],count:12,roadMinX:30,elite:'Hollowfang'},
+  sallowfen: {tier:1,species:['bog','mudboar','lurker'],count:11,roadMinX:0,elite:'Old Mother Sedge'},
+  hawkwold:  {tier:1,species:['wolf','boar','shaghorn'],count:11,roadMinX:0,elite:{name:'Greymane',title:'the Pack-Father of the Hawkwold',base:'wolf'}},
+  greywood:  {tier:1,species:['wolf','spider','mudboar'],count:13,roadMinX:0,elite:{name:'Thornback',title:'the Boar-King of the Greywood',base:'mudboar'}},
+  ashenfold: {tier:2,species:['golem','drake','spider'],count:13,roadMinX:0,elite:'Scoriath'},
+  rimecrown: {tier:3,species:['rimehound','shaghorn','wight'],count:11,roadMinX:0,elite:'Ulfryn Coldmarrow'},
 };
 
 export function applyFauna(regions){

@@ -449,6 +449,38 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 - **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.
 - The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (see the town table and entries above).
 
+### The Wending Vale (third world, epic #940)
+`VALE` in `src/world/spec.js` is a 144x60 map shaped for the owner's wide screen. One river, the **Wend**, rises from a spring in the high north-east and runs west to the sea off the map's west edge. The Concord holds the north bank, the Warband the south. Three crossings carry all travel: the **Low Bridge** at the home towns, the **Weirgate ford** in the middle (the only wading place, with the great dungeon beside it) and the **High Bridge** at the contested upper edge. Creatures are a first pass in `src/data/fauna.js`. Select it as the third world; geography is its own, not Eldmoor's.
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Wendmouth | 1-5 | Meadow at the river's mouth in the west; the four home towns and the Low Bridge. Everyone starts here. |
+| Sallowfen | 3-8 | Fen and willow-flats on the south bank. The Sallow Vaults lie in its edge. |
+| Hawkwold | 3-8 | Windy highland on the north bank, facing Sallowfen across the water. The Kestrel Barrow is cut into its hills. |
+| Greywood | 6-11 | Old wood and meadow in the middle vale, around the Weirgate ford. |
+| Ashenfold | 10-15 | Ash-fields and cold slag where the old kilns burned. |
+| Rimecrown | 14+ | The tundra crown above the High Bridge, squalls off the snow. The Wend rises here and Kragmaw's lair sits at its head. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Aldermere | Concord | Hallowan | Alder-shaded home town in the north-west, first of the Concord towns on the Wend. |
+| Gullstrand | Concord | Skerrin | A gull-loud harbour town just south of Aldermere, at the river's mouth. |
+| Hawkstead | Concord | Tarrow | A falconers' upland market on the north bank, road to the Kestrel Barrow and the ford. |
+| Brandhold | Warband | Ashfolk | Brand-marked home town in the south-west, first of the Warband towns. |
+| Stiltmere | Warband | Mirekin | A stilted fen town in Sallowfen, road to the Sallow Vaults. |
+| Hornridge | Warband | Thornhide | A horn-and-bone ridge-town on the south bank, road to the ford. |
+
+- **The Wend**: the one river of the vale; the name is the vale's too, the Wending Vale. **The Low Bridge, the Weirgate ford, the High Bridge**: its three crossings, west to east.
+- **The Drowned Weir** (dungeon, level 7+ entry, south bank beside the Weirgate ford): the great delve, five chambers, a flooded sluice-works of green stone. Boss **Weir-Warden Orsk** (a Grave Warden of the old weir-keepers, named exception like Mere-Warden Hask). Chambers: **The Sluice Stair**, **The Millrace Gallery**, **The Weighing Hall**, **The Flooded Granary**, **The Weir-Warden's Chair**.
+- **The Kestrel Barrow** (dungeon, level 4+, Hawkwold): a falconer-lord's grassed mound. Boss **Lord Merrin Hawkwright**. Chambers: **The Low Door**, **The Kestrel Niches**, **The Falconer's Mews**.
+- **The Sallow Vaults** (dungeon, level 4+, Sallowfen): cellars under a burnt kiln, a smugglers' hold. Boss **Captain Dane Sallow**. Chambers: **The Eel Cellar**, **The Salt Tally**, **The Cold Store**.
+- **The Brandwright Kiln** (dungeon, level 10+, Ashenfold): a great kiln still red at the heart. Boss **The Kiln-Warden**, a golem built to tend it. Chambers: **The Flue Gallery**, **The Ash Floor**, **The Kiln Heart**.
+- **Weirgate Watch** (outpost, Greywood, level 6-11): the old guard-post on the north bank by the ford. **Kilnmark Cross** (outpost, Ashenfold, level 10-15): a crossroads post on the road to the Brandwright Kiln.
+- **Kragmaw's Lair** (Rimecrown, level 20): the same wyrm and raid as Eldmoor, here at the river's head.
+- **Greymane, the Pack-Father of the Hawkwold** (elite, Hawkwold, wolf): a grey wolf grown huge on the uplands' flocks. **Thornback, the Boar-King of the Greywood** (elite, Greywood, mud-boar): a tusked boar with a back like a hedge.
+- **First delves of the Vale** (`src/data/prologues.js`, one a home town, each about level 2, plain loot): **the Drowned Millhouse** (Aldermere, ruin, keeper **Miller Quill**, a frightened miller run by river-thieves), **the Gull Cliff Den** (Gullstrand, den, keeper **Old Brine**, a sea-wolf mother), **the Herders' Cairn** (Hawkstead, barrow, keeper **Shepherd Wick**, an old herder counting lost sheep), **the Cold Forge** (Brandhold, mine, keeper **Slagmaster Brok**, a self-crowned smith), **the Salt Pans** (Stiltmere, ruin, keeper **Boil-Master Garr**, a short-weight smuggler) and **the Bone Pit** (Hornridge, den, keeper **Mother Rattle**, a goat-fat she-beast). Campaign seed: `docs/campaigns/vale.md`.
+- Name notes: Greywood stands beside Eldmoor's Greywater and Stepping's Greyreach by sound only; the town Wendmere of the test fixture shares the Wend root and stays reserved and unused.
+
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
 
