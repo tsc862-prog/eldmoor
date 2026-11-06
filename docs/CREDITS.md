@@ -9,7 +9,7 @@ by `npm run art:packs` into `assets/packs/<set>/`, which is gitignored: only the
 
 | Set | Author | Licence | Link | Used |
 | --- | --- | --- | --- | --- |
-| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions; town buildings |
+| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions, rocks and whole trees; town buildings |
 | [LPC] Roofs | bluecarrot16, Lanea Zimmerman (Sharm), Michele Bucelli (Buch), Casper Nilsson, Xenodora, keith karnage, NaRNeRZz, Talon (Talosaurus) | CC-BY-SA 3.0 (also GPL 3.0) | https://opengameart.org/content/lpc-roofs |
 | Universal LPC Spritesheet Character Generator (layers) | per layer, below | CC-BY-SA 3.0 (each layer also offered under the licences listed below) | https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator | the hero sheets (seven classes by six peoples) |
 | Ninja Adventure | pixel-boy | CC0 1.0 | https://pixel-boy.itch.io/ninja-adventure-asset-pack | not fetched (itch needs a browser click) |
@@ -51,6 +51,12 @@ and ridge of that set's slate gable, and each names that set in its index entry.
 `building:lpc-palisade-tower`, `-pier` and `-pier-tall`, is laid up by `scripts/art/packcut-walls.mjs` from the deck boards of
 `bridges.png` (Sharm), stood on end and sharpened in code; the blockhouses' roofs are the [LPC] Roofs wood shakes and name that set.
 All of these are derivative works under CC-BY-SA 3.0.
+## LPC rocks and trees
+
+`prop:rock-<biome>-1..3` are cut from `rock.png` and `prop:canopy-<biome>-1..3` (whole trees: crown over trunk and ground shadow) from `treetop.png`
+and `trunk.png`, all by Leana Zimmerman (Sharm), CC-BY-SA 3.0 (also GPL 3.0 and OGA-BY 3.0), from the same base assets. Pixels are
+LPC's at 1:1; per biome (meadow, fen, ash, tundra) they are only recoloured, and the tundra firs get a dusting of snow. Derivative
+works under CC-BY-SA 3.0. The script is `scripts/art/packcut.mjs props`.
 
 ## LPC hero sheets
 

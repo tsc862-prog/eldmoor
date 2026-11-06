@@ -99,7 +99,7 @@
     "art:daily": "node scripts/art/daily.mjs",
     "art:packs": "node scripts/art/packs.mjs",
     "art:lpc-heroes": "node scripts/art/lpc-heroes.mjs --index --credits-md docs/CREDITS.md",
-    "art:packcut": "node scripts/art/packcut.mjs terrain --index",
+    "art:packcut": "node scripts/art/packcut.mjs terrain --index && node scripts/art/packcut.mjs props --index",
     "art:lpc-buildings": "node scripts/art/packcut-buildings.mjs --index",
     "art:lpc-walls": "node scripts/art/packcut-walls.mjs --index",
     "art:loop": "node scripts/art/daily.mjs --loop",
