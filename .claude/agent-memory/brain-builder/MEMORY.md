@@ -90,6 +90,7 @@
 - [Chatbot voice](chatbot-voice.md) — #837 chatbotVoice guard, refusal note, FP count 0/1646, flag plumbing
 - [Slot stall](slot-stall.md) — #868 turn_over + PostToolUse continue:false, scene slot, lease beats/tickets, real leak, measured calls
 - [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
+- [Lazy tools](lazy-tools.md) — #808 AGENT_LAZY_TOOLS: tools:[] blocks ToolSearch, alwaysLoad list, mock pitfalls, figures, live test needs
 - [Voice seconds left](voice-seconds-left.md) — #885 left N s on [ruling]/[table] lines; abort math
 - [sessioncheck scene flake](sessioncheck-scene-flake.md) — #898 fresh-line/roll flake = real Table scene holds the roll; play-headless --watch fix
 - [Nightly mock scenes](nightly-mock-scenes.md) — #822 reflex-scenes cause: mock-tools never answered scenes; mock-table, near-copy lines, 60 calls/min cap
