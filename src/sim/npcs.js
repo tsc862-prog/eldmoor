@@ -10,7 +10,9 @@
 // Owned by world-builder (routines and reactions); names and sprites by
 // character-builder; lines by lore-keeper. Canon: docs/LORE.md, "Townsfolk".
 import {pickA} from '../core/rng.js';
-import {CITY,CRYPT,ZONES,dist} from '../world/map.js';
+import {keep} from './kept.js';
+import {CITY,ZONES,dist} from '../world/map.js';
+import {gatheringFor} from './crypts.js';
 import {solidAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {RACES,racesOf,raceName} from '../data/races.js';
@@ -37,6 +39,7 @@ export const WALK=1.6,STROLL=1.1,GREET_R=2,BLESS_R=3,HEAR=7,COOL=30,URGENT=3,BUB
 // Private LCG: choosing lines, stroll points and pauses never perturbs the gameplay RNG.
 const SEED0=0x3c6ef372;let seed=SEED0;export const resetNpcSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('npcs',()=>seed,v=>{seed=v}); // saved with the world
 
 const fill=(s,p,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?p.name:k==='town'?p.town:ctx[k]!=null?String(ctx[k]):k)
   .replace(/\b([Aa]) (?=[AEIOUaeiou])/g,'$1n ');
@@ -149,8 +152,8 @@ function sing(p,dt){if(p.songCd>0){p.songCd-=dt;return}if(p.chatCd>0)return;
 // The priest or shaman blesses a Crypt party of their faction gathering in town: one
 // strike at +20% (a.blessed, as the wayside shrines grant), hurrying to the gate while
 // unblessed members are still inside the walls.
-function bless(p,c){const g=CRYPT&&CRYPT.group;
-  if(!g||g.phase!=='gather'||g.fac!==p.fac){p.errand=null;return}
+function bless(p,c){const g=gatheringFor(p.fac);
+  if(!g){p.errand=null;return}
   const need=g.mem.filter(a=>!a.blessed&&a.state==='dungeon');
   p.errand=need.some(a=>a.x>=c.x0-2&&a.x<=c.x1+3&&a.y>=c.y0-2&&a.y<=c.y1+2)?gateIn(c):null;
   for(const a of need){if(dist(a,p)>BLESS_R)continue;a.blessed=1;pop(a.x,a.y-.6,'BLESSED','#9ad0ff');S.npcNews.stats.blessings++;

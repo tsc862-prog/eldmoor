@@ -27,3 +27,4 @@
 - [Downed UI](downed_ui.md): #659 downview.js, save flash by tally diff, purposeFor, timeline from hero Logs, banner on #698 beats
 - [Chat scene groups](chat_scene_groups.md): #743 Table scenes grouped in Chat, S.tableLog write-only record, e.sk/e.opt tags, arrange()/rowEl
 - [Setup/title wide](setup_title_wide.md): #847 wide layout, details for professions, sticky Start bar
+- [Comment code check](comment_code_check.md): #935 trailing // hides code; rulescheck section 8; body margin overflow

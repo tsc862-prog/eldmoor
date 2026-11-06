@@ -9,6 +9,7 @@
 // Cheap rendering: a frame's skeleton is built when the hero in its place changes; every 0.3 s
 // tick (renderFrames, from main.js) writes only the text, widths and classes that changed.
 // frameRows() returns the same content as plain text for the headless smoke check.
+import {cryptOfHero} from '../sim/crypts.js';
 import {classColor} from '../core/colors.js'; // a member's name and top edge in its class colour
 import {FAC} from '../data/factions.js';
 import {ZONES} from '../world/map.js';
@@ -68,7 +69,7 @@ export function chipsOf(a){const out=[];if(!a)return out;
   if(a.blessed)out.push({t:'BLESSED',c:'good',title:'The next strike lands at +20% (a wayside shrine or a crypt blessing).'});
   const mh=maxHp(a);if(a.state!=='ghost'&&a.state!=='downed'&&a.hp<mh*.35)out.push({t:'WOUNDED',c:'bad',title:'Below a third of their health.'});
   out.push(...effectChips(a));
-  if(a.hidden&&a.state==='dungeon')out.push({t:'IN CRYPT',c:'crypt',title:'Inside the Sunken Crypt.'});
+  if(a.hidden&&a.state==='dungeon')out.push({t:'IN CRYPT',c:'crypt',title:'Inside '+((cryptOfHero(a)||{}).name||'the dungeon')+'.'});
   const c=conditionAt(a.zone);if(c&&CONDITIONS[c.kind])out.push({t:CONDITIONS[c.kind].label.toUpperCase(),c:'cond',title:CONDITIONS[c.kind].about+' (over '+ZONES[c.z]+')',col:CONDITIONS[c.kind].col});
   const owed=Object.keys(a.nemesis||{}).filter(id=>{const n=byId(id);return n&&n.state!=='dead'}).length;if(owed)out.push({t:'BLOOD OWED',c:'warn',title:'Sworn to avenge a guildmate.'});
   // the oath's counter lives in the Company tab's open threads (#546: frames carry the glance only)

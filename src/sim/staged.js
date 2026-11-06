@@ -24,7 +24,9 @@
 //   rec {id, kind, title, frame, reason, near:{hero, label}, at:{x,y}, z, lvl, cast:{...}, labels, born, until, phase, scene, result}
 //   S.table.calls [{id, kind, about, legal?, who?, t, done, by, text, pick}] while a staged scene is open
 import {S,clockStr,dayNo} from './state.js';
-import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {keep} from './kept.js';
+import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,zoneAt,dist} from '../world/map.js';
+import {cryptOfHero} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {BESTIARY} from '../data/bestiary.js';
@@ -95,6 +97,7 @@ const gd=t=>({t,c:'gd'});
 // Private LCG for flavour and spots: the gameplay RNG only rolls the dice of the scene itself.
 const SEED0=0x51a6ed13;let seed=SEED0;export const resetStagedSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('staged',()=>seed,v=>{seed=v}); // saved with the world
 const pickR=a=>a[Math.floor(r()*a.length)];
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f<>{}]+/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 const cap=s=>s?s.charAt(0).toUpperCase()+s.slice(1):s;
@@ -378,7 +381,7 @@ const resting=b=>b.state==='camp'||b.state==='town'&&Array.isArray(b.pq)&&!!b.pq
 // The member a vision takes now, or null: never while one of them fights, raids or is in the Crypt; staged near a member, when one
 // rests (a camp, a rest at an inn); staged at a place, when one stands there.
 function visionMet(rec){const L=recMem(rec).filter(b=>living(b)&&!b.hidden);if(!L.length)return null;
-  if(L.some(b=>VBUSY.has(b.state)||b.raid||(CRYPT.group&&CRYPT.group.mem.includes(b))))return null;
+  if(L.some(b=>VBUSY.has(b.state)||b.raid||cryptOfHero(b)))return null;
   return rec.trig==='rest'?L.find(resting)||null:L.find(b=>dist(b,rec.at)<=STAGE.MEET_R)||null}
 
 // ---- once per step, before the Table triggers (sim/table.js tableTick): walk, meet, expire ----

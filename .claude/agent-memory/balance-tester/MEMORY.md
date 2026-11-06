@@ -1,1 +1,2 @@
 - [Baselines](project_baselines.md) — dated sim numbers; latest 2026-11-01 main vs PR147 (main: 17.7 deaths/h, PvP 53%, Kragmaw 8/120min)
+- [PR805 geometry](project_geometry805.md) — 2026-11-04 x40 vs main x20: crawl deaths 0.50 vs 0.25, inside 0.4-0.8

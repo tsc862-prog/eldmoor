@@ -32,7 +32,7 @@ concurrency:
 # be listed in ok.needs.
 jobs:
   core:
-    name: Build, world, saves, sim
+    name: Build, rules, sim
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -48,19 +48,14 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           GH_TOKEN: ${{ github.token }}
-      - {name: World spec snapshot check, run: npm run worldcheck}
-      - {name: Passability layer check, run: npm run passablecheck}
-      - {name: Paths check, run: npm run pathcheck}
-      - {name: Save/load round trip, run: npm run savecheck}
-      - {name: init() reset, run: npm run initcheck}
+      - {name: DM voices long-poll and answer in time (issue 680), run: npm run voicecheck}
+      - {name: Gathering, run: npm run gathercheck}
+      - {name: Brain policy and relay (mock model), run: npm run braincheck}
+      - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
       - {name: Downed and death saves, run: npm run downcheck}
-      - {name: Hero will (bequeath), run: npm run bequeathcheck}
-      - {name: Fellowship archetypes, run: npm run archetypecheck}
-      - {name: Agent-built personality, run: npm run personacheck}
-      - {name: Pack and inventory, run: npm run invcheck}
-      - {name: Bestiary, run: npm run bestiarycheck}
-      - {name: Class abilities and specialisations, run: npm run movecheck}
       - {name: Score growth chosen by agent heroes, run: npm run scorecheck}
+      - {name: DM rumours and names for deeds (seed_rumour and bestow), run: npm run rumourcheck}
+      - {name: Learn the world, run: npm run lorecheck}
       - name: Headless sim (10 game-hours)
         run: npm run sim -- 10 | tee sim.txt
       - name: Sanity-check the sim summary
@@ -70,71 +65,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: {name: sim-summary, path: sim.txt}
 
-  world:
-    name: World levers, gathering, setup
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: 20, cache: npm}
-      - run: npm ci
-      - {name: DM levers, run: npm run levercheck}
-      - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
-      - {name: Gathering, run: npm run gathercheck}
-      - {name: Road traffic, run: npm run trafficcheck}
-      - {name: Crafting, run: npm run craftcheck}
-      - {name: Hero trades, run: npm run tradecheck}
-      - {name: Gathering nodes, run: npm run nodecheck}
-      - {name: Recipes, run: npm run recipecheck}
-      - {name: Professions, run: npm run professioncheck}
-      - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
-      - {name: New World setup, run: npm run setupcheck}
-
-  ui:
-    name: Watcher UI
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: 20, cache: npm}
-      - run: npm ci
-      - {name: Watcher UI keeps scroll and open rows (stubbed DOM), run: npm run uismoke}
-      - {name: New World setup and title screen (stubbed DOM), run: npm run setupsmoke}
-
-  agents:
-    name: Agent players and runners
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: 20, cache: npm}
-      - run: npm ci
-      - {name: Agent player (mock agents), run: npm run playcheck}
-      - {name: Townsfolk hails, run: npm run localscheck}
-      - {name: Sightings and couriers (issue 446), run: npm run sightcheck}
-      - {name: Table scene waits (slow mock members), run: npm run scenewaitcheck}
-      - {name: Hero standing orders, run: npm run orderscheck}
-      - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
-      - {name: Hugging Face provider (mock router and no token), run: npm run hfcheck}
-      - {name: Gemini provider (mock Gemini and no key), run: npm run googlecheck}
-      - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
-      - {name: Session size (real CLI on a mock API), run: npm run sessioncheck}
-      - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
-      - {name: Behavior logs (mock runners), run: npm run behaviorcheck}
-      - {name: Cost report (fixture logs), run: npm run costcheck}
-
-  rate:
-    name: Model request rate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: {node-version: 20, cache: npm}
-      - run: npm ci
-      - {name: Model request rate (counting mock relay), run: npm run ratecheck}
-
-  dm:
-    name: DM agent
+  g1:
+    name: Checks 1
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -142,29 +74,84 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: DM agent (mock agent and Ollama), run: npm run dmcheck}
+      - {name: DM levers, run: npm run levercheck}
+      - {name: Passability layer check, run: npm run passablecheck}
+      - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
+      - {name: Agent-built personality, run: npm run personacheck}
+      - {name: New World setup, run: npm run setupcheck}
+      - {name: DM-made dungeon sites, run: npm run sitecheck}
+      - {name: Hire tool, run: npm run hirecheck}
 
-  local:
-    name: Local agent runner
+  g2:
+    name: Checks 2
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: 20, cache: npm}
       - run: npm ci
-      - {name: Local agent runner (mock Ollama), run: npm run localcheck}
+      - {name: Hugging Face provider (mock router and no token), run: npm run hfcheck}
+      - {name: Town autopilot and danger edges, run: npm run townpilotcheck}
+      - {name: New World setup and title screen (stubbed DOM), run: npm run setupsmoke}
+      - {name: Townsfolk hails, run: npm run localscheck}
+      - {name: Fellowship archetypes, run: npm run archetypecheck}
+      - {name: Sightings and couriers (issue 446), run: npm run sightcheck}
+      - {name: First delve on the Stepping Lands, run: npm run prologuecheck:stepping}
+      - {name: Companion voice (scripted companions voiced by the DM), run: npm run compvoicecheck}
+      - {name: Tiered memory, run: npm run tiercheck}
 
-  launcher:
-    name: One-window launcher
+  g3:
+    name: Checks 3
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: 20, cache: npm}
       - run: npm ci
-      - {name: One-window launcher and runner resume, run: npm run upcheck}
+      - {name: Paths check, run: npm run pathcheck}
+      - {name: Gathering nodes, run: npm run nodecheck}
+      - {name: Pack and inventory, run: npm run invcheck}
+      - {name: Hero trades, run: npm run tradecheck}
+      - {name: Class abilities and specialisations, run: npm run movecheck}
+      - {name: Professions, run: npm run professioncheck}
+      - {name: Gambits (agent heroes' own rules), run: npm run gambitcheck}
+      - {name: Wish tool for the builders (DM and heroes), run: npm run wishcheck}
 
-  minds-a:
-    name: Table, crawl, camp
+  g4:
+    name: Checks 4
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
+      - {name: Table scene waits (slow mock members), run: npm run scenewaitcheck}
+      - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
+      - {name: Agent player (mock agents), run: npm run playcheck}
+      - {name: Recipes, run: npm run recipecheck}
+      - {name: Talk guard (introductions and repeats; refused talk counted), run: npm run talkcheck}
+      - {name: Pay and mark tools, run: npm run paymarkcheck}
+
+  g5:
+    name: Checks 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: Gemini provider (mock Gemini and no key), run: npm run googlecheck}
+      - {name: Guild focus (neutral setting and Fellowship exempt), run: npm run focuscheck}
+      - {name: App runners and relay concurrency (mock Ollama and 429), run: npm run runnercheck}
+      - {name: Watcher UI keeps scroll and open rows (stubbed DOM), run: npm run uismoke}
+      - {name: World spec snapshot check, run: npm run worldcheck}
+      - {name: Crafting, run: npm run craftcheck}
+      - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
+      - {name: Tool quick wins, run: npm run toolwincheck}
+
+  g6:
+    name: Checks 6
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -172,42 +159,48 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: Dungeon crawl room by room, run: npm run crawlcheck}
-      - {name: First delve, run: npm run prologuecheck}
-      - {name: DM-made dungeon sites, run: npm run sitecheck}
       - {name: Camp and rest, run: npm run campcheck}
-      - {name: Town autopilot and danger edges, run: npm run townpilotcheck}
-      - {name: Gambits (agent heroes' own rules), run: npm run gambitcheck}
-      - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
+      - {name: Table mode and staged scenes, run: npm run tablecheck}
+      - {name: Road traffic, run: npm run trafficcheck}
+      - {name: Bestiary, run: npm run bestiarycheck}
+      - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
+      - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
+      - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
 
-  minds-b:
-    name: Brain, channels, memory
+  g7:
+    name: Checks 7
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: {node-version: 20, cache: npm}
       - run: npm ci
-      - {name: Brain policy and relay (mock model), run: npm run braincheck}
-      - {name: Table mode and staged scenes, run: npm run tablecheck}
-      - {name: Companies (the verbs; the apart world end to end), run: npm run companycheck}
-      - {name: Talk guard (introductions and repeats; refused talk counted), run: npm run talkcheck}
+      - {name: init() reset, run: npm run initcheck}
+      - {name: Save/load round trip, run: npm run savecheck}
+      - {name: Session size (real CLI on a mock API), run: npm run sessioncheck}
       - {name: Companies initiate the Crypt and raids, run: npm run initiatecheck}
-      - {name: In-game channels (planted secrets never reach a hero), run: npm run channelcheck}
-      - {name: DM rumours and names for deeds (seed_rumour and bestow), run: npm run rumourcheck}
+      - {name: Hero will (bequeath), run: npm run bequeathcheck}
+      - {name: Cost report (fixture logs), run: npm run costcheck}
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}
-      - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
-      - {name: Learn the world, run: npm run lorecheck}
-      - {name: Tool quick wins, run: npm run toolwincheck}
-      - {name: Pay and mark tools, run: npm run paymarkcheck}
-      - {name: Wish tool for the builders (DM and heroes), run: npm run wishcheck}
-      - {name: Hire tool, run: npm run hirecheck}
-      - {name: Companion voice (scripted companions voiced by the DM), run: npm run compvoicecheck}
-      - {name: Challenge tool (honour duels at the table), run: npm run challengecheck}
-      - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
-      - {name: DM voices long-poll and answer in time (issue 680), run: npm run voicecheck}
       - {name: More turn triggers, run: npm run wakecheck}
+      - {name: First delve in the Wending Vale, run: npm run prologuecheck:vale}
+
+  g8:
+    name: Checks 8
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: 20, cache: npm}
+      - run: npm ci
+      - {name: Local agent runner (mock Ollama), run: npm run localcheck}
+      - {name: Model request rate (counting mock relay), run: npm run ratecheck}
+      - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
+      - {name: One-window launcher and runner resume, run: npm run upcheck}
+      - {name: Hero standing orders, run: npm run orderscheck}
+      - {name: First delve, run: npm run prologuecheck}
+      - {name: Challenge tool (honour duels at the table), run: npm run challengecheck}
       - {name: Action log, run: npm run actcheck}
-      - {name: Tiered memory, run: npm run tiercheck}
 
   hash-guard:
     name: Seeded hashes against main
@@ -254,20 +247,19 @@ jobs:
   ok:
     name: CI ok
     if: always()
-    needs: [core, world, ui, agents, local, launcher, rate, dm, minds-a, minds-b, hash-guard]
+    needs: [core, g1, g2, g3, g4, g5, g6, g7, g8, hash-guard]
     runs-on: ubuntu-latest
     steps:
       - name: Every group passed
         run: |
           test "${{ needs.core.result }}" = success
-          test "${{ needs.world.result }}" = success
-          test "${{ needs.ui.result }}" = success
-          test "${{ needs.agents.result }}" = success
-          test "${{ needs.local.result }}" = success
-          test "${{ needs.launcher.result }}" = success
-          test "${{ needs.rate.result }}" = success
-          test "${{ needs.dm.result }}" = success
-          test "${{ needs.minds-a.result }}" = success
-          test "${{ needs.minds-b.result }}" = success
+          test "${{ needs.g1.result }}" = success
+          test "${{ needs.g2.result }}" = success
+          test "${{ needs.g3.result }}" = success
+          test "${{ needs.g4.result }}" = success
+          test "${{ needs.g5.result }}" = success
+          test "${{ needs.g6.result }}" = success
+          test "${{ needs.g7.result }}" = success
+          test "${{ needs.g8.result }}" = success
           # hash-guard only runs on pull requests (skipped on pushes and merge groups)
           case "${{ needs.hash-guard.result }}" in success|skipped) ;; *) exit 1 ;; esac
