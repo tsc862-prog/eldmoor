@@ -49,7 +49,7 @@ const lpcImage=(c,b)=>lpcFits(c,b)?pieceImage(lpcId(c,b)):null;
 // Ask for every cut building at once: each one that arrives repaints the chunks, so they all come with the first paint and
 // never as a hitch when the camera first reaches another town.
 let lpcAsked=false;onAssets(id=>{if(id===null)lpcAsked=false});
-function lpcAsk(){if(lpcAsked)return;lpcAsked=true;for(const c of CITY){for(const b of c.buildings||[])lpcImage(c,b);for(const k of WALL_KEYS)pieceImage(wallId(c,k))}}
+function lpcAsk(){if(lpcAsked)return;lpcAsked=true;for(const c of CITY){for(const b of c.buildings||[])lpcImage(c,b);for(const k of WALL_KEYS)pieceImage(wallId(c,k));if(c.ground)streetImage(c)}}
 const imgH=img=>(img.h||img.height)/TILE;
 const standBox=(b,img)=>{const h=imgH(img);return [b.box[0],b.box[1]+b.box[3]-h,b.box[2],h]};
 // Where a cut building's chimney or flag stands, in world units, or null (no such image loaded): the town life puts its smoke
@@ -100,9 +100,21 @@ const lane=(c,x,y)=>!c.wall&&(c.ground||[]).some(([dx,dy,w,h])=>x>=c.x0+dx&&x<c.
 // A stone edge where a paved tile meets a street, two art pixels, its joint on the street side.
 function kerb(ctx,c,x,y){const P=TOWN_GROUND[townStyle(c)].plaza,a=U/TILE,X=x*U,Y=y*U,run=(s,d,fn)=>{if(!lane(c,s,d))return;ctx.fillStyle=P[3];fn(2*a);ctx.fillStyle=P[0];fn(a)};
   run(x,y-1,t=>ctx.fillRect(X,Y,U,t));run(x-1,y,t=>ctx.fillRect(X,Y,t,U));run(x,y+1,t=>ctx.fillRect(X,Y+U-t,U,t));run(x+1,y,t=>ctx.fillRect(X+U-t,Y,t,U))}
-// The town's ground and ring for the tiles [x0,x1)x[y0,y1): plaza, shadows, walls, then towers and piers.
-function cutGround(ctx,c,set,x0,y0,x1,y1){
-  for(let y=Math.max(c.y0+1,y0);y<Math.min(c.y1,y1);y++)for(let x=Math.max(c.x0+1,x0);x<Math.min(c.x1,x1);x++)if(!lane(c,x,y)){tileOf(ctx,set.plaza,x,y);kerb(ctx,c,x,y)}
+// A street's own cut, where one is loaded: the road tile is left under it otherwise, with square corners.
+const streetImage=c=>c.wall||!c.ground?null:pieceImage(`tile:lpc-${townStyle(c)}-street`);
+const paved=(c,x,y)=>x>c.x0&&x<c.x1&&y>c.y0&&y<c.y1&&!lane(c,x,y);
+// Where street and paving turn, the kerb turns on an arc: a paved tile with street on two sides has that corner rounded off, a street
+// tile with paving on two sides has its corner filled. All inside the tile, so chunks can paint it alone. Radius in art pixels.
+const CURVE=7;
+function curves(ctx,c,plaza,street,x,y){const onLane=lane(c,x,y),P=TOWN_GROUND[townStyle(c)].plaza,a=U/TILE,r=CURVE,fill=onLane?plaza:street;
+  for(const sy of [-1,1])for(const sx of [-1,1]){if(onLane?!(paved(c,x+sx,y)&&paved(c,x,y+sy)):!(lane(c,x+sx,y)&&lane(c,x,y+sy)))continue;
+    for(let j=0;j<r;j++)for(let i=0;i<r;i++){const d=Math.hypot(i+.5-r,j+.5-r),px=sx<0?i:TILE-1-i,py=sy<0?j:TILE-1-j,X=x*U+px*a,Y=y*U+py*a;
+      if(d>(onLane?r+2:r)){const q=x*TILE+px,s=y*TILE+py;ctx.drawImage(fill,q%iw(fill),s%ih(fill),1,1,X,Y,a,a);continue}
+      const e=onLane?d-r:r-d;if(e<0||e>=2)continue; // the kerb's two pixels, its joint on the street side
+      ctx.fillStyle=e<1?P[0]:P[3];ctx.fillRect(X,Y,a,a)}}}
+// The town's ground and ring for the tiles [x0,x1)x[y0,y1): plaza, streets, shadows, walls, then towers and piers.
+function cutGround(ctx,c,set,x0,y0,x1,y1){const st=streetImage(c);
+  for(let y=Math.max(c.y0+1,y0);y<Math.min(c.y1,y1);y++)for(let x=Math.max(c.x0+1,x0);x<Math.min(c.x1,x1);x++){if(!lane(c,x,y)){tileOf(ctx,set.plaza,x,y);kerb(ctx,c,x,y)}else if(st)tileOf(ctx,st,x,y);if(st)curves(ctx,c,set.plaza,st,x,y)}
   for(const [x,y] of c.gateTiles)if(x>=x0&&x<x1&&y>=y0&&y<y1)tileOf(ctx,set.plaza,x,y);
   sill(ctx,c);
   ctx.fillStyle=SHADOW;for(const [x,y,w,h] of townShadow(c))if(x<x1*U&&x+w>x0*U&&y<y1*U&&y+h>y0*U)ctx.fillRect(x,y,w,h);
@@ -186,7 +198,7 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
     if(plain(building(c,'auction')))bld(4*T,3*T+dy,f.dark,'#c8b890','#f2c14e');
     if(plain(building(c,'hall')))bld(8*T,3*T+dy,'#6a4a3a','#b8a888');
     if(walls||(c.buildings||[]).some(b=>b.kit))cutBanners(ctx,c,x0,y0,x1,y1,R);else for(const gy of [5,8]){const gx=12*T+6+ox,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}
-    for(let i=0;i<3;i++){const gx=4*T+i*12+ox,gyy=8*T+dy+4,tx=Math.floor(gx/T),ty=Math.floor(gyy/T);if((c.buildings||[]).some(b=>b.kit&&tx+1>b.box[0]&&tx<b.box[0]+b.box[2]&&ty+1>b.box[1]&&ty<b.box[1]+b.box[3]))continue; // a plan's own building may stand here
+    for(let i=0;i<3;i++){const gx=4*T+i*12+ox,gyy=8*T+dy+4,tx=Math.floor(gx/T),ty=Math.floor(gyy/T);if((c.buildings||[]).some(b=>b.kit&&tx+1>b.box[0]&&tx<b.box[0]+b.box[2]&&ty+1>b.box[1]&&ty<b.box[1]+b.box[3])||lane(c,tx,ty))continue; // a plan's own building or street may lie here
       R(gx+1,gyy,4,1,'#5a5a66');R(gx,gyy+1,6,7,'#5a5a66');R(gx+1,gyy+1,4,1,'#6e6e7a');R(gx+2,gyy+3,2,2,'#3a3a46');R(gx-1,gyy+8,8,1,'#3a3a46')}
   }
   // landmarks: the lair's nest (asset only), crypt mouths (asset, else the procedural arch over the 3x3 rock patch)

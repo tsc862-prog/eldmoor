@@ -950,10 +950,12 @@ async function townProbe(){
       if(a.foot[0]!==b.box[2]||a.foot[1]!==b.box[3]||a.door[0]!==b.door[0]-b.box[0]||a.door[1]!==b.door[1]-b.box[1])bad.push(`${c.name}: ${a.id} cut for ${a.foot} door ${a.door}`);
       if(a.w!==b.box[2]*RT||a.h!==(b.box[3]+Math.ceil(k.rise))*RT&&b.kit!==b.piece)bad.push(`${a.id}: ${a.w}x${a.h} on a ${b.box[2]}x${b.box[3]} footprint rising ${k.rise}`);
       if(!/lpc-base/.test(a.source||'')||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
-      if(/-(croft)$/.test(a.id)&&!/lpc-roofs/.test(a.source))bad.push(`${a.id}: wood shakes owe LPC Roofs`)}
+      if(/-(croft|gable)$/.test(a.id)&&!/lpc-roofs/.test(a.source))bad.push(`${a.id}: LPC Roofs parts owe LPC Roofs`)}
     ok(rows.size>0&&!bad.length,`${rows.size} kit rows cut for the plans that name them, and none in a town without a plan`+(bad.length?': '+bad.slice(0,4).join('; '):''));
     const pal=['plaza','wall-n','wall-e','wall-s','wall-w','tower','pier','pier-tall'].map(k=>idx[`${k==='plaza'||k.startsWith('wall')?'tile':'building'}:lpc-palisade-${k}@${RT}`]);
-    ok(pal.every(a=>a&&/lpc-base/.test(a.source)&&/^CC-BY-SA/.test(a.license))&&!D.TOWN_PIECES.some(p=>p.piece==='house'),'the palisade set is whole and credited, and house is no piece of the default town plan')}
+    ok(pal.every(a=>a&&/lpc-base/.test(a.source)&&/^CC-BY-SA/.test(a.license))&&!D.TOWN_PIECES.some(p=>p.piece==='house'),'the palisade set is whole and credited, and house is no piece of the default town plan');
+    const streets=Object.keys(D.TOWN_STYLES).map(st=>idx[`tile:lpc-${st}-street@${RT}`]);
+    ok(streets.every(a=>a&&a.w===RT&&a.h===RT&&/lpc-base/.test(a.source)&&/^CC-BY-SA/.test(a.license)),'every town style has its street cut, one tile, credited')}
   // walls, towers, piers and plaza cut from the LPC kit (#830): credited, sized, one cut per side and none of them turned, drawn only as
   // a whole set, and nothing of it past the ring and the shadow it throws
   {const idx=JSON.parse(readFileSync(new URL('../assets/index.json',import.meta.url),'utf8')).assets,keys=['plaza','wall-n','wall-e','wall-s','wall-w','tower','pier','pier-tall'],kind=k=>k==='plaza'||k.startsWith('wall')?'tile':'building';

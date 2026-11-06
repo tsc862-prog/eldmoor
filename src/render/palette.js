@@ -207,7 +207,8 @@ export const TOWN={
 // because the manifest quantises generated buildings to everything in TOWN.<style>.
 export const TOWN_GROUND={
   stone:{plaza:['#6e685e','#8e887c','#a49e90','#b4aea0','#c4beb0'],walk:['#4a4652','#5e5a66','#726e7a','#868290']},
-  timber:{plaza:['#3a3230','#524844','#625852','#70665e','#7e746a'],walk:['#262226','#343034','#433e42','#524c50']},
+  timber:{plaza:['#3a3230','#524844','#625852','#70665e','#7e746a'],walk:['#262226','#343034','#433e42','#524c50'],
+    street:['#2c2420','#3e3228','#4e4030','#5e4e3a','#6e5c46']}, // packed earth, a step warmer than the paving and no brighter (a stone town's street is the road's own dirt)
 };
 // A house's wood shakes (scripts/art/packcut-buildings.mjs), dark to light, where they are not the town's own roof: weathered oak over
 // the stone towns' cottages, a tarred brown over the timber towns'. Beside TOWN for the same reason as TOWN_GROUND.

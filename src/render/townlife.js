@@ -47,7 +47,8 @@ function layout(c,ci){let L=LAY.get(c);if(L)return L;
   roofSpots(L);
   for(const b of c.buildings){const [dx,dy]=b.door;
     if(b.piece!=='board')L.doors.push({x:(dx+.5)*T+(b.piece==='smithy'?-2:0),y:(dy+1)*T,forge:b.piece==='smithy',w:b.box[2]})}
-  // stalls: two tiles wide, with the rows above and below clear, away from doors and the gate lane
+  // stalls: two tiles wide, with the rows above and below clear, away from doors and the gate lane. A plan with little open ground gets
+  // a second look below: a stall needs only its own two tiles off the streets and open ground behind it, so it never hides a front.
   const gate=c.gateTiles,gx=gate[0][0],gy=gate[0][1],cand=[];
   for(let y=c.y0+3;y<c.y1;y++)for(let x=c.x0+1;x<c.x1;x++){
     let ok=true;for(let yy=y-2;yy<=y+1&&ok;yy++)for(let xx=x;xx<=x+1;xx++)if(!open(xx,yy)){ok=false;break}
@@ -55,14 +56,22 @@ function layout(c,ci){let L=LAY.get(c);if(L)return L;
     let near=false;for(const [dx,dy] of doorSet)if(Math.abs(dx-x-.5)<2.2&&Math.abs(dy-y)<3)near=true;
     if(near)continue;
     const g=Math.hypot(x+1-gx,y-gy);if(g<5)continue;cand.push({x,y,s:g+hash(x,y,c.x0*7+c.y0)*2.5})}
-  cand.sort((a,b)=>b.s-a.s);
-  for(const q of cand){if(L.stalls.length>=2)break;if(L.stalls.every(s=>Math.abs(s.sx-q.x)>=3||Math.abs(s.sy-q.y)>=3)){
-    const i=L.stalls.length,k=KEEPERS[Math.floor(hash(q.x,q.y,5)*KEEPERS.length)];
-    L.stalls.push({sx:q.x,sy:q.y,x:q.x+1,y:q.y+.95,kind:'deco',cx:q.x+1,goods:GOODS[Math.floor(hash(q.x,q.y,9)*GOODS.length)],
-      kp:{role:k,fac:c.fac,id:ci*10+i},paint:paintStall,town:L,open:0})}}
+  const setUp=(list,rows=3)=>{list.sort((a,b)=>b.s-a.s);
+    for(const q of list){if(L.stalls.length>=2)break;if(L.stalls.every(s=>Math.abs(s.sx-q.x)>=3||Math.abs(s.sy-q.y)>=rows)){
+      const i=L.stalls.length,k=KEEPERS[Math.floor(hash(q.x,q.y,5)*KEEPERS.length)];
+      L.stalls.push({sx:q.x,sy:q.y,x:q.x+1,y:q.y+.95,kind:'deco',cx:q.x+1,goods:GOODS[Math.floor(hash(q.x,q.y,9)*GOODS.length)],
+        kp:{role:k,fac:c.fac,id:ci*10+i},paint:paintStall,town:L,open:0})}}};
+  setUp(cand);
+  if(L.stalls.length<2&&c.buildings.some(b=>b.kit)){const street=(x,y)=>(c.ground||[]).some(([dx,dy,w,h])=>x>=c.x0+dx&&x<c.x0+dx+w&&y>=c.y0+dy&&y<c.y0+dy+h),tight=[];
+    for(let y=c.y0+2;y<c.y1;y++)for(let x=c.x0+1;x<c.x1;x++){if(![[x,y],[x+1,y],[x,y-1],[x+1,y-1]].every(([p,q])=>open(p,q))||street(x,y)||street(x+1,y))continue;
+      if(doorSet.some(([dx,dy])=>Math.abs(dx-x-.5)<1.4&&dy<=y+1&&y-dy<3))continue; // not before a door, nor on the steps of one just below
+      const g=Math.hypot(x+1-gx,y-gy);if(g>=3)tight.push({x,y,s:g+hash(x,y,c.x0*7+c.y0)*2.5})}
+    setUp(tight,2)}
   // guards: a pair on the wall tiles flanking the gate, one walking the wall opposite
   const side=c.gateSide,along=side==='E'||side==='W',gxs=gate.map(g=>g[0]),gys=gate.map(g=>g[1]);
-  const flank=along?[[gxs[0],Math.min(...gys)-1],[gxs[0],Math.max(...gys)+1]]:[[Math.min(...gxs)-1,gys[0]],[Math.max(...gxs)+1,gys[0]]];
+  // a plan's north row stands over a north wall, so the pair stands outside it, either side of the road, and not on its roofs
+  const fy=side==='N'&&c.buildings.some(b=>b.kit&&b.box[1]===c.y0+1)?gys[0]-1:gys[0];
+  const flank=along?[[gxs[0],Math.min(...gys)-1],[gxs[0],Math.max(...gys)+1]]:[[Math.min(...gxs)-1,fy],[Math.max(...gxs)+1,fy]];
   flank.forEach(([x,y],i)=>L.guards.push({kind:'deco',x:x+.5,y:y+(along?.8:.85),post:true,face:along?(side==='E'?-1:1):(i?-1:1),fr:0,kp:{role:'captain',fac:c.fac,id:ci*10+3+i},paint:paintGuard,town:L,torch:true}));
   const opp=OPPOSITE[side],horiz=opp==='N'||opp==='S',len=(horiz?c.x1-c.x0:c.y1-c.y0)-2;
   L.walk={opp,horiz,len,x0:c.x0+1,y0:c.y0+1,x1:c.x1,y1:c.y1,off:hash(ci,3,8)*40};
