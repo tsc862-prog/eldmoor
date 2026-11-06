@@ -11,7 +11,7 @@ import {CITY,LANDMARKS} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle} from '../data/townart.js';
 import {assetPixels,assetEntry,onAssets} from './assets.js';
-import {drawHouse,drawCryptMouth,sketchPiece} from './pieceart.js';
+import {drawHouse,drawCryptMouth,sketchPiece,plainHouse} from './pieceart.js';
 import {FLAT,TOWN,TOWN_GROUND} from './palette.js';
 
 // Hook table (artcheck: every id here is in the manifest and every manifest entry hooked to this module is here). A piece
@@ -35,14 +35,17 @@ export function pieceImage(id){if(imgC.has(id))return imgC.get(id);
   x.putImageData(img,0,0);imgC.set(id,c);return c}
 
 // ---- buildings cut from the LPC kits (#833, scripts/art/packcut-buildings.mjs) ----
-// One image per style and piece, made for a footprint and a door: the index entry says which (foot, door), so a building of
-// another shape in some town's plan keeps its procedural form instead of a stretched image. These stand in front of the
-// generated pieces, have no manifest row and are not in ASSET_TOWNS (nothing generates them). An image may be taller than its
+// One image per style and piece, and per kit row a plan names (`kit`, world/spec.js TOWN_KIT: houses, a long hall), made for a
+// footprint and a door: the index entry says which (foot, door), so a building of another shape in some town's plan keeps its
+// procedural form instead of a stretched image. These stand in front of the generated pieces, have no manifest row and are not
+// in ASSET_TOWNS (nothing generates them). An image may be taller than its
 // footprint (its roof over the town wall behind): it stands on the footprint's bottom edge, so its box is worked out here.
-const lpcId=(c,piece)=>`building:lpc-${townStyle(c)}-${piece}`;
-function lpcFits(c,b){const e=assetEntry(lpcId(c,b.piece));if(!e||!e.foot||!e.door)return false;
+const lpcId=(c,b)=>`building:lpc-${townStyle(c)}-${b.kit||b.piece}`;
+// A kit row other than the piece's own shape: nothing generated fits it, and the sketches and houses of the fallback are drawn to its box.
+const ownShape=b=>!!b.kit&&b.kit!==b.piece;
+function lpcFits(c,b){const e=assetEntry(lpcId(c,b));if(!e||!e.foot||!e.door)return false;
   return e.foot[0]===b.box[2]&&e.foot[1]===b.box[3]&&e.door[0]===b.door[0]-b.box[0]&&e.door[1]===b.door[1]-b.box[1]}
-const lpcImage=(c,b)=>lpcFits(c,b)?pieceImage(lpcId(c,b.piece)):null;
+const lpcImage=(c,b)=>lpcFits(c,b)?pieceImage(lpcId(c,b)):null;
 // Ask for every cut building at once: each one that arrives repaints the chunks, so they all come with the first paint and
 // never as a hitch when the camera first reaches another town.
 let lpcAsked=false;onAssets(id=>{if(id===null)lpcAsked=false});
@@ -51,7 +54,7 @@ const imgH=img=>(img.h||img.height)/TILE;
 const standBox=(b,img)=>{const h=imgH(img);return [b.box[0],b.box[1]+b.box[3]-h,b.box[2],h]};
 // Where a cut building's chimney or flag stands, in world units, or null (no such image loaded): the town life puts its smoke
 // and pennant there instead of on the procedural form.
-export function pieceSpot(c,b,name){const img=lpcImage(c,b),s=img&&(assetEntry(lpcId(c,b.piece)).spots||{})[name];if(!s)return null;
+export function pieceSpot(c,b,name){const img=lpcImage(c,b),s=img&&(assetEntry(lpcId(c,b)).spots||{})[name];if(!s)return null;
   const q=standBox(b,img);return [q[0]*U+s[0]*U/TILE,q[1]*U+s[1]*U/TILE]}
 
 // ---- walls, towers, gate and plaza cut from the LPC kits (#830, scripts/art/packcut-walls.mjs) ----
@@ -59,8 +62,9 @@ export function pieceSpot(c,b,name){const img=lpcImage(c,b),s=img&&(assetEntry(l
 // the wall is its own cut, because a top-down tile turned by quarter turns puts its face on the wrong side and its light behind it.
 // Everything stands inside the wall ring, so no art rises over ground anybody walks: a tower is two ring tiles, a corner's
 // base on the lower one; the tall pier stands on the ring above the gate. These have no manifest row and no ASSET_TOWNS entry.
+// A spec town may name another set than its style's (`wall`, 'palisade').
 const WALL_KEYS=['plaza','wall-n','wall-e','wall-s','wall-w','tower','pier','pier-tall'];
-const wallId=(c,k)=>`${k==='plaza'||k.startsWith('wall')?'tile':'building'}:lpc-${townStyle(c)}-${k}`;
+const wallId=(c,k)=>`${k==='plaza'||k.startsWith('wall')?'tile':'building'}:lpc-${c.wall||townStyle(c)}-${k}`;
 function wallSet(c){const o={};for(const k of WALL_KEYS){const i=pieceImage(wallId(c,k));if(!i)return null;o[k]=i}return o}
 const SIDES='nesw';
 const iw=i=>i.w||i.width,ih=i=>i.h||i.height;
@@ -91,9 +95,14 @@ function sill(ctx,c){const g=c.gateTiles,side=c.gateSide||'E',P=TOWN_GROUND[town
   const bar=(at,w,col)=>{ctx.fillStyle=col;if(along)ctx.fillRect(x+at,y,w,n);else ctx.fillRect(x,y+at,n,w)};
   const far=side==='E'||side==='S'?U-5*a:0,near=side==='E'||side==='S'?0:U-2*a;
   bar(far,5*a,P.plaza[3]);bar(far,a,P.plaza[0]);bar(far+4*a,a,P.plaza[0]);bar(far+2*a,a,P.plaza[1]);bar(near,2*a,P.plaza[0])}
+// A plan's streets (`ground`) stay the road they are, so the paving reads as yards between them. A palisade town is decked throughout.
+const lane=(c,x,y)=>!c.wall&&(c.ground||[]).some(([dx,dy,w,h])=>x>=c.x0+dx&&x<c.x0+dx+w&&y>=c.y0+dy&&y<c.y0+dy+h);
+// A stone edge where a paved tile meets a street, two art pixels, its joint on the street side.
+function kerb(ctx,c,x,y){const P=TOWN_GROUND[townStyle(c)].plaza,a=U/TILE,X=x*U,Y=y*U,run=(s,d,fn)=>{if(!lane(c,s,d))return;ctx.fillStyle=P[3];fn(2*a);ctx.fillStyle=P[0];fn(a)};
+  run(x,y-1,t=>ctx.fillRect(X,Y,U,t));run(x-1,y,t=>ctx.fillRect(X,Y,t,U));run(x,y+1,t=>ctx.fillRect(X,Y+U-t,U,t));run(x+1,y,t=>ctx.fillRect(X+U-t,Y,t,U))}
 // The town's ground and ring for the tiles [x0,x1)x[y0,y1): plaza, shadows, walls, then towers and piers.
 function cutGround(ctx,c,set,x0,y0,x1,y1){
-  for(let y=Math.max(c.y0+1,y0);y<Math.min(c.y1,y1);y++)for(let x=Math.max(c.x0+1,x0);x<Math.min(c.x1,x1);x++)tileOf(ctx,set.plaza,x,y);
+  for(let y=Math.max(c.y0+1,y0);y<Math.min(c.y1,y1);y++)for(let x=Math.max(c.x0+1,x0);x<Math.min(c.x1,x1);x++)if(!lane(c,x,y)){tileOf(ctx,set.plaza,x,y);kerb(ctx,c,x,y)}
   for(const [x,y] of c.gateTiles)if(x>=x0&&x<x1&&y>=y0&&y<y1)tileOf(ctx,set.plaza,x,y);
   sill(ctx,c);
   ctx.fillStyle=SHADOW;for(const [x,y,w,h] of townShadow(c))if(x<x1*U&&x+w>x0*U&&y<y1*U&&y+h>y0*U)ctx.fillRect(x,y,w,h);
@@ -146,7 +155,7 @@ function put(ctx,img,[bx,by,bw,bh],rot){const x=bx*U,y=by*U,w=bw*U,h=bh*U;
 const BASE=2;
 function base(ctx,[bx,by,bw,bh]){const x=bx*U,y=(by+bh)*U;ctx.fillStyle='#0006';ctx.fillRect(x+1,y-BASE,bw*U-2,BASE);ctx.fillStyle='#0003';ctx.fillRect(x,y-BASE,1,BASE);ctx.fillRect(x+bw*U-1,y-BASE,1,BASE)}
 // Whether a piece of town c draws from its asset (for the procedural fallbacks below).
-const drawn=(c,b)=>!!b&&(!!lpcImage(c,b)||!!pieceImage(pieceId(townStyle(c),b.piece)));
+const drawn=(c,b)=>!!b&&(!!lpcImage(c,b)||(!ownShape(b)&&!!pieceImage(pieceId(townStyle(c),b.piece))));
 const building=(c,piece)=>(c.buildings||[]).find(b=>b.piece===piece);
 
 // Towns and landmarks whose boxes touch tiles [x0,x1)x[y0,y1), onto ctx in world units (the chunk context is scaled to
@@ -160,21 +169,25 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
     const walls=wallSet(c);if(walls)cutGround(ctx,c,walls,x0,y0,x1,y1);
     // generated pieces first (walls, gate, buildings), each where its asset is loaded
     for(const p of townPlan(c)){if(walls&&!p.piece)continue;const cut=p.b&&lpcImage(c,p.b);if(cut){const q=standBox(p.b,cut);if(boxHits(q,x0,y0,x1,y1))put(ctx,cut,q,0);continue}
-      if(!boxHits(p.box,x0,y0,x1,y1))continue;const img=pieceImage(p.id);if(!img)continue;if(p.piece)base(ctx,p.box);put(ctx,img,p.box,p.rot)}
+      if(!boxHits(p.box,x0,y0,x1,y1))continue;const img=p.b&&ownShape(p.b)?null:pieceImage(p.id);if(!img)continue;if(p.piece)base(ctx,p.box);put(ctx,img,p.box,p.rot)}
     // the smithy, chapel, inn and notice board where no asset drew them (#795): the pieces are solid ground now, so they
     // stand as the sketch the art pipeline starts from, in the town style's flat palette, and the town's smoke and lamps have a home
     {const st=townStyle(c),col={...FLAT[st],stone:TOWN[st].stone};
-     for(const b of c.buildings||[]){if(b.piece==='auction'||b.piece==='hall'||drawn(c,b))continue;const d=b.draw||b.box,bx=d[0]*T,by=d[1]*T;
+     for(const b of c.buildings||[]){if(drawn(c,b))continue;const d=b.draw||b.box,bx=d[0]*T,by=d[1]*T;
+       if(ownShape(b)){if(boxHits(d,x0,y0,x1,y1))plainHouse(R,bx,by,d[2]*T,d[3]*T,(b.door[0]-d[0])*T,col);continue}
+       if(b.piece==='auction'||b.piece==='hall'){if(b.kit&&boxHits(d,x0,y0,x1,y1))drawHouse(R,bx,by,b.piece==='hall'?'#6a4a3a':FAC[c.fac].dark,b.piece==='hall'?'#b8a888':'#c8b890',b.piece==='hall'?0:'#f2c14e');continue}
        if(!boxHits(d,x0,y0,x1,y1))continue;sketchPiece((x,y,w,h,k)=>{ctx.fillStyle=k;ctx.fillRect(bx+x,by+y,w,h)},b.piece,col)}}
     // procedural: auction house (faction roof, gold sign) and the hall where no asset drew them, then the gate banners
     // and graveyard stones; drawn relative to the town's top-left corner exactly as before slice 3
     const f=FAC[c.fac],ox=(c.x0-2)*T,dy=(c.y0-2)*T;
     if(!hits(c.x0-2,c.y0-2,c.x0+13,c.y0+9,x0,y0,x1,y1))continue; // layout spans tiles x0+2..x0+12, y0+1..y0+7
     const bld=(x,y,roof,wall,sign)=>drawHouse(R,x+ox,y,roof,wall,sign);
-    if(!drawn(c,building(c,'auction')))bld(4*T,3*T+dy,f.dark,'#c8b890','#f2c14e');
-    if(!drawn(c,building(c,'hall')))bld(8*T,3*T+dy,'#6a4a3a','#b8a888');
-    if(walls)cutBanners(ctx,c,x0,y0,x1,y1,R);else for(const gy of [5,8]){const gx=12*T+6+ox,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}
-    for(let i=0;i<3;i++){const gx=4*T+i*12+ox,gyy=8*T+dy+4;R(gx+1,gyy,4,1,'#5a5a66');R(gx,gyy+1,6,7,'#5a5a66');R(gx+1,gyy+1,4,1,'#6e6e7a');R(gx+2,gyy+3,2,2,'#3a3a46');R(gx-1,gyy+8,8,1,'#3a3a46')}
+    const plain=q=>!drawn(c,q)&&!(q&&q.kit); // a plan's own hall and auction house stand on their boxes, above
+    if(plain(building(c,'auction')))bld(4*T,3*T+dy,f.dark,'#c8b890','#f2c14e');
+    if(plain(building(c,'hall')))bld(8*T,3*T+dy,'#6a4a3a','#b8a888');
+    if(walls||(c.buildings||[]).some(b=>b.kit))cutBanners(ctx,c,x0,y0,x1,y1,R);else for(const gy of [5,8]){const gx=12*T+6+ox,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}
+    for(let i=0;i<3;i++){const gx=4*T+i*12+ox,gyy=8*T+dy+4,tx=Math.floor(gx/T),ty=Math.floor(gyy/T);if((c.buildings||[]).some(b=>b.kit&&tx+1>b.box[0]&&tx<b.box[0]+b.box[2]&&ty+1>b.box[1]&&ty<b.box[1]+b.box[3]))continue; // a plan's own building may stand here
+      R(gx+1,gyy,4,1,'#5a5a66');R(gx,gyy+1,6,7,'#5a5a66');R(gx+1,gyy+1,4,1,'#6e6e7a');R(gx+2,gyy+3,2,2,'#3a3a46');R(gx-1,gyy+8,8,1,'#3a3a46')}
   }
   // landmarks: the lair's nest (asset only), crypt mouths (asset, else the procedural arch over the 3x3 rock patch)
   for(const p of landmarkPlan()){if(!boxHits(p.box,x0,y0,x1,y1))continue;const img=pieceImage(p.id);

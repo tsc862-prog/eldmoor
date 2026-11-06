@@ -20,7 +20,8 @@
 //   towns     {name, fac, x0, y0, w, h, gate:'E'|'W'|'N'|'S', race, spots, npcs}
 //             WALL border, FLOOR inside, two gate tiles in the middle of the gate
 //             wall; gate point and graveyard are derived from the rect by gen.js.
-//             buildings: (optional) [{piece, box:[x,y,w,h], door:[x,y], serves}] in world tiles;
+//             wall: (optional) the wall set drawn instead of the town style's own ('palisade'), art only;
+//             buildings: (optional) [{piece, box:[x,y,w,h], door:[x,y], serves, kit}] in world tiles;
 //             missing, gen.js lays out the town plan of data/townart.js TOWN_PIECES: each
 //             building is solid except its one door tile, and the spot it `serves` is that door.
 //             spots: interior points as [dx,dy] offsets from x0,y0 where the
@@ -301,7 +302,27 @@ const VALE_KILN_ROOMS=[
   {id:'heart',name:'The Kiln Heart',frame:'The last firing-chamber, still red at the heart. What tends it was built to, and has never been told it can stop.',
     foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.5},{type:'slagmote',n:1}],lvl:2,hit:.4,rounds:4,boss:true},
 ];
-const VALE_SPOTS={square:[5.5,6.1]};
+// Town plans for the Vale (epic #940 slice C). The LPC building kit (scripts/art/packcut-buildings.mjs, PR #914) cuts one art piece per
+// style and piece, to the footprint and door the plans give it, so every Vale town keeps these shapes (TOWN_KIT: footprint in
+// tiles, the door tile inside it, and `rise`, how many tiles of art stand over the tiles behind it, which must be the town wall or
+// another building). What makes a town its own is where the pieces stand, the town's size, its gate side and its streets
+// (`ground`, rects from the town's corner, laid as road). scripts/worldcheck.mjs holds the Vale to the kit.
+//
+// A row's key is the plan's `kit` and the art's name (building:lpc-<style>-<kit>): a piece may have rows of its own footprints beside the
+// plain one (`piece` names it), and `house` is only such rows: a house is sim-solid art that serves nobody. These stay out of
+// data/townart.js TOWN_PIECES, because planBuildings puts every row of that table in every town of a world without plans.
+export const TOWN_KIT={auction:{foot:[3,2],door:[1,1],rise:1},smithy:{foot:[1,2],door:[0,1],rise:1},hall:{foot:[3,2],door:[1,1],rise:1},
+  chapel:{foot:[1,2],door:[0,1],rise:2},board:{foot:[1,1],door:[0,0],rise:0},inn:{foot:[3,2],door:[1,0],rise:0},
+  'house-cottage':{piece:'house',foot:[2,2],door:[0,1],rise:0}, // low, door on the left, on the street's south side or in a yard
+  'house-croft':{piece:'house',foot:[2,2],door:[1,1],rise:0},   // the same footprint under wood shakes, door on the right
+  'house-gable':{piece:'house',foot:[2,3],door:[0,2],rise:0},   // gable end to the street: three tiles deep, so a door of full height
+  'house-row':{piece:'house',foot:[3,2],door:[1,1],rise:1},     // against the north wall, as tall as the halls beside it
+  'inn-harbour':{piece:'inn',foot:[4,3],door:[2,2],rise:0},     // two storeys, its door on the south side
+  'hall-long':{piece:'hall',foot:[5,2],door:[2,1],rise:1}};
+const TOWN_SERVES={auction:'quartermaster',smithy:'smith',hall:'gate',chapel:'chapel',board:'gate',inn:'inn'};
+// [kit, dx, dy] from the town's top-left corner -> the plan's buildings (hall first among 'gate' servers is not needed: the list order decides the gate captain's door).
+function townPlan(x0,y0,list){return list.map(([kit,dx,dy])=>{const k=TOWN_KIT[kit],piece=k.piece||kit;
+  return{piece,kit,box:[x0+dx,y0+dy,k.foot[0],k.foot[1]],door:[x0+dx+k.door[0],y0+dy+k.door[1]],serves:TOWN_SERVES[piece]||null}})}
 export const VALE={
   name:'The Wending Vale',
   size:{w:144,h:60},
@@ -334,13 +355,31 @@ export const VALE={
   river:{curve:'river',width:2,span:[0,121],fords:[76]}, // the Wend rises at x=122; the Weirgate ford is the only wading place
   towns:[
     // Concord, north bank
-    {name:'Aldermere',fac:0,x0:4,y0:4,w:11,h:9,gate:'E',race:'hallowan',spots:VALE_SPOTS},
-    {name:'Gullstrand',fac:0,x0:6,y0:17,w:11,h:9,gate:'E',race:'skerrin',spots:VALE_SPOTS},
-    {name:'Hawkstead',fac:0,x0:52,y0:10,w:11,h:9,gate:'E',race:'tarrow',spots:VALE_SPOTS},
+    // Aldermere: a market green at the river mouth; the forge and the halls front a paved lane, the inn on the green's west edge.
+    {name:'Aldermere',fac:0,x0:4,y0:4,w:11,h:9,gate:'E',race:'hallowan',spots:{square:[5.5,6.1]},
+      buildings:townPlan(4,4,[['auction',3,1],['smithy',1,1],['hall',7,1],['chapel',6,1],['board',9,3],['inn',2,5]]),
+      ground:[[1,3,9,1],[5,4,5,2]]},
+    // Gullstrand: a harbour. The gate faces the river; a street runs up from it to a lane under the halls, and a quay and jetty reach out south.
+    {name:'Gullstrand',fac:0,x0:6,y0:17,w:13,h:9,gate:'S',race:'skerrin',spots:{square:[6.5,4.1]},
+      buildings:townPlan(6,17,[['auction',8,1],['smithy',11,1],['hall',2,1],['chapel',1,1],['board',8,7],['inn-harbour',1,4],['house-row',5,1],['house-gable',8,4],['house-cottage',10,4]]),
+      ground:[[1,3,11,1],[6,3,2,5],[6,9,2,3],[5,12,4,1]]},
+    // Hawkstead: a ridge town on terraces: the chapel stands on the hall's shoulder, a stair climbs the middle.
+    {name:'Hawkstead',fac:0,x0:52,y0:10,w:11,h:11,gate:'E',race:'tarrow',spots:{square:[5.5,5.1]},
+      buildings:townPlan(52,10,[['smithy',1,1],['auction',3,1],['hall',7,1],['chapel',9,3],['inn',2,6],['board',6,8]]),
+      ground:[[1,3,8,1],[1,5,9,1],[5,3,1,6]]},
     // Warband, south bank
-    {name:'Brandhold',fac:1,x0:6,y0:42,w:11,h:9,gate:'E',race:'ashfolk',spots:VALE_SPOTS},
-    {name:'Stiltmere',fac:1,x0:44,y0:40,w:11,h:9,gate:'E',race:'mirekin',spots:VALE_SPOTS},
-    {name:'Hornridge',fac:1,x0:58,y0:45,w:11,h:9,gate:'E',race:'thornhide',spots:VALE_SPOTS},
+    // Brandhold: a forge town. The gate is in the north wall and a straight street runs to the yard before the inn.
+    {name:'Brandhold',fac:1,x0:6,y0:42,w:11,h:9,gate:'N',race:'ashfolk',spots:{square:[5.5,4.1]},
+      buildings:townPlan(6,42,[['smithy',1,1],['hall',2,1],['auction',7,1],['chapel',9,3],['board',7,3],['inn',2,5]]),
+      ground:[[5,1,2,7],[1,3,9,1],[4,5,5,2]]},
+    // Stiltmere: wide and loose, a fen town of planked lanes inside a palisade; a long hall on the north wall, the houses off a spine.
+    {name:'Stiltmere',fac:1,x0:44,y0:40,w:13,h:9,gate:'E',race:'mirekin',spots:{square:[8.5,4.1]},wall:'palisade',
+      buildings:townPlan(44,40,[['auction',1,1],['smithy',4,1],['hall-long',6,1],['chapel',11,1],['inn',3,5],['board',6,4],['house-gable',1,4],['house-croft',8,6]]),
+      ground:[[1,3,11,1],[7,3,1,5],[10,4,2,2]]},
+    // Hornridge: a hold on a long slope, the gate at the top and two terraces down to the inn.
+    {name:'Hornridge',fac:1,x0:58,y0:45,w:11,h:13,gate:'N',race:'thornhide',spots:{square:[5.5,6.1]},
+      buildings:townPlan(58,45,[['auction',1,1],['smithy',4,1],['hall',7,1],['chapel',9,3],['inn',2,8],['board',8,8],['house-cottage',1,4],['house-croft',3,4],['house-cottage',7,4]]),
+      ground:[[5,1,2,11],[1,3,9,1],[1,6,9,1]]},
   ],
   landmarks:[
     // The great dungeon, beside the Weirgate ford on the south bank. entry: the level a background group first goes down (#902).
@@ -362,11 +401,12 @@ export const VALE={
     fordN:[76,26],fordS:[76,33],         // the Weirgate ford (no road crosses it)
     highN:[110,31],highS:[110,36],       // the High Bridge
     lairGate:[128,30],
+    northWay:[34,21],                    // keeps the Gullstrand-Hawkstead road off the river bank (its gate faces the water)
   },
   roads:[
     {from:'Aldermere',to:'Gullstrand'},
     {from:'Gullstrand',to:'lowN'},{from:'lowN',to:'lowS'},{from:'lowS',to:'Brandhold'},
-    {from:'Gullstrand',to:'Hawkstead'},
+    {from:'Gullstrand',via:['northWay'],to:'Hawkstead'},
     {from:'Brandhold',to:'Stiltmere'},{from:'Stiltmere',to:'Hornridge'},
     {from:'Hawkstead',to:'fordN'},{from:'Hornridge',to:'fordS'},
     {from:'fordS',to:'The Drowned Weir'},
