@@ -14,6 +14,7 @@
 // detached stubs. Functions and canvases never appear in S (savecheck asserts it).
 import {S,SAVE_VERSION,newWorldId} from './state.js';
 import {CRYPT,CRYPTS} from '../world/map.js';
+import {WORLDS,WORLD_ID} from '../world/spec.js';
 import {GOODS,MATERIALS,price} from '../data/items.js';
 import {rollScores} from './abilities.js';
 import {convertItem} from './gear.js';
@@ -87,6 +88,7 @@ export function snapshot(){
     if(Array.isArray(v)){const out=new Array(v.length);for(let i=0;i<v.length;i++)out[i]=ser(v[i],false);return out}
     const o={};for(const k in v){const x=v[k];if(x===undefined||typeof x==='function')continue;o[k]=ser(x,false)}return o};
   const snap={version:SAVE_VERSION};
+  {const r=WORLDS[WORLD_ID]&&WORLDS[WORLD_ID].rev;if(r)snap.mapRev=r}
   for(const k of Object.keys(S)){
     if(KEYS[k]){const v=KEYS[k].save(S[k],ser);if(v!==undefined)snap[k]=v;continue}
     snap[k]=k in HOMES?(S[k]||[]).map(o=>ser(o,true)):ser(S[k],k==='boss')} // the boss is written in full here, as a reference everywhere else
@@ -104,9 +106,15 @@ function migrate(snap){let v=snap.version;
   while(v<SAVE_VERSION){const m=MIGRATIONS[v];if(m)snap=m(snap)||snap;v++}
   if(snap.version!==SAVE_VERSION)snap.version=SAVE_VERSION;return snap}
 
+// Map revision (#979): a world whose map was cut again (spec.rev) writes it into its saves; a save from another revision (none = 0)
+// was made on ground that no longer exists (towns, sites and everyone's position), so restore refuses it by name and the page keeps a copy.
+// A world with no rev writes nothing, so its saves and hashes are as before.
+export const mapStale=(snap,id=WORLD_ID)=>!!snap&&(snap.mapRev||0)!==((WORLDS[id]&&WORLDS[id].rev)||0);
+export const STALE_MAP='This save was made on an earlier map of this world and cannot be carried onto the current one.';
 export function restore(snap){
   if(!isSave(snap))throw new Error('Not an Eldmoor save');
   if(snap.version>SAVE_VERSION)throw new Error('Save version '+snap.version+' is newer than this build ('+SAVE_VERSION+')');
+  if(mapStale(snap)){const e=new Error(STALE_MAP);e.code='stale-map';throw e}
   snap=migrate(snap);
   // Pass 1: allocate every entity so references can be resolved in any order.
   const pools={},alloc={};
@@ -124,7 +132,7 @@ export function restore(snap){
   // refilled in place; everything else is replaced.
   for(const k in HOMES)(snap[k]||[]).forEach((e,i)=>{const o=alloc[k][i];for(const f in e)o[f]=de(e[f])});
   for(const k of Object.keys(S)){if(KEYS[k])KEYS[k].reset();else if(!(k in snap))delete S[k]}
-  for(const k in snap){if(k==='version'||k==='GOODS'||k==='MATS'||k==='CRYPT'||k==='CRYPTS'||k==='kept'||KEYS[k])continue;
+  for(const k in snap){if(k==='version'||k==='mapRev'||k==='GOODS'||k==='MATS'||k==='CRYPT'||k==='CRYPTS'||k==='kept'||KEYS[k])continue;
     const v=k in HOMES?alloc[k]:de(snap[k]),cur=S[k];
     if(Array.isArray(cur)&&Array.isArray(v)){cur.length=0;for(const x of v)cur.push(x)}
     else if(k==='boss'&&cur&&v){if(v!==cur){for(const f in cur)delete cur[f];Object.assign(cur,v)}} // a save from before held only {ref:'boss'}: the boss stays as it stands
