@@ -9,6 +9,7 @@
 import {purposeOf} from '../sim/purpose.js';
 import {S} from '../sim/index.js';
 import {cam} from '../render/draw.js';
+import {FX,setFx} from '../render/quality.js';
 import {downPurpose} from './downview.js'; // the downed and the one tending them (#659)
 
 export {purposeOf};
@@ -51,7 +52,10 @@ const KEY='eldmoor.intentIcons';
 function readIcons(){try{const v=localStorage.getItem(KEY);return v==null?true:v==='1'}catch(_){return true}}
 export function setIcons(on){cam.icons=!!on;try{localStorage.setItem(KEY,on?'1':'0')}catch(_){}
   const b=document.getElementById('vIcons');if(b){b.setAttribute('aria-pressed',String(!!on));b.textContent='Intent icons: '+(on?'on':'off')}}
-export function initPurpose(){setIcons(readIcons());const b=document.getElementById('vIcons');if(b)b.onclick=()=>setIcons(!cam.icons);
+// The effects switch beside it (#979, render/quality.js).
+const fxLabel=()=>{const b=document.getElementById('vFx');if(b){b.setAttribute('aria-pressed',String(FX.full));b.textContent='Effects: '+(FX.full?'full':'lean')}};
+export function initPurpose(){fxLabel();{const f=document.getElementById('vFx');if(f)f.onclick=()=>{setFx(!FX.full);fxLabel()}}
+  setIcons(readIcons());const b=document.getElementById('vIcons');if(b)b.onclick=()=>setIcons(!cam.icons);
   // the dossier header's purpose line: a tap or Enter/Space opens a cut line in full (frames wire their own, ui/frames.js)
   const h=document.getElementById('hero');if(!h)return;
   h.addEventListener('click',e=>{const t=e.target,n=t&&t.closest?t.closest('.purp'):null;if(n)tapPurpose(n)});

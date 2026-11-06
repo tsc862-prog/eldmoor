@@ -269,7 +269,7 @@ try {
     ok(!out.includes(KEY), 'the key is not in the DM output');
     world.p.kill();
   }
-  await dmMindCases({provider: 'google', model: DMPLAN, env, ok, port: 19860 + Math.floor(Math.random() * 30) * 3, seen: compat}); // #824: the same cases as OpenAI and the router; the free tier has no budget stop
+  await dmMindCases({provider: 'google', model: DMPLAN, env, ok, port: 19860 + Math.floor(Math.random() * 20) * 3, seen: compat}); // #824: the same cases as OpenAI and the router; the free tier has no budget stop. 19860-19919: never the DM world's 19920-19949 above, which keeps its port about a second after the kill
 } finally {
   for (const k of kids) try {k.kill()} catch {}
   try {rmSync(tmp, {recursive: true, force: true})} catch {}
