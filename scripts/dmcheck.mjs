@@ -362,6 +362,10 @@ console.log('when and watch (scripts/dmwhen-test.mjs)');
   ok(k.status === 0 && /WHEN OK/.test(out), `when and watch: ${n} checks (set, list, cancel, every trigger, firing through the same tools, expiry, refused at fire time, caps, reserve, save/restore, the runner's wake)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
 
 // ---------------------------------------------------------------- 0b. summon_hero (issue #780), in a world of its own
+console.log('the DM on stage (scripts/dmstage-test.mjs)');
+{const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'dmstage-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
+  for (const l of out.split('\n')) if (/FAIL/.test(l)) console.log(l);
+  ok(k.status === 0 && /STAGE OK/.test(out), `the DM on stage: ${(out.match(/ ok   /g) || []).length} checks (a call per scene, frames for every kind, the speak order, the narrator's voice, names on the map)`, out.slice(-400) + String(k.stderr || '').slice(-300))}
 console.log('summon_hero (scripts/summon-test.mjs)');
 {const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'summon-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
   for (const l of out.split(/\r?\n/)) if (/^\s+FAIL /.test(l)) console.error(l);
@@ -547,7 +551,7 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
   r = dmAct('post_hook', {town: 'Nowhere-at-all', tpl: 'rescue', reason: 'x'});
   ok(r.ok === false && /town: unknown place/.test(r.error) && /town takes "fellowship"/.test(r.error), 'post_hook at an unknown town names what town takes: ' + r.error.slice(0, 100));
   r = dmAct('post_hook', {town: hall, tpl: 'rescue', place: 'the moon', reason: 'x'});
-  ok(r.ok === false && /place: no place or person/.test(r.error), 'post_hook about an unknown place is refused');
+  ok(r.ok === false && /place: no marked place or person/.test(r.error), 'post_hook about an unknown place is refused');
   // place_person
   r = dmAct('place_person', {role: 'hermit', near: 'fellowship', name: 'Odo', want: 'someone to read the stones at the old cairn', attitude: 'wary', reason: 'a lead for their oath'});
   const w = r.ok && S.wanderers.find(x => x.id === r.npc), e2 = lastLever();
@@ -1301,6 +1305,9 @@ ok(h.dm.link === 'connected', 'after a call the seat shows connected');
   ok(SLT.slotHeroes(SLT.slotted()).some(a => (a.chat || []).some(e => /^Mock line/.test(e.text))), 'the members hear the DM\'s lines in the game')
 
   {const wid = S.staged.cur && S.staged.cur.cast.npc; ok(wid != null && S.talks && (S.talks.cur.some(c => c.npc === wid) || S.talks.past.some(c => c.npc === wid)), 'the staged meeting leaves the way open for words (a conversation with the drover)')}}
+// the narrator's voice reaches the game over /play/dm, though it is no tool of the agent's (#1017)
+{const q = await post('/play/dm', {tool: 'narrator_call', args: {}, runner: 'test:1'}); ok(q.ok === true && q.call === null, 'POST /play/dm narrator_call: the voice\'s route is open', q);
+  const m = await post('/mcp?role=dm&runner=test:1', {jsonrpc: '2.0', id: 9, method: 'tools/list', params: {}}).catch(() => null); ok(!JSON.stringify(m || '').includes('narrator_call'), 'it is no MCP tool of the agent\'s')}
 // the talk voice answers a member's words over /play/dm (issue #170)
 {const {talkVoice} = await import('./dm-agent.mjs'), TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), {homeOf} = await import('../src/data/races.js');
   const A = SLT.slotHeroes(SLT.slotted())[0], c0 = homeOf(A), qm = S.npcs.find(p => p.town === c0.name && p.role === 'quartermaster');

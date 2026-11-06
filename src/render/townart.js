@@ -26,8 +26,8 @@ ASSET_TOWNS['landmark:lair']={landmark:'lair'};
 // ---- images ----
 // A loaded asset as something drawImage takes: a canvas in the browser, the decoded pixels ({w, h, hex}) with no DOM
 // (Node checks draw through a small raster of their own). Cached until the assets change.
-const imgC=new Map();
-onAssets(()=>imgC.clear());
+const imgC=new Map(),gateC=new Map();
+onAssets(()=>{imgC.clear();gateC.clear()});
 export function pieceImage(id){if(imgC.has(id))return imgC.get(id);
   const A=assetPixels(id);if(!A)return null; // not cached: it may still arrive
   if(typeof document==='undefined'){imgC.set(id,A);return A}
@@ -85,9 +85,30 @@ function townPosts(c){const g=c.gateTiles,xs=g.map(v=>v[0]),ys=g.map(v=>v[1]),si
   else{const y=ys[0];P.push({key:'pier',box:[Math.min(...xs)-1,y,1,1]},{key:'pier',box:[Math.max(...xs)+1,y,1,1]})}
   if(c.notch)for(let i=P.length-1;i>=0;i--)if(P[i].key!=='tower'&&P.some(q=>q.key==='tower'&&boxOver(q.box,P[i].box)))P.splice(i,1); // a tower beside the gate stands for its pier
   return P.sort((p,q)=>(p.box[1]+p.box[3])-(q.box[1]+q.box[3]))}
+// ---- the gatehouse (#979) ----
+// A gate of two tiles gets a gatehouse from the same kit (packcut-walls.mjs): on a north or south wall a face with an arch and the dark of the vault behind it, on an east or west
+// wall two towers and the span between them. It is drawing only: no tile is solid that was not. It stands over ground people walk on, so it is painted into the chunk (for far
+// views) and sorted in among the entities up close (gateEnts): the back behind whoever is in the passage, the front before them. With no set loaded the piers and banners stand as ever.
+const GATE_RISE=2; // whole tiles a north or south gatehouse stands over the wall row behind it
+function banner(R,x,y,f){R(x,y,14,1,'#14101c');R(x,y+1,14,1,'#a8804a');R(x+1,y+2,12,18,'#14101c');R(x+2,y+2,10,17,f.color);R(x+2,y+2,10,1,f.dark);R(x+2,y+18,10,1,f.dark);R(x+6,y+6,2,8,f.dark);R(x+4,y+9,6,2,f.dark);for(let i=0;i<3;i++)R(x+2+i*4,y+19,2,2,f.color)}
+export function gateArt(c){if(gateC.has(c))return gateC.get(c);const g=c.gateTiles,side=c.gateSide||'E',along=side==='E'||side==='W',set=c.wall||townStyle(c);
+  if(g.length!==2||!wallSet(c))return null; // not cached: the set may still arrive
+  const id=k=>`building:lpc-${set}-${k}`,raw=pieceImage(id(along?'gate-ew':'gate-ns')),back=along?null:pieceImage(id('gate-ns-back'));if(!raw||(!along&&!back))return null;
+  const xs=g.map(v=>v[0]),ys=g.map(v=>v[1]),x=Math.min(...xs),y=Math.min(...ys),w=iw(raw)/TILE,h=ih(raw)/TILE,box=along?[x+.5-w/2,y-2,w,h]:[x+1-w/2,y-GATE_RISE,w,h];
+  let front=raw;if(typeof document!=='undefined'){front=document.createElement('canvas');front.width=iw(raw);front.height=ih(raw);const q=front.getContext('2d');q.drawImage(raw,0,0);const R=(a,b,w2,h2,k)=>{q.fillStyle=k;q.fillRect(a,b,w2,h2)},f=FAC[c.fac];
+    if(along)banner(R,iw(raw)/2-7,ih(raw)-46,f);else{banner(R,14,34,f);banner(R,iw(raw)-28,34,f)}}
+  const foot=along?y+3:y+1,draw=img=>ctx=>ctx.drawImage(img,box[0]*U,box[1]*U,box[2]*U,box[3]*U),R={front,back,box,foot,along};
+  R.ents=[{kind:'deco',flat:true,veil:true,x:box[0]+box[2]/2,y:foot,paint:draw(front)}];if(back)R.ents.push({kind:'deco',flat:true,x:box[0]+box[2]/2,y:y+.02,paint:draw(back)});
+  gateC.set(c,R);return R}
+// What of the gatehouses is in view, onto the y-sorted list. seen(x,y,margin) in world units.
+export function gateEnts(ents,seen){for(const c of CITY){const g=gateArt(c);if(!g)continue;const b=g.box;if(!seen((b[0]+b[2]/2)*U,(b[1]+b[3]/2)*U,Math.max(b[2],b[3])*U))continue;for(const e of g.ents)ents.push(e)}}
+// Where the gate's two guards stand with a gatehouse there: beside the road on its near side, not on the towers. [x, y] tiles, one for each.
+export function gatePosts(c){const g=c.gateTiles,side=c.gateSide||'E',xs=g.map(v=>v[0]),ys=g.map(v=>v[1]),x=Math.min(...xs),y=Math.min(...ys);
+  if(side==='E'||side==='W'){const px=x+(side==='E'?1.7:-.7);return [[px,y-.2],[px,y+2.2]]}return [[x-.25,y+1.75],[x+2.25,y+1.75]]}
+
 // What stands on the ground throws a shadow to the lower right. A town's shadows are one mask in art pixels, every box swept along
 // the light, so neighbours merge instead of doubling; kept as row runs in world units, made once a town.
-const SHADOW='#14101c50',SWEEP={wall:6,post:9,building:8,low:3};
+const GATE_SHADE='#14101c66',SHADOW='#14101c50',SWEEP={wall:6,post:9,building:8,low:3,gate:14};
 const shadowC=new Map();
 function townShadow(c){let R=shadowC.get(c);if(R)return R;
   const x0=c.x0-1,y0=c.y0-1,W=(c.x1-c.x0+4)*TILE,H=(c.y1-c.y0+4)*TILE,m=new Uint8Array(W*H),gate=new Set(c.gateTiles.map(([x,y])=>x+','+y));
@@ -95,6 +116,7 @@ function townShadow(c){let R=shadowC.get(c);if(R)return R;
     for(let d=1;d<=n;d++)for(let y=Y+d;y<Y+h+d;y++)if(y>=0&&y<H)for(let x=X+d;x<X+w+d;x++)if(x>=0&&x<W)m[y*W+x]=1};
   for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++)if(townRing(c,x,y)&&!gate.has(x+','+y))sweep([x,y,1,1],SWEEP.wall);
   for(const p of townPosts(c))sweep(p.box,SWEEP.post);
+  if(gateArt(c))for(const p of townPosts(c))if(p.key!=='tower')sweep(p.box,SWEEP.gate);
   for(const b of c.buildings||[]){if(b.piece==='well')continue;const [x,y,w,h]=b.box,k=b.kit||'',top=k==='chapel-great'?3:k==='chapel-hill'?2:0; // a spire leaves the back of its box clear; a round basin throws none of this square shadow
     sweep([x,y+top,w,h-top],b.piece==='board'?SWEEP.low:SWEEP.building)}
   R=[];const k=U/TILE;for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!m[y*W+x])continue;let e=x;while(e<W&&m[y*W+e])e++;R.push([x0*U+x*k,y0*U+y*k,(e-x)*k,k]);x=e}
@@ -130,9 +152,10 @@ function cutGround(ctx,c,set,x0,y0,x1,y1){const st=streetImage(c);
   ctx.fillStyle=SHADOW;for(const [x,y,w,h] of townShadow(c))if(x<x1*U&&x+w>x0*U&&y<y1*U&&y+h>y0*U)ctx.fillRect(x,y,w,h);
   const ring=(x,y,s)=>{if(x>=x0&&x<x1&&y>=y0&&y<y1)tileOf(ctx,set['wall-'+s],x,y)};
   for(const p of townPlan(c)){if(p.side)ring(p.box[0],p.box[1],p.side);else if(p.corner)ring(p.box[0],p.box[1],p.corner)}
-  for(const p of townPosts(c))if(boxHits(p.box,x0,y0,x1,y1))put(ctx,set[p.key],p.box,0)}
+  for(const p of townPosts(c))if(boxHits(p.box,x0,y0,x1,y1))put(ctx,set[p.key],p.box,0);
+  const gh=gateArt(c);if(gh&&boxHits(gh.box,x0,y0,x1,y1)){ctx.fillStyle=GATE_SHADE;for(const [x,y] of c.gateTiles)ctx.fillRect(x*U,y*U,U,U);if(gh.back)put(ctx,gh.back,gh.box,0);put(ctx,gh.front,gh.box,0)}}
 // The gate's standards where the cut piers stand: a pole and a cloth in the faction's colours, in art pixels.
-function cutBanners(ctx,c,x0,y0,x1,y1,R){const f=FAC[c.fac],a=1/ART;
+function cutBanners(ctx,c,x0,y0,x1,y1,R){if(gateArt(c))return;const f=FAC[c.fac],a=1/ART;
   for(const p of townPosts(c)){if(p.key==='tower'||!boxHits(p.box,x0,y0,x1,y1))continue;const px=p.box[0]*U+13,py=p.box[1]*U-2;
     R(px-a,py,a*3,18,'#14101c');R(px,py,a,18,'#a8804a');R(px-a,py-a,a*3,a*2,'#f2c14e');
     R(px+a*2,py+a,9,7,'#14101c');R(px+a*2,py+a*2,9-a,6,f.color);R(px+a*2,py+a*2,9-a,a,f.dark);R(px+a*4,py+a*5,a*2,6-a*3,f.dark);R(px+9-a*2,py+a*2,a,6,f.dark);
