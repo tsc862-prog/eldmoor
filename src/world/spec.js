@@ -273,9 +273,9 @@ const VALE_WEIR_ROOMS=[
   {id:'weighing',name:'The Weighing Hall',frame:'Great scales hang from the roof, tipped by what lies in the pans. Dry bowstrings creak from the beams.',
     foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.29,rounds:2},
   {id:'granary',name:'The Flooded Granary',frame:'Black water lies knee-deep between the grain bins. Wardens stand in it, still guarding a harvest that rotted a century ago.',
-    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:2},
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:3},
   {id:'chair',name:"The Weir-Warden's Chair",frame:"The last chamber is a round pool with the weir-keeper's chair standing in it. The one who sits there has held the river back a very long time.",
-    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:2,boss:true},
+    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:4,boss:true},
 ];
 const VALE_KESTREL_ROOMS=[
   {id:'door',name:'The Low Door',frame:'A low door in a grassed mound, its lintel cut with kestrels. Cold air comes out of it, and the rattle of small claws.',
@@ -283,23 +283,23 @@ const VALE_KESTREL_ROOMS=[
   {id:'niches',name:'The Kestrel Niches',frame:'Every niche holds a stone bird and a heap of bone. One of the heaps gets up, still holding the lure-glove.',
     foes:[{type:'shambler',n:1},{type:'tombskit',n:1}],lvl:0,hit:.27,rounds:2},
   {id:'mews',name:"The Falconer's Mews",frame:'The last chamber is a mews with the perches still in it. The lord who bred the birds sits among them and does not intend to be disturbed.',
-    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:3,atk:1.4},{type:'boneshot',n:1,hits:1}],lvl:1,hit:.32,rounds:2,boss:true},
+    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:3,atk:1.4},{type:'boneshot',n:1,hits:1}],lvl:1,hit:.32,rounds:3,boss:true},
 ];
 const VALE_VAULT_ROOMS=[
   {id:'eel',name:'The Eel Cellar',frame:'Sunken cellars under a burnt kiln, the floor a foot deep in brown water. Fen-smugglers have made a guardroom of the first one.',
-    foes:[{type:'reedcutter',n:2,hits:2}],lvl:-1,hit:.24,rounds:2},
+    foes:[{type:'reedcutter',n:2,hits:2}],lvl:-1,hit:.24,rounds:3},
   {id:'tally',name:'The Salt Tally',frame:'Barrels of grey salt and a tally-board scratched in charcoal. Two big men get up from the table and reach for their cudgels.',
-    foes:[{type:'tollbreaker',n:2,hits:2}],lvl:0,hit:.29,rounds:2},
+    foes:[{type:'tollbreaker',n:2,hits:2}],lvl:0,hit:.29,rounds:3},
   {id:'cold',name:'The Cold Store',frame:'A vaulted cold-store, and the smuggler-captain who has made himself king of it. He counts you, and the count is not kind.',
-    foes:[{type:'captain',n:1,name:'Captain Dane Sallow',hits:4,atk:1.4},{type:'hedgecaller',n:1,hits:1}],lvl:1,hit:.34,rounds:2,boss:true},
+    foes:[{type:'captain',n:1,name:'Captain Dane Sallow',hits:4,atk:1.4},{type:'hedgecaller',n:1,hits:1}],lvl:1,hit:.34,rounds:4,boss:true},
 ];
 const VALE_KILN_ROOMS=[
   {id:'flue',name:'The Flue Gallery',frame:'Heat rolls up the great flue. Slag motes drift down it like sparks and gather on the stone.',
     foes:[{type:'slagmote',n:3}],lvl:-1,hit:.24,rounds:2},
   {id:'ash',name:'The Ash Floor',frame:'A floor of drifted ash, cooling, and the crawlers who live in it come up out of the drifts all at once.',
-    foes:[{type:'cavecrawler',n:2,hits:2},{type:'golem',n:1,hits:3}],lvl:0,hit:.3,rounds:2},
+    foes:[{type:'cavecrawler',n:2,hits:1},{type:'golem',n:1,hits:2}],lvl:0,hit:.3,rounds:3},
   {id:'heart',name:'The Kiln Heart',frame:'The last firing-chamber, still red at the heart. What tends it was built to, and has never been told it can stop.',
-    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.5},{type:'slagmote',n:1}],lvl:2,hit:.4,rounds:2,boss:true},
+    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.5},{type:'slagmote',n:1}],lvl:2,hit:.4,rounds:4,boss:true},
 ];
 const VALE_SPOTS={square:[5.5,6.1]};
 export const VALE={
