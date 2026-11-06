@@ -310,7 +310,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},spoke_for_today:day.spoke||0, // lines cut because they put words in a member's mouth (#750)
     ...(downCallSummary()?{downed:downCallSummary()}:{}), // a hero down: voice it through table_call (#655)
-    ...(noOthers()?{others:'none: no background heroes ride here, only the companies and whoever you bring (summon_hero)'}:{}), // the world setting (#780)
+    ...(noOthers()?{others:'none: the roads are empty, and stay so unless you summon_hero (2 a game day, 8 alive, at most 2 levels above the average of the nearest company, open ground or a town a company stands in). Why: a rival, someone met on the road, a healer or trader to meet. A world for the company alone is a fair choice: bring only what their story wants.'}:{}), // the world setting (#780)
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
