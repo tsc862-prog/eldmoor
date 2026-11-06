@@ -19,6 +19,7 @@
 // Usage: npm run crawlcheck   (CRAWLCHECK_SEED to vary)
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {runWorld, OTHER_WORLDS} from './worlds.mjs';
 
 let seed = 0x9e3779b9 ^ (Number(process.env.CRAWLCHECK_SEED) || 65);
 const argv = process.argv.slice(2);
@@ -305,28 +306,29 @@ if (argv[0] === '--companies') {
   console.log(bad ? 'COMPANIES FAIL' : 'COMPANIES OK'); process.exit(bad ? 1 : 0);
 }
 
-// Stepping section (#369): runs in a child with ELDMOOR_WORLD=stepping (the world is chosen at import).
-if (argv[0] === '--stepping') {
+// Other-worlds section (#369, #940 slice B): runs in a child per world of WORLDS but Eldmoor (the world is chosen at import).
+if (argv[0] === '--world-child') {
   const sk = {n: 0}; const sok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); sk.n++}};
-  const NAMES = ['The Reed Sump', 'The Salt-Bone Hall', "The Mere-Warden's Seat"];
   const rooms = CRYPT.rooms || [];
-  sok(rooms.length === 3 && rooms.map(r => r.name).join('|') === NAMES.join('|'), 'the Stepping crypt lists its three rooms from the spec: ' + rooms.map(r => r.id).join(', '));
+  const N = rooms.length;
+  sok(N >= 3 && new Set(rooms.map(r => r.name)).size === N, 'the crypt of ' + process.env.ELDMOOR_WORLD + ' lists its ' + N + ' rooms from the spec: ' + rooms.map(r => r.id).join(', '));
   sok(rooms.every(r => r.name && r.frame && r.foes.every(f => species(f.type) && f.n >= 1)), 'every room names bestiary species');
-  sok(rooms.map(r => !!r.boss).join() === 'false,false,true' && rooms[2].foes.some(f => f.name === CRYPT.boss), 'only the last room is the boss room and it holds ' + CRYPT.boss);
+  sok(rooms.map(r => !!r.boss).join() === rooms.map((r, i) => i === N - 1).join() && rooms[N - 1].foes.some(f => f.name === CRYPT.boss), 'only the last room is the boss room and it holds ' + CRYPT.boss);
   // a party that only strikes can be driven back by the dice: the checks want one run that went the whole way
-  let M, seen; for (let i = 0; i < 4; i++) {M = descend(14); seen = crawl(M, {act: () => 'strike'}); if ((SLT.slotted().crawl || {}).clears) break}
+  let M, seen; for (let i = 0; i < (N <= 3 ? 4 : 1); i++) {M = descend(14); seen = crawl(M, {act: () => 'strike'}); if ((SLT.slotted().crawl || {}).clears) break}
   const order = [...new Set(seen.map(s => s.room))];
-  sok(seen.length >= 3 && seen.every(s => s.title && s.beats >= 1), seen.length + ' room scenes opened, each resolved at the table');
+  sok(seen.length >= 2 && seen.every(s => s.title && s.beats >= 1), seen.length + ' room scenes opened, each resolved at the table');
   sok(order.every((r, i) => r === i), 'rooms come in order, none skipped: ' + order.join(' > '));
   sok(seen.every((s, i) => i === 0 || s.room >= seen[i - 1].room), 'no scene goes back a room');
-  sok(order.length === 3 && order[2] === 2, 'all three rooms were reached, the boss room last');
+  if (N <= 3) sok(order.length === N && order[N - 1] === N - 1, 'all ' + N + ' rooms were reached, the boss room last'); // a longer crypt is a deeper pass, not a coin on one descent
   // The boss room is a coin the dice can lose (main fails 2 of 13 seeds too, a map change only moves the stream): allow up to 3 fresh descents for one clear.
   let tries = 1; while (!(SLT.slotted().crawl.clears >= 1) && tries < 3) {tries++; crawl(descend(14), {act: () => 'strike'})}
-  sok(SLT.slotted().crawl.clears >= 1 && !CRYPT.group && !S.table, 'the Fellowship cleared the crypt and the table and group are free again' + (tries > 1 ? ' (try ' + tries + ')' : ''));
+  if (N <= 3) sok(SLT.slotted().crawl.clears >= 1 && !CRYPT.group && !S.table, 'the Fellowship cleared the crypt and the table and group are free again' + (tries > 1 ? ' (try ' + tries + ')' : ''));
+  else sok(!CRYPT.group && !S.table, 'the crawl ended and the table and group are free again');
   {
     const R = descend(14); SIM.setRunnerLinks(() => S.table && S.table.kind === 'crawl' ? 'connected' : 'none'); // answered by their runners once each room is set (#682)
     const rs = crawl(R, {act: () => 'retreat', maxS: 300}); SIM.setRunnerLinks(null);
-    sok(rs.length === 1 && rs[0].room === 0, 'a retreat withdraws the party at the first room (the sump)');
+    sok(rs.length === 1 && rs[0].room === 0, 'a retreat withdraws the party at the first room');
     sok(!CRYPT.group && !S.table && R.some(a => a.state !== 'dead') && R.filter(a => a.state !== 'dead').every(a => a.state === 'return'), 'survivors go home, group and table are free');
   }
   {
@@ -540,16 +542,16 @@ console.log('A second dungeon (#891)');
   ok(r.status === 0, 'the two-dungeon checks pass in a stepping-world child');
 }
 
-console.log('Stepping crypt, three rooms');
-{
-  const me = fileURLToPath(import.meta.url), env = {...process.env, ELDMOOR_WORLD: 'stepping'};
-  const r = spawnSync(process.execPath, [me, '--stepping'], {encoding: 'utf8', env});
-  process.stdout.write(r.stdout.split(String.fromCharCode(10)).filter(l => !l.startsWith('SIG ')).join(String.fromCharCode(10)));
+console.log('every other world: its crypt rooms, a crawl, a retreat, a wipe, a seeded repeat');
+for (const w of OTHER_WORLDS) {
+  const me = fileURLToPath(import.meta.url), t = Date.now();
+  const r = runWorld(me, w, {args: ['--world-child'], capture: true});
+  process.stdout.write(String(r.stdout).split(String.fromCharCode(10)).filter(l => !l.startsWith('SIG ')).join(String.fromCharCode(10)));
   if (r.stderr) process.stderr.write(r.stderr);
-  ok(r.status === 0, 'the Stepping crawl checks pass in a stepping-world child');
-  const sg = n => spawnSync(process.execPath, [me, '--stepping'], {encoding: 'utf8', env: {...env, CRAWLCHECK_SEED: String(n)}}).stdout.split(String.fromCharCode(10)).find(l => l.startsWith('SIG '));
+  ok(r.status === 0, 'the crawl checks pass in a ' + w + '-world child (' + ((Date.now() - t) / 1000).toFixed(1) + 's)');
+  const sg = n => String(runWorld(me, w, {args: ['--world-child'], env: {CRAWLCHECK_SEED: String(n)}, capture: true}).stdout).split(String.fromCharCode(10)).find(l => l.startsWith('SIG '));
   const a = sg(7), b = sg(7);
-  ok(a && a === b, 'a seeded Stepping crawl repeats exactly (same seed, same hash)');
+  ok(a && a === b, 'a seeded ' + w + ' crawl repeats exactly (same seed, same hash)');
 }
 
 console.log('background groups keep the abstract roll');

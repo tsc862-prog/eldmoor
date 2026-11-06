@@ -1,6 +1,6 @@
 ---
 name: raid-arena
-description: #85 raid arena view (lair as interior, world->arena mapping, session raid record) and how to stage and shoot a raid
+description: #85 raid arena view (lair as interior, world->arena mapping, session raid record, downed raiders) and how to stage and shoot a raid
 metadata:
   type: project
 ---
@@ -9,10 +9,13 @@ metadata:
   lair at ARENA_K=2 tiles per world tile, so raider spots and the breath radius are true; lava = IT.WATER painted by theme
   `lair` with `crust`). gen.js lair landmarks carry `inner` and `opening` (not `mouth`: minimap treats `mouth` as a crypt rect).
 - **Why:** the sim keeps no raid record (S.raidOn per faction, a.raid, boss.dmg only), so `trackRaid()` (every frame, draw.js)
-  keeps per-raid party, broke-off, fell, lowest boss share; a boss kill sends raiders home the same step, so it is checked
-  before "broke off". Kragmaw has one phase and no adds; adds shown are any live mobs inside the lair ring.
-- **How to apply (shots):** headless Chrome's canvas layer may not present until a rAF is awaited: before
-  Page.captureScreenshot, evaluate a loop awaiting requestAnimationFrame and calling `drawDungeon` (else black canvas).
-  Staging after `?continue=1` + warm-up steps can open a Fellowship raid vote scene: set `S.table=null` and hide
-  `#sceneview,#tbanner,.rgate,.ralert`. Set heroes `raid/raidIdx/state='raid'`, place them at the sim's ring formula,
-  `S.raidOn[f]=true`, `boss.breath` ~1 for the telegraph, push `{type:'ring',life:.33}` into S.fx for the wave. See [[dungeon-view]], [[previews]].
+  keeps per-raid party, broke-off, fell, down, rose, lowest boss share; a boss kill sends raiders home the same step, so it is checked
+  before "broke off". Kragmaw has one phase and no adds by data, and the sim spawns no adds; adds shown are any live mobs in the lair ring.
+- Traps: `LAIR` from world/map is a bare {x,y,name}, NOT the landmark: `openDungeon(LAIR)` would not be an arena. Use `lairs()[0]`, or
+  `data-dungeon=LAIR.name` (resolved by name). `goDown` clears `a.raid`, so check `a.state==='downed'` before "broke off". Failures to die
+  are `failsOf(a)` (4 with a healer near), never a literal 3. landmark:lair is 1:1 with the arena floor (2*inner*k tiles of U = 256).
+- PM triage comments go stale: on 2026-11-06 a brief said no raid view existed, but #618 had merged it. Check the tree before building.
+- **How to apply (shots):** `node scripts/shoot.mjs <url> <out> --sizes 3440x1440 --run-seconds 3 --raid` stages it through ?probe=1
+  (`stageRaid`, `stageSlain` in src/ui/probe.js) and writes raid-3440.png and raid-slain-3440.png; no hand staging needed.
+  See [[dungeon-view]], [[previews]].
+- Bash tool: `python3` here is the Windows Store stub and hangs a command forever; long JS patches full of quotes go through Write, not a heredoc.

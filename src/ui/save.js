@@ -5,6 +5,7 @@
 // reload: the save is put in place (or removed) and the page starts again through boot(),
 // so every panel is rebuilt from state by the normal start-up path.
 import {S,log,snapshot,restore,isSave,describeSave} from '../sim/index.js';
+import {mapStale} from '../sim/save.js';
 import {WORLD_ID} from '../world/map.js';
 import {stopAllForReset} from './runners.js';
 
@@ -55,7 +56,7 @@ export const holdSave=on=>{hold=!!on}; // no autosave while the setup page sits 
 export const setNewWorldHandler=f=>{newWorld=f};
 // What a world's save holds, without loading it: {day, min, heroes, fellowship, kb, at} (at: ms of the last write, or null).
 export const saveSummary=id=>{try{const st=store(),key=saveKeyFor(id),raw=st.getItem(key);if(!raw)return null;const j=JSON.parse(raw);if(!isSave(j))return null;
-  const at=+st.getItem(atKey(key))||null;return {...describeSave(j),kb:Math.round(raw.length/1024),at}}catch(e){return null}};
+  const at=+st.getItem(atKey(key))||null;return {...describeSave(j),kb:Math.round(raw.length/1024),at,stale:mapStale(j,id)}}catch(e){return null}};
 // Download a world's stored save as it is (the title screen and the setup page, before any world is loaded).
 export function exportStored(id=WORLD_ID){let raw=null;try{raw=store().getItem(saveKeyFor(id))}catch(e){}if(!raw)return false;
   const j=JSON.parse(raw),blob=new Blob([raw],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
@@ -69,13 +70,19 @@ export function queueNewWorld(setup){const st=store();if(!st)return 'No storage 
   afterReset(()=>{if(u.href===location.href)location.reload();else location.href=u.href});return null}
 const takePending=()=>{const st=store();if(!st)return null;let raw=null;try{raw=st.getItem(PENDING_KEY);st.removeItem(PENDING_KEY)}catch(e){return null}
   if(!raw)return null;try{const j=JSON.parse(raw);return j&&j.world===WORLD_ID?j:null}catch(e){return null}};
+// A save from an earlier map (#979) is never overwritten by the new world's autosave: a copy goes under its own key first (once), and the page says so.
+export const EARLIER_KEY=SAVE_KEY+'.earlier-map';
+function keepEarlier(snap){try{const st=store();if(st&&!st.getItem(EARLIER_KEY))st.setItem(EARLIER_KEY,JSON.stringify(snap));
+    note('This world was saved on an earlier, narrower map and cannot continue. A copy is kept; a new world has started.')}catch(e){}}
+const note=m=>{const ss=session();try{if(ss)ss.setItem(RESET_NOTE_KEY,m)}catch(e){}};
 export function boot(init){booted=true;let snap=null;const pend=takePending();
   if(pend){try{init({setup:pend});applied=pend;how='setup';lastHour=Math.floor(S.gameMin/60);status('New world · seed '+pend.seed);return false}
     catch(e){console.warn('Eldmoor: the New World setup failed, starting a default world',e)}}
   try{snap=readSave()}catch(e){console.warn('Eldmoor: unreadable save, starting a new world',e)}
   if(snap){try{restore(snap);how='restored';log({t:'The world was restored from a saved chronicle.',c:'dm'});
       lastHour=Math.floor(S.gameMin/60);status('Restored · Day '+dayOf(S.gameMin)+' '+clock(S.gameMin));return true}
-    catch(e){console.warn('Eldmoor: could not restore the save, starting a new world',e)}}
+    catch(e){console.warn('Eldmoor: could not restore the save, starting a new world',e)
+      if(e&&e.code==='stale-map')keepEarlier(snap)}}
   init();lastHour=Math.floor(S.gameMin/60);return false}
 
 // Called every frame: saves once each time the game clock crosses an hour boundary.

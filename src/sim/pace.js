@@ -45,6 +45,7 @@ import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
 import {callBrief} from './callto.js'; // a question put to a solo (#826)
 import {leaderFor} from './council.js';
 import {woundLine} from './tend.js';
+import {inviteBrief} from './invite.js'; // a rare line naming a tool that fits here (#872, #864)
 import {worldHeld} from './prep.js'; // the world held before play (#559)
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 import {growthText} from './abilities.js'; // a waiting score point (#714)
@@ -101,8 +102,10 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     asked:callBrief(a)||undefined, // someone in the world asked this solo to the Crypt or a raid (#826): {by, line, left}
     aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
     wounds:woundLine(a), // a lasting wound in words (#656); null when whole
+    ...invBrief(a,tv), // invite: {kind, text, node?}, at most one rare line (sim/invite.js); absent on most turns
     ...(swornOf(a)?{oath:a.goal.text}:{}),...(askOpen(a)?{thread:threadText(a)}:{}), // the turn header: what it swore, or for a while what its past holds
     reflect:reflectBrief(a)}}} // a moment to write memories (#179): {id, kind, why} or null; the runner closes it with pace {reflected}
+const invBrief=(a,tv)=>{const v=inviteBrief(a,tv);return v?{invite:v}:{}};
 // The first evening asks once more what the hero makes of its past (#800): the answer closes the offer (reflectDone).
 function reflectBrief(a){const r=reflectDue(a);return r&&askOpen(a)&&(r.kind==='dusk'||S.gameMin%1440>=REFLECT.DUSK)?{...r,thread:threadText(a)}:r}
 // The hall's open jobs that concern the Fellowship (issue #326), as the board shows them to a member standing in town:
