@@ -95,5 +95,5 @@ function main(){const a=process.argv.slice(2),o=a.includes('--out')?a[a.indexOf(
   fs.mkdirSync(path.dirname(path.join(o,file)),{recursive:true});fs.writeFileSync(path.join(o,file),buf);console.log('[cut]',id,'->',path.join(o,file),im.w+'x'+im.h);
   if(a.includes('--index')){const ip=path.join(ROOT,'assets','index.json'),idx=JSON.parse(fs.readFileSync(ip,'utf8'));
     idx.assets[id+'@32']={id,kind:'prop',file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:'lpc-terrains',license:'CC-BY-SA 3.0',authors:['Lanea Zimmerman (Sharm)','bluecarrot16','Daniel Eddeland (Daneeklu)','Richard Kettering (Jetrel)','Zachariah Husiar (Zabin)'],url:'https://opengameart.org/content/lpc-terrains',accepted:idx.assets[id+'@32']?.accepted||'2026-11-05'};
-    idx.assets=Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]));fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}}
+    fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main();
