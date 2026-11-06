@@ -24,7 +24,7 @@
 //   rec {id, kind, title, frame, reason, near:{hero, label}, at:{x,y}, z, lvl, cast:{...}, labels, born, until, phase, scene, result}
 //   S.table.calls [{id, kind, about, legal?, who?, t, done, by, text, pick}] while a staged scene is open
 import {S,clockStr,dayNo,loreSides} from './state.js';
-import {keep} from './kept.js';
+import {keep,onWorld} from './kept.js';
 import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,zoneAt,dist} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
 import {standAt} from '../world/passable.js';
@@ -598,7 +598,9 @@ export function tableAnswer(a){a=a&&typeof a==='object'?a:{};const G=stagedState
   return {ok:true,call:id,kind:c.kind,said:text,...(c.pick?{pick:c.pick}:{}),next:(sc.calls||[]).some(x=>!x.done)?'another call is waiting (table_call)':null}}
 // For dm_status and the panels.
 // settings: the rooms a meeting or social scene can be set in (stage_scene setting) and how to set one in a town (at).
-export const SETTINGS_NOTE='A meeting or social scene can play in a room: stage_scene setting (one of the keys in settings) and at (a town of theirs, or a building in it: inn, smith, quartermaster, chapel, square, gate), such as at "the inn in '+(CITY[0]?CITY[0].name:'town')+'" with setting "tavern". Name no setting and the game picks one that fits. Elite, ambush, trap and mystery play on the ground where they happen and ignore both.';
+const settingsNote=()=>'A meeting or social scene can play in a room: stage_scene setting (one of the keys in settings) and at (a town of theirs, or a building in it: inn, smith, quartermaster, chapel, square, gate), such as at "the inn in '+(CITY[0]?CITY[0].name:'town')+'" with setting "tavern". Name no setting and the game picks one that fits. Elite, ambush, trap and mystery play on the ground where they happen and ignore both.';
+export let SETTINGS_NOTE=settingsNote();
+onWorld(()=>{SETTINGS_NOTE=settingsNote()},()=>({settingsNote:SETTINGS_NOTE})); // its example names a town of the live map (#1013)
 const settingRows=()=>Object.fromEntries(SETTING_IDS.map(k=>[k,SETTINGS[k].name]));
 export function stagedView(){const G=S.staged;if(!G)return {today:'0/'+STAGE.PER_DAY,cur:null,settings:settingRows(),settings_note:SETTINGS_NOTE};const rec=G.cur&&G.cur.phase!=='done'?G.cur:null;
   return {today:(G.day.d===gameDay()?G.day.n:0)+'/'+STAGE.PER_DAY,cur:rec?{id:rec.id,kind:rec.kind,title:rec.title,phase:rec.phase,near:rec.near.label,hours_left:Math.max(0,Math.round((rec.until-S.gameMin)/60)),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{})}:null,

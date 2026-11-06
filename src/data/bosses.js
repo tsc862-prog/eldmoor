@@ -14,9 +14,9 @@
 // breath 22-30 every 7 s within 4.6 tiles, 9000 hp, 300 s to wake. Do not change them without a
 // balance-tester report.
 import {BOSS_EPICS, DG_EPICS} from './items.js';
-import {WORDS} from '../world/words.js';
+import {WORDS,worded} from '../world/words.js';
 
-export const BOSSES={
+export const BOSSES=worded(()=>({
   kragmaw:{
     id:'kragmaw',name:'Kragmaw',full:'Kragmaw the Cinder Wyrm',family:'wyrm',lvl:20,maxhp:13000,respawn:600,
     wake:' stirs again in its '+WORDS.lairRegion+' lair.',
@@ -42,7 +42,7 @@ export const BOSSES={
     enrage:{after:240,hit:1.5},
     loot:{xp:250,gold:25,epics:DG_EPICS,p:.25,src:'Lich-Warden Vesk'},
   },
-};
+}));
 
 // The phase a boss is in at `share` of its hp (last phase whose threshold has been crossed).
 export function phaseOf(T,share){let p=T.phases[0];for(const x of T.phases)if(share<=x.at)p=x;return p}
