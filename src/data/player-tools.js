@@ -133,7 +133,7 @@ export const PLAYER_TOOLS=worded(()=>[
 ]);
 export const TOOL_NAMES=PLAYER_TOOLS.map(t=>t.name);
 // Sides as lore (#1025): the same tools in a world with no sides. Phrase swaps on the text above, so a world with sides sends what it always sent.
-const LORE_SWAPS=[
+const LORE_SWAPS=worded(()=>[
   ['a downed hero of your side','a downed hero'],['At the chapel of a town of your side','At the chapel of any town'],
   ['a hero of your own faction nearby','a hero nearby'],['a hero of your own faction within 6 tiles','a hero within 6 tiles'],['a hero of your faction within 6 tiles','a hero within 6 tiles'],
   ['or an enemy-faction hero outside '+WORDS.lowRegion,'or a hero who has come as your enemy'],['a hero (any faction)','a hero'],[' another faction, a fight',' a fight'],
@@ -142,9 +142,9 @@ const LORE_SWAPS=[
   ['fall in with your faction\'s muster on Kragmaw while one is out, and ride to the lair. You learn of a muster as you learn of anything: the town criers (read_chronicle), people, rumour. With no muster out it is refused.','there is no muster to fall in with here, so this is refused: a raid is a company\'s own.'],
   ['which faction holds it (or none), how far control leans, whether both factions are there now','which people hold it (or none), how far control leans, whether both are there now'],['heroes of your faction at a held outpost heal faster, and kills near an outpost count double honor. Enemy heroes who find you there will fight.','heroes of the people who hold it heal faster there.'],
   ['Finish a downed enemy hero (of the other faction) within 4 tiles: they die. Honour, the kill XP and a tenth of their gold are yours alone, and their whole guild will swear vengeance on you.','Finish a downed enemy hero within 4 tiles: they die. The kill XP and a tenth of their gold are yours alone.'],
-];
+]);
 export const loreText=s=>LORE_SWAPS.reduce((t,[a,b])=>t.split(a).join(b),s);
-const LORE_TOOLS=PLAYER_TOOLS.map(t=>({...t,desc:loreText(t.desc),args:Object.fromEntries(Object.entries(t.args||{}).map(([k,v])=>[k,v&&v.desc?{...v,desc:loreText(v.desc)}:v]))}));
+const LORE_TOOLS=worded(()=>PLAYER_TOOLS.map(t=>({...t,desc:loreText(t.desc),args:Object.fromEntries(Object.entries(t.args||{}).map(([k,v])=>[k,v&&v.desc?{...v,desc:loreText(v.desc)}:v]))})));
 export const toolsFor=sides=>sides==='lore'?LORE_TOOLS:PLAYER_TOOLS;
 // The no-such-tool refusal names attempt first, then the wish line (#864, #829): a hero's way to try it now comes before the note for later.
 export const ATTEMPT_INVITE='If no tool does it, try it in words with attempt {what}.';
