@@ -21,6 +21,7 @@
 - [Town life](townlife.md) — #795 render-only critters/smoke/stalls/guards, deco entities, staging
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
 - [Townsfolk sheets](townsfolk.md) — #832 npc role x people LPC sheets, npcSheetId lookup, staging shots, python3 stub trap
+- [LPC creatures](lpccreatures.md) — #831 OGA LPC creature cut, what fit and what did not, staging a creature shot
 - [LPC landmarks](lpclandmarks.md) — #836 crypt mouth and lair from LPC castlewalls/lavarock, landmark shot staging, C: full gotcha
 - [Whole-map marks](entitylod.md) — #729 lod.js: threshold, pawns plus 1:1 creature sprites, sheet warm-up, probe in a junction worktree
 - [LPC trees and rocks](lpctrees.md) — #834 whole canopy trees painted in chunk, redrawn over entities; cutter needs ELDMOOR_PACKS; C: disk full gotcha

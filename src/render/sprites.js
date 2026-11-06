@@ -7,6 +7,7 @@ import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
 import {npcRole} from '../data/npcs.js';
 import {MOBS} from '../data/mobs.js';
+import {baseId} from '../data/bestiary.js';
 import {PROC_SCALE,ART,SHEET} from './tile.js';
 import {assetPixels,onAssets,hasAsset} from './assets.js';
 import {recolour} from './palette.js';
@@ -826,8 +827,12 @@ export function npcSheetId(role,race){const per=npcId[role]||(npcId[role]={}),k=
   const base='sprite:npc-'+role,byPeople=race?base+'-'+race:null;
   return per[k]=byPeople&&hasAsset(byPeople)?byPeople:hasAsset(base)?base:null}
 onAssets(()=>{for(const c of Object.keys(npcId))delete npcId[c]});
+// A Stepping/Vale clone ('wolf@0') uses its species' sheet 'sprite:mob-wolf' (MOB_ID is built from whatever MOBS held at import,
+// so it holds the clone's own key, which has no asset); the id is cached per type, and sheetOf answers null for an id with no asset.
+const MOB_SHEET=new Map();
+function mobSheetId(t){let v=MOB_SHEET.get(t);if(v===undefined)MOB_SHEET.set(t,v='sprite:mob-'+slug(baseId(t)));return v}
 export function sheetFrame(e,dir,col){
-  const id=e.kind==='hero'?heroSheetId(e.cls,e.race):e.kind==='mob'?MOB_ID[e.type]:e.kind==='npc'&&e.role?npcSheetId(e.role,e.race):null;if(!id)return null;
+  const id=e.kind==='hero'?heroSheetId(e.cls,e.race):e.kind==='mob'?mobSheetId(e.type):e.kind==='npc'&&e.role?npcSheetId(e.role,e.race):null;if(!id)return null;
   const c=sheetOf(id,e.kind==='hero'||e.kind==='npc'?e.fac:0);if(!c)return null;
   FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}
 
