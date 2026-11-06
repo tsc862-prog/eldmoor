@@ -125,6 +125,8 @@ if(mode==='a'){
   const n2=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:healer');n2.value='';n2.dispatch('input',{target:n2});
   click(ids.get('setup'),b=>b.dataset.a==='nameroll'&&b.dataset.slot==='dps1');
   ok(all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1').value.length>=3,'name reroll fills a name');
+  {const h=sels(ids.get('setup'),'hall');if(h&&h.childNodes.length>1)ok(h.childNodes.slice(1).every(o=>o.text.includes(' · ')),'Hall: each town reads with its region and people');
+   ok(/World/.test(text(ids.get('setup')))&&all(ids.get('setup'),'canvas').length>=1,'setup: the chosen world shows its preview')}
   {const o=sels(ids.get('setup'),'others');ok(o&&o.value==='full'&&o.childNodes.map(x=>x.value).join()==='full,none','Other heroes (#780): the usual roster by default, or none');
    o.value='none';o.dispatch('change',{target:o});ok(sels(ids.get('setup'),'others').value==='none','the choice stays on the page')}
   {const p=sels(ids.get('setup'),'prologue');ok(p&&p.value==='delve'&&p.childNodes.map(x=>x.value).join()==='delve,none'&&p.childNodes[0].text==='A first delve'&&p.childNodes[1].text==='Straight to the hall','Opening (#922): a first delve by default, or straight to the hall');
@@ -162,6 +164,10 @@ if(mode==='a'){
   let played=[];title.showTitle(k=>played.push(k));
   let t=ids.get('title');
   ok(t&&!t.hidden&&title.titleOpen(),'the title shows on load');
+  {const {WORLDS}=await imp('src/world/spec.js');const cards=all(t,'button').filter(b=>b.dataset.a==='map'),keys=Object.keys(WORLDS);
+   ok(cards.length===keys.length&&keys.every(k=>cards.some(b=>b.dataset.world===k)),'title: one map card per WORLDS entry ('+keys.join(', ')+')');
+   ok(cards.every(b=>all(b,'canvas').length===1&&WORLDS[b.dataset.world].name&&text(b).includes(WORLDS[b.dataset.world].name)&&/\d+ x \d+ tiles/.test(text(b))),'title: each card has a preview, the name, a line and its size');
+   ok(cards.filter(b=>b.attrs&&b.attrs['aria-pressed']==='true'||b.getAttribute&&b.getAttribute('aria-pressed')==='true').length===1,'title: exactly one card is marked as the map this page is on')}
   ok(!save.isBooted()&&sim.S.agents.length===0,'no world is built or restored behind it');
   ok(!all(t,'button').some(b=>b.dataset.a==='continue'),'no Continue without a save');
   ok(all(t,'button').some(b=>b.dataset.a==='new'&&b.classList.contains('primary')),'New world is the first choice without a save');

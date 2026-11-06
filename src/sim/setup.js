@@ -187,6 +187,7 @@ function togetherProblem(H){if(H.length!==SLOTS.length)return 'Together rides as
 export function validateSetup(s0){const out=[];
   if(!s0||typeof s0!=='object')return ['No setup.'];
   const s=asV2(s0),H=Array.isArray(s.heroes)?s.heroes:null,mode=s.mode==null?'together':s.mode;
+  const sp=WORLDS[s.world]||null; // starts are checked against the map the setup is for, which may not be the one the page stands on
   if(!MODES.includes(mode))out.push('Pick Together or Apart.');
   if(s.others!=null&&!OTHERS.includes(s.others))out.push('Other heroes: the usual roster or none.');
   if(s.prologue!=null&&!PROLOGUE_VALUES.includes(s.prologue))out.push('Opening: a first delve, or straight to the hall.');
@@ -214,8 +215,8 @@ export function validateSetup(s0){const out=[];
     if(h.archetype!=null&&h.archetype!==''&&!archOk(h.archetype))out.push(L+': unknown archetype; pick one, Random or None.');
     if(mode==='apart'&&h.start!=null){const st=h.start;
       if(typeof st!=='object')out.push(L+': unknown start.');
-      else{if(st.town!=null&&st.town!==''&&st.town!=='home'&&FAC[fac]&&!townOf(st.town,fac))out.push(L+': '+st.town+' is not a town of the '+FAC[fac].name+'.');
-        if(st.region!=null&&st.region!==''&&!regionOf(st.region))out.push(L+': there is no region called '+st.region+'.')}}
+      else{if(st.town!=null&&st.town!==''&&st.town!=='home'&&FAC[fac]&&!(sp&&sp.towns?sp.towns.some(t=>t.name===st.town&&t.fac===fac):townOf(st.town,fac)))out.push(L+': '+st.town+' is not a town of the '+FAC[fac].name+'.');
+        if(st.region!=null&&st.region!==''&&!(sp&&sp.regions?sp.regions.some(r=>r.name===st.region):regionOf(st.region)))out.push(L+': there is no region called '+st.region+'.')}}
     const mp=mindProblem(h.mind,L);if(mp)out.push(mp)}
   if(mode==='apart')for(const g of groupsOf(s))if(g.length>1&&new Set(g.map(i=>facOf(s,H[i]))).size>1)out.push('Group '+H[g[0]].group+': a company is of one faction.');
   if(!s.dm||typeof s.dm!=='object')out.push('DM: pick the model that plays the DM.');
