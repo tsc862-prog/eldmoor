@@ -26,6 +26,7 @@ import {F,frame,inTiles,skyAt,WET,WIND,ramp,lamps} from './life.js';
 import {critterEnts,drawRoostBirds} from './critters.js';
 import {pieceSpot,buildingArt} from './townart.js';
 import {townStyle} from '../data/townart.js';
+import {harbourEnts,harbourLight} from './harbour.js';
 import {onAssets,assetPixels} from './assets.js';
 import {trackSteps,drawFootprints} from './footprints.js';
 
@@ -131,6 +132,7 @@ export function lifeGround(ctx){drawFootprints(ctx)}
 export function lifeEnts(ents){
   critterEnts(ents);
   if(F.tpx<9)return;
+  harbourEnts(ents);
   for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci),h=F.hour;
     const shut=!!WET[skyAt(c.x0,c.y0)],mk=shut?0:ramp(h,7,8,17,18);
     for(const s of L.stalls){s.open=mk;ents.push(s)}
@@ -154,8 +156,10 @@ function flag(ctx,x,y,f,wind){const px=Math.round(x),py=Math.round(y),amp=.8+win
   ctx.fillStyle='#3a2a1a';ctx.fillRect(px,py-16,1,16);ctx.fillStyle='#f2c14e';ctx.fillRect(px,py-17,1,1);
   for(let i=0;i<11;i++){const w=Math.sin(F.now*(3+wind*3)-i*.8)*amp*(i/10),taper=i>7?(i-7):0;
     ctx.fillStyle=f.color;ctx.fillRect(px+1+i,Math.round(py-16+w),1,6-taper);ctx.fillStyle=f.dark;ctx.fillRect(px+1+i,Math.round(py-16+w+4-taper),1,1)}}
+const lampFlick=(s,now)=>.88+.12*Math.sin(now*2.3+s);
 // Night pass (additive light): lit doors, the forge's glow while it works, guards' torches.
 export function lifeLight(ctx,glow,dk,LIGHT){if(F.tpx<9)return;
+  harbourLight(glow,dk,LIGHT.torch,lampFlick);
   for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci),lp=lamps(F.hour);
     for(const d of L.doors){if(lp>0&&inTiles(d.x/T,d.y/T,1))glow(d.x,d.y-6,d.w>1?20:15,LIGHT.torch,dk*.55*lp);
       if(d.forge){const w=ramp(F.hour,5.5,6.5,19,21);if(w>0)glow(d.x,d.y-6,22,[255,120,40],dk*.6*w*(.85+.15*Math.sin(F.now*9)))}}
