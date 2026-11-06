@@ -7,6 +7,7 @@
 import {runWorlds} from './worlds.mjs';
 import {tiles,I,CITY,LANDMARKS,LAIR,CRYPT} from '../src/world/map.js';
 import {W,H,ROCK,TREE,WALL,RIVER,BRIDGE,PEAK,LAVA,ROAD,WALKABLE} from '../src/world/tiles.js';
+import {townRing} from '../src/world/gen.js';
 import {solidAt,solidWhy,nearestOpen,solidCounts,standAt,FOREST_CORE} from '../src/world/passable.js';
 import {step} from '../src/sim/index.js';
 import {S} from '../src/sim/state.js';
@@ -90,7 +91,7 @@ for(const c of CITY){const B=c.buildings||[];ok(B.length>=6,c.name+': has its bu
   ok(reach,c.name+': every door connects to the gate');
   ok(Object.entries(c.spots).every(([k,p])=>!solidAt(p.x,p.y)&&seen.has(Math.floor(p.x)+','+Math.floor(p.y))),c.name+': every named spot is open and reaches the gate');
   // walls open only at the gate
-  let wallOpen=0;for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++){if(!(x===c.x0||x===c.x1||y===c.y0||y===c.y1))continue;if(!solidAt(x+.5,y+.5)&&!c.gateTiles.some(([gx,gy])=>gx===x&&gy===y))wallOpen++}
+  let wallOpen=0;for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++){if(!townRing(c,x,y))continue;if(!solidAt(x+.5,y+.5)&&!c.gateTiles.some(([gx,gy])=>gx===x&&gy===y))wallOpen++}
   ok(wallOpen===0,c.name+': the wall is open only at the gate');
   // placement: the random home spot of a new hero, a company spread around the square and the square itself are never inside a box
   let badPlace=0;for(let i=0;i<400;i++){const p=standAt(c.x0+2+((i*37)%100)/100*7,c.y0+4+((i*53)%100)/100*3);if(solidAt(p.x,p.y))badPlace++}

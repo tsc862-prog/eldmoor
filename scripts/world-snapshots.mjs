@@ -6,5 +6,5 @@
 export const SNAPSHOTS = {
   eldmoor:  {zone: '7d08ac18', tiles: 'bda9e97b', minSpawn: 1},
   stepping: {zone: '1089eab4', tiles: '2763d8b2', minSpawn: 200},
-  vale:     {zone: '93993d12', tiles: '15854ffd', minSpawn: 150},
+  vale:     {zone: '93993d12', tiles: '4e75bb5a', minSpawn: 150},
 };

@@ -117,7 +117,9 @@ export const ELDMOOR={
     [[40,25],[38,33],[44,43.4]],              // south to the Sunken Crypt
     [[40,25],[46,17],[52,8]],                 // north road into Hoarfell
   ],
-  lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]]},
+  lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]],
+    // Free-standing fires: the braziers either side of the Drowned Weir's mouth, the Kiln's two torches, ember cracks in Ashenfold, the Barrow's cairn fire.
+    points:[{x:79.4,y:39.3},{x:83.6,y:39.3},{x:113.7,y:45.5},{x:117.3,y:45.5},{x:111,y:27.5},{x:104,y:19},{x:119,y:35},{x:105,y:41}]},
   spawn:{townPad:[4,3]},
   nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{
     thornvale:{herb:7,ore:4,hide:6,fish:5},mirefen:{herb:7,ore:4,hide:5,fish:5},
@@ -307,6 +309,8 @@ const VALE_KILN_ROOMS=[
 // tiles, the door tile inside it, and `rise`, how many tiles of art stand over the tiles behind it, which must be the town wall or
 // another building). What makes a town its own is where the pieces stand, the town's size, its gate side and its streets
 // (`ground`, rects from the town's corner, laid as road). scripts/worldcheck.mjs holds the Vale to the kit.
+// Outline and scale (#979): `notch` rects stay outside the walls, so the ring steps round them; `gateAt` puts the gate that many tiles from the corner; `clear`
+// fells the trees whose crowns would hide the south wall; `homes` is the lane the townsfolk live on; `torches` and `grave` replace the 11x9 town's offsets.
 //
 // A row's key is the plan's `kit` and the art's name (building:lpc-<style>-<kit>): a piece may have rows of its own footprints beside the
 // plain one (`piece` names it), and `house` is only such rows: a house is sim-solid art that serves nobody. These stay out of
@@ -317,8 +321,15 @@ export const TOWN_KIT={auction:{foot:[3,2],door:[1,1],rise:1},smithy:{foot:[1,2]
   'house-croft':{piece:'house',foot:[2,2],door:[1,1],rise:0},   // the same footprint under wood shakes, door on the right
   'house-gable':{piece:'house',foot:[2,3],door:[0,2],rise:0},   // gable end to the street: three tiles deep, so a door of full height
   'house-row':{piece:'house',foot:[3,2],door:[1,1],rise:1},     // against the north wall, as tall as the halls beside it
+  'house-lane':{piece:'house',foot:[2,2],door:[0,0],rise:0},    // a cottage south of a lane or alley: door on its north side, steps cut through the roof
   'inn-harbour':{piece:'inn',foot:[4,3],door:[2,2],rise:0},     // two storeys, its door on the south side
-  'hall-long':{piece:'hall',foot:[5,2],door:[2,1],rise:1}};
+  'hall-long':{piece:'hall',foot:[5,2],door:[2,1],rise:1},
+  'inn-deck':{piece:'inn',foot:[3,2],door:[1,0],rise:0},        // the inn on a plank town's deck: its steps are timber
+  // The great kit (#979): buildings at people's scale, at least twice a hero's height. The footprint is as deep as the art is tall, so rise is 0 and every door is on the south edge.
+  'hall-great':{piece:'hall',foot:[7,5],door:[3,4],rise:0},'auction-great':{piece:'auction',foot:[6,4],door:[2,3],rise:0},'inn-great':{piece:'inn',foot:[6,4],door:[2,3],rise:0},
+  'smithy-great':{piece:'smithy',foot:[4,4],door:[1,3],rise:0},'chapel-great':{piece:'chapel',foot:[4,6],door:[1,5],rise:0},'chapel-hill':{piece:'chapel',foot:[4,5],door:[1,4],rise:0},
+  'house-narrow':{piece:'house',foot:[2,4],door:[0,3],rise:0},'house-tall':{piece:'house',foot:[3,4],door:[1,3],rise:0},'house-wide':{piece:'house',foot:[4,4],door:[1,3],rise:0},'house-manor':{piece:'house',foot:[5,4],door:[2,3],rise:0},
+  fountain:{piece:'well',foot:[3,3],door:[1,2],rise:0}};        // the square's well: its `door` the basin's near rim
 const TOWN_SERVES={auction:'quartermaster',smithy:'smith',hall:'gate',chapel:'chapel',board:'gate',inn:'inn'};
 // [kit, dx, dy] from the town's top-left corner -> the plan's buildings (hall first among 'gate' servers is not needed: the list order decides the gate captain's door).
 function townPlan(x0,y0,list){return list.map(([kit,dx,dy])=>{const k=TOWN_KIT[kit],piece=k.piece||kit;
@@ -348,38 +359,55 @@ export const VALE={
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'wEdge'},{kind:'west-of-curve',curve:'mEdge'},{kind:'north-of-curve',curve:'river'}]}},
     {id:'ashenfold',name:'Ashenfold',band:[10,15],biome:'ash',
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'eEdge'},{kind:'west-of-curve',curve:'fEdge'}]}},
-    {id:'rimecrown',name:'Rimecrown',band:[14,Infinity],biome:'tundra',
+    {id:'rimecrown',name:'Rimecrown',band:[14,Infinity],biome:'tundra',pools:{sx:6,sy:4.4,at:.66,seed:31},
       sky:[['clear',.45],['snow',.2],['squall',.35]], // squalls off the crown
       mask:{kind:'east-of-curve',curve:'fEdge'}},
   ],
-  river:{curve:'river',width:2,span:[0,121],fords:[76]}, // the Wend rises at x=122; the Weirgate ford is the only wading place
+  // The Wend flares into a sea off the west edge (mouth) and rises from a spring pool under the rock at x~123 (pool). The Weirgate ford is the
+  // only wading place: the Low Bridge and the High Bridge are the other two crossings, and no road runs over the water anywhere else.
+  river:{curve:'river',width:2,span:[0,121],fords:[76],mouth:{reach:16,flare:6},pool:{x:123,y:30,r:2.7}},
+  // Art notes (src/render/scenery.js reads them; the sim and the map never do).
+  scenery:{
+    wash:{wendmouth:'meadow',hawkwold:'heath',greywood:'woods',ashenfold:'ash'},
+    fields:[[36,4,5,4,'wheat'],[36,10,4,3,'cabbage'],[21,22,9,3,'plough'],[1,35,11,3,'cabbage'],[19,37,7,3,'wheat'],[23,41,7,3,'plough'],[1,52,8,3,'wheat'],[11,52,9,3,'plough']],
+    dress:{'The Drowned Weir':'weir','The Kestrel Barrow':'barrow','The Sallow Vaults':'vaults','The Brandwright Kiln':'kiln',Kragmaw:'lair'},
+    bridges:{'26,33':'stone'},
+    head:{x:122,y:30},
+    clear:[[80.5,41,3.8],[78.2,37.5,2.6]], // felled ground before the Drowned Weir, so its mouth stands in the open
+  },
   towns:[
     // Concord, north bank
     // Aldermere: a market green at the river mouth; the forge and the halls front a paved lane, the inn on the green's west edge.
-    {name:'Aldermere',fac:0,x0:4,y0:4,w:11,h:9,gate:'E',race:'hallowan',spots:{square:[5.5,6.1]},
-      buildings:townPlan(4,4,[['auction',3,1],['smithy',1,1],['hall',7,1],['chapel',6,1],['board',9,3],['inn',2,5]]),
-      ground:[[1,3,9,1],[5,4,5,2]]},
+    {name:'Aldermere',fac:0,x0:4,y0:1,w:31,h:15,gate:'E',gateAt:5,race:'hallowan',spots:{square:[17.5,8.1]},grave:[27.5,7.6],
+      notch:[[26,0,5,3],[0,13,14,2]],clear:3,torches:[[29.5,4.5],[29.5,7.5],[15,7],[20,7],[17,13],[8,11]],
+      buildings:townPlan(4,1,[['auction-great',19,1],['smithy-great',4,1],['hall-great',12,1],['house-tall',1,1],['house-wide',8,1],['chapel-great',23,7],['house-tall',27,9],['inn-great',6,7],['house-manor',1,7],['board',14,7],['fountain',16,9]]),
+      ground:[[1,5,29,2],[1,11,11,1],[23,13,7,1]]},
     // Gullstrand: a harbour. The gate faces the river; a street runs up from it to a lane under the halls, and a quay and jetty reach out south.
-    {name:'Gullstrand',fac:0,x0:6,y0:17,w:13,h:9,gate:'S',race:'skerrin',spots:{square:[6.5,4.1]},
-      buildings:townPlan(6,17,[['auction',8,1],['smithy',11,1],['hall',2,1],['chapel',1,1],['board',8,7],['inn-harbour',1,4],['house-row',5,1],['house-gable',8,4],['house-cottage',10,4]]),
-      ground:[[1,3,11,1],[6,3,2,5],[6,9,2,3],[5,12,4,1]]},
-    // Hawkstead: a ridge town on terraces: the chapel stands on the hall's shoulder, a stair climbs the middle.
-    {name:'Hawkstead',fac:0,x0:52,y0:10,w:11,h:11,gate:'E',race:'tarrow',spots:{square:[5.5,5.1]},
-      buildings:townPlan(52,10,[['smithy',1,1],['auction',3,1],['hall',7,1],['chapel',9,3],['inn',2,6],['board',6,8]]),
-      ground:[[1,3,8,1],[1,5,9,1],[5,3,1,6]]},
+    {name:'Gullstrand',fac:0,x0:6,y0:17,w:26,h:13,gate:'S',gateAt:6,race:'skerrin',spots:{square:[19.5,7.6]},grave:[23.5,7.6],notch:[[21,9,5,4]],clear:3,homes:[[1.5,11.5],[16.5,11.5]],
+      torches:[[5,11.5],[9,11.5],[6,6],[15,6],[20,8],[22,7]],
+      buildings:townPlan(6,17,[['auction-great',15,1],['smithy-great',1,1],['hall-great',8,1],['chapel-hill',21,1],['board',18,7],['inn-great',8,7],['house-tall',5,1],['house-manor',1,7],['house-tall',14,7]]),
+      ground:[[1,5,24,2],[6,7,2,5],[1,11,5,1],[8,11,9,1]],pier:[[6,13,2,5]]},
+    // Hawkstead: a ridge town on terraces: the chapel stands on the hall's shoulder, a stair climbs the middle, the notice board at its head; cottages under the second terrace, an alley behind the inn.
+    {name:'Hawkstead',fac:0,x0:49,y0:8,w:19,h:13,gate:'E',gateAt:5,race:'tarrow',spots:{square:[15.5,8.1]},grave:[16.5,8.6],notch:[[16,11,3,2]],clear:3,homes:[[1.5,11.5],[13.5,11.5]],
+      torches:[[17.5,4.5],[17.5,7.5],[5,6],[11,6],[14,8],[6,11]],
+      buildings:townPlan(49,8,[['smithy-great',1,7],['auction-great',8,1],['hall-great',1,1],['chapel-hill',14,1],['inn-great',5,7],['board',14,7],['house-tall',11,7]]),
+      ground:[[1,6,17,1],[8,5,10,1],[1,11,14,1]]},
     // Warband, south bank
-    // Brandhold: a forge town. The gate is in the north wall and a straight street runs to the yard before the inn.
-    {name:'Brandhold',fac:1,x0:6,y0:42,w:11,h:9,gate:'N',race:'ashfolk',spots:{square:[5.5,4.1]},
-      buildings:townPlan(6,42,[['smithy',1,1],['hall',2,1],['auction',7,1],['chapel',9,3],['board',7,3],['inn',2,5]]),
-      ground:[[5,1,2,7],[1,3,9,1],[4,5,5,2]]},
+    // Brandhold: a forge town. The gate is in the north wall and a straight street runs to the yard; the inn fronts the cross lane, a cottage and a croft stand behind it.
+    {name:'Brandhold',fac:1,x0:6,y0:41,w:29,h:15,gate:'N',gateAt:12,race:'ashfolk',spots:{square:[15.5,8.1]},grave:[26.5,7.6],notch:[[0,13,11,2]],clear:3,homes:[[1.5,11.5],[10.5,11.5]],
+      torches:[[11,1],[15,1],[10,7],[21,7],[15,13],[6,11]],
+      buildings:townPlan(6,41,[['smithy-great',1,1],['hall-great',14,1],['auction-great',21,1],['chapel-great',21,7],['board',12,7],['inn-great',5,7],['house-manor',5,1],['house-narrow',10,1],['house-wide',1,7],['house-tall',25,9],['fountain',14,9]]),
+      ground:[[12,1,2,5],[1,5,26,2],[1,11,10,1],[21,13,7,1]]},
     // Stiltmere: wide and loose, a fen town of planked lanes inside a palisade; a long hall on the north wall, the houses off a spine.
-    {name:'Stiltmere',fac:1,x0:44,y0:40,w:13,h:9,gate:'E',race:'mirekin',spots:{square:[8.5,4.1]},wall:'palisade',
-      buildings:townPlan(44,40,[['auction',1,1],['smithy',4,1],['hall-long',6,1],['chapel',11,1],['inn',3,5],['board',6,4],['house-gable',1,4],['house-croft',8,6]]),
-      ground:[[1,3,11,1],[7,3,1,5],[10,4,2,2]]},
+    {name:'Stiltmere',fac:1,x0:38,y0:38,w:19,h:13,gate:'E',gateAt:5,race:'mirekin',spots:{square:[16.5,8.1]},grave:[16.5,7.6],wall:'palisade',notch:[[17,10,2,3]],clear:3,homes:[[1.5,11.5],[14.5,11.5]],
+      torches:[[17.5,4.5],[17.5,7.5],[5,7],[12,7],[15,10],[3,11]],
+      buildings:townPlan(38,38,[['auction-great',12,1],['smithy-great',11,7],['hall-great',5,1],['chapel-hill',1,1],['inn-great',5,7],['board',15,7],['house-wide',1,7]]),
+      ground:[[5,6,13,1],[12,5,6,1],[1,6,4,1],[1,11,15,1]]},
     // Hornridge: a hold on a long slope, the gate at the top and two terraces down to the inn.
-    {name:'Hornridge',fac:1,x0:58,y0:45,w:11,h:13,gate:'N',race:'thornhide',spots:{square:[5.5,6.1]},
-      buildings:townPlan(58,45,[['auction',1,1],['smithy',4,1],['hall',7,1],['chapel',9,3],['inn',2,8],['board',8,8],['house-cottage',1,4],['house-croft',3,4],['house-cottage',7,4]]),
-      ground:[[5,1,2,11],[1,3,9,1],[1,6,9,1]]},
+    {name:'Hornridge',fac:1,x0:58,y0:45,w:21,h:13,gate:'N',gateAt:5,race:'thornhide',spots:{square:[19.5,8.1]},grave:[19.5,9.6],notch:[[19,0,2,4]],clear:3,homes:[[1.5,11.5],[19,11.5]],
+      torches:[[4,1],[8,1],[5,6],[12,6],[17,6],[10,11]],
+      buildings:townPlan(58,45,[['auction-great',4,7],['smithy-great',1,1],['hall-great',7,1],['chapel-hill',14,1],['inn-great',10,7],['board',19,5],['house-tall',1,7],['house-tall',16,7]]),
+      ground:[[5,1,2,5],[1,6,19,1],[1,5,6,1],[1,11,19,1]]},
   ],
   landmarks:[
     // The great dungeon, beside the Weirgate ford on the south bank. entry: the level a background group first goes down (#902).
@@ -401,28 +429,30 @@ export const VALE={
     fordN:[76,26],fordS:[76,33],         // the Weirgate ford (no road crosses it)
     highN:[110,31],highS:[110,36],       // the High Bridge
     lairGate:[128,30],
+    southWay:[94,36],                    // keeps the fordS-highS road on the south bank (it once found the north road and bridged at x=74)
+    stiltS:[47,53],                      // brings the Brandhold road round the south of Stiltmere's walls to its east gate
     northWay:[34,21],                    // keeps the Gullstrand-Hawkstead road off the river bank (its gate faces the water)
   },
   roads:[
     {from:'Aldermere',to:'Gullstrand'},
     {from:'Gullstrand',to:'lowN'},{from:'lowN',to:'lowS'},{from:'lowS',to:'Brandhold'},
     {from:'Gullstrand',via:['northWay'],to:'Hawkstead'},
-    {from:'Brandhold',to:'Stiltmere'},{from:'Stiltmere',to:'Hornridge'},
+    {from:'Brandhold',via:['stiltS'],to:'Stiltmere'},{from:'Stiltmere',to:'Hornridge'},
     {from:'Hawkstead',to:'fordN'},{from:'Hornridge',to:'fordS'},
     {from:'fordS',to:'The Drowned Weir'},
     {from:'Hawkstead',to:'The Kestrel Barrow'},
     {from:'Stiltmere',to:'The Sallow Vaults'},
-    {from:'fordN',to:'highN'},{from:'highN',to:'highS'},{from:'fordS',to:'highS'},
+    {from:'fordN',to:'highN'},{from:'highN',to:'highS'},{from:'fordS',via:['southWay'],to:'highS'},
     {from:'highS',to:'The Brandwright Kiln'},
     {from:'highN',to:'lairGate'},
   ],
   lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]]},
-  spawn:{townPad:[4,3],nearest:30},
+  spawn:{townPad:[2,2],nearest:30},
   nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{
     wendmouth:{herb:10,ore:4,hide:8,fish:8},sallowfen:{herb:8,ore:4,hide:6,fish:5},hawkwold:{herb:6,ore:8,hide:7,fish:3},
     greywood:{herb:9,ore:6,hide:8,fish:4},ashenfold:{herb:3,ore:9,hide:6,fish:1},rimecrown:{herb:3,ore:6,hide:6,fish:0}}},
-  labels:[['WENDMOUTH',26,10],['SALLOWFEN',57,57],['HAWKWOLD',44,4],['GREYWOOD',88,18],['ASHENFOLD',112,12],['RIMECROWN',134,10],
-    ['ALDERMERE',9.5,3],['GULLSTRAND',11.5,16],['HAWKSTEAD',57.5,9],['BRANDHOLD',11.5,41],['STILTMERE',49.5,39],['HORNRIDGE',63.5,44]],
+  labels:[['WENDMOUTH',32,27],['SALLOWFEN',57,57],['HAWKWOLD',44,4],['GREYWOOD',88,18],['ASHENFOLD',112,12],['RIMECROWN',134,10],
+    ['ALDERMERE',19.5,16.6],['GULLSTRAND',19,31],['HAWKSTEAD',58.5,7],['BRANDHOLD',20.5,57],['STILTMERE',47.5,37],['HORNRIDGE',68.5,44]],
 };
 
 // ---- choosing the world ----
