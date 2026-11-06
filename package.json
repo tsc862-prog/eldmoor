@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "sim": "node scripts/headless.mjs",
     "worldcheck": "node scripts/worldcheck.mjs",
+    "worldtextcheck": "node scripts/worldtextcheck.mjs",
     "passablecheck": "node scripts/passablecheck.mjs",
     "pathcheck": "node scripts/pathcheck.mjs",
     "initcheck": "node scripts/initcheck.mjs",

@@ -225,6 +225,8 @@ export const TOWN_GROUND={
 export const HOUSE_SHAKE={stone:['#4a3224','#6e4c34','#8e6a48','#ac8a60'],timber:['#2e2018','#463226','#5e4634','#786048']};
 // The palisade's stakes and its plank decking, dark to light (scripts/art/packcut-walls.mjs).
 export const PALISADE={log:['#1e140e','#3a281c','#5a3e2a','#7a5a3e','#9a7a56'],deck:['#2e2218','#46342a','#5a4432','#6e563e','#826a4e']};
+// Harbours (#979, render/harbour.js): hull planks dark to light, the inside of a boat, its rim, a furled sail, net, and the quay's planks where the deck piece is not loaded.
+export const HARBOUR={hull:['#2a1c14','#46301f','#5e4230','#7a5a3e'],inner:['#3a2a1e','#46342a'],rim:['#8a6a48','#b08c60'],sail:['#c8b890','#e8dcb8','#a89870'],net:['#a89870','#c8b890'],plank:['#46342a','#6e563e','#a08660']};
 export const LANDMARK={
   crypt:['#78748a','#5a5668','#4a4652','#2e2a34','#0a0810','#7ad0a0','#c8ffd8','#e8e4d8','#5a8a44'],
   lair:['#5a2a1c','#3a1c16','#655c58','#4a423e','#2a2422','#c8401a','#f07a22','#ffd04a','#e8e0c8','#a8a090'],

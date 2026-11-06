@@ -24,6 +24,7 @@ import {dmlog} from './dmlog.js';
 import {companies,companyById,slotted} from './company.js';
 import {ensureNpcs} from './npcs.js';
 import {maxHp} from './heroes.js';
+import {markNamed} from './dmnames.js'; // a place the DM marked, with or without "the" (#1017)
 
 export const WHEN={MAX:6,PER_DAY:12,HOURS:24,MIN_H:1,MAX_H:72,EVERY:2,KEEP:12,SEEN_H:24,R:4,R_MIN:1,R_MAX:15};
 export const WATCH={MAX:6,PER_DAY:12};
@@ -76,7 +77,7 @@ function companyOfArg(v){const s=clean(v,40),lo=s.toLowerCase();if(!s)return nul
   return companies().find(C=>String(C.id)===s||String(C.name||'').toLowerCase()===lo)||null}
 function placeArg(v){const s=clean(v,60),lo=s.toLowerCase();if(!s)return null;
   const m=/^\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?$/.exec(s);if(m)return {x:Number(m[1]),y:Number(m[2]),name:m[1]+','+m[2]};
-  const pl=(S.places||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo);if(pl)return {x:pl.x,y:pl.y,name:pl.name,pid:pl.id};
+  const pl=markNamed(s);if(pl)return {x:pl.x,y:pl.y,name:pl.name,pid:pl.id};
   const mk=(S.marks||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo);if(mk)return {x:mk.x,y:mk.y,name:mk.name||'the marked spot'};
   const lm=LANDMARKS.find(l=>{const n=l.name.toLowerCase();return n===lo||n.replace(/^the /,'')===lo.replace(/^the /,'')});if(lm)return {x:lm.x,y:lm.y,name:lm.name};
   const c=townOf(s);if(c)return {x:c.gate.x,y:c.gate.y,name:c.name};

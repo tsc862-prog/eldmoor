@@ -31,6 +31,7 @@
 //   encRate()  encounter spawn-rate multiplier     encKind(p,kind)  ambush bias at a road spot
 //   encSpot(spots) a spot inside a danger area     sightLever(z)    fog-bound sight multiplier
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
+import {worldFill} from '../world/words.js';
 import {clamp} from '../core/rng.js';
 import {keep} from './kept.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
@@ -403,7 +404,7 @@ function itemCheck(p,give){const a=livingHero(p.hero);if(!a)return 'no such livi
   else{if(it.kind!=='quest')return it.kind==='gear'?'gear cannot be taken back':'consumables cannot be taken back; only a quest item or a token';
     if(!(a.inv&&a.inv.list.some(x=>x.kind==='quest'&&x.id===it.id)))return a.name+' does not carry it'}
   return null}
-const FLAVOUR=it=>it.kind==='quest'?QUEST_ITEMS[it.id].flavour:it.kind==='use'?(USES[it.id].flavour||''):'';
+const FLAVOUR=it=>it.kind==='quest'?worldFill(QUEST_ITEMS[it.id].flavour):it.kind==='use'?worldFill(USES[it.id].flavour||''):'';
 // An object found where the hero stands (a cache a hero searched out, sim/search.js #525): the give_item path without the lever's
 // limits. A quest item or consumable by name, or one plain piece of gear for a slot at the hero's level. Returns {name} or {err}.
 export function foundItem(a,text){const it=itemOf(text);if(it.err)return {err:it.err};if(room(a)<=0)return {err:'pack full'};let got,name=it.id;
