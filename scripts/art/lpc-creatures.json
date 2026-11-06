@@ -1,0 +1,374 @@
+{
+ "_note": "Creature sheets cut from OpenGameArt LPC packs (#831). dir order in the output sheet: down, left, right, up. A dir is {x,y,w,h,cols:[3 source columns],flip?}: cells of w*h from (x,y), column k at x+k*w. vertical:'side' draws the down and up rows from the side views (a long quadruped seen end-on stands taller than a hero). tint: recolour by luminance into one hue (the tint is the mid tone).",
+ "sets": {
+  "wolf": {
+   "dir": "oga-lpc-wolf",
+   "licence": "OGA-BY 3.0",
+   "offered": "CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0",
+   "authors": "Stephen Challener (Redshrike), commissioned and uploaded by zerohero",
+   "url": "https://opengameart.org/content/lpc-wolf-animation"
+  },
+  "boar": {
+   "dir": "oga-lpc-boar",
+   "licence": "CC-BY-SA 3.0",
+   "offered": "CC-BY-SA 3.0, GPL 3.0",
+   "authors": "FiveBrosStopMosYT (based on the pig of Daniel Eddeland (daneeklu), colours from the LPC Wolf)",
+   "url": "https://opengameart.org/content/lpc-wild-boar"
+  },
+  "spider": {
+   "dir": "oga-lpc-spider",
+   "licence": "OGA-BY 3.0",
+   "offered": "CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0",
+   "authors": "Stephen Challener (Redshrike), commissioned and uploaded by zerohero",
+   "url": "https://opengameart.org/content/lpc-spider"
+  },
+  "golem": {
+   "dir": "oga-lpc-golem",
+   "licence": "OGA-BY 3.0",
+   "offered": "CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0",
+   "authors": "Stephen Challener (Redshrike), uploaded by Nemisys",
+   "url": "https://opengameart.org/content/lpc-golem"
+  },
+  "skeleton": {
+   "dir": "oga-lpc-skeleton",
+   "licence": "CC-BY-SA 3.0",
+   "offered": "CC-BY-SA 3.0, GPL 3.0",
+   "authors": "Johannes Sjolund (wulax), Matthew Krohn (makrohn), Snabisch",
+   "url": "https://opengameart.org/content/lpc-skeleton"
+  },
+  "frogman": {
+   "dir": "oga-lpc-frogman",
+   "licence": "OGA-BY 3.0",
+   "offered": "CC-BY 3.0, OGA-BY 3.0",
+   "authors": "Puffolotti (after Stephen Challener (Redshrike)'s frog man)",
+   "url": "https://opengameart.org/content/lpc-frogman"
+  }
+ },
+ "creatures": {
+  "wolf": {
+   "set": "wolf",
+   "src": "wolfsheet5.png",
+   "vertical": "side",
+   "tint": "#9a8f88",
+   "tintDark": 0.3,
+   "tintLight": 1.25,
+   "down": {
+    "x": 0,
+    "y": 192,
+    "w": 32,
+    "h": 64,
+    "cols": [
+     0,
+     1,
+     3
+    ]
+   },
+   "up": {
+    "x": 160,
+    "y": 192,
+    "w": 32,
+    "h": 64,
+    "cols": [
+     0,
+     1,
+     3
+    ]
+   },
+   "left": {
+    "x": 320,
+    "y": 288,
+    "w": 64,
+    "h": 32,
+    "cols": [
+     0,
+     1,
+     3
+    ]
+   },
+   "right": {
+    "x": 320,
+    "y": 96,
+    "w": 64,
+    "h": 32,
+    "cols": [
+     0,
+     1,
+     3
+    ]
+   }
+  },
+  "rimehound": {
+   "like": "wolf",
+   "src": "wolfsheet1.png",
+   "tint": "#8fb0cc",
+   "tintDark": 0.28,
+   "tintLight": 1.3
+  },
+  "boar": {
+   "set": "boar",
+   "src": "x/Wild Boar/Boar/Boar Walk.png",
+   "vertical": "native",
+   "down": {
+    "x": 0,
+    "y": 128,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     1,
+     3
+    ]
+   },
+   "up": {
+    "x": 0,
+    "y": 0,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     1,
+     3
+    ]
+   },
+   "left": {
+    "x": 0,
+    "y": 64,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     1,
+     3
+    ]
+   },
+   "right": {
+    "x": 0,
+    "y": 192,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     1,
+     3
+    ]
+   }
+  },
+  "mudboar": {
+   "like": "boar",
+   "tint": "#6a6234",
+   "tintDark": 0.3,
+   "tintLight": 1.3
+  },
+  "spider": {
+   "set": "spider",
+   "src": "x/LPC_Spiders/spider05.png",
+   "tint": "#5a4468",
+   "tintDark": 0.3,
+   "tintLight": 1.35,
+   "down": {
+    "x": 0,
+    "y": 128,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     5,
+     7
+    ]
+   },
+   "up": {
+    "x": 0,
+    "y": 0,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     5,
+     7
+    ]
+   },
+   "left": {
+    "x": 0,
+    "y": 64,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     5,
+     7
+    ]
+   },
+   "right": {
+    "x": 0,
+    "y": 192,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     5,
+     7
+    ]
+   }
+  },
+  "lurker": {
+   "like": "spider",
+   "src": "x/LPC_Spiders/spider01.png",
+   "tint": "#3a8a52",
+   "tintDark": 0.3,
+   "tintLight": 1.35
+  },
+  "golem": {
+   "set": "golem",
+   "src": "golem-walk.png",
+   "tint": "#8a7468",
+   "tintDark": 0.28,
+   "tintLight": 1.3,
+   "down": {
+    "x": 0,
+    "y": 128,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     2,
+     5
+    ]
+   },
+   "up": {
+    "x": 0,
+    "y": 0,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     2,
+     5
+    ]
+   },
+   "left": {
+    "x": 0,
+    "y": 64,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     2,
+     5
+    ]
+   },
+   "right": {
+    "x": 0,
+    "y": 192,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     2,
+     5
+    ]
+   }
+  },
+  "wight": {
+   "set": "skeleton",
+   "src": "skeleton_4.png",
+   "tint": "#5c7c9a",
+   "tintDark": 0.22,
+   "tintLight": 1.3,
+   "down": {
+    "x": 0,
+    "y": 640,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     2,
+     6
+    ]
+   },
+   "up": {
+    "x": 0,
+    "y": 512,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     2,
+     6
+    ]
+   },
+   "left": {
+    "x": 0,
+    "y": 576,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     2,
+     6
+    ]
+   },
+   "right": {
+    "x": 0,
+    "y": 704,
+    "w": 64,
+    "h": 64,
+    "cols": [
+     0,
+     2,
+     6
+    ]
+   }
+  },
+  "bog": {
+   "set": "frogman",
+   "src": "frogman_2.png",
+   "tint": "#5c9a5e",
+   "tintDark": 0.3,
+   "tintLight": 1.25,
+   "down": {
+    "x": 0,
+    "y": 576,
+    "w": 80,
+    "h": 96,
+    "cols": [
+     0,
+     2,
+     4
+    ]
+   },
+   "up": {
+    "x": 0,
+    "y": 384,
+    "w": 80,
+    "h": 96,
+    "cols": [
+     0,
+     2,
+     4
+    ]
+   },
+   "left": {
+    "x": 0,
+    "y": 480,
+    "w": 80,
+    "h": 96,
+    "cols": [
+     0,
+     2,
+     4
+    ]
+   },
+   "right": {
+    "x": 0,
+    "y": 672,
+    "w": 80,
+    "h": 96,
+    "cols": [
+     0,
+     2,
+     4
+    ]
+   }
+  }
+ }
+}

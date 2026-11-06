@@ -17,14 +17,14 @@ import {decodePng,encodePng} from './png.mjs';
 import {sha256,fileOf} from './lib.mjs';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','..');
-export const LPC_TILES=path.join(process.env.ELDMOOR_PACKS||path.join(ROOT,'assets','packs'),'lpc-base','LPC Base Assets','tiles'); // ELDMOOR_PACKS: a packs folder kept outside this checkout
-const T=32;
-const px=(im,x,y)=>{const o=(y*im.w+x)*4;return [im.data[o],im.data[o+1],im.data[o+2],im.data[o+3]]};
-const blank=(w,h)=>({w,h,data:new Uint8Array(w*h*4)});
-const put=(im,x,y,p)=>{const o=(y*im.w+x)*4;im.data[o]=p[0];im.data[o+1]=p[1];im.data[o+2]=p[2];im.data[o+3]=p[3]};
-const sheet=n=>decodePng(fs.readFileSync(path.join(LPC_TILES,n+'.png')));
-const tile=(im,tx,ty)=>{const o=blank(T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++)put(o,x,y,px(im,tx*T+x,ty*T+y));return o};
-function over(dst,src,ox,oy){for(let y=0;y<src.h;y++)for(let x=0;x<src.w;x++){const p=px(src,x,y);if(p[3]>=128&&x+ox>=0&&y+oy>=0&&x+ox<dst.w&&y+oy<dst.h)put(dst,x+ox,y+oy,[p[0],p[1],p[2],255])}}
+export const LPC_TILES=path.join(process.env.ELDMOOR_PACKS||path.join(ROOT,'assets','packs'),'lpc-base','LPC Base Assets','tiles');
+export const T=32;
+export const px=(im,x,y)=>{const o=(y*im.w+x)*4;return [im.data[o],im.data[o+1],im.data[o+2],im.data[o+3]]};
+export const blank=(w,h)=>({w,h,data:new Uint8Array(w*h*4)});
+export const put=(im,x,y,p)=>{const o=(y*im.w+x)*4;im.data[o]=p[0];im.data[o+1]=p[1];im.data[o+2]=p[2];im.data[o+3]=p[3]};
+export const sheet=n=>decodePng(fs.readFileSync(path.join(LPC_TILES,n+'.png')));
+export const tile=(im,tx,ty)=>{const o=blank(T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++)put(o,x,y,px(im,tx*T+x,ty*T+y));return o};
+export function over(dst,src,ox,oy){for(let y=0;y<src.h;y++)for(let x=0;x<src.w;x++){const p=px(src,x,y);if(p[3]>=128&&x+ox>=0&&y+oy>=0&&x+ox<dst.w&&y+oy<dst.h)put(dst,x+ox,y+oy,[p[0],p[1],p[2],255])}}
 function fillWith(dst,t){for(let y=0;y<dst.h;y++)for(let x=0;x<dst.w;x++)put(dst,x,y,px(t,x%T,y%T))}
 function crop(im,x0,y0){const o=blank(T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++){const X=x0+x,Y=y0+y;put(o,x,y,X>=0&&Y>=0&&X<im.w&&Y<im.h?px(im,X,Y):[0,0,0,0])}return o}
 
