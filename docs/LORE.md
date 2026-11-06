@@ -495,7 +495,7 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 | Eel Lurker | Sallowfen | 5-8 | Eel Venom | Venom for the Stilt-Healers | Fen Lurker |
 | Heath Wolf | Hawkwold | 2-4 | Heath Pelt | Wolves on the Heath | Timber Wolf |
 | Crag Boar | Hawkwold | 3-5 | Crag Tusk | Tusks from the Crags | Bristleback Boar |
-| Windhound | Hawkwold | 5-7 | Gale Sinew | Windhounds on the Ridge | Rimehound |
+| Windhound | Hawkwold | 4-7 | Gale Sinew | Windhounds on the Ridge | Rimehound |
 | Oak Weaver | Greywood | 6-8 | Oak Silk | Webs in the Old Wood | Webspinner |
 | Thicket Boar | Greywood | 7-10 | Thicket Hide | Hides from the Thicket | Mudback Boar |
 | Grey Stalker | Greywood | 9-11 | Greywood Fur | Stalkers of the Greywood | Timber Wolf |

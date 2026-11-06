@@ -36,7 +36,7 @@ export const FAUNA={
   hawkwold:  {tier:1,count:11,roadMinX:0,elite:{name:'Greymane',title:'the Pack-Father of the Hawkwold',base:'wolf',fixLvl:9},species:[
     {sp:'wolf',name:'Heath Wolf',pl:'Heath Wolves',lv:[2,4],loot:'Heath Pelt',q:'Wolves on the Heath'},
     {sp:'boar',name:'Crag Boar',pl:'Crag Boars',lv:[3,5],loot:'Crag Tusk',q:'Tusks from the Crags'},
-    {sp:'rimehound',name:'Windhound',pl:'Windhounds',lv:[5,7],loot:'Gale Sinew',q:'Windhounds on the Ridge'}]},
+    {sp:'rimehound',name:'Windhound',pl:'Windhounds',lv:[4,7],loot:'Gale Sinew',q:'Windhounds on the Ridge'}]},
   greywood:  {tier:1,count:13,roadMinX:0,elite:{name:'Thornback',title:'the Boar-King of the Greywood',base:'mudboar'},species:[
     {sp:'spider',name:'Oak Weaver',pl:'Oak Weavers',lv:[6,8],loot:'Oak Silk',q:'Webs in the Old Wood'},
     {sp:'mudboar',name:'Thicket Boar',pl:'Thicket Boars',lv:[7,10],loot:'Thicket Hide',q:'Hides from the Thicket'},
