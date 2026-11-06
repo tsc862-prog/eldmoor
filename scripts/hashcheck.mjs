@@ -90,6 +90,7 @@ if (!argv.includes('--no-compare')) {
   if (a.status !== 0) {console.error('git archive ' + ref + ' failed: ' + String(a.stderr)); process.exit(1)}
   const t = spawnSync('tar', ['-x'], {cwd: dir, input: a.stdout, maxBuffer: 1 << 30});
   if (t.status !== 0) {console.error('tar failed: ' + String(t.stderr)); process.exit(1)}
+  if (!existsSync(join(dir, 'package.json'))) writeFileSync(join(dir, 'package.json'), '{"type":"module"}\n'); // never inherit the temp root's commonjs marker
   mkdirSync(join(dir, 'scripts'), {recursive: true}); copyFileSync(ME, join(dir, 'scripts/hashcheck.mjs')); copyFileSync(join(HERE, 'tmp.mjs'), join(dir, 'scripts/tmp.mjs'));
   // the base probes only read node_modules (a junction in the temp dir; the worktree is never touched)
   if (existsSync(join(ROOT, 'node_modules'))) symlinkSync(join(ROOT, 'node_modules'), join(dir, 'node_modules'), 'junction');

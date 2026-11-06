@@ -42,18 +42,21 @@ function pop(x,y,txt,col,now){let p=pops[0];for(const q of pops){if(!q.on){p=q;b
 function reset(){heroes.clear();foes.length=0;queue.length=0;V.seen=0;V.summary='';V.sumSc=null;V.sumAt=-1;V.foes=null;V.scene=null;V.play=null;for(const p of pops)p.on=false}
 const hero=a=>{let h=heroes.get(a.id);if(!h){h={x:0,y:0,tx:0,ty:0,hp:a.hp,pend:0,moved:-9,face:1,seen:false,placed:false,spot:null,down:false,flash:0,stumble:0};heroes.set(a.id,h)}return h};
 const nameOf=f=>f.name||foeKind(f.type).name;
-// The first foe standing (counting the blows still to be shown), as the sim strikes it (sim/crawl.js liveFoes(cr)[0]).
+// The first foe standing (counting the blows still to be shown): the fallback when a beat carries no target (a blow on a hero, an older save). Strikes name their foe (beat.at).
 function frontFoe(){for(let k=0;k<foes.length;k++)if(foes[k].alive)return k;return -1}
 const RING={ward:'#bfe8a8',heal:'#8ee0a0',potion:'#e07a9a',guard:'#e8c860',hold:'#e8c860'};
 const beat=(k,id,dur)=>({k,id,res:'',n:0,foe:-1,dmg:0,dur,t0:-1,p:0,hit:false,crit:false,fumble:false,kill:false,tgt:null,popped:false});
 // One beat from the scene (b: a beat of sc.beats), queued with what the view needs to show it.
 function enqueue(b,party){const k=b.k,res=String(b.res||''),q=beat(k,b.id,BEAT.other);q.res=res;
-  if(k==='strike'){q.dur=BEAT.strike;q.hit=/^(hit|struck down|a crushing blow)/.test(res);q.crit=/crushing/.test(res);q.fumble=/missed badly/.test(res);q.kill=/^struck down/.test(res)}
+  if(k==='strike'&&/^out of reach/.test(res)){q.k='walk';q.dur=BEAT.other} // a step toward the foe, not a swing
+  else if(k==='strike'){q.dur=BEAT.strike;if(b.at>=0&&b.at<foes.length)q.foe=b.at;q.hit=/^(hit|struck down|a crushing blow)/.test(res);q.crit=/crushing/.test(res);q.fumble=/missed badly/.test(res);q.kill=/^struck down/.test(res)}
   else if(k==='save')q.dur=BEAT.save;
+  else if(Array.isArray(b.hits)&&b.hits.length){q.blast=b.hits} // a blast: every foe it took flashes
   else if(RING[k]){q.dur=BEAT.ring;const mt=/^\+(\d+) to (.+?)(?: \(|$)/.exec(res);if(mt){q.dmg=+mt[1];q.tgt=party.find(a=>a.name===mt[2])||null}}
   queue.push(q)}
 // Foe HP that fell this frame goes to this frame's landed strikes, in order (a 20 takes two); what no strike explains is not held back.
 function settleFoeHits(from){for(let i=from;i<queue.length;i++){const q=queue[i];if(q.k!=='strike'||!q.hit)continue;let want=q.crit?2:1;
+    if(q.foe>=0&&foes[q.foe]){const F=foes[q.foe];if(F.drop>0){const d=Math.min(F.drop,want);F.drop-=d;want-=d;q.n+=d}} // the foe the sim aimed at takes its blow first
     for(let k=0;k<foes.length&&want>0;k++){const F=foes[k];if(F.drop>0){const d=Math.min(F.drop,want);F.drop-=d;want-=d;q.n+=d;if(q.foe<0)q.foe=k}}
     if(q.foe<0)q.foe=frontFoe();if(!q.n)q.n=q.crit?2:1}
   for(const F of foes){if(F.drop>0)F.pend=Math.max(0,F.pend-F.drop);F.drop=0;if(F.hp<=0&&F.pend<=0)F.alive=false}
@@ -103,7 +106,7 @@ export function crawlView(m,st,now){const cr=st.crawl,on=!!(cr&&st.phase==='craw
 
 // ---- playing the beats ----
 const pace=()=>TABLE.speed>=8?0:TABLE.speed>=3?.4:1; // at 3x the beats play fast; at 8x they are skipped
-const WORD={guard:'on me',hold:'hold!',ward:'ward',scout:'a gap!',read:'wards turn',retreat:'fall back',stabilize:'bound',stunned:'stunned',attempt:'tries'};
+const WORD={guard:'on me',hold:'hold!',ward:'ward',scout:'a gap!',read:'wards turn',retreat:'fall back',walk:'closing in',stabilize:'bound',stunned:'stunned',attempt:'tries'};
 const whoAt=(party,id)=>{for(const a of party)if(a.id===id)return a;return null};
 // A beat's lasting part, once it lands (or is skipped): the HP bars show the blow.
 function settle(q,party){if(q.settled)return;q.settled=true;
@@ -128,6 +131,8 @@ function land(q,party,now){q.popped=true;settle(q,party);const a=whoAt(party,q.i
   if(q.k==='blow'){h.flash=now;pop(h.x,h.y-1.35,'-'+q.dmg,'#ff6a5a',now);return}
   if(q.k==='save'){const d=/d20 (\d+) vs DC (\d+)/.exec(q.res);if(d)pop(h.x,h.y-1.1,'save '+d[1],+d[1]>=+d[2]?'#8ee0a0':'#e0584a',now);return}
   if((q.k==='heal'||q.k==='potion')&&q.dmg){const t=q.tgt&&heroes.get(q.tgt.id);pop(t?t.x:h.x,(t?t.y:h.y)-1.35,'+'+q.dmg,'#8ee0a0',now);return}
+  if(q.blast)for(const i of q.blast){const F=foes[i];if(F){F.flash=now;pop(F.x,F.y-1.45,'blast',DISP.hostile.color,now)}}
+  if(q.blast)return;
   const t=WORD[q.k];if(t)pop(h.x,h.y-1.35,t,q.k==='retreat'||q.k==='stunned'||q.k==='attempt'?'#b8b4c8':RING[q.k]||'#9ad8f0',now)}
 
 // ---- light ----
