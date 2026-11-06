@@ -1695,7 +1695,7 @@ console.log('cinema view');
   gate.setGateProbe(null);key('c');
   // the director, on a fake clock
   const fake={sel:heroes[0],hover:null,camX:0,camY:0,sc:1},w=3440,h=1440,D=createDirector({seed:7,still:()=>true}),run=(n,f)=>{for(let i=0;i<n;i++){const x=fake.camX,y=fake.camY,fade=D.fade;D.step(fake,w,h,null,1/60);const px=Math.hypot(fake.camX-x,fake.camY-y)*fake.sc;if(f)f(px,fade)}};
-  const keep=heroes.map(a=>({a,x:a.x,y:a.y,st:a.state,hid:a.hidden}));for(const a of heroes){a.state='town';a.hidden=false;a.x=heroes[0].x;a.y=heroes[0].y}
+  const keep=heroes.map(a=>({a,x:a.x,y:a.y,st:a.state,hid:a.hidden}));for(const a of heroes){a.state='town';a.hidden=false;a.moving=false;a.x=heroes[0].x;a.y=heroes[0].y}
   const G0=sim.S.gameMin;D.enter(fake,w,h);ok(D.fade===1,'entering starts in the dark');let big=0;run(180,(px)=>{big=Math.max(big,px)});ok(D.fade===0,'and fades up');ok(big<40,'the camera moves softly ('+big.toFixed(1)+' px a frame at most)');
   ok(Math.abs(fake.sc*2-Math.round(fake.sc*2))<.01&&fake.sc>=2&&fake.sc>=coverScale(w,h),'at rest the scale is on a half step, from 2, covering the window ('+fake.sc.toFixed(2)+')');
   const a0=heroes[0],sc0=fake.sc;for(const a of heroes)a.state='fight';run(300);ok(fake.sc>sc0,'a fight pulls in ('+sc0.toFixed(1)+' -> '+fake.sc.toFixed(1)+')');for(const a of heroes)a.state='town';run(900);ok(Math.abs(fake.sc-sc0)<.05,'and back out ('+fake.sc.toFixed(2)+', '+D.shotKind+')');
