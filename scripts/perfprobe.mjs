@@ -19,6 +19,7 @@
 //   git archive origin/main | tar -x -C <empty dir>; npm run perfprobe -- --base <that dir> Exits 0, or 1 only when PERF_STRICT=1 and a run's p95 frame time is over
 // PERF_P95_MS (default 50). CHROME_PATH picks the browser; PERF_GPU=0 adds --disable-gpu (software canvas, slower).
 // Numbers depend on the machine and on what else uses its GPU (Ollama): read them as indicative, compare runs on one box.
+import {tmpRoot} from './tmp.mjs';
 import {spawn} from 'node:child_process';
 import {writeFileSync, mkdirSync, existsSync, rmSync} from 'node:fs';
 import {join, resolve, dirname} from 'node:path';
@@ -53,7 +54,7 @@ const URL0 = flagv('url', null);
 SIDES.push({side: 'head', url: URL0 ? (URL0.endsWith('/') ? URL0 : URL0 + '/') : await serve(ROOT, PORT)});
 
 // --- browser
-const port = 9400 + Math.floor(Math.random() * 400), prof = join(tmpdir(), `eldmoor-perf-${port}`);
+const port = 9400 + Math.floor(Math.random() * 400), prof = join(tmpRoot(), `eldmoor-perf-${port}`);
 const flags = ['--hide-scrollbars', '--disable-dev-shm-usage', '--no-first-run', '--no-default-browser-check', '--disable-extensions',
   '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
   ...(process.env.PERF_GPU === '0' ? ['--disable-gpu'] : []), ...(process.env.CHROME_NO_SANDBOX ? ['--no-sandbox'] : []),

@@ -12,6 +12,7 @@
 // <name>.preview.png next to the inbox image, plus <name>.preview-close.png at zoom 4 centred on the piece. The inbox
 // index entry gets preview {file, close, sha256 (of the image looked at), shot, view {w, h, zoom}, town, at}, which
 // art:accept checks. Nothing is written under assets/ but the inbox; no network beyond localhost; no key.
+import {mkTmp} from '../tmp.mjs';
 import {spawn} from 'node:child_process';
 import {readFileSync,writeFileSync,existsSync,mkdtempSync,rmSync} from 'node:fs';
 import {join,dirname,basename} from 'node:path';
@@ -38,7 +39,7 @@ async function waitHttp(url,ms=60000){const t=Date.now();while(Date.now()-t<ms){
 
 // One browser page over the DevTools protocol (Node's own WebSocket).
 async function browser(w,h){const bin=BROWSERS.find(p=>existsSync(p));if(!bin)throw new Error('no Chrome or Edge found; set CHROME_PATH');
-  const port=9400+Math.floor(Math.random()*400),prof=mkdtempSync(join(tmpdir(),'eldmoor-preview-'));
+  const port=9400+Math.floor(Math.random()*400),prof=mkTmp('eldmoor-preview-');
   const proc=spawn(bin,['--headless=new','--hide-scrollbars','--disable-gpu','--no-first-run','--no-default-browser-check','--disable-extensions',
     ...(process.env.CHROME_NO_SANDBOX?['--no-sandbox']:[]),`--window-size=${w},${h}`,`--remote-debugging-port=${port}`,'--remote-debugging-address=127.0.0.1',`--user-data-dir=${prof}`,'about:blank'],{stdio:'ignore'});
   let page;for(let i=0;i<120&&!page;i++){try{page=(await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find(t=>t.type==='page')}catch{await sleep(250)}}

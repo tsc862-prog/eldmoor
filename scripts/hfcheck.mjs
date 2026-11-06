@@ -6,6 +6,7 @@
 // /health, its own limiter), the agent loop (tools, JSON-actions fallback), the runner start checks, the mind
 // tables, and a real `agent-player.mjs --provider huggingface` run against a headless world.
 // Usage: npm run hfcheck
+import {mkTmp} from './tmp.mjs';
 import {dmMindCases} from './dm-mind-cases.mjs';
 import {schemaFill, toolsProblem, isDmTurn, dmTurnMessage} from './mock-dm.mjs';
 import http from 'node:http';
@@ -152,7 +153,7 @@ console.log('agent loop, runner checks and mind tables');
 
 console.log('npm run agent -- --provider huggingface (mock router, headless world)');
 {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-hfcheck-')), kids = [];
+  const tmp = mkTmp('eldmoor-hfcheck-'), kids = [];
   const env = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', HF_TOKEN: TOKEN, HF_BASE_URL: url, HF_MODELS: CURATED.join(','), AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'};
   delete env.HF_MODEL;
   const start = (args, {wait: ready = null, e = env} = {}) => {
