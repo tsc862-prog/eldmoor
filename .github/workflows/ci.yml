@@ -165,6 +165,7 @@ jobs:
       - {name: Runner labels stay steady (issue 563), run: npm run labelcheck}
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
+      - {name: Narrator voice (mock local speech engine and no model), run: npm run ttscheck}
 
   g7:
     name: Checks 7
