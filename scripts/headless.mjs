@@ -30,6 +30,7 @@ console.log('Guild focus:', JSON.stringify(S.focusStats || {}), '| now', S.GUILD
 console.log('Outposts:',outpostsView().map(o=>o.name+' '+(o.held_by||'unheld')+' ('+o.control+', flipped '+o.flips+')').join(' | '),'| flips total',(S.outposts&&S.outposts.flips)||0);
 {const X=S.sites,st=X&&X.stats;console.log('DM sites (#642):', st ? `${st.made} raised (${st.scripted||0} by the scripted DM, ${st.raids||0} raids) | ${st.runs} runs (${st.bgRuns||0} background) | ${st.clears} cleared, ${st.wipes} beaten back, ${st.collapsed} collapsed | raid kills ${st.raidKills||0} | ${st.deaths||0} died inside` : 'none')}
 {const t=S.traffic;if(t){const s=t.stats;console.log(`Road traffic: ${s.departed} set out, ${s.arrived} arrived, ${t.list.length} on the road | beset ${s.beset} (rescued ${s.rescued}, went on ${s.freed}, lost ${s.lost}, staged ${s.staged}) | goods to market ${s.goods} | guards ${t.guards.filter(g=>g.on).length}/${t.guards.length} on watch`)}}
+if(S.dunRec)console.log('Dungeons (runs: clears/wipes/driven/withdrawn, lost):',Object.entries(S.dunRec).map(([n,r])=>`${n} ${r.runs}: ${r.clears}/${r.wipes}/${r.driven}/${r.withdrawn}, ${r.lost}`).join(' | '));
 console.log('Kragmaw alive:', S.boss.alive, '| hp', Math.round(S.boss.hp));
 console.log('Top 5:', alive.sort((a, b) => b.lvl - a.lvl).slice(0, 5).map((a) => `${a.name} L${a.lvl} ${a.cls}`).join(', '));
 console.log('Recent deaths:', S.fallen.slice(0, 8).map((f) => `${f.name} L${f.lvl} (${f.cause})`).join('; '));

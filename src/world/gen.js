@@ -165,7 +165,7 @@ export function buildWorld(spec){
   // A dungeon's chambers (#65): plain data, checked for shape here; the creature types are the bestiary's (checked by crawlcheck).
   const roomsOf=L=>{const rs=L.rooms||[];if(!Array.isArray(rs))throw new Error('world spec: rooms of '+L.name+' must be a list');
     rs.forEach((r,i)=>{if(!r||!r.name||!Array.isArray(r.foes)||!r.foes.length||!r.foes.every(f=>f&&f.type&&f.n>=1))throw new Error('world spec: room '+i+' of '+L.name+' needs a name and foes [{type,n}]')});return rs};
-  const LANDMARKS=[];let LAIR=null,CRYPT=null;
+  const LANDMARKS=[],CRYPTS=[];let LAIR=null; // CRYPTS: every dungeon a group can enter, spec order; the first is CRYPT (#891)
   for(const L of spec.landmarks||[]){
     if(L.kind==='lair'){const r=L.r||5.4,inner=L.inner||4,m=L.mouth||'W';
       for(let y=0;y<h;y++)for(let x=0;x<w;x++){const dx=x+.5-L.x,dy=y+.5-L.y,d=Math.hypot(dx,dy);
@@ -177,7 +177,7 @@ export function buildWorld(spec){
       if(mouth)for(let y=mouth.y0;y<=mouth.y1;y++)for(let x=mouth.x0;x<=mouth.x1;x++)if(x>=0&&y>=0&&x<w&&y<h)tiles[I(x,y)]=ROCK;
       const rooms=roomsOf(L);
       const o={kind:'crypt',name:L.name,boss:L.boss,x:L.x,y:L.y,mouth,exclude:L.exclude||0,light:L.light||null,rooms,sign:L.sign||null,captain:L.captain||null};LANDMARKS.push(o);
-      if(!CRYPT)CRYPT={name:L.name,boss:L.boss,x:L.x,y:L.y,group:null,cd:L.cd===undefined?25:L.cd,mouth,rooms}}
+      CRYPTS.push({name:L.name,boss:L.boss,x:L.x,y:L.y,group:null,cd:L.cd===undefined?25:L.cd,mouth,rooms,entry:L.entry})}
     else throw new Error('world spec: unknown landmark kind '+L.kind)}
 
   // roads: polylines are painted as drawn; {from,to,via} endpoints are routed.
@@ -237,6 +237,6 @@ export function buildWorld(spec){
   const OUTPOSTS=(spec.outposts||[]).map(o=>({id:o.id,name:o.name,x:o.x,y:o.y,r:o.r||3.5,z:zoneAt(o.x,o.y)})); // contested outposts (#11): data only, never painted
   const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS,land,mainLand},spec); // gathering nodes (#255): an overlay list, not tiles
   return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
-    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT,ROUTES,OUTPOSTS,
+    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT:CRYPTS[0]||null,CRYPTS,ROUTES,OUTPOSTS,
     zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,solid,land,mainLand,fords,
     road:pts=>paintPolyline(world,pts)}}

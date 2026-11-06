@@ -182,7 +182,7 @@ section('F. others none');
 section('G. the words');
 {
   const row = n => PLAYER_TOOLS.find(t => t.name === n);
-  ok(/go down into the Sunken Crypt together/.test(row('propose').desc) && /muster the company against Kragmaw/.test(row('propose').desc), 'propose reads as the company\'s own choice');
+  ok(/go down into a dungeon together/.test(row('propose').desc) && /muster the company against Kragmaw/.test(row('propose').desc), 'propose reads as the company\'s own choice');
   ok(!/answer a call|raid muster/.test(row('propose').desc) && /someone in the world asked/.test(row('propose').desc), 'and does not rule out being asked');
   ok(row('go_crypt') && row('join_raid'), 'the solo\'s orders are tools');
 }
