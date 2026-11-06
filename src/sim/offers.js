@@ -11,6 +11,7 @@
 // it rides by reflex (the scripted rules, following the company's walking party), never leads, and leaves when no
 // agent is left in the company.
 // The classic five-slot Fellowship keeps its roster: it takes no one in and gives no one away through these verbs.
+import {WORDS} from '../world/words.js';
 import {S,clockStr} from './state.js';
 import {hash} from '../core/rng.js';
 import {zoneFor,dist} from '../world/map.js';
@@ -74,7 +75,7 @@ export function pending(C){if(C.wait&&(C.wait.crypt||C.wait.raid))return 'Your c
   if(openProps(C).some(P=>P.kind==='crypt'||P.kind==='raid'))return 'A vote on the Crypt or a raid is open in your company; settle it first.';return null}
 // Said aloud: the offer is heard by everyone in earshot (in-game channels, #123). -> {text, heard} or {error}.
 function sayAloud(a,text,dflt){let t=dflt;if(text!=null&&String(text).trim()){const L=spokenLine(a,text,OFFER.LEN);if(L.error)return {error:L.error};t=L.text}
-  if(notEnglish(t))return {error:'Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'};
+  if(notEnglish(t))return {error:'Not said: speak in English. Everyone in '+WORDS.world+' speaks English; say it again in English.'};
   agentLine(a,speak(a,t,'agent'));return {text:t,heard:sayHearers(a).length}}
 function newOffer(C,kind,from,to,text){const o={id:S.offerSeq=(S.offerSeq||0)+1,kind,from:from.id,to:to.id,until:Math.round(S.gameMin+PARTY.OFFER_MIN),text};(C.offers||(C.offers=[])).push(o);return o}
 
