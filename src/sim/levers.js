@@ -32,6 +32,7 @@
 //   encSpot(spots) a spot inside a danger area     sightLever(z)    fog-bound sight multiplier
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
 import {clamp} from '../core/rng.js';
+import {keep} from './kept.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
@@ -81,6 +82,7 @@ const FORBIDDEN=/^(hp|maxhp|xp|lvl_?up|level_?up|stats?|abil|cls|class|hardcore|
 // Private LCG for cosmetic picks (names, looks, strolls): never perturbs the gameplay RNG.
 const SEED0=0x2545f491;let seed=SEED0;export const resetLeverSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('levers',()=>seed,v=>{seed=v}); // saved with the world
 const pickR=a=>a[Math.floor(r()*a.length)];
 
 // ---- state ----
