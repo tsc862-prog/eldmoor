@@ -84,7 +84,7 @@ const B4=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
 export function riverPixel(tx,ty,ax,ay){if(!NOTE)return null;const d=data(),k=ty*W+tx;if(!d.near[k])return null;
   const x=tx+(ax+.5)/TILE,y=ty+(ay+.5)/TILE,F=at(d.water,x,y)+(vnoise(x*2.7,y*2.7,211)-.5)*.09;
   if(F<.39)return null;
-  const s=biomeStyle(zone[k]);
+  const s=biomeStyle(zone[Math.min(W-1,Math.max(0,tx+(hash((tx*TILE+ax)>>2,(ty*TILE+ay)>>2,221)*5|0)-2))+ty*W]); // a ragged line where one region's water gives way to the next
   if(F>=.5){const A=assetPixels('tile:water');let c=A?(A.hex[((ty*TILE+ay)%A.h)*A.w+(tx*TILE+ax)%A.w]||'#3468b8'):'#3468b8';
     if(s.tint)c=mix(c,s.tint[0],s.tint[1]);
     if(d.fc){const fd=Math.hypot(x-d.fc[0],(y-d.fc[1])*.7);if(fd<4){const t=Math.min(1,(4-fd)/2.2),b=(B4[(ay&3)*4+(ax&3)]+.5)/16-.5;c=mix(c,'#7cc8c4',.68*t+b*.2);if(hash(tx*TILE+ax>>1,ty*TILE+ay>>1,223)>1-.2*t)c=mix(c,'#c4b48c',.6);if(F<.6&&t>.5)return mix(c,'#e8f4e8',.5)}}
@@ -132,7 +132,7 @@ export function tonePixel(c,t,tx,ty,ax,ay){if(!NOTE)return c;const d=data();
     if(q<8){const p=1-q/8+(n-.5)*1.3+b*.16;if(p>.92)c=mix(c,'#2c2624',.86);else if(p>.62)c=mix(c,'#57504e',.8);else if(p>.44)c=mix(c,'#8a8684',.6)}} // the wyrm's heat: snow gone to soot and slush round the nest
   if(w===0)return c;
   const L=LOOK[w],isAsh=w===4;
-  if(isAsh?t!==ROCK:!softMeadow(t))return c;
+  if(isAsh?t!==ROCK&&t!==PEAK:!softMeadow(t))return c; // peaks too: their ground would stand out pale on a dark flow
   if(L.all)c=mix(c,L.all[0],L.all[1]);
   const b=(B4[(Y&3)*4+(X&3)]+.5)/16-.5,v=at(d.tone,x,y)+b*.035;
   if(v<.43)c=mix(c,L.lo[0],L.lo[1]*Math.min(1,(.47-v)*9));else if(v>.56)c=mix(c,L.hi[0],L.hi[1]*Math.min(1,(v-.52)*9));
