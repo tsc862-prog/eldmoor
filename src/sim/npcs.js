@@ -11,9 +11,9 @@
 // character-builder; lines by lore-keeper. Canon: docs/LORE.md, "Townsfolk".
 import {pickA} from '../core/rng.js';
 import {keep} from './kept.js';
-import {solidAt,standAt} from '../world/passable.js';
 import {CITY,ZONES,dist} from '../world/map.js';
 import {gatheringFor} from './crypts.js';
+import {solidAt,standAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {RACES,racesOf,raceName} from '../data/races.js';
 import {ELITES} from '../data/mobs.js';
