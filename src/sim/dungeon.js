@@ -29,9 +29,11 @@ let CRAWL=null;export const setCrawlHook=h=>{CRAWL=h};
 export const firstKey=(D,who)=>'crypt:'+who+(D===CRYPT?'':':'+D.name); // a first clear is counted per dungeon
 const tagOf=(gu,f,name)=>gu?{t:'<'+gu.tag+'> '+gu.name,c:'f'+f}:name?{t:name,c:'f'+f}:{t:'A '+FAC[f].name+' group',c:'f'+f};
 // A group sets out for the Crypt (also called by sim/council.js when the Fellowship votes to go).
+const GATHER_NEAR=45,GATHER_PACE=1.3; // tiles a group may walk in the first 30 s; tiles a second past that
 export function musterCrypt(mem,f,main,name,D=CRYPT){
   mem.forEach((a,i)=>{a.state='dungeon';a.dgIdx=i;a.target=null;a.dest=null});
-  D.group={fac:f,mem,guild:main,phase:'gather',t:30};if(name)D.group.name=name;
+  const far=Math.max(0,...mem.map(m=>dist(m,D))); // the gather clock is the walk to the mouth: a hall far from the dungeon (the Vale's Drowned Weir, 90 tiles from the north bank) gets the extra time, within GATHER_NEAR tiles it is the old 30 s
+  D.group={fac:f,mem,guild:main,phase:'gather',t:30+Math.max(0,far-GATHER_NEAR)/GATHER_PACE};if(name)D.group.name=name;
   for(const a of mem)record(a,'Joined a group for ',{t:D.name,c:'gd'},'.');
   log(tagOf(main,f,name),' formed a group for ',{t:D.name,c:'gd'},'.')}
 // A background group still gathering gives way to the Fellowship (#135): back to hunting. A group already
