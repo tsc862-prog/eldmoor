@@ -42,6 +42,7 @@ import * as ADV from '../data/adventures.js';
 import {followBrief} from './follow.js'; // who the hero follows and who follows it (#445)
 import {offersBrief,companyCard} from './offers.js'; // offers open to the hero and its company card (#442)
 import {aimBrief} from './intent.js'; // the hero's stated aim (#535)
+import {callBrief} from './callto.js'; // a question put to a solo (#826)
 import {leaderFor} from './council.js';
 import {woundLine} from './tend.js';
 import {inviteBrief} from './invite.js'; // a rare line naming a tool that fits here (#872, #864)
@@ -98,6 +99,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     ...gatherBrief(a), // gather: session zero waits for the whole company (#771)
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
     offers:offersBrief(a),company:companyCard(a), // offers to ride together open to the hero (accept/decline by id), and its company of 2+: names, leader, who is within shouting range (#442)
+    asked:callBrief(a)||undefined, // someone in the world asked this solo to the Crypt or a raid (#826): {by, line, left}
     aim:aimBrief(a,leaderFor(a)), // the stated aim (#535): {state, line, ask, why?, wait_limit?, leader?}; ask: the turn asks first what the hero is trying to do
     wounds:woundLine(a), // a lasting wound in words (#656); null when whole
     ...invBrief(a,tv), // invite: {kind, text, node?}, at most one rare line (sim/invite.js); absent on most turns

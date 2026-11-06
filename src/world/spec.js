@@ -158,6 +158,26 @@ export const TESTWORLD={
   spawn:{townPad:[4,3]},
 };
 
+// ---- Linked-map fixtures (#1013 slice 1a) ----
+// Two tiny maps joined by one road each way, for worldcheck and the crossing checks. Test-only: kept out of WORLDS so the
+// title screen and every per-world check never list them; MAPS (below) is the table that holds them. Not canon (docs/LORE.md, "Test fixtures").
+// Exit format: {id, name, to:{map, exit}, at:{x,y,r} | edge:{side:'N'|'S'|'E'|'W', from, to}}; an edge exit paints its stretch of the
+// outer ring as road, an `at` exit stands on a road the spec routes there (roads may name an exit id as an endpoint).
+const linkMap=(name,town,exit,back)=>({
+  name,size:{w:32,h:24},
+  regions:[{id:'linkmead',name:name+' Mead',band:[1,5],biome:'meadow',mask:{kind:'all'}}],
+  towns:[{name:town,fac:0,x0:3,y0:8,w:9,h:8,gate:'E',race:null}],
+  exits:[exit],
+  roads:[{from:town,to:exit.id}],
+  nodes:{respawn:{herb:60,ore:120,hide:60,fish:30},regions:{linkmead:{herb:3,ore:2,hide:2,fish:2}}},
+  lights:{townTorches:[[3,3]]},
+  spawn:{townPad:[4,3]},
+});
+export const TESTLINK={
+  testlinka:linkMap('Linka','Hearthlink',{id:'east',name:'the east road',edge:{side:'E',from:11,to:13},to:{map:'testlinkb',exit:'west'}}),
+  testlinkb:linkMap('Linkb','Mooring',{id:'west',name:'the west road',edge:{side:'W',from:11,to:13},to:{map:'testlinka',exit:'east'}}),
+};
+
 // ---- The Stepping Lands: a 160x100 test continent (issue #36, scaling phase 5) ----
 // Four times the area of Eldmoor: two home towns per faction, six regions on a ladder of
 // overlapping level bands (1-5, 4-9, 8-13, 12-16, 15-19, 18-22), the Sunken Crypt and Kragmaw
@@ -481,5 +501,7 @@ function pickWorld(){
   if(!id){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_WORLD)id=p.env.ELDMOOR_WORLD}
   id=String(id||'eldmoor').toLowerCase();
   return WORLDS[id]?id:'eldmoor'}
+// Every map a campaign may live on, by id: the playable worlds and the fixtures (#1013). Looped over, never counted.
+export const MAPS={...WORLDS,...TESTLINK};
 export const WORLD_ID=pickWorld();
 export const ACTIVE_SPEC=WORLDS[WORLD_ID];

@@ -11,7 +11,8 @@
 // it rides by reflex (the scripted rules, following the company's walking party), never leads, and leaves when no
 // agent is left in the company.
 // The classic five-slot Fellowship keeps its roster: it takes no one in and gives no one away through these verbs.
-import {S,clockStr} from './state.js';
+import {WORDS} from '../world/words.js';
+import {S,clockStr,sameSide} from './state.js';
 import {hash} from '../core/rng.js';
 import {zoneFor,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
@@ -74,7 +75,7 @@ export function pending(C){if(C.wait&&(C.wait.crypt||C.wait.raid))return 'Your c
   if(openProps(C).some(P=>P.kind==='crypt'||P.kind==='raid'))return 'A vote on the Crypt or a raid is open in your company; settle it first.';return null}
 // Said aloud: the offer is heard by everyone in earshot (in-game channels, #123). -> {text, heard} or {error}.
 function sayAloud(a,text,dflt){let t=dflt;if(text!=null&&String(text).trim()){const L=spokenLine(a,text,OFFER.LEN);if(L.error)return {error:L.error};t=L.text}
-  if(notEnglish(t))return {error:'Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'};
+  if(notEnglish(t))return {error:'Not said: speak in English. Everyone in '+WORDS.world+' speaks English; say it again in English.'};
   agentLine(a,speak(a,t,'agent'));return {text:t,heard:sayHearers(a).length}}
 function newOffer(C,kind,from,to,text){const o={id:S.offerSeq=(S.offerSeq||0)+1,kind,from:from.id,to:to.id,until:Math.round(S.gameMin+PARTY.OFFER_MIN),text};(C.offers||(C.offers=[])).push(o);return o}
 
@@ -113,7 +114,7 @@ export function invite(a,b,text){if(a.state==='ghost')return no('Ghosts do not s
   if(tableView(a))return no('Not while a scene is open at the table: act in it first (scene_act).');
   if(!b||b===a)return no(b===a?'You cannot invite yourself.':'No such hero.');
   const A=companyOf(a)||soloFor(a);if(!A)return no('You ride with no company.');if(A.slots)return no(FELLOW);
-  if(b.fac!==a.fac)return no(b.name+' is of the '+FAC[b.fac].name+'; a company is of one faction.');
+  if(!sameSide(a,b))return no(b.name+' is of the '+FAC[b.fac].name+'; a company is of one faction.');
   if(dist(a,b)>OFFER.JOIN)return no(b.name+' is too far away to ask face to face ('+r1(dist(a,b))+' tiles; within '+OFFER.JOIN+'). move_to {target: "'+b.name+'"} first.');
   if(A.ids.includes(b.id))return no(b.name+' already rides with you.');
   if(OFFER.BUSY.includes(b.state)||OFFER.FIGHT.includes(b.state))return no(b.name+' is '+busyWord[b.state]+'; ask when they are free.');
@@ -146,7 +147,7 @@ export function askToJoin(a,b){const A=companyOf(a),B=companyOf(b);
   if(A&&A.slots)return no(FELLOW);
   if(a.state==='ghost')return no('Ghosts do not speak.');
   if(tableView(a))return no('Not while a scene is open at the table: act in it first (scene_act).');
-  if(b.fac!==a.fac)return no(b.name+' is of the '+FAC[b.fac].name+'; a company is of one faction.');
+  if(!sameSide(a,b))return no(b.name+' is of the '+FAC[b.fac].name+'; a company is of one faction.');
   if(A&&A.ids.length>1)return no('You ride with '+A.name+'; you would have to leave it first. Or invite {name: "'+b.name+'"} into yours.');
   const C=B||soloFor(b),L=lead(C)||b;
   if(dist(a,L)>OFFER.JOIN)return no(L===b?b.name+' is too far away to ask face to face ('+r1(dist(a,b))+' tiles; within '+OFFER.JOIN+'). move_to {target: "'+b.name+'"} first.':b.name+' rides with '+C.name+', led by '+L.name+'; ask '+L.name+' face to face (within '+OFFER.JOIN+' tiles).');
@@ -175,7 +176,7 @@ export function accept(a,{offer_id}={}){const f=findOpen(a,offer_id);if(f.error)
   if(!host)return no('There is no company to join.');if(host.slots)return no(FELLOW);
   const J=companyOf(joiner);
   if(J&&J!==host&&J.ids.length>1)return no(joiner===a?'You ride with '+J.name+'; leave it first, then accept.':from.name+' rides with '+J.name+' now.');
-  if(joiner.fac!==host.fac)return no('A company is of one faction.');
+  if(!sameSide(joiner,host))return no('A company is of one faction.');
   const room=roomFor(host,joiner);if(room)return no(room);
   const p=pending(host);if(p)return no(p);
   dropOffer(o);const r=joinInto(host,joiner,o.kind==='ask'?a:from);if(!r.ok)return no(r.error);
@@ -273,7 +274,7 @@ function prepareMerge(a,F,o){
   if(!B)return no('Name the leader (or the company) you want to join with: propose {kind: "merge", company: "<name>"}.');
   if(B===F)return no('That is your own company.');
   if(B.slots)return no(FELLOW);
-  if(B.fac!==F.fac)return no(nm(B)+' is of the '+FAC[B.fac].name+'; a company is of one faction.');
+  if(!sameSide(B,F))return no(nm(B)+' is of the '+FAC[B.fac].name+'; a company is of one faction.');
   if(isSolo(B)){const x=members(B)[0];return no((x?x.name:B.name)+' rides alone; merging is for two companies. invite {name: "'+(x?x.name:B.name)+'"} instead.')}
   if(F.ids.length+B.ids.length>PARTY.MAX)return no('Together you would be '+(F.ids.length+B.ids.length)+' heroes; a company holds at most '+PARTY.MAX+'.');
   if(minds(F).length+minds(B).length>PARTY.MINDS)return no('Together you would have '+(minds(F).length+minds(B).length)+' who choose their own road; a company holds at most '+PARTY.MINDS+' of them.');

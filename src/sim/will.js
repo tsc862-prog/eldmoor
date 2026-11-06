@@ -10,6 +10,7 @@
 // a thing no longer carried lets the bequest lapse. Nothing goes outside the company or to a replacement recruit
 // (letters cover that). Agent heroes only (the tool is theirs); scripted heroes make no will, so a seeded world is
 // unchanged. No RNG.
+import {WORDS} from '../world/words.js';
 import {S} from './state.js';
 import {CITY,dist} from '../world/map.js';
 import {SLOTS,USES,GOODS,MATERIALS,price} from '../data/items.js';
@@ -87,7 +88,7 @@ export function bequeath(a,{to,item,gold,words}={}){
   if(!b)return err('"'+clean(to).slice(0,40)+'" is not a living companion of your company. '+mateLine(a));
   let w=clean(words);
   if(w.length>WILL.WORDS)return err('Your words run to '+w.length+' characters; a will holds '+WILL.WORDS+'. Say it shorter.');
-  if(w&&notEnglish(w))return err('Not written: write it in English, as everyone in Eldmoor speaks.');
+  if(w&&notEnglish(w))return err('Not written: write it in English, as everyone in '+WORDS.world+' speaks.');
   let row;
   if(hasGold){const g=Math.round(Number(gold));
     if(!Number.isFinite(g)||g<=0)return err('Leave how much? gold must be a whole number above zero.');
@@ -103,7 +104,7 @@ export function bequeath(a,{to,item,gold,words}={}){
   if(w)row.words=w;row.day=day();row.gm=Math.round(S.gameMin);
   W.push(row);a.will=W;D.n++;
   return {ok:true,bequeathed:whatOf(row),to:b.name,will:willView(a),note:'Written in your will. No one knows of it until you fall; '+b.name+' receives it then if they still ride with you.'}}
-const summary=W=>'Your will: '+W.map(b=>whatOf(b)+' to '+b.toName).join('; ')+'.';
+const summary=W=>'Your will: '+WORDS.map(b=>whatOf(b)+' to '+b.toName).join('; ')+'.';
 function mateLine(a){const L=mates(a);return L.length?'Your companions: '+L.map(b=>b.name).join(', ')+'.':''}
 
 // ---- executing it (fall in heroes.js) ----

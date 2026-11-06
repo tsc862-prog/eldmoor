@@ -30,7 +30,7 @@ import {FAC} from '../data/factions.js';
 import {ELITES} from '../data/mobs.js';
 import {EPICS,DG_EPICS,BOSS_EPICS} from '../data/items.js';
 import {HAMLETS,TRADES,RAIDERS,PILGRIM_ZONE,KIN,CHILD,ORIGINS,GOAL_TEXT,GOAL_DONE} from '../data/origins.js';
-import {S} from './state.js';
+import {S,foeOf} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {moment} from './reflect.js';
@@ -80,7 +80,7 @@ const M={
   ascend:(a,t)=>{if(a.lvl>=20)return null;const need=Math.min(20,Math.max(a.lvl+ri(3,4),t===0?a.lvl+ri(4,7):t===1?ri(10,14):ri(16,20)));return mk('ascend',t,{need})},
   hoard:(a,t)=>mk('hoard',t,{need:Math.max(ri(...HOARD[t]),a.gold+30)}),
   pilgrimCrypt:(a,t)=>CRYPT_Z>=0?Object.assign(mk('pilgrimCrypt',t),{zone:CRYPT_Z,minLvl:Math.max(1,bandMin(CRYPT_Z)-3)}):null,
-  pilgrimFar:(a,t)=>FAR>=0?Object.assign(mk('pilgrimFar',t,{zone:PILGRIM_ZONE}),{zone:FAR,minLvl:Math.max(1,bandMin(FAR)-3)}):null,
+  pilgrimFar:(a,t)=>FAR>=0?Object.assign(mk('pilgrimFar',t,{zone:ZONES[FAR]}),{zone:FAR,minLvl:Math.max(1,bandMin(FAR)-3)}):null,
   avenge:(a,t,E)=>{if(!E){const pool=ELITES.filter(e=>e.lvl>=ELITE_LV[t][0]&&e.lvl<=ELITE_LV[t][1]);if(!pool.length)return null;E=pickA(pool)}
     const g=mk('avenge',t,{target:E.name+', '+E.title});g.target=E.name;return g},
   heirloom:(a,t,name)=>{if(name){if(DG_EPICS.includes(name))return mk('heirloomCrypt',t,{target:name});if(BOSS_EPICS.includes(name))return mk('heirloomBoss',t,{target:name});return mk('heirloom',t,{target:name})}
@@ -89,10 +89,10 @@ const M={
   heirloomBoss:(a,t)=>mk('heirloomBoss',t,{target:pickA(BOSS_EPICS)}),
   delve:(a,t)=>mk('delve',t),
   legend:(a,t)=>a.lvl>=8||t>=2?mk('legend',t):null, // a mid-tier oath only for heroes already past Mirefen
-  rival:(a,t)=>{const pool=S.agents.filter(x=>x.fac!==a.fac&&alive(x)&&x.lvl>a.lvl&&x.lvl<=a.lvl+6);if(!pool.length)return null;const r=pickA(pool);
+  rival:(a,t)=>{const pool=S.agents.filter(x=>foeOf(a,x)&&alive(x)&&x.lvl>a.lvl&&x.lvl<=a.lvl+6);if(!pool.length)return null;const r=pickA(pool);
     return mk('rival',t,{target:r.name,targetId:r.id,targetFac:r.fac,fac:FAC[r.fac].name,need:r.lvl+1})},
   // A guildmate's killer who still lives; the hero takes them as a nemesis so pvp.js hunts them on sight.
-  avengeHero:(a,t)=>{const seen={};for(const x of S.agents){if(!a.guild||x.guild!==a.guild||!alive(x))continue;for(const id in x.nemesis){const k=byId(id);if(alive(k)&&k.fac!==a.fac)seen[id]=x.nemesis[id]}}
+  avengeHero:(a,t)=>{const seen={};for(const x of S.agents){if(!a.guild||x.guild!==a.guild||!alive(x))continue;for(const id in x.nemesis){const k=byId(id);if(alive(k)&&foeOf(a,k))seen[id]=x.nemesis[id]}}
     const ids=Object.keys(seen).sort((p,q)=>byId(p).lvl-byId(q).lvl);if(!ids.length)return null;const id=ids[ri(0,Math.min(1,ids.length-1))],k=byId(id);a.nemesis[k.id]=seen[id]; // the two lowest-level killers: a recruit can catch those
     return mk('avengeHero',t,{target:k.name,targetId:k.id,targetFac:k.fac,victim:seen[id]})},
 };
@@ -131,7 +131,7 @@ export function goalEvent(a,kind,x){
   if(a&&a.vow)vowEvent(a,kind,x);
   if(a&&ownHit(a,kind,x))complete(a); // an oath in the hero's own words (#800)
   // An enemy hero x fell to a: every oath-bearer of a's side in the fight (within 8 tiles) shares the vengeance.
-  if(kind==='slay'){for(const h of S.agents){const g=h.goal;if(!g||g.done||g.type!=='avengeHero'||g.targetId!==x.id||!alive(h))continue;if(h===a||(h.fac!==x.fac&&dist(h,x)<=8))complete(h)}return}
+  if(kind==='slay'){for(const h of S.agents){const g=h.goal;if(!g||g.done||g.type!=='avengeHero'||g.targetId!==x.id||!alive(h))continue;if(h===a||(foeOf(h,x)&&dist(h,x)<=8))complete(h)}return}
   const g=a&&a.goal;if(!g||g.done)return;
   switch(kind){
   case 'kill':if(g.type==='avenge'&&x.elite&&x.name===g.target)complete(a);break;

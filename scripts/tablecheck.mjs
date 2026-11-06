@@ -437,6 +437,7 @@ if (process.argv[2] === '--fireside') {
   {const eb = sb.beats.find(b => b.id === live.id && b.k === 'listen' && /pokes the fire/.test(b.res || '')), el = (other.chat || []).find(e => e.emote && /pokes the fire/.test(e.text));
     ok(emoted && emoted.ok && eb && !eb.line, 'a listener line at the fire is an emote: the beat is a listen with no spoken line');
     ok(el && el.from === live && el.text === 'pokes the fire with a stick' && !(other.chat || []).some(e => !e.emote && /pokes the fire/.test(e.text)), 'the emote shows to the others as "<name> <act>" (a chat line of kind emote), never as speech');
+    const own = P.playerAct(live.id, 'emote', {text: '*' + live.name + ' says nothing and counts the exits*'}); ok(own.ok && own.emoted === 'says nothing and counts the exits', 'an act that starts with their own name is shown once, not "Name Name ..." (got ' + own.emoted + ')');
     const bad = P.playerAct(live.id, 'emote', {text: 'x'.repeat(130)}); ok(!bad.ok && /Too long/.test(bad.error), 'the same validation as the emote tool: a 130-character act is refused')}
   ok(sb && sb.ctx.quiet && sb.rd === 1 && (sb.calls || []).every(c => c.by === 'scripted'), 'a silent round ends the talk early; no DM runner polls (its calls refused), so its reflexes frame it');
   ok(sb && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'fireside' && e.detail.fill && e.detail.why === 'gone'), 'the fireside frame filled by the reflex is logged as a fill (why: gone) (#561)');
@@ -469,7 +470,7 @@ if (process.argv[2] === '--fireside') {
   k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
   // 4. no host: a camp opens no fireside
   CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; SIM.setRunnerLinks(null); field(); CM.leaderRest(live, 4); run(30);
-  ok(!S.table && !SLT.slotted().fireQ, 'with no host (npm run sim) a camp opens no fireside');
+  ok(!(S.table && S.table.kind === 'fireside') && !SLT.slotted().fireQ, 'with no host (npm run sim) a camp opens no fireside');
   console.log(fail ? 'FIRESIDE FAILED ' + fail : 'FIRESIDE OK'); process.exit(fail ? 1 : 0);
 }
 
