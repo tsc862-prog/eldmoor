@@ -1690,5 +1690,13 @@ console.log('page watchdog');
   const m=sim.S.mobs.find(x=>x.alive&&!x.gone),a=sim.S.agents.find(x=>x.company!=null&&x.state!=='dead'&&!x.hidden);
   if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
   ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
+// the activity line names a DM-made site, never the Crypt (#917)
+{const {doing}=await import('../src/ui/panels.js');const a=sim.S.agents.find(x=>x.state!=='dead'&&!x.player&&!x.adv);
+  if(a){const keep={st:a.state,hid:a.hidden,si:a.siteIn},L=(sim.S.sites||(sim.S.sites={seq:0,list:[]})).list,fake={id:9917,name:'The Ashen Vault',boss:'Orrik',bossTitle:'the Keeper',state:'open'};L.push(fake);
+    a.state='dungeon';a.siteIn=9917;a.hidden=true;let t=doing(a);ok(/Ashen Vault/.test(t)&&/Orrik/.test(t)&&!/Sunken Crypt/.test(t),'hero card: inside a site names the site ('+t+')');
+    a.hidden=false;t=doing(a);ok(/Gathering a group at The Ashen Vault/.test(t),'hero card: gathering at a site ('+t+')');
+    fake.raid=true;a.hidden=true;t=doing(a);ok(/^Raiding The Ashen Vault/.test(t),'hero card: a raid site reads as a raid ('+t+')');
+    delete a.siteIn;t=doing(a);ok(/Sunken Crypt/.test(t),'hero card: the Crypt reads as before ('+t+')');
+    L.pop();a.state=keep.st;a.hidden=keep.hid;if(keep.si!=null)a.siteIn=keep.si}}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)
