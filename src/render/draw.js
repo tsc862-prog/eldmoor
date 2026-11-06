@@ -17,7 +17,8 @@ import {W,H,LAVA} from '../world/tiles.js';
 import {U as T,ART,PROC_SCALE,HEAD,followTiles} from './tile.js';
 import {OUTPOSTS} from '../world/map.js';
 import {outpostsView} from '../sim/outposts.js';
-import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
+import {LAIR,CRYPT,CRYPTS,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
+import {cryptNamed} from '../sim/crypts.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
@@ -327,10 +328,10 @@ export function createRenderer(cv,screenEl){
       if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-HEAD,MARK.sel,16,10,null,true); // the followed hero is named at any zoom
       if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))lab('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,TEXT.elite,12,5);
       for(const L of LANDMARKS){if(L.kind!=='crypt'||!L.mouth||!inView(L.x*T,L.y*T,LM))continue; // every crypt, labelled just above its mouth
-        const g=CRYPT&&L.name===CRYPT.name&&CRYPT.group&&CRYPT.group.phase==='inside'?CRYPT.group:null;
-        lab(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
+        const D=cryptNamed(L.name),g=D&&D.group&&D.group.phase==='inside'?D.group:null,word=L.name.replace(/^the /i,'').toUpperCase();
+        lab(g?(D===CRYPT?'CRYPT':word)+' · '+g.mem.length+' INSIDE':word,(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
     else{
-      if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))lab(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14,7);
+      for(const D of CRYPTS)if(D.group&&D.group.phase==='inside'&&inView(D.x*T,D.y*T,LM))lab(D.group.mem.length+' inside · '+Math.ceil(D.group.t)+'s',D.x*T,D.mouth.y0*T-4,TEXT.crypt,14,7);
       const lh=14*cam.dpr/sc;
       if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
