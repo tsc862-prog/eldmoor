@@ -15,6 +15,7 @@
 // ELDMOOR_FELLOWSHIP=0 in Node, ?fellowship=0 in the browser, or init({fellowship:false}).
 import {rnd,ri} from '../core/rng.js';
 import {ZONES,zoneFor,zonePoint,tileAt} from '../world/map.js';
+import {ACTIVE_SPEC} from '../world/spec.js';
 import {WALKABLE} from '../world/tiles.js';
 import {solidAt,standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
@@ -89,7 +90,7 @@ export function season(a,L){if(L<=1){record(a,'New to the road out of '+homeOf(a
 export function opening(o={}){
   const setup=o.setup?cleanSetup(o.setup):null; // New World setup (sim/setup.js, #133): chosen classes, names, peoples and minds
   if(!setup&&!fellowshipStart(o)){if(noOthers()){emptyRoads();return null}
-    log('Twenty-eight new heroes of ',fac(0),' and ',fac(1),' arrive in ',{t:'Eldmoor',c:'gd'},'. Every one of them is level 1.');return null}
+    log('Twenty-eight new heroes of ',fac(0),' and ',fac(1),' arrive in ',{t:ACTIVE_SPEC.name,c:'gd'},'. Every one of them is level 1.');return null}
   if(setup&&setup.mode==='apart')return openApart(setup);
   const ff=setup?setup.fac:o.fac!=null?o.fac:rnd()<.5?0:1,pick=setup?pickSetup(setup):autoPick(noOthers()?classicFive(ff):ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
   seasonOthers(ids);
@@ -103,12 +104,12 @@ function seasonOthers(ids){if(noOthers()){emptyRoads();return}
     for(let i=hs.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[hs[i],hs[j]]=[hs[j],hs[i]]} // shuffle, so level does not follow class order
     hs.forEach((a,i)=>season(a,startLevel((i+rnd())/hs.length)))}
   const bg=S.agents.filter(a=>!ids.has(a.id)),lv=bg.map(a=>a.lvl);
-  log({t:'Eldmoor',c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',fac(0),' and ',fac(1),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.')}
+  log({t:ACTIVE_SPEC.name,c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',fac(0),' and ',fac(1),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.')}
 
 // No setup and no roster to pick from (#780): the classic five are made for the company.
 const classicFive=f=>{for(const c of CLASSIC)makeHero(f,c,null,0);return f};
 // A world with no others (#780): nobody to season, and the Chronicle says so.
-const emptyRoads=()=>log({t:'Eldmoor',c:'gd'},'’s roads lie empty of banners: no other hero hunts its wilds.');
+const emptyRoads=()=>log({t:ACTIVE_SPEC.name,c:'gd'},'’s roads lie empty of banners: no other hero hunts its wilds.');
 
 // Apart (setup v2, #453): every hero sets out from its own start town, one company per group, a company of one for
 // a hero with no group. Level 1 in town, or seasoned to the low end of its start region's band and out hunting

@@ -10,6 +10,7 @@ import {tiles,I,solid} from '../world/map.js';
 import {hash} from '../core/rng.js';
 import {U as T} from './tile.js';
 import {F} from './life.js';
+import {quayOver} from './harbour.js';
 import {G} from './grade.js';
 import {sceneryOn,waterLevel} from './scenery.js';
 
@@ -26,13 +27,13 @@ function build(){const d=new Int32Array(W*H).fill(-1),fx=new Float32Array(W*H),f
     for(let i=0;i<q.length;i++){const [a,b]=q[i],n=d[b*W+a];for(const [i2,j2] of N8){const X=a+i2,Y=b+j2;if(isW(X,Y)&&d[Y*W+X]===-2){d[Y*W+X]=n+1;q.push([X,Y])}}}}
   for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=d[y*W+x];if(v<=0)continue;let sx=0,sy=0;
     for(let j=-3;j<=3;j++)for(let i=-3;i<=3;i++){const X=x+i,Y=y+j;if(!isW(X,Y)||(!i&&!j))continue;const e=d[Y*W+X]-v,l=Math.hypot(i,j);sx+=i/l*e/l;sy+=j/l*e/l}
-    const l=Math.hypot(sx,sy)||1;fx[y*W+x]=sx/l;fy[y*W+x]=sy/l;if(tiles[I(x,y)]===RIVER){rows[y].push(x);if(!solid[I(x,y)])FORD.push([x,y])}}
+    const l=Math.hypot(sx,sy)||1;fx[y*W+x]=sx/l;fy[y*W+x]=sy/l;if(tiles[I(x,y)]===RIVER){if(!quayOver(x,y))rows[y].push(x);if(!solid[I(x,y)])FORD.push([x,y])}}
   flow={fx,fy}}
 // Bank flecks: [x,y,phase,strength] in world units, per row of tiles, built once.
 let banks=null;
 function buildBanks(){banks=Array.from({length:H},()=>[]);
   // a scenery world paints its water as a smooth shape: the foam follows that line, not the tiles'
-  if(sceneryOn){for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!near(x,y))continue;for(let k=0;k<14;k++){const u=x+hash(x*14+k,y,43),v=y+hash(x*14+k,y,47),l=waterLevel(u,v);if(l>.5&&l<.66)banks[y].push(u*T,v*T,hash(x,y*14+k,49)*6.28,.8)}}
+  if(sceneryOn){for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!near(x,y)||quayOver(x,y))continue;for(let k=0;k<14;k++){const u=x+hash(x*14+k,y,43),v=y+hash(x*14+k,y,47),l=waterLevel(u,v);if(l>.5&&l<.66)banks[y].push(u*T,v*T,hash(x,y*14+k,49)*6.28,.8)}}
     for(const b of FORD)for(let k=0;k<9;k++)banks[b[1]].push((b[0]+hash(b[0],b[1]*9+k,51))*T,(b[1]+hash(b[0],b[1]*9+k,53))*T,hash(k,b[0],55)*6.28,.9);return}
   for(let y=0;y<H;y++)for(const x of rows[y]){const ford=!solid[I(x,y)],put=(px,py,s)=>banks[y].push(px,py,hash(px|0,py|0,41)*6.28,s);
     for(const [i,j] of [[1,0],[-1,0],[0,1],[0,-1]]){const X=x+i,Y=y+j,br=X>=0&&Y>=0&&X<W&&Y<H&&tiles[I(X,Y)]===BRIDGE;if(isW(X,Y)&&!br)continue;
