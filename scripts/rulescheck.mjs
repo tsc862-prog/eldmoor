@@ -11,6 +11,7 @@
 //  6. patch notes (#664): every docs/patchnotes/*.md has front matter and 1-6 player-facing lines; on a pull request the
 //     checked-out (merged) tree holds docs/patchnotes/<PR>.md, unless the PR carries the label no-notes. The PR number
 //     comes from --pr N or PR_NUMBER (CI); the label is read live with gh (GH_TOKEN), so adding it and re-running works.
+//  10. workflows (#597): every .github/workflows/*.yml passes the strict line check in scripts/workflow-lint.mjs (a comma in an unquoted flow-mapping step name made ci.yml invalid and the PR BLOCKED with no failure).
 //  9. every world of WORLDS has its rows (epic #940 slice B): a snapshot row, a campaign file, fauna per region, a first delve per town, its places in docs/LORE.md.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
 import {mkTmp} from './tmp.mjs';
@@ -201,6 +202,22 @@ console.log('\nworlds: every world of WORLDS has its table rows');
   }
   const ghost = missing('ghost', {regions: [{id: 'nowhere', name: 'Nowhereland'}], towns: [{name: 'Nowhere Town'}]});
   ok(ghost.length >= 5, 'a world with none of its rows is caught, by name (' + ghost.length + ' gaps found for a made-up world)');
+}
+
+// ---- 10. workflow files parse (#597) ----
+console.log('\nworkflows: every .github/workflows/*.yml is valid for GitHub');
+{
+  const {lintWorkflow} = await import(pathToFileURL(join(ROOT, 'scripts/workflow-lint.mjs')).href);
+  const wdir = join(ROOT, '.github', 'workflows');
+  for (const f of existsSync(wdir) ? readdirSync(wdir).filter(f => /\.ya?ml$/.test(f)) : []) {
+    const errs = lintWorkflow(readFileSync(join(wdir, f), 'utf8'));
+    ok(errs.length === 0, `.github/workflows/${f} parses` + (errs.length ? '\n    ' + errs.map(e => `.github/workflows/${f}:${e.line}: ${e.why}`).join('\n    ') : ''));
+  }
+  // negative cases: the guard must fire on the PR #597 break and on an unclosed step, and stay quiet on good lines
+  const bad = lintWorkflow('steps:\n  - {name: Foo (a, b), run: npm run x}\n');
+  ok(bad.length === 1 && bad[0].line === 2, 'a comma in an unquoted flow-mapping step name is caught, with its line (the PR #597 break)');
+  ok(lintWorkflow('steps:\n  - {name: "Foo (a, b)", run: npm run x}\n  - {name: Foo (a; b), run: npm run x}\n').length === 0, 'a quoted name with a comma, and a name without one, pass');
+  ok(lintWorkflow('steps:\n  - {name: Foo, run: npm run x\n').length === 1, 'an unclosed flow-mapping step is caught');
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');
