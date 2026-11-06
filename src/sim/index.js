@@ -105,7 +105,10 @@ installRumourLever();installBestowLever();installSummonLever();installCallLever(
 // o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
 // What a process starts with outside S: the auction house's opening supply and each dungeon's cooldown (init() puts them back, #507).
 const GOODS0={};for(const n in GOODS)GOODS0[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
-const CRYPT_CD0=CRYPTS.map(D=>D.cd);
+let CRYPT_CD0=CRYPTS.map(D=>D.cd);
+// Another map (#1013): its dungeons' cooldowns, and any trade goods its fauna brought to the one market.
+onWorld(()=>{CRYPT_CD0=CRYPTS.map(D=>D.cd);for(const n in GOODS)if(!GOODS0[n])GOODS0[n]={supply:GOODS[n].supply,prev:GOODS[n].prev}},
+  ()=>({cryptCd0:CRYPT_CD0,goodsUnkept:Object.keys(GOODS).filter(n=>!GOODS0[n])}));
 function resetWorld(){resetS();
   for(const n in GOODS0){GOODS[n].supply=GOODS0[n].supply;GOODS[n].prev=GOODS0[n].prev}
   CRYPTS.forEach((D,i)=>{D.group=null;D.cd=CRYPT_CD0[i]});reserveNames([],[]);
@@ -124,8 +127,8 @@ export function init(o={}){resetWorld();
   noteProlog(o); // the first delve (#922): stored only when it differs, so a setup world on the default keeps today's state
   if(o.setup||prologueOn())planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
-  log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond '+ZONES[zoneAt(LAIR.x,LAIR.y)]+'.'); // the lair's and the first dungeon's own region and name, not Eldmoor's (the Vale has neither Cinderpass nor a Sunken Crypt)
-  log('No guild yet holds a banner, and ',{t:CRYPTS[0].name,c:'gd'},' waits beneath '+ZONES[zoneAt(CRYPTS[0].x,CRYPTS[0].y)]+'.');
+  if(LAIR)log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond '+ZONES[zoneAt(LAIR.x,LAIR.y)]+'.'); // the lair's and the first dungeon's own region and name, not Eldmoor's (the Vale has neither Cinderpass nor a Sunken Crypt)
+  if(CRYPTS[0])log('No guild yet holds a banner, and ',{t:CRYPTS[0].name,c:'gd'},' waits beneath '+ZONES[zoneAt(CRYPTS[0].x,CRYPTS[0].y)]+'.');
   log({t:'Hardcore rules:',c:'gd'},' every hero has one life. The fallen stay fallen.');
 }
 
@@ -133,6 +136,7 @@ export function init(o={}){resetWorld();
 import {outpostsTick} from './outposts.js';
 import {pathTick} from './path.js';
 import {trafficTick} from './traffic.js'; // carts, travellers and guard patrols on the roads (#796)
+import {onWorld} from './kept.js';
 export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
   if(holdTick(dt)){updFx(dt);return} // a gambit hold stops the clock until the agent acts (#630)
   if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
