@@ -41,7 +41,7 @@ import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../dat
 import * as D from '../data/adventures.js';
 import {jobBar} from './jobbar.js';
 import {PLAYER_TOOLS,ATTEMPT_INVITE} from '../data/player-tools.js';
-import {S,clockStr,dayNo} from './state.js';
+import {S,clockStr,dayNo,loreSides,ownTown,sameSide} from './state.js';
 import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
@@ -612,7 +612,7 @@ function townSpot(c,name){const k=SPOT_ALIASES[name];if(k&&c[k])return {x:c[k].x
   if(c.spots&&c.spots[name])return {x:c.spots[name].x,y:c.spots[name].y,label:'the '+name};
   ensureNpcs();const p=(S.npcs||[]).find(p=>p.town===c.name&&(p.name.toLowerCase()===name||p.role===name||p.title.toLowerCase()===name||(p.title+' '+p.name).toLowerCase()===name));
   if(p)return {x:p.x,y:p.y+.6,label:p.title+' '+p.name};return null}
-const enemyNear=(a,p,r=12)=>CITY.some(c=>c.fac!==a.fac&&(dist(p,c.gate)<r||inRect(c,p,2)));
+const enemyNear=(a,p,r=12)=>!loreSides()&&CITY.some(c=>c.fac!==a.fac&&(dist(p,c.gate)<r||inRect(c,p,2)));
 // Resolve a move_to target into legs, or {error}. Tool quick wins (#399): the target is read the way the game wrote it
 // ("gate in Highgate", "the inn", "Lowmark (home)", "(4, 5)", "Highgate (town; Lowmark around it)"), a known region inside longer
 // words ("Lowmark Forest"), the world's own name, or a companion in sight; an unknown place gets the nearest name the hero knows.
@@ -632,11 +632,11 @@ function placeVariants(a,t0){const out=[],seen=new Set(),add=(t,town)=>{t=String
   add(spotWord(s));
   const c=homeOf(a),m=/^(.+?)\s+(?:in|of|at|near)\s+(?:the\s+)?(.+)$/.exec(s);
   if(m){const tn=CITY.find(x=>x.name.toLowerCase()===m[2]),zn=ZONES.findIndex(n=>n&&n.toLowerCase()===m[2]);
-    if(tn&&tn===c)add(spotWord(m[1]));else if(tn&&tn.fac===a.fac)add(spotWord(m[1]),tn);else if(tn)add(tn.name.toLowerCase());else if(zn>=0)add(m[1])}
-  for(const tn of CITY){const n=tn.name.toLowerCase();if(s.startsWith(n+' ')&&s.length>n.length+1){const rest=spotWord(s.slice(n.length+1));if(tn===c)add(rest);else if(tn.fac===a.fac)add(rest,tn);else add(n)}}
+    if(tn&&tn===c)add(spotWord(m[1]));else if(tn&&ownTown(tn,a))add(spotWord(m[1]),tn);else if(tn)add(tn.name.toLowerCase());else if(zn>=0)add(m[1])}
+  for(const tn of CITY){const n=tn.name.toLowerCase();if(s.startsWith(n+' ')&&s.length>n.length+1){const rest=spotWord(s.slice(n.length+1));if(tn===c)add(rest);else if(ownTown(tn,a))add(rest,tn);else add(n)}}
   return out}
 // Names the hero knows to go to (#188): known regions and landmarks, friendly towns.
-function knownNames(a){const L=a.lore&&a.lore.p?Object.keys(a.lore.p):ZONES.filter(Boolean);return [...new Set([...L,...CITY.filter(x=>x.fac===a.fac).map(x=>x.name)])]}
+function knownNames(a){const L=a.lore&&a.lore.p?Object.keys(a.lore.p):ZONES.filter(Boolean);return [...new Set([...L,...CITY.filter(x=>ownTown(x,a)).map(x=>x.name)])]}
 const reEsc=s=>s.replace(/[.*+?^$\x7b}()|[\]\\]/g,'\\$&');
 // What the target could still mean: a known place inside longer words, the world's name, a companion in sight.
 function placeFallback(a,t,raw){const c=homeOf(a);
@@ -669,6 +669,7 @@ function huntGrounds(a){const out=[];for(let z=0;z<ZONES.length;z++){const n=ZON
 const toFieldOf=(a,p,label)=>{const c=homeOf(a);return {legs:inTown(a)?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}],last:'hunt',label}};
 function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   if(inT){if(!(t==='town'||t==='home'||SPOT_ALIASES[t]||TOWN_SPOTS.includes(t)||inT.spots&&inT.spots[t]))return null;
+    const sp=loreSides()&&t!=='town'&&t!=='home'?townSpot(inT,t):null;if(sp)return toFieldOf(a,sp,sp.label+' in '+inT.name); // any town takes a hero in (#1025): its chapel, not only its gate
     return toFieldOf(a,{x:inT.gate.x,y:inT.gate.y},'the gate of '+inT.name)}
   const toTown=(p,label)=>({legs:here?[{x:p.x,y:p.y,st:'town'}]:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:p.x,y:p.y,st:'town'}],last:'town',label});
   const toField=(p,label)=>({legs:here?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}],last:'hunt',label});
@@ -688,7 +689,7 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   const ow=markAt(a,t);if(ow){const r=toField({x:ow.x,y:ow.y},ow.name);if(ow.warn)r.warn=ow.warn;return r} // a place the hero marked or was told of (#632)
   const dp=knownMark(a,t);if(dp){const r=toField({x:dp.x,y:dp.y},dp.name);const w=placeMemory(a,dp.name);if(w)r.warn=w;return r} // a DM place it knows (#423)
   const town=CITY.find(x=>x.name.toLowerCase()===t);
-  if(town){if(town.fac!==a.fac)return {error:town.name+' is an enemy town. You would not leave it alive.'};return toField({x:town.gate.x,y:town.gate.y},'the gate of '+town.name)}
+  if(town){if(!ownTown(town,a))return {error:town.name+' is an enemy town. You would not leave it alive.'};return toField({x:town.gate.x,y:town.gate.y},'the gate of '+town.name)}
   // Exploring (#188): a direction walks about LORE.DIR tiles that way, into whatever lies there.
   const dm=/^(?:explore|go|head|walk)?\s*(north|south|east|west|north-?east|north-?west|south-?east|south-?west)(?:\s+(\d+))?$/.exec(t);
   if(dm){const k=dm[1].replace('-',''),v=DIRS[k],far=Math.min(40,Math.max(4,Number(dm[2])||LORE.DIR)),n=Math.hypot(v[0],v[1]);
@@ -888,7 +889,7 @@ function personLook(a,p){const o={ok:true,kind:'person',name:fullName(p),role:p.
     where:p.town?'in '+p.town:ZONES[zoneAt(p.x,p.y)]||'the wilds',distance:r1(dist(a,p))+' tiles'};
   // only what shows: open hostility, the mood learned by talking, or the other side's coldness. Never their record or wants.
   o.mood=p.hostile?'hostile: they have turned against the Fellowship':p.fmem&&p.fmem.talks>0&&p.mood?p.mood+' (from talking with them)':(p.fac===0||p.fac===1)&&p.fac!==a.fac?'cold: they serve the other side':'not known: you have not spoken with them';
-  if(p.trade&&p.trade.until>S.gameMin&&inSlots(a)&&p.trade.fac===a.fac)o.trade='open with you: shop {npc: "'+p.name+'"}';
+  if(p.trade&&p.trade.until>S.gameMin&&inSlots(a)&&sameSide(p.trade,a))o.trade='open with you: shop {npc: "'+p.name+'"}';
   o.next=dist(a,p)<=PK.TALK?'talk {target: "'+p.name+'"}':'move_to {target: "'+(p.wander?Math.round(p.x)+','+Math.round(p.y):p.role)+'"}, then talk';
   return o}
 function creatureLook(a,m){const v=mobView(a,m),o={ok:true,kind:'creature',what:v.what,threat:v.threat,looks:HURT(m.hp,m.maxhp)};
@@ -987,7 +988,7 @@ const T={
     {const w=willView(a);if(w)r.will=w} // your own will (#631), private to you
     const nm=Object.keys(a.nemesis||{}).map(id=>hero(+id)).filter(x=>x&&x.state!=='dead').map(x=>x.name);if(nm.length)r.nemesis=nm;
     // only the places this hero knows (#188); the rest of the world is learned by going there or hearing of it
-    r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...placesView(a),...CITY.filter(x=>x.fac===a.fac&&x!==c).map(x=>x.name)];r.explore='a direction (north, south, east, west, northeast, ...) or "x,y" takes you where you have never been';
+    r.places=['home','auction house','quest giver','gate','inn','smith','chapel','square',...placesView(a),...CITY.filter(x=>ownTown(x,a)&&x!==c).map(x=>x.name)];r.explore='a direction (north, south, east, west, northeast, ...) or "x,y" takes you where you have never been';
     lookSnap(a);return r},
   inventory(a){const slots={};for(const k of SLOTS){const it=a.slots&&a.slots[k];slots[k]=it?itemText(it):null}
     // Only this hero's own pack (inventory, #124): stacks, spare gear, consumables and quest items, by index.
@@ -1052,12 +1053,12 @@ const T={
     // NPC conversations (#170): a Fellowship member's words to a person open a conversation the DM answers (sim/talk.js)
     if(inSlots(a)&&slotted()){const q=findPerson(a,target,PK.TALK);
       if(q&&q.far)throw new Rule(q.far.title+' '+q.far.name+' is too far away ('+r1(q.d)+' tiles). move_to("'+(q.far.wander?Math.round(q.far.x)+','+Math.round(q.far.y):q.far.role)+'") first.');
-      if(q&&(q.wander||q.fac===a.fac)){need(a.state!=='ghost','Ghosts do not speak.');let line='';
+      if(q&&(q.wander||sameSide(q,a))){need(a.state!=='ghost','Ghosts do not speak.');let line='';
         if(text!=null&&String(text).trim()){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);need(!notEnglish(L.text),ENGLISH);line=L.text;agentLine(a,speak(a,line,'agent'))}
         const r=talkTo(a,q,line);need(!r.error,r.error);talked(a,[q.name]);if(q.role==='innkeeper')innRumour(a,r);return r}}
     const p=(S.npcs||[]).find(p=>(!here||p.town===here.name)&&(p.name.toLowerCase()===t||p.role===t||p.title.toLowerCase()===t||(p.title+' '+p.name).toLowerCase()===t));
     if(p){need(dist(a,p)<=PK.TALK,p.title+' '+p.name+' is too far away ('+r1(dist(a,p))+' tiles). move_to("'+p.role+'") first.');
-      if(p.fac!==a.fac)return {ok:true,who:p.title+' '+p.name,answer:'('+p.name+' looks at you with open contempt and says nothing.)'};
+      if(!sameSide(p,a))return {ok:true,who:p.title+' '+p.name,answer:'('+p.name+' looks at you with open contempt and says nothing.)'};
       // a question gets the town's public answer (#540); a plain greeting the role's greeting, and the warning only on a first meeting or about the danger
       const met=a.metNpc||(a.metNpc={}),fresh=!met[p.id];met[p.id]=1;const pa=text!=null&&String(text).trim()?publicAnswer(p,a,String(text)):null;
       const before=p.lastBark;if(!pa)npcSay(p,'greet',{target:a.name},{dm:true});const line=pa?pa.text:p.bubble&&p.lastBark!==before?p.bubble.text:p.bubble?p.bubble.text:null;
@@ -1391,8 +1392,8 @@ const T={
     return recipesView(a,id)},
   learn_profession(a,{id,profession}={}){const v=id!=null&&String(id).trim()!==''?id:profession;
     need(v!=null&&String(v).trim()!=='','Which profession? learn_profession {id: "herbalism"} (recipes lists them all and what each does).');
-    const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac);
-    const r=learnProfession(a,v,{inTown:here});need(r.ok,r.why+(r.why&&/^Trainers/.test(r.why)&&ct&&ct.fac!==a.fac?' '+ct.name+' is not a town of your side.':''));return r},
+    const ct=cityAt(a),here=inTown(a)||!!(ct&&ownTown(ct,a));
+    const r=learnProfession(a,v,{inTown:here});need(r.ok,r.why+(r.why&&/^Trainers/.test(r.why)&&ct&&!ownTown(ct,a)?' '+ct.name+' is not a town of your side.':''));return r},
   unlearn_profession(a,{id,profession}={}){const v=id!=null&&String(id).trim()!==''?id:profession;
     need(v!=null&&String(v).trim()!=='','Which profession? unlearn_profession {id: "<one you hold>"}; recipes lists yours. Its skill is lost for good.');
     need(!(a.pq||[]).some(c=>c.kind==='gather'),'You are gathering right now; let it finish (wait) or give another order first.');
@@ -1423,10 +1424,10 @@ const T={
     const r=guildJoinFor(a,guild);need(r.ok,r.why);return r},
   guild_found(a){need(inTown(a),'A banner is raised in town, with comrades beside you. Walk to a friendly town first.');
     const r=guildFoundFor(a);need(r.ok,r.why);return r},
-  smith(a,args={}){const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac);const r=smithTool(a,args,{inTown:here});need(r.ok,r.why);return r},
+  smith(a,args={}){const ct=cityAt(a),here=inTown(a)||!!(ct&&ownTown(ct,a));const r=smithTool(a,args,{inTown:here});need(r.ok,r.why);return r},
   craft(a,{recipe,count,for:forWho}={}){need(recipe!=null&&String(recipe).trim()!=='','Which recipe? craft {recipe: "meal-perch"}; recipes lists yours, what each needs and how many you carry.');
     need(!['fight','duel','assist','dead','ghost'].includes(a.state),'Not now ('+a.state+').');
-    const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac); // crafting (#258): a friendly town's workshops, or the camp fire
+    const ct=cityAt(a),here=inTown(a)||!!(ct&&ownTown(ct,a)); // crafting (#258): a friendly town's workshops, or the camp fire
     const r=craftTool(a,{recipe,count,for:forWho},{inTown:here});need(r.ok,r.why);return r},
   wait(a,{minutes}){const tv=tableView(a); // #163: no waiting out your own turn at the table (a local model waited instead of acting)
     if(tv&&!tv.acted&&tv.options&&tv.waiting_for!=='the DM'&&(tv.your_turn||(tv.phase==='frame'&&sceneOf(a).ids[0]===a.id)))throw new Rule('It is your turn at the table: call scene_act with one of: '+tv.options.map(o=>o.split(' = ')[0]).join(', ')+'.');
