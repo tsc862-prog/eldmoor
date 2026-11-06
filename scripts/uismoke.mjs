@@ -456,6 +456,10 @@ console.log('run gate');
   ok(sim.reflexMay&&sim.reflexMay(m3),'reflexes may decide for the member without a runner in that mode');
   gate.setRunFree(false);gate.checkRunGate(T0+232000);ok(ctl.held,'switching it off closes the gate again');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
+  // a member of another company counts too: an heir or recruit of a company that fell to the last holds the world and is named
+  {const SO=sim.S.agents.find(x=>x.kind==='hero'&&x.state!=='dead'&&!SLT.inSlots(x)&&!x.player);sim.markPlayer(SO,true);gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>dm});L[m3.id]='connected';
+   gate.checkRunGate(T0+240000);ok(ctl.held&&box.textContent.includes(SO.name),'a hero of a company of its own with no runner holds the world, by name');
+   L[SO.id]='connected';gate.checkRunGate(T0+241000);ok(!box.textContent.includes(SO.name),'and is off the bar once its runner holds it');sim.markPlayer(SO,false);delete L[SO.id]}
   gate.setGateProbe(null);L[m3.id]='connected'}
 
 // The start gate (#222): connected is not enough; every seat must have answered one warm-up model call
