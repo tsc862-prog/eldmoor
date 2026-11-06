@@ -11,6 +11,7 @@ import {treeAnchor,chunkGen} from './terrain.js';
 import {drawCampLight} from './camp.js';
 import {lifeLight,lifeWindows} from './townlife.js';
 import {G} from './grade.js';
+import {FX} from './quality.js';
 
 const NR=4; // the map is this many times coarser than the screen
 const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
@@ -59,6 +60,16 @@ let vig=null;
 function vignette(w,h){if(vig&&vig.width===w&&vig.height===h)return vig;vig=mk(w,h);const x=vig.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,w,h);
   x.setTransform(w/2,0,0,h/2,w/2,h/2);const g=x.createRadialGradient(0,0,.55,0,0,1.42);g.addColorStop(0,'rgba(14,12,34,0)');g.addColorStop(.55,'rgba(14,12,34,.07)');g.addColorStop(1,'rgba(14,12,34,.34)');x.fillStyle=g;x.fillRect(-1,-1,2,2);return vig}
 
+// Cloud shadows: a tileable sheet of soft dark patches, drifting across the land by day. Value noise baked once, multiplied into the map, so the ground, the people and the
+// trees all pass under it. The sun's own strength fades it at dawn and dusk and under an overcast sky.
+let sky=null,skyPat=null;
+function cloudSheet(){const N=256;sky=mk(N,N);const x=sky.getContext('2d'),id=x.createImageData(N,N),f=(u,v)=>vnoise(u/60,v/60,331)*.62+vnoise(u/26,v/26,337)*.28+vnoise(u/11,v/11,347)*.1;
+  for(let j=0;j<N;j++)for(let i=0;i<N;i++){const a=i/N,b=j/N,n=(f(i,j)*(1-a)+f(i-N,j)*a)*(1-b)+(f(i,j-N)*(1-a)+f(i-N,j-N)*a)*b,q=(j*N+i)*4,t=Math.max(0,Math.min(1,(n-.5)/.13));
+    id.data[q]=255-t*58;id.data[q+1]=255-t*50;id.data[q+2]=255-t*34;id.data[q+3]=255}
+  x.putImageData(id,0,0);skyPat=lx.createPattern(sky,'repeat')}
+function cloudShadows(k,ox,oy,w,h,now){if(!FX.full)return;const a=Math.min(1,G.sunA/.3)*(G.up?1:0);if(a<.03)return;if(!sky)cloudSheet();
+  const s=k*3.4,dx=now*5.5*k,dy=now*1.6*k;lx.globalAlpha=a;lx.setTransform(s,0,0,s,ox+dx,oy+dy);lx.fillStyle=skyPat;lx.fillRect((-ox-dx)/s-1,(-oy-dy)/s-1,w/s+2,h/s+2);lx.globalAlpha=1;lx.setTransform(1,0,0,1,0,0)}
+
 // Light the frame. o: {S, sel, sc, inView, cut}. The caller's ctx is in the world transform and is left there.
 export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut}=o,dk=G.dk,w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR),now=performance.now()/1000;
   if(lm.width!==w||lm.height!==h){lm.width=w;lm.height=h}
@@ -69,6 +80,7 @@ export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut}=o,dk=G.dk,w=
   lx.globalCompositeOperation='multiply';lx.imageSmoothingEnabled=true;
   lx.setTransform(k,0,0,k,ox,oy);lx.drawImage(shade,0,0,W*SH,H*SH,0,0,W*T,H*T);lx.setTransform(1,0,0,1,0,0);
   lx.drawImage(vignette(w,h),0,0);
+  cloudShadows(k,ox,oy,w,h,now);
   // the lights
   qn=0;
   if(dk>0){let n=0;const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;glow(x,y,r,PERSON,a*night*.8,true)};

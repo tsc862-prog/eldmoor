@@ -143,10 +143,12 @@ export function lifeAir(ctx,blink){drawRoostBirds(ctx);if(F.tpx<9)return;
       if(k>.02)smoke(ctx,ch.x,ch.y,k,wind,L.ci*3+Math.round(ch.x))}
     if(L.flag)flag(ctx,L.flag.x,L.flag.y,FAC[c.fac],wind);
     const lp=lamps(h);if(lp>0)for(const d of L.doors){ctx.fillStyle='rgba(255,196,96,'+(.9*lp).toFixed(2)+')';ctx.fillRect(Math.round(d.x)+9,Math.round(d.y)-15,2,3);ctx.fillStyle='rgba(255,230,160,'+(.9*lp).toFixed(2)+')';ctx.fillRect(Math.round(d.x)+9,Math.round(d.y)-15,2,1)}}}
-// Puffs rise from the chimney, grow, thin and drift downwind. Stateless: each puff's place is a function of time.
-function smoke(ctx,x,y,k,wind,seed){const n=Math.max(3,Math.ceil(6*k)),rise=34,dur=3.6;
-  for(let i=0;i<n;i++){const p=((F.now/dur+i/n+seed*.137)%1),px=x+Math.sin(p*6+i*1.7+seed)*1.6+wind*p*14,py=y-p*rise,s=1+Math.floor(p*4);
-    ctx.fillStyle='rgba(232,228,224,'+(1*k*(1-p)*(p<.1?p/.1:1)).toFixed(3)+')';const q=s+2;ctx.fillRect(Math.round(px)-(q>>1),Math.round(py)-(q>>1),q,q)}}
+// Puffs rise from the chimney, grow, thin and bend away downwind, faster the higher they get, so a stiff wind lays the smoke out in a long trail. Stateless: each puff's place is a
+// function of time. Soft: two squares a puff, the outer one fainter.
+function smoke(ctx,x,y,k,wind,seed){const n=Math.max(5,Math.ceil(10*k)),rise=38-wind*14,dur=4.6,run=10+wind*46;
+  for(let i=0;i<n;i++){const p=((F.now/dur+i/n+seed*.137)%1),px=x+Math.sin(p*5+i*1.7+seed+F.now*.4)*(1+p*2.4)+run*p*p,py=y-p*rise-Math.sin(p*3+seed)*1.2,s=2+p*7;
+    const a=.62*k*(1-p)*(p<.08?p/.08:1),q=Math.round(s);ctx.fillStyle='rgba(226,222,218,'+(a*.45).toFixed(3)+')';ctx.fillRect(Math.round(px-q/2)-1,Math.round(py-q/2)-1,q+2,q+2);
+    ctx.fillStyle='rgba(236,232,228,'+a.toFixed(3)+')';ctx.fillRect(Math.round(px-q/2),Math.round(py-q/2),q,q)}}
 // A pennant on a pole: eleven columns that wave harder in the wind.
 function flag(ctx,x,y,f,wind){const px=Math.round(x),py=Math.round(y),amp=.8+wind*2.4;
   ctx.fillStyle='#3a2a1a';ctx.fillRect(px,py-16,1,16);ctx.fillStyle='#f2c14e';ctx.fillRect(px,py-17,1,1);
