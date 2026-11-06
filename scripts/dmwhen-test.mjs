@@ -14,7 +14,7 @@ const {LEVERS, validate} = await import('../src/sim/levers.js');
 const {ZONES, CITY, zoneAt, zonePoint, dist} = await import('../src/world/map.js');
 const {maxHp} = await import('../src/sim/heroes.js');
 const SLT = await import('../src/sim/company.js');
-const {eventDue, whenNote, newWatches, withDmWhenOrders, dmSystemPrompt, EVENT_GAP} = await import('./dm-agent.mjs');
+const {eventDue, whenNote, newWatches, withDmWhenOrders, dmSystemPrompt, EVENT_GAP, EVENT_MAX} = await import('./dm-agent.mjs');
 const {DM_TOOLS} = await import('../src/data/dm-tools.js');
 
 let fails = 0;
