@@ -18,6 +18,7 @@ import {titleWanted,showTitle,provideNotes} from './ui/title.js'; // Continue, N
 import {slotted} from './sim/company.js'; // the slotted company (#588)
 import {frameDone,gapSeen,setWhere} from './ui/pagewatch.js'; // frame-time watchdog (#736)
 import {viewWhere} from './render/viewinfo.js'; // what the screen shows, for the watchdog's lines
+import {resumeCinema} from './ui/cinema.js'; // the cinema view, when it was on (or asked for on the title screen)
 import {installProbe} from './ui/probe.js'; // ?probe=1: frame timings for npm run shoot -- --crawl (#736)
 
 // The world is built only when the owner picks Continue (or the default world) on the title screen, or at once with
@@ -40,6 +41,7 @@ function start(kind){
   if(bootKind()==='fresh'&&kind!=='default')openSetup({first:true});else afterBoot(); // no save and no queued setup: the setup page opens over the default world; a setup boot starts its runners
   select(startHero()); // the saved hero when it rides with the followed company, else that company's leader (#546)
   if(slotted())setView('fellow'); // the Fellowship is the story: frame it by default (#68)
+  resumeCinema();
   last=performance.now();requestAnimationFrame(frame)}
 
 let last=performance.now(),uiT=0;
