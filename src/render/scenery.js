@@ -297,6 +297,8 @@ function bridges(c,x0,y0,x1,y1,d){for(const b of d.bridges||(d.bridges=findBridg
     for(let y=-len/2,left=len;left>0;y+=U,left-=U){pc(c,S[1],-11,y,Math.min(TILE,left*ART)|0);pc(c,S[1],8,y,Math.min(TILE,left*ART)|0)}
     const a=ATLAS[S[2]];if(a)for(const y of [-len/2-2,0-a[3]/ART/2,len/2-a[3]/ART+1]){pc(c,S[2],-11-(a[2]/ART-3)/2,y);pc(c,S[2],8-(a[2]/ART-3)/2,y)}
     c.restore()}}
+// Each bridge's deck, in tiles [x, y, w, h], rails in: a bridge's tiles are wider than its art, and the water shows either side (sheen.js).
+export function bridgeDecks(){if(!NOTE)return [];const d=data();return (d.bridges||(d.bridges=findBridges())).map(b=>{const along=b.h>=b.w,cx=b.x+b.w/2,cy=b.y+b.h/2,hw=12/U,hl=((along?b.h:b.w)+1.3)/2;return along?[cx-hw,cy-hl,2*hw,2*hl]:[cx-hl,cy-hw,2*hl,2*hw]})}
 function findBridges(){const seen=new Uint8Array(W*H),out=[];for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(tt(x,y)!==BRIDGE||seen[I(x,y)])continue;let a=x,b=y,e=x,f=y;const st=[[x,y]];seen[I(x,y)]=1;
     while(st.length){const [u,v]=st.pop();a=Math.min(a,u);b=Math.min(b,v);e=Math.max(e,u);f=Math.max(f,v);for(const [p,q] of [[u+1,v],[u-1,v],[u,v+1],[u,v-1]])if(tt(p,q)===BRIDGE&&!seen[I(p,q)]){seen[I(p,q)]=1;st.push([p,q])}}
     out.push({x:a,y:b,w:e-a+1,h:f-b+1})}return out}

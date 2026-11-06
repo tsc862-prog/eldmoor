@@ -43,6 +43,7 @@ import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.
 import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor,scenePose,sceneFallen,sceneTint} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
+import {gateEnts} from './townart.js';
 import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
 import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
@@ -185,7 +186,7 @@ export function createRenderer(cv,screenEl){
     if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
     drawTerrain(sc);warmChunks(cam.camX/T,cam.camY/T);ph(0);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
-    gradeAt((S.gameMin/60)%24,skyNow());drawCast(ctx,S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
+    gradeAt((S.gameMin/60)%24,skyNow());drawCast(S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
     if(S.boss.alive&&inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle=MARK.ember;for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
@@ -216,7 +217,7 @@ export function createRenderer(cv,screenEl){
       for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
       for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
       if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
-      lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;
+      lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;if(close)gateEnts(ENTS,inView); // a gatehouse stands among the people passing it (#979)
       if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS)} // road traffic, skipped at whole-map zoom (#856)
     if(onPatch)sceneFallen(ENTS); // a foe whose last blow is still to play, or who is falling
     // whole trees (#834) are painted into the terrain chunk, under everything; one that stands in front of an entity (rooted below its feet)
@@ -279,7 +280,7 @@ export function createRenderer(cv,screenEl){
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     };
     for(let i=0;i<nE;i++){const e=ENTS[i];
-      if(e.tree){drawTree(ctx,e);if(FX.full)swayTree(ctx,tf,e); // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
+      if(e.tree||e.veil){if(e.veil)drawEnt(i);else{drawTree(ctx,e);if(FX.full)swayTree(ctx,tf,e)} // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
         for(let j=0;j<i;j++){const o=ENTS[j];if(o.tree||Math.abs(o.x-e.x)>2.4||o.y>=e.y||o.y<e.y-5||!(o===sel||(o.kind==='hero'&&inSlots(o))))continue;ghostA=.45;ctx.globalAlpha=.45;drawEnt(j);ghostA=1;ctx.globalAlpha=1}
         continue}
       drawEnt(i)}
