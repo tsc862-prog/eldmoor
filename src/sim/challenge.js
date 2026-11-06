@@ -28,7 +28,8 @@
 // State (plain data, saved with the world): S.challenges [{id, by, to, mode, at, text}] (absent while empty), S.challengeSeq;
 // a.duelDay {d, n}, a.duelLast {[heroId]: gameMin}, a.duelRec {[heroId]: {w, l, d}}; the scene's ctx (below).
 import {S,dayNo} from './state.js';
-import {dist,zoneAt,ZONES,CRYPT} from '../world/map.js';
+import {dist,zoneAt,ZONES} from '../world/map.js';
+import {cryptOfHero} from './crypts.js';
 import {hash,rnd} from '../core/rng.js';
 import {tm} from '../data/traits.js';
 import {MOVES} from '../data/moves.js';
@@ -84,7 +85,7 @@ const pendingOf=a=>list().find(c=>c.by===a.id||c.to===a.id)||null;
 // Why this hero cannot duel right now, or null.
 function busy(x){if(!alive(x))return 'is not alive';if(x.state==='ghost')return 'is a ghost';if(x.hidden)return 'is out of sight';
   if(FIGHTING.includes(x.state)||x.raid)return x.raid||x.state==='raid'?'is in a raid':'is in a fight';
-  if(CRYPT.group&&CRYPT.group.mem.includes(x))return 'is down in '+(CRYPT.name||'the Crypt');
+  {const D=cryptOfHero(x);if(D)return 'is down in '+D.name}
   if(x.state==='camp')return 'is camped for the night';
   if(sceneOf(x)||sceneFor(companyOf(x)))return 'is at the table in a scene';return null}
 const usedToday=a=>a.duelDay&&a.duelDay.d===dayNo()?a.duelDay.n:0;
