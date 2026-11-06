@@ -21,12 +21,18 @@
 // A third child runs the art loop (#661, scripts/art/daily.mjs --loop: generates until the day's share or the provider's limit, waits,
 // checks again by itself; `s` shows its next check and spend; --no-art or ART_LOOP=0 skips it; it stops with the rest on q, restarts on u).
 //
-// Options: --relay-port N (8787, or RELAY_PORT), --vite-port N (5173), --no-open, --no-art, --repo DIR (the git checkout `u`
+// A fourth child, [voice] (#554): the owner's local speech engine, only when configured: KOKORO_START (environment or .env; the
+// only value read from .env besides OLLAMA_URL and TTS_URL) or --voice-script PATH names its start script, run as
+// powershell -ExecutionPolicy Bypass -File <script> on Windows (a .mjs runs with node, other files directly). --no-voice or VOICE=0
+// skips it. It starts beside the relay and Vite and never delays them; if something already answers on TTS_URL's port (loopback only)
+// it is left alone and no second one is started; a missing file or a crash is one line, with no restart; q stops its whole tree.
+//
+// Options: --relay-port N (8787, or RELAY_PORT), --vite-port N (5173), --no-open, --no-art, --no-voice, --voice-script PATH, --repo DIR (the git checkout `u`
 // pulls; default: this one). Children are started with node and an argument array, never a shell. The old way
 // (npm run relay -- --runners and npm run dev in two terminals) still works.
 import {spawn, spawnSync} from 'node:child_process';
 import {watch, existsSync, readFileSync} from 'node:fs';
-import {join, dirname, basename} from 'node:path';
+import {join, dirname, basename, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import net from 'node:net';
 import {unseenNotes, lastNotes, formatMerge} from './patchnotes.mjs';
@@ -38,12 +44,13 @@ const argv = process.argv.slice(2);
 const opt = (name, dflt) => {const i = argv.indexOf(name); return i >= 0 && argv[i + 1] != null ? argv[i + 1] : dflt};
 const RELAY_PORT = Number(opt('--relay-port', process.env.RELAY_PORT || 8787)), VITE_PORT = Number(opt('--vite-port', 5173));
 const REPO = opt('--repo', ROOT), NO_OPEN = argv.includes('--no-open'), NO_ART = argv.includes('--no-art') || process.env.ART_LOOP === '0';
+const NO_VOICE = argv.includes('--no-voice') || process.env.VOICE === '0';
 const NO_COLOR = !!process.env.NO_COLOR || !process.stdout.isTTY || argv.includes('--no-color');
 const GRACE_MS = Number(process.env.UP_GRACE_MS) || 12000; // how long the relay gets to stop its runners before the tree is killed
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- output ----
-const COLORS = {up: '1;33', relay: '36', vite: '35', git: '32', npm: '32', art: '34', notes: '1;32'};
+const COLORS = {up: '1;33', relay: '36', vite: '35', git: '32', npm: '32', art: '34', voice: '33', notes: '1;32'};
 const tagOf = name => (NO_COLOR ? `[${name}]` : `\x1b[${COLORS[name] || '37'}m[${name}]\x1b[0m`).padEnd(NO_COLOR ? 8 : 20);
 const say = (name, text) => {for (const l of String(text).split(/\r?\n/)) if (l.trim()) process.stdout.write(tagOf(name) + ' ' + (name === 'art' ? l.replace(/^\[art\] /, '') : l) + '\n')};
 const up = t => say('up', t);
@@ -57,8 +64,8 @@ function killTree(pid) { // the whole tree, so no runner, esbuild or shell stays
     else {try {process.kill(-pid, 'SIGKILL')} catch {try {process.kill(pid, 'SIGKILL')} catch {}} res()}
   });
 }
-function launch(name, args, {env = {}, cwd = ROOT, onLine} = {}) {
-  const child = spawn(process.execPath, args, {cwd, env: {...process.env, ...tmpEnv(), ...env}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: !WIN});
+function launch(name, args, {env = {}, cwd = ROOT, onLine, cmd = process.execPath} = {}) {
+  const child = spawn(cmd, args, {cwd, env: {...process.env, ...tmpEnv(), ...env}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: !WIN});
   const p = {name, child, pid: child.pid, exited: false, started: Date.now(), expected: false};
   p.done = new Promise(res => {child.on('exit', (code, sig) => {p.exited = true; p.code = code; p.sig = sig; live.delete(p); res()}); child.on('error', e => {say('up', `${name}: could not start: ${e.message}`); p.exited = true; live.delete(p); res()})});
   if (child.stdin) child.stdin.on('error', () => {});
@@ -83,7 +90,7 @@ const portBusy = async port => (await listening(port, '127.0.0.1')) || (await li
 async function waitPortFree(port, ms = 8000) {const t0 = Date.now(); while (Date.now() - t0 < ms) {if (!(await portBusy(port))) return true; await sleep(200)} return false}
 
 // ---- state ----
-let relay = null, vite = null, art = null, busy = '', quitting = false, codeChanged = false, quietUntil = 0, opened = false;
+let relay = null, vite = null, art = null, voice = null, voiceState = 'not configured', voiceWatch = null, busy = '', quitting = false, codeChanged = false, quietUntil = 0, opened = false;
 const RELAY_ARGS = ['scripts/relay.mjs', '--runners', '--resume-runners', '--launcher'];
 const relayEnv = () => ({RELAY_PORT: String(RELAY_PORT), RELAY_ORIGIN: `http://localhost:${VITE_PORT}`, ELDMOOR_LAUNCHER: '1'});
 
@@ -111,6 +118,43 @@ function startArt() { // the art loop: never touches the relay or Vite, and a fa
   mine.done.then(() => {if (!mine.expected && !quitting) up(`art loop exited on its own (code ${mine.code ?? mine.sig}). Press u to start it again.`)});
 }
 async function stopArt() {if (art) await stopProc(art, {soft: true, graceMs: Math.min(GRACE_MS, 5000)}); art = null}
+// ---- voice engine (#554) ----
+function envHas(name) { // an environment value wins even when empty (checks use that), else the .env file; only this one name is read
+  return Object.prototype.hasOwnProperty.call(process.env, name) ? process.env[name] : envValue(name);
+}
+function voicePort() { // the port of TTS_URL (default 8880); null when TTS_URL is not on this machine
+  try {const u = new URL(envValue('TTS_URL') || 'http://127.0.0.1:8880'); if (!/^(127\.\d+\.\d+\.\d+|localhost|\[?::1\]?)$/i.test(u.hostname)) return null; return Number(u.port) || (u.protocol === 'https:' ? 443 : 80)} catch {return null}
+}
+function voiceCommand(script) {
+  if (/\.m?js$/i.test(script)) return [process.execPath, [script]];
+  if (WIN) return ['powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script]];
+  if (/\.ps1$/i.test(script)) return ['pwsh', ['-NoProfile', '-File', script]];
+  return [script, []];
+}
+async function startVoice() { // never throws, never blocks: a failed voice engine never stops the game
+  try {
+    if (NO_VOICE) {voiceState = 'off (--no-voice or VOICE=0)'; return}
+    const given = opt('--voice-script', '') || envHas('KOKORO_START'), script = given ? resolve(given) : '';
+    if (!script) {voiceState = 'not configured'; up('voice: no speech engine configured (optional): set KOKORO_START=<path to its start script> in .env to start one with the game'); return}
+    const port = voicePort();
+    if (!port) {voiceState = 'refused (TTS_URL is not on this machine)'; up('voice: TTS_URL must be 127.0.0.1 or localhost (the game text never leaves this machine); not starting the voice engine'); return}
+    if (!existsSync(script)) {voiceState = 'script not found'; up('voice: start script not found: ' + script + ' (KOKORO_START); carrying on without a voice'); return}
+    if (await portBusy(port)) {voiceState = 'already running elsewhere (left alone)'; up(`voice: something already answers on port ${port}; not starting another voice engine`); return}
+    if (quitting) return;
+    const [cmd, args] = voiceCommand(script);
+    voice = launch('voice', args, {cmd, cwd: dirname(script) || ROOT});
+    voiceState = 'running';
+    up(`voice engine started (pid ${voice.pid}) on 127.0.0.1:${port}; the relay finds it by itself (the page checks every minute)`);
+    const mine = voice;
+    mine.done.then(() => {if (!mine.expected && !quitting) {voiceState = `stopped (exited on its own, code ${mine.code ?? mine.sig})`; up(`voice engine exited on its own (code ${mine.code ?? mine.sig}); the game goes on silent. Restart the launcher to try again.`)}});
+    const t0 = Date.now(); let told = false; // one line when it starts answering (a model load can take minutes)
+    voiceWatch = setInterval(async () => {
+      if (mine.exited || quitting || Date.now() - t0 > 600000) return clearInterval(voiceWatch);
+      if (await portBusy(port)) {clearInterval(voiceWatch); if (!told) {told = true; up(`voice engine answering after ${Math.round((Date.now() - t0) / 1000)} s`)}}
+    }, 2000); voiceWatch.unref();
+  } catch (e) {voiceState = 'failed to start'; up('voice: could not start: ' + e.message + '; carrying on without a voice')}
+}
+async function stopVoice() {if (voiceWatch) clearInterval(voiceWatch); if (voice) await stopProc(voice); voice = null} // only what we started
 async function restartRelay() {
   if (relay) await stopProc(relay, {soft: true});
   if (!(await waitPortFree(RELAY_PORT))) up(`warning: port ${RELAY_PORT} is still held after the relay stopped`);
@@ -234,6 +278,7 @@ async function status() {
     const j = await (await fetch(url + '/api/ps', {signal: ac.signal})).json(); clearTimeout(t);
     up(`ollama (${url}): ${(j.models || []).length ? j.models.map(m => m.name + (m.size_vram ? ` ${(m.size_vram / 1e9).toFixed(1)} GB` : '')).join(', ') + ' loaded' : 'reachable, no model loaded'}`);
   } catch {up('ollama: not reachable')}
+  up(`voice: ${voice && !voice.exited ? `running (pid ${voice.pid}, up ${age(voice)})` : voiceState}`);
   const hd = await git('log', '-1', '--format=%h %s'); if (hd.code === 0) up(`repo: ${hd.out.trim().slice(0, 90)}`);
   try { // the last daily art run (#177: scripts/art/daily.mjs appends one line a run to logs/art.log)
     const lines = readFileSync(join(REPO, 'logs', 'art.log'), 'utf8').trim().split(/\r?\n/); up(`art: ${lines[lines.length - 1].slice(0, 160)}`);
@@ -271,7 +316,7 @@ async function shutdown(why, code = 0) {
   up(`stopping (${why}): runners, then the relay, then Vite`);
   up('runners will resume next start (delete logs/runners/active.json to start clean)');
   const fast = /hangup|close/.test(why); // a closing window gives only a few seconds
-  try {await stopArt(); if (relay) await stopProc(relay, {soft: true, graceMs: fast ? 3000 : GRACE_MS}); if (vite) await stopProc(vite)} catch {}
+  try {await stopArt(); await stopVoice(); if (relay) await stopProc(relay, {soft: true, graceMs: fast ? 3000 : GRACE_MS}); if (vite) await stopProc(vite)} catch {}
   for (const p of [...live]) await killTree(p.pid);
   up('stopped. Ports ' + RELAY_PORT + ' and ' + VITE_PORT + ' are free.');
   if (process.stdin.isTTY && process.stdin.setRawMode) try {process.stdin.setRawMode(false)} catch {}
@@ -303,7 +348,7 @@ async function main() {
   if (process.stdout.isTTY) process.stdout.write('\x1b]0;Eldmoor\x07');
   up('Eldmoor launcher. Keys: u update, r restart relay, s status, a art review, n patch notes, h help, q quit.');
   showUnseen();
-  startRelay(); startVite(); startArt();
+  startRelay(); startVite(); startArt(); startVoice();
   if (!NO_OPEN) setTimeout(openGame, 20000).unref(); // if Vite's ready line is missed
   watchCode();
   for (const sig of ['SIGINT', 'SIGTERM', 'SIGBREAK']) process.on(sig, () => shutdown(sig));
