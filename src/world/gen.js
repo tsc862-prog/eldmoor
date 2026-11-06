@@ -29,8 +29,8 @@ ROAD_COST[ROAD]=.4;ROAD_COST[BRIDGE]=.4;ROAD_COST[FLOOR]=Infinity;ROAD_COST[WALL
 
 // ---- curves: t -> integer threshold.
 function compileCurve(c){
-  const sin=c.sin||[],nz=c.noise;
-  return t=>{let v=0;for(const [p,a,ph=0] of sin)v+=Math.sin(t/p+ph)*a;
+  const sin=c.sin||[],nz=c.noise,wp=c.warp; // warp {at, by} (a world widened in the middle, #979): from `at` on the curve reads the line `by` columns back
+  return t=>{if(wp&&t>=wp.at)t-=wp.by;let v=0;for(const [p,a,ph=0] of sin)v+=Math.sin(t/p+ph)*a;
     if(nz)v+=((c.axis==='y'?vnoise(nz.slice,t/nz.scale,nz.seed):vnoise(t/nz.scale,nz.slice,nz.seed))-.5)*nz.amp;
     return c.base+Math.round(v)}}
 
