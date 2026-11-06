@@ -250,7 +250,7 @@ const CAP={...PERSONA_FIELDS,beliefs:SELF.BELIEFS,stance:STANCE_MAX};
 const ALIAS={voice:'voice',speech:'voice',tone:'voice',want:'wants',wants:'wants',goal:'wants',goals:'wants',desire:'wants',desires:'wants',
   fear:'fears',fears:'fears',quirk:'quirk',quirks:'quirk',habit:'quirk',neversays:'never_says',neversay:'never_says',never:'never_says',wouldneversay:'never_says',
   belief:'beliefs',beliefs:'beliefs',believe:'beliefs',creed:'beliefs',trait:'traits',traits:'traits',stance:'stance',stances:'stance',view:'stance',views:'stance',opinion:'stance',feelings:'stance'};
-export const selfField=f=>ALIAS[String(f==null?'':f).toLowerCase().replace(/[^a-z]/g,'')]||null;
+export const selfField=f=>{const k=String(f==null?'':f).toLowerCase().replace(/[^a-z]/g,'');return Object.hasOwn(ALIAS,k)?ALIAS[k]:null}; // own keys only: 'constructor' is no field
 const dayN=()=>Math.floor(S.gameMin/1440)+1;
 const cutS=(s,n)=>{s=String(s==null?'':s).replace(/\s+/g,' ').trim();return s.length<=n?s:s.slice(0,n-1).trimEnd()+'…'};
 export const traitsOf=P=>Array.isArray(P&&P.traits)?P.traits.filter(x=>typeof x==='string'&&x):[];

@@ -54,7 +54,7 @@ const stat=(k,n=1)=>{const s=S.craftStats||(S.craftStats={made:0,units:0,fees:0,
 const norm=s=>String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,'');
 // A recipe by id ("meal-perch"), by what it makes ("Spit-Roast Perch") or by a part of either ("perch"). {r} or {why, list?}.
 export function recipeKey(v){const s=norm(v);if(!s)return {why:'Which recipe? Give its id or what it makes (recipes lists yours).'};
-  if(RECIPE_BY_ID[String(v).trim()])return {r:RECIPE_BY_ID[String(v).trim()]};
+  if(Object.hasOwn(RECIPE_BY_ID,String(v).trim()))return {r:RECIPE_BY_ID[String(v).trim()]};
   const ex=RECIPES.find(r=>norm(r.id)===s||norm(r.out.id)===s);if(ex)return {r:ex};
   const L=RECIPES.filter(r=>norm(r.id).includes(s)||norm(r.out.id).includes(s));
   if(L.length===1)return {r:L[0]};
