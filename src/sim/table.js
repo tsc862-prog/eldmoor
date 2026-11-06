@@ -56,6 +56,7 @@
 // open. With one company nothing of this is ever used. A scene that runs on the live clock (stopsWorld false) holds its
 // members and foes in place (engaged, ENG in sim/scenes.js) until it resolves; boss and Crypt scenes hold no one.
 import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
+import {keep} from './kept.js';
 import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
@@ -172,6 +173,7 @@ const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').re
 // Private LCG for line picks: the gameplay RNG is never touched by flavour.
 const SEED0=0x1f2e3d4c;let seed=SEED0;export const resetTableSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('table',()=>seed,v=>{seed=v}); // saved with the world
 
 // Watch mode's downed clock (#655): Table Off, an agent hero and a host with runner links (never npm run sim or a seeded check).
 onWatch(a=>TABLE.mode==='off'&&!!a.player&&hasLinks());
