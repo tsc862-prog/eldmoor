@@ -6,6 +6,7 @@
 // Hearers come from the same helper say uses (sayHearers in chat.js). In-game channels only (#123): the words reach the
 // target's own chat buffer, nothing else; the watcher's Chat tab shows them (the owner sees everything). Agent heroes only
 // (the tools are the agent's); no RNG, no state in the scripted sim, so seeded worlds are unchanged.
+import {WORDS} from '../world/words.js';
 import {S,clockStr,dayNo} from './state.js';
 import {dist} from '../world/map.js';
 import {nearHeroes} from './spatial.js';
@@ -18,7 +19,7 @@ import {sceneOf} from './scenes.js';
 
 export const ASIDE={WHISPER:2,WHISPER_LEN:200,WHISPER_PER_HOUR:6,EMOTE_LEN:120,EMOTE_PER_HOUR:10,SAME:.8};
 const MSG_EMOTE_SAME='You already did that. Do something else, speak, or wait.';
-const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.';
+const ENGLISH='Not said: speak in English. Everyone in '+WORDS.world+' speaks English; say it again in English.';
 const r1=v=>Math.round(v*10)/10;
 const push=(b,e)=>{(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()};
 const first=n=>String(n||'').split(' ')[0];

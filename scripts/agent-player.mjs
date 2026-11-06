@@ -76,7 +76,7 @@ const flag = k => argv.includes('--' + k);
 export function systemPrompt(st) {
   const traits = (st.traits || []).join('; ');
   return [
-    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of Eldmoor (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
+    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of ${st.world || 'Eldmoor'} (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
     st.origin ? `Your past: ${st.origin}` : '',
     st.oath ? `Your oath: ${String(st.oath).replace(/[.!?]+$/, '')}.` : '',
     st.thread ? `A thread in your past, not an oath: ${st.thread} You have sworn nothing; what you swear, if anything, is yours to choose.` : '',
