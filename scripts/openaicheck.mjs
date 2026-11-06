@@ -15,6 +15,7 @@
 //      (claim tag, session file, "| run $" turn lines, the budget stopping the run, no key / unknown
 //      model refusals) and a one-turn Fellowship of OpenAI members.
 // Usage: npm run openaicheck
+import {mkTmp} from './tmp.mjs';
 import {fitTools, TOOL_DESC_MAX} from './providers/openai.mjs';
 import {dmMindCases} from './dm-mind-cases.mjs';
 import http from 'node:http';
@@ -61,6 +62,15 @@ console.log('openai adapter (mock server)');
   ok(priceFor('gpt-4o-2024-08-06') === PRICES['gpt-4o'] && costOf('nope-1', 10, 10) === null && /developers\.openai\.com\/api\/docs\/pricing \(read 2026-11-01\)/.test(PRICES_SOURCE), 'a dated snapshot maps to its family; an unlisted model has no price; the table cites its source and date');
   const u = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-future-1'});
   ok(u.usage.in === 1000 && u.usage.cost === 0 && u.usage.costKnown === false && u.usage.costNote === 'unknown', 'an unlisted model reports tokens with cost unknown');
+  // cached input (#728): prompt_tokens_details.cached_tokens is priced at the cached rate; no field = as before
+  mock.setCached(800);
+  const cr = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-6-luna'}), cu = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-6-astra'});
+  ok(cr.usage.in === 1000 && cr.usage.cached === 800 && Math.abs(cr.usage.cost - (200 * 0.10 + 800 * 0.01 + 20 * 0.50) / 1e6) < 1e-12, 'a reply with cached tokens: in stays the whole prompt, cached is split out and priced at the cached rate');
+  ok(PRICES['gpt-6.1-terra'].cached === 0.05 && PRICES['gpt-6-luna'].cached === 0.01 && Math.abs(costOf('gpt-6.1-terra', 4449, 56, 3900) - (549 * 1 + 3900 * 0.05 + 56 * 5) / 1e6) < 1e-12 && costOf('gpt-6-luna', 1000, 20, 5000) === costOf('gpt-6-luna', 1000, 20, 1000), 'terra and luna carry a cached price; cached is capped at the prompt');
+  ok(cu.usage.cached === 800 && Math.abs(cu.usage.cost - (1000 * 10 + 20 * 50) / 1e6) < 1e-12, 'a model with no cached price keeps the full input rate (an upper bound)');
+  mock.setCached(0);
+  const c0 = await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-6-luna'});
+  ok(!('cached' in c0.usage) && Math.abs(c0.usage.cost - (1000 * 0.10 + 20 * 0.50) / 1e6) < 1e-12, 'a reply without the field prices exactly as before');
   // reasoning_effort: a model that rejects it is asked again without, and remembered
   const n0 = mock.seen.length; await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-4o-mini'}); await ad.call({system: 's', user: 'u', schema, maxTokens: 60, model: 'gpt-4o-mini'});
   ok(mock.seen.length === n0 + 3 && !('reasoning_effort' in mock.seen[mock.seen.length - 1]), 'a model that rejects reasoning_effort is asked again without it, and remembered');
@@ -135,6 +145,11 @@ console.log('openai through the relay');
 
 console.log('agent loop over the OpenAI adapter');
 {
+  const { paidLine } = await import('./local-agent.mjs');
+  const base = {tools: 1, ms: 1000, modelMs: 500, modelCalls: 2, in: 4449, out: 56, cost: 0.001, costKnown: true};
+  ok(/tokens in 4449 \(3900 cached\) \/ out 56/.test(paidLine({...base, cached: 3900}, 'gpt-6.1-terra', 'openai')) && /tokens in 4449 \/ out 56/.test(paidLine(base, 'gpt-6.1-terra', 'openai')), 'the turn line shows the cached split, and none when nothing was cached');
+}
+{
   const ad = openaiAdapter({apiKey: KEY, baseUrl: mock.url}), calls = [], game = async (tool, args) => {calls.push([tool, args]); return {ok: true, tool}};
   const sess = {system: 'You are Ann.'}, got = [];
   mock.problems.length = 0;
@@ -149,7 +164,7 @@ console.log('agent loop over the OpenAI adapter');
 }
 
 // ---------------------------------------------------------------- end to end
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-openaicheck-'));
+const tmp = mkTmp('eldmoor-openaicheck-');
 const kids = [];
 const cleanEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OPENAI_API_KEY: KEY, OPENAI_BASE_URL: mock.url, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // no reflection turns (#179) where turn counts are exact
 delete cleanEnv.OPENAI_MODEL;

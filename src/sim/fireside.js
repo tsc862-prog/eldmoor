@@ -4,7 +4,7 @@
 //   fireside  when a company with agents at the table makes camp and settles to rest (sim/camp.js onCamp 'rest'), a Table scene
 //             opens round the fire (PLAY 'turns' in sim/table.js): a topic from the company's day (the scripted DM picks it: a
 //             companion's death, a newcomer, an oath kept, the Crypt or a boss, a job done, a hard lesson; else a member's oath or a
-//             question one asks another), framed by the DM agent through table_call when it holds the seat. The members speak in
+//             question the fire puts to one of them, never a member's line: #750), framed by the DM agent through table_call when it holds the seat. The members speak in
 //             turn, round after round: speak, ask a named companion (who may answer on their turn), tell a story of their own past,
 //             or listen. No votes, no dice. FIRE.STD (3) rounds on an ordinary night, FIRE.BIG (6) after a big event (a death, the
 //             Crypt, a boss, a newcomer, an oath kept, a merge or an expulsion); the DM agent may set 3-6 with table_answer
@@ -72,7 +72,7 @@ const isFire=k=>k==='fireside'||k==='debrief';
 
 // ---- what the day gave them to talk about ----
 const BIG_MARK={death:1,boss:1,crypt:1},TALK_MARK={...BIG_MARK,elite:1,nemesis:1,vow:1}; // joining comes from the log (recruit, join), not the founding's landmarks
-function topicsOf(C,here){const F=fireOf(C),since=Math.max(F.last,S.gameMin-FIRE.DAY),out=[],add=(k,text,big)=>{const t=cut(text,140);if(t&&!out.some(x=>x.text===t))out.push({k,text:t,big:!!big})};
+function topicsOf(C,here){const F=fireOf(C),since=Math.max(F.last,S.gameMin-FIRE.DAY),out=[],add=(k,text,big,x)=>{const t=cut(text,140);if(t&&!out.some(y=>y.text===t))out.push({k,text:t,big:!!big,...x})};
   for(const e of C.log||[]){if(e.id<=(F.seq||0))break;const t=plain(e.parts);
     if(e.gameMin<since)break;if(e.kind==='death')add('death',t,1);else if(e.kind==='recruit'||e.kind==='join')add('newcomer',t,1);else if(e.kind==='merge'||e.kind==='expel')add(e.kind,t,1);
     else if(e.kind==='leave')add('leave',t);else if(e.kind==='outcome')add('job',t)}
@@ -84,9 +84,11 @@ function topicsOf(C,here){const F=fireOf(C),since=Math.max(F.last,S.gameMin-FIRE
     const fresh=here.filter(a=>C.joined&&C.joined[a.id]!=null&&S.gameMin-C.joined[a.id]<2*1440);
     if(fresh.length)add('newcomer','There is a newer face at the fire: '+fresh[0].name);
     if(sworn.length){const a=pickH(C.id+S.gameMin,1,sworn);add('oath',oathSaid(a))}
-    if(here.length>1){const a=pickH(C.id+S.gameMin,2,here),o=here.filter(b=>b!==a),b=pickH(a.id+S.gameMin,3,o);
-      add('question',a.name+' has a question for '+b.name+': '+pickH(a.id+b.id,4,['where do you come from, truly?','why did you take this road?','what are you afraid of?','who taught you to fight?','what will you do when this is done?']))}}
+    // the fire asks, never a member (#750): no one is named as the asker, so no voice can put the question in a member's mouth
+    if(here.length>1){const b=pickH(C.id+S.gameMin,3,here),q=pickH(b.id+S.gameMin,4,QUESTIONS);
+      add('question','The fire puts a question to '+b.name+': '+q,0,{to:b.id,q})}}
   return out}
+const QUESTIONS=['where do you come from, truly?','why did you take this road?','what are you afraid of?','who taught you to fight?','what will you do when this is done?'];
 const INTRO={death:'No one has said it yet: ',newcomer:'',merge:'',expel:'',oath:'',question:'',boss:'The day is still in their ears: ',crypt:'The day is still in their ears: ',job:'The work is done: ',lesson:'A hard lesson today: '};
 const intro=t=>t?(INTRO[t.k]!=null?INTRO[t.k]:'Today: ')+t.text.replace(/[.!?]*$/,'.'):'The night is quiet.';
 const AIR=['The fire cracks and settles; beyond its light the dark is very still.','Sparks go up into a clear, cold sky.','Wind moves in the grass at the edge of the light, and the fire leans with it.','Someone feeds the fire a dry branch; for a moment every face is bright.'];
@@ -99,9 +101,9 @@ function hereAt(C,q){const L=memOf(C).filter(living);
   const an=ids.find(a=>a.id===q.anchor&&!a.hidden)||ids.find(a=>!a.hidden);if(!an)return false;const H=ids.filter(b=>b===an||inRange(an,b));return H.length>=2?H:false}
 function openFire(C,q,H){const skip=memOf(C).filter(a=>!H.includes(a)).map(a=>a.id),F=fireOf(C),gm=Math.round(S.gameMin);
   if(q.mode==='camp'){const T=topicsOf(C,H),big=T.some(t=>t.big),g=campOf(C),zn=g?ZONES[g.zone]||'the wilds':'the wilds',rounds=big?FIRE.BIG:FIRE.STD;
-    const topic=T[0]||null,frame=['The fire is lit in ',gd(zn),'. ',intro(topic),big?' It will be a long night of talk.':''];
-    const sc=openScene('fireside','Round the fire',frame,{mode:'camp',topic:topic?topic.text:null,tk:topic?topic.k:null,topics:T.slice(0,FIRE.TOPICS).map(t=>t.text),rounds,rd:1,asked:{},told:[],zone:zn,skip,anchor:H[0].id,...(g?{camp:{x:g.x,y:g.y}}:{})},C);
-    if(!sc)return null;sc.rd=1;F.last=gm;F.ev=[];if(g)g.agentTalk=1;return sc} // the fire is the talk: no extra "the fire is lit" nudge (sim/camp.js)
+    const topic=T[0]||null,fq=topic&&topic.k==='question'&&H.some(b=>b.id===topic.to)?{id:null,name:'the fire',q:topic.q,fire:1}:null,frame=['The fire is lit in ',gd(zn),'. ',intro(topic),big?' It will be a long night of talk.':''];
+    const sc=openScene('fireside','Round the fire',frame,{mode:'camp',topic:topic?topic.text:null,tk:topic?topic.k:null,...(fq?{to:topic.to}:{}),topics:T.slice(0,FIRE.TOPICS).map(t=>t.text),rounds,rd:1,asked:fq?{[topic.to]:fq}:{},told:[],zone:zn,skip,anchor:H[0].id,...(g?{camp:{x:g.x,y:g.y}}:{})},C);
+    if(!sc)return null;sc.rd=1;F.last=gm;if(fq){const b=byId(topic.to);if(b&&b.player)notify(b,'The fire puts a question to you: "'+topic.q+'" Answer on your turn (answer).',false,1)}F.ev=[];if(g)g.agentTalk=1;return sc} // the fire is the talk: no extra "the fire is lit" nudge (sim/camp.js)
   const sc=openScene('debrief','After '+cut(q.title,60),[gd(cut(q.title,60)),' is over. ',pickH(C.id+gm,5,['They catch their breath.','Nobody speaks at first.','Someone laughs, too loud, and stops.']),' How was that?'],{mode:'debrief',about:q.title,skip,anchor:H[0].id},C);
   if(sc)F.dlast=gm;return sc}
 // Once per step (sim/index.js, after the table): a waiting fireside or debrief opens when its company's table is free.
@@ -134,7 +136,7 @@ const atFire=sc=>sc.ids.map(byId).filter(living);
 const others=(sc,a)=>atFire(sc).filter(b=>b!==a);
 function options(sc,a){const c=sc.ctx,o=[];
   if(c.mode==='debrief')return [{k:'speak',text:'Say how that was for you (your line)'},{k:'listen',text:'Say nothing; let the others talk'}];
-  const q=c.asked&&c.asked[a.id];if(q)o.push({k:'answer',text:'Answer '+q.name+'\'s question: "'+cut(q.q,90)+'"'});
+  const q=c.asked&&c.asked[a.id];if(q)o.push({k:'answer',text:(q.fire?'Answer the question the fire puts to you':'Answer '+q.name+'\'s question')+': "'+cut(q.q,90)+'"'});
   o.push({k:'speak',text:'Speak'+(c.topic?' to the talk ('+cut(c.topic,60)+')':' your mind')});
   for(const b of others(sc,a))o.push({k:'ask-'+slug(b.name),text:'Ask '+b.name+' something (your line is the question; they may answer on their turn)'});
   o.push({k:'tell',text:'Tell a story from your own past (your line is the story; it becomes part of your backstory and they will remember it)'});
@@ -145,7 +147,7 @@ function apply(sc,a,act){const c=sc.ctx,k=act.k,line=act.line||'';
   if(k==='listen'){const t=line&&emoteAct(a,{text:line});act.line=''; // a listener's line is an emote, never speech (#646)
     return t&&t.ok?'listens, and '+t.emoted:'listens'}
   if(k==='speak')return line?'speaks':'says little';
-  if(k==='answer'){const q=c.asked&&c.asked[a.id];if(q)delete c.asked[a.id];return line?'answers '+(q?q.name:'them'):'shrugs off the question'}
+  if(k==='answer'){const q=c.asked&&c.asked[a.id];if(q)delete c.asked[a.id];return line?(q&&q.fire?'answers the fire\'s question':'answers '+(q?q.name:'them')):'shrugs off the question'}
   if(k==='tell'){if(!line)return 'begins a story, then lets it go';(c.told||(c.told=[])).push({id:a.id,text:line});return 'tells of their past'}
   if(k.startsWith('ask-')){const b=others(sc,a).find(x=>'ask-'+slug(x.name)===k);if(!b)return 'asks no one';if(!line)return 'looks at '+b.name+' and says nothing';
     (c.asked||(c.asked={}))[b.id]={id:a.id,name:a.name,q:line};if(b.player)notify(b,a.name+' asks you round the fire: "'+cut(line,160)+'". Answer on your turn (answer).',false,1);return 'asks '+b.name}
@@ -167,14 +169,14 @@ function outcome(sc){const c=sc.ctx,here=atFire(sc),spoke=sc.beats.filter(b=>b.l
     const n=sc.rd||1;return (who.length?names(who)+' talked round the fire':'The fire burned down in silence')+(c.topic&&who.length?' ('+cut(c.topic,70)+')':'')+(who.length?', '+n+' round'+(n>1?'s':'')+(c.quiet&&n<c.rounds?' before the talk ran out':''):'')+'.'+(tellers.length?' '+names(tellers)+' told of '+(tellers.length>1?'their':'their own')+' past.':'')}
   return who.length?names(who)+' talked it over.':'Nobody said much.'}
 function view(sc,a){const c=sc.ctx;if(c.mode!=='camp')return {talk:'one round: how was that'};const q=c.asked&&c.asked[a.id];
-  return {topic:c.topic||null,talk_round:(sc.rd||1)+' of up to '+c.rounds,...(q?{asked_you:q.name+': "'+cut(q.q,120)+'"'}:{}),how:'Speak in your own voice; ask a companion by name; tell a story of your past (it becomes your backstory); or listen.'}}
+  return {topic:c.topic||null,talk_round:(sc.rd||1)+' of up to '+c.rounds,...(q?{asked_you:(q.fire?'The fire asks you':q.name)+': "'+cut(q.q,120)+'"'}:{}),how:'Speak in your own voice; ask a companion by name; tell a story of your past (it becomes your backstory); or listen.'}}
 
 // ---- the DM's frame (the DM agent through table_call; a bounded wait, then the DM's reflex fills it and is logged as a fill, #561) ----
 const DM_FIRE={
   onFrame(sc){const c=sc.ctx,L=atFire(sc);
     pushCall(sc,{kind:'frame',who:'the narrator',about:'Frame the night\'s talk round the fire for '+L.map(a=>a.name+' ('+a.cls+')').join(', ')+' at their camp in '+c.zone+
       '. What the day gave them: '+(c.topics.length?c.topics.join(' | '):'a quiet day')+'. Planned: '+c.rounds+' rounds of talk ('+FIRE.STD+' for an ordinary night, '+FIRE.BIG+' after a big one; you may set '+FIRE.MIN+'-'+FIRE.MAX+' with table_answer rounds).'+
-      ' Write the fire and the night, and open the talk with one question or image on the topic (one short paragraph). Decide nothing for them; speak for none of them.'})},
+      ' Write the fire and the night, and open the talk with one question or image on the topic (one short paragraph), put by the night itself, never by one of them. Decide nothing for them; speak for none of them: never quote a member or give one words, describe only what they do.'})},
   onAll(){},
   live:voiceLive,
   fill(sc,c){resolveCall(sc,c,{text:pickH(sc.id+(sc.company|0),6,AIR)+' '+intro(sc.ctx.topic?{k:sc.ctx.tk,text:sc.ctx.topic}:null),by:'scripted'})},

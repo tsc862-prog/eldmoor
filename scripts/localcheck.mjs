@@ -19,6 +19,7 @@
 //      agents' choice with no table timeout.
 // Sessions go to a temporary folder (AGENT_LOGS), never to logs/agents/.
 // Usage: npm run localcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:fs';
@@ -26,7 +27,7 @@ import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {localWorked} from './pacing.mjs';
-import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneDue, sceneToAnswer, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS, chatbotVoice} from './local-agent.mjs';
+import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneDue, sceneToAnswer, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS, actSig, REPEAT_ACTS, chatbotVoice} from './local-agent.mjs';
 import {ollamaAdapter, numCtxFrom} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
@@ -124,6 +125,7 @@ console.log('text-written calls and forced scene turns (issue #163)');
     ok(sceneDue(mine, sess681) === null, 'the scene the session just answered is not due again (brief shows it stale)');
     ok(await sceneToAnswer({scene: mine}, g681, false, sess681) === null && await sceneToAnswer({table: true}, async () => ({ok: true, table: mine}), true, sess681) === null, 'neither the brief path nor the status fallback forces it');
     ok(sceneDue({...mine, frame: 'Another word, later.'}, sess681) !== null, 'a different scene is due');
+    ok(sceneDue({...mine, round: '2 of up to 3'}, sess681) !== null && sceneDue({...mine, id: 9}, sess681) !== null, 'the same words in the next round, or put again as another scene, are due (#926)');
     ok(await sceneToAnswer({table: true}, async () => ({ok: true, table: {...base, acted: true, your_turn: false, everyone_answers: true}}), true, {}) === null, 'the status fallback honours acted');
   }
   const sch = sceneSchema(scene.keys), schS = sceneSchema(scene.keys, {strict: true});
@@ -300,7 +302,7 @@ console.log('ollama adapter chat (mock server)');
 }
 
 // ---------------------------------------------------------------- 2. the runner, end to end
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
+const tmp = mkTmp('eldmoor-localcheck-');
 ctxFrom = seen.length;
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // AGENT_REFLECT=0: no reflection turns where turn counts are exact; H passes --reflect (#179) // pacing (issue #126) kept short for the old sections
 const kids = [];
@@ -547,6 +549,19 @@ ${R.out.slice(-800)}`));
     ok(/fresh context/.test(R.out) && mine.some(b => b.messages.filter(m => m.role === 'assistant').length === 0 && /^Turn 3/.test((b.messages[1] || {}).content || '')), 'after two empty turns the next one starts from a fresh context');
     const sz = sim.playerAct(a.id, 'say', {text: '我将带领团队去见萨满'});
     ok(!sz.ok && /speak in English/.test(sz.error), 'the game refuses a foreign-script line: ' + sz.error);
+    sim.markPlayer(a, false)}
+
+  // E2. repeated acts (#801): the same emote every turn is flagged repeat-act and counts as an empty turn; consistent play is never flagged
+  {const sg = (name, args) => actSig([{name, args}]);
+    ok(sg('emote', {text: 'a'}) === sg('emote', {text: 'a'}) && sg('emote', {text: 'a'}) !== sg('emote', {text: 'b'}) && sg('say', {text: 'a'}) !== sg('emote', {text: 'a'}), 'actSig: same call and arguments match, another text or tool does not');
+    ok(['wait', 'hunt', 'move_to', 'follow', 'rest', 'scene_act', 'use_ability', 'buy', 'sell', 'take_quest', 'look', 'status', 'fight', 'lead_to'].every(t => actSig([{name: t, args: {}}]) === null) && actSig([]) === null && actSig(undefined) === null && actSig([{name: 'emote', args: {text: 'a'}}, {name: 'say', args: {text: 'b'}}]) === null, 'actSig: wait, hunt, move_to, follow, rest, scene_act, abilities, trade, quests, reads, no act and a turn with two acts are never flagged');
+    ok([...REPEAT_ACTS].sort().join() === 'emote,party_say,say,whisper', 'only emote, say, party_say and whisper can be flagged');
+    const a = pick(), n0 = seen.length;
+    const R = runner(a, 'mock-pose:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--max-turns', '8', '--new']);
+    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]);
+    const flagged = (R.out.match(/repeat-act: the same emote/g) || []).length, refused = (R.out.match(/already did that/g) || []).length;
+    ok(code === 0 && /3 failed or empty turns in a row/.test(R.out) && R.turns.length <= 5, `a model looping one emote is stopped by --max-fails after ${R.turns.length} turns` + (code === 0 ? '' : '\n' + R.out.slice(-1200)));
+    ok(flagged >= 2 || refused >= 1, `the loop is caught by the runner flag (${flagged} repeat-act) or the game's own refusal (${refused})`);
     sim.markPlayer(a, false)}
 
   // I. a New World reuses the hero's id for another hero (issue #219): the runner notices, releases its claim and

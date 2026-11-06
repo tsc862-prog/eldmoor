@@ -3,7 +3,8 @@
 // The sim stays fs-free: the host hands the text over (provideCampaigns), the browser from a Vite ?raw import
 // (src/main.js), Node hosts from disk (scripts/campaign-files.mjs). No RNG, so a seed is deterministic.
 // The file: H2 sections Premise, Threads, Characters, Plans, Secrets, each with bullets "- **Title**: text"
-// (title <= 60, text <= 550, optionally ending in "tags: a, b"). Premise becomes pinned notes in plans.
+// (title <= 60, text <= 550, optionally ending in "tags: a, b"). Premise becomes pinned notes in plans. An optional Prologue section
+// becomes plans tagged prologue: the DM reads them for the first delve (#922), heroes never do.
 import {WORLD_ID} from '../world/spec.js';
 
 export const CAMP={TITLE:60,TEXT:550,SECTIONS:['threads','characters','plans','secrets']};
@@ -33,10 +34,10 @@ export function parseCampaign(md){
     if(h){cur=h[1].trim().toLowerCase();(secs[cur]=secs[cur]||[]);continue}
     if(/^#\s/.test(ln)){cur=null;continue}
     if(cur)secs[cur].push(ln)}
-  for(const k of ['premise',...CAMP.SECTIONS]){const L=secs[k];if(!L)continue;
+  for(const k of ['premise','prologue',...CAMP.SECTIONS]){const L=secs[k];if(!L)continue;
     let bs=bullets(L);
     if(!bs.length&&k==='premise'){const p=L.join(' ').replace(/\s+/g,' ').trim();if(p)bs=[{title:'Premise',text:p}]}
-    for(const b of bs){const n=note(b);if(!n)continue;if(k==='premise')prem.push({...n,pin:true});else out[k].push(n)}}
+    for(const b of bs){const n=note(b);if(!n)continue;if(k==='premise')prem.push({...n,pin:true});else if(k==='prologue')out.plans.push({...n,tags:[...n.tags,'prologue']});else out[k].push(n)}}
   out.plans=[...prem,...out.plans];
   return out}
 

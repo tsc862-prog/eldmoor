@@ -5,9 +5,9 @@
 // browser side (localStorage, buttons, auto-save) is src/ui/save.js and the headless
 // check is scripts/savecheck.mjs.
 //
-// Format: {version, <every key of S except fx>, GOODS:{name:{supply,prev}}, CRYPT:{group,cd}, CRYPTS:{name:{group,cd}} (the later dungeons of a world with several, #891)}.
+// Format: {version, <every key of S except fx>, GOODS:{name:{supply,prev}}, CRYPT:{group,cd}, CRYPTS:{name:{group,cd}} (the later dungeons of a world with several, #891), kept:{<module state, kept.js>}}.
 // Objects that live in one of the HOMES arrays are written in full there and everywhere
-// else as a reference {ref:'hero'|'mob'|'party'|'enc'|'guild', id}; the boss is {ref:'boss'}.
+// else as a reference {ref:'hero'|'mob'|'party'|'enc'|'guild', id}; the boss is written in full under its own key, {ref:'boss'} everywhere else.
 // An entity that is referenced but no longer in its home array (a recycled grave in an
 // old chronicle line, a purged mob a hero last looked at) becomes a bare reference, for
 // heroes with name and fac so the panels can still print it; restore turns those into
@@ -25,6 +25,7 @@ import {ensureCampaign,setDmSeat,dmSeatOn} from './dmagent.js';
 import {DEFAULT_DM} from './setup.js';
 import {dmlog} from './dmlog.js';
 import {relinkCompanies} from './company.js';
+import {keptState,restoreKept} from './kept.js';
 import {homeOf} from '../data/races.js';
 
 export {SAVE_VERSION};
@@ -88,11 +89,12 @@ export function snapshot(){
   const snap={version:SAVE_VERSION};
   for(const k of Object.keys(S)){
     if(KEYS[k]){const v=KEYS[k].save(S[k],ser);if(v!==undefined)snap[k]=v;continue}
-    snap[k]=k in HOMES?(S[k]||[]).map(o=>ser(o,true)):ser(S[k],false)}
+    snap[k]=k in HOMES?(S[k]||[]).map(o=>ser(o,true)):ser(S[k],k==='boss')} // the boss is written in full here, as a reference everywhere else
   snap.GOODS={};for(const n in GOODS)snap.GOODS[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
   snap.MATS={};for(const n in MATERIALS)snap.MATS[n]={supply:MATERIALS[n].supply,prev:MATERIALS[n].prev}; // gathered materials sold at the auction house (#257)
   snap.CRYPT={group:ser(CRYPT.group,false),cd:CRYPT.cd};
   if(CRYPTS.length>1){snap.CRYPTS={};for(const D of CRYPTS)if(D!==CRYPT)snap.CRYPTS[D.name]={group:ser(D.group,false),cd:D.cd}}
+  snap.kept=keptState(); // the world's state that lives in modules: dice streams and timers (kept.js)
   return snap}
 
 // ---- restore ----
@@ -122,15 +124,16 @@ export function restore(snap){
   // refilled in place; everything else is replaced.
   for(const k in HOMES)(snap[k]||[]).forEach((e,i)=>{const o=alloc[k][i];for(const f in e)o[f]=de(e[f])});
   for(const k of Object.keys(S)){if(KEYS[k])KEYS[k].reset();else if(!(k in snap))delete S[k]}
-  for(const k in snap){if(k==='version'||k==='GOODS'||k==='MATS'||k==='CRYPT'||k==='CRYPTS'||KEYS[k])continue;
+  for(const k in snap){if(k==='version'||k==='GOODS'||k==='MATS'||k==='CRYPT'||k==='CRYPTS'||k==='kept'||KEYS[k])continue;
     const v=k in HOMES?alloc[k]:de(snap[k]),cur=S[k];
     if(Array.isArray(cur)&&Array.isArray(v)){cur.length=0;for(const x of v)cur.push(x)}
-    else if(k==='boss'&&cur&&v){for(const f in cur)delete cur[f];Object.assign(cur,v)}
+    else if(k==='boss'&&cur&&v){if(v!==cur){for(const f in cur)delete cur[f];Object.assign(cur,v)}} // a save from before held only {ref:'boss'}: the boss stays as it stands
     else S[k]=v}
   for(const n in snap.GOODS||{}){const g=GOODS[n],s=snap.GOODS[n];if(!g||!s)continue;g.supply=s.supply;g.prev=s.prev!=null?s.prev:price(n)}
   for(const n in MATERIALS){const g=MATERIALS[n],s=snap.MATS&&snap.MATS[n];g.supply=s?s.supply:6;g.prev=s&&s.prev!=null?s.prev:price(n)} // an older save: the table's opening stock
   if(snap.CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
   for(const D of CRYPTS)if(D!==CRYPT){const s=snap.CRYPTS&&snap.CRYPTS[D.name];D.group=s?de(s.group):null;if(s&&s.cd!=null)D.cd=s.cd} // an older save: nobody is down there
+    restoreKept(snap.kept);
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
   for(const a of S.agents||[])if(a.kind==='hero')normalizeWounds(a); // a.wounds (#656): an old save's heroes carry none
   for(const a of S.agents||[])if(a.profs!==undefined)normalizeProfs(a); // a.profs is optional (professions, #254): absent reads as [], present is cleaned

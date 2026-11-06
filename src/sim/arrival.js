@@ -55,7 +55,7 @@ import {prepActive} from './prep.js';
 import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
 import {TABLE,openScene,setSceneKind,tableOn,sceneFor,callSeen,callLeft} from './table.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
-import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf} from './company.js';
+import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf,placeWord} from './company.js';
 import {inRange} from './reach.js';
 
 export const ARRIVE={
@@ -93,6 +93,9 @@ function introLine(a){const P=a.persona||{},home=a.born||homeOf(a).name,own=!(a.
   return a.name+', a '+(a.cls||'hero').toLowerCase()+' of '+home+(w?', who wants '+w:'')}
 
 // ---- the opening (session zero, #437) ----
+// The first delve (#922, sim/prologue.js) registers here: a company with C.prologue plays session zero at a dungeon's mouth, not in the hall.
+let PRO=null;export const setPrologueHook=h=>{PRO=h};
+export const prologueStatus=()=>PRO?PRO.view():null;
 export const openingDue=()=>!!(S.opening&&S.opening.queue&&S.opening.queue.some(q=>q.kind==='new'));
 export const openingPending=()=>!!(S.opening&&S.opening.queue&&S.opening.queue.length);
 // A new world plans one opening per company (sim/index.js init with a setup; play-headless --session-zero).
@@ -120,12 +123,13 @@ function openingFrame(C,q){const L=memOf(C),ld=leadOf(C),town=townOf(C),d=Math.f
     return [...head,'The gate captain has '+(writ?'a writ: '+writ:'nothing posted yet')+'.',r?' In the inn they say '+r+'.':'']}
   const oaths=L.filter(swornOf).map(a=>oathSaid(a));
   const far=farFrom(C),here=L.filter(a=>!far.includes(a));
+  if(C.prologue&&PRO)return PRO.frame(C,here,ld,oaths);
   return [gd(C.name||'The company'),' sits at one table in '+town+' for the first time, day '+d+': '+names(here.map(a=>a.name))+'. ',far.length?names(far.map(a=>a.name))+(far.length>1?' have':' has')+' not reached the table. ':'',ld?ld.name+' has the head of the table. ':'',
     oaths.length?oaths.join('; ')+'. ':'','On the board by the door: '+(job||'nothing yet')+(writ?'; the gate captain\'s writ: '+writ:'')+'.']}
 function openOpening(q){const C=companyById(q.company),L=memOf(C);if(!C||!L.length)return null;const ld=leadOf(C),town=townOf(C),solo=L.length===1;
   if(q.kind==='heir')log(nar(''),'The Chronicle remembers ',gd(q.fallen||'one who fell'),(q.cause?', '+q.cause:'')+'. In '+town+', ',L[0],' takes up the road.');
   const title='SESSION ZERO · '+(solo?L[0].name:C.name||ld.name+'\'s company');
-  const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,setting:'tavern',...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town)};
+  const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,setting:C.prologue?'field':'tavern',...(C.prologue?{prologue:1}:{}),...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town)};
   const frame=openingFrame(C,q);
   if(!tableOn())return settleOpening(C,ctx,[],title);
   const far=farFrom(C),sc=openScene('opening',title,frame,ctx,C);
@@ -134,7 +138,7 @@ function openOpening(q){const C=companyById(q.company),L=memOf(C);if(!C||!L.leng
   return sc}
 function optsOpening(sc,a){const c=sc.ctx,ld=byId(c.lead);
   if(c.solo)return [{k:'introduce',text:'Say who you are and what you came for'},{k:'listen',text:'Hear the gate captain out first'}];
-  if(ld===a)return [{k:'introduce',text:'Introduce yourself and take the head of the table'},{k:'yield',text:'Introduce yourself and offer the lead to whoever wants it'}];
+  if(ld===a)return [{k:'introduce',text:c.prologue?'Introduce yourself and go in front':'Introduce yourself and take the head of the table'},{k:'yield',text:'Introduce yourself and offer the lead to whoever wants it'}];
   return [{k:'introduce',text:'Introduce yourself'+(ld?'; '+ld.name+' leads':'')},{k:'lead',text:'Introduce yourself and offer to lead instead'+(ld?' of '+ld.name:'')}]}
 function reflexOpening(sc,a){const c=sc.ctx;if(c.solo)return 'listen';const ld=byId(c.lead);if(ld===a)return 'introduce';
   return tm(a,'bold')>1.2&&ld&&a.lvl>ld.lvl?'lead':'introduce'}
@@ -151,6 +155,11 @@ function swearAt(sc,a,raw){const w=swearWord(raw);if(swearBlock(a,w))return '';i
 // What the first table asks of this hero alone (tableView): its thread, and that nothing binds it.
 function viewOpening(sc,a){if(sc.acts[a.id]||swornOf(a))return {};const t=threadText(a);
   return {swear:'You may swear your own oath as you act (swear: your words; "yes" takes up what your past holds, "no" sets it aside). Say nothing of it and you are bound to nothing.',...(t?{your_past:t}:{})}}
+// The first move in words, and the leader told it (at the first table, or at the hall gate after a first delve, #922).
+const firstLine=m=>m.job||m.writ?'Before them: '+[m.job?'the hall\'s job ('+m.job+')':null,m.writ?'the gate captain\'s writ ('+m.writ+')':null].filter(Boolean).join(' and ')+'.':'The board is bare; the road is theirs to choose.';
+export const firstMove=town=>({first:firstLine(firstMoves(town))});
+export function tellFirstMove(ld,first,many){if(ld&&ld.player)notify(ld,'The first move is yours to put to them: '+first+(many?' Propose it (propose, kind job) or name another road.':' Take it up (quests, take_quest) or choose your own road.'),true,2)}
+export const openingLead=leadOf;
 // The outcome: met, the leader, the first move. beats: the table's acts (none when no scene could open).
 function settleOpening(C,ctx,beats,title){const L=memOf(C),ids=beats.length?beats.map(b=>b.id):L.map(a=>a.id),here=ids.map(byId).filter(living);
   for(const a of here)for(const b of here)if(a!==b)(a.talkHeard||(a.talkHeard={}))[b.id]=1; // introductions at the opening count as met (sim/talk.js)
@@ -160,12 +169,12 @@ function settleOpening(C,ctx,beats,title){const L=memOf(C),ids=beats.length?beat
       if(P&&P.mem.includes(nl))P.leader=nl;tail=(ld?ld.name+' offers the lead and ':'')+nl.name+' takes it.';ld=nl}
     else if(want.length)tail=names(want.map(b=>b.name))+' offered to lead; '+(ld?ld.name:'the leader')+' keeps the head of the table.';
     else tail=(ld?ld.name+' leads, and no one says otherwise.':'')}
-  const first=ctx.job||ctx.writ?'Before them: '+[ctx.job?'the hall\'s job ('+ctx.job+')':null,ctx.writ?'the gate captain\'s writ ('+ctx.writ+')':null].filter(Boolean).join(' and ')+'.':'The board is bare; the road is theirs to choose.';
+  const pro=C.prologue&&PRO?PRO:null,first=pro?pro.ahead(C):firstLine(ctx);
   const out=(here.length>1?'Introductions are made. ':'')+tail+' '+first;
   campaign(C,'session',gd(title),': '+out.trim());
-  log(nar(''),gd(C.name||(here[0]||{}).name||'A company'),here.length>1?' sits down together for the first time in '+ctx.town+'.':' sets out from '+ctx.town+'.');
-  for(const a of here)remember(a,'table',(here.length>1?'Session zero in '+ctx.town+': we sat at one table, '+names(here.map(b=>b.name))+'. '+(ld?ld.name+' leads.':''):'Day one in '+ctx.town+'.')+' '+first);
-  if(ld&&ld.player)notify(ld,'The first move is yours to put to them: '+first+(here.length>1?' Propose it (propose, kind job) or name another road.':' Take it up (quests, take_quest) or choose your own road.'),true,2);
+  log(nar(''),gd(C.name||(here[0]||{}).name||'A company'),pro?' meets for the first time at the mouth of '+pro.where(C)+'.':here.length>1?' sits down together for the first time in '+ctx.town+'.':' sets out from '+ctx.town+'.');
+  for(const a of here)remember(a,'table',(pro?'Session zero at '+pro.where(C)+': we met at its mouth, '+names(here.map(b=>b.name))+'. '+(ld?ld.name+' leads.':''):here.length>1?'Session zero in '+ctx.town+': we sat at one table, '+names(here.map(b=>b.name))+'. '+(ld?ld.name+' leads.':''):'Day one in '+ctx.town+'.')+' '+first);
+  if(pro)pro.introduced(C);else tellFirstMove(ld,first,here.length>1);
   return out.trim()}
 
 // ---- the arrival (#452) ----
@@ -204,7 +213,7 @@ function place(C,a,where){const ld=leadOf(C)||a,town=isFellowship(C)?C.hall:ld.t
   if(where==='camp'){const g=C.camp;Object.assign(a,standAt(g.x+1.2,g.y+.9));a.state='camp';a.camp=g.ids.length;a.dest=null;a.moving=false;if(!g.ids.includes(a.id))g.ids.push(a.id);return 'the camp\'s edge'}
   const c=homeOf(ld),gt=c.gate||c.qg;if(gt){a.x=gt.x;a.y=gt.y}a.state='town';a.townStep=1;return 'the gate of '+c.name}
 function openArrival(C,q,where){const lead=leadOf(C);if(where==='town'&&lead&&lead.state!=='town')where='road';
-  const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=q.slot?lcRoleOf(q.slot):roleOf(a.cls);
+  const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=placeWord(a.cls);
   const title='A newcomer: '+a.name;
   const frame=[a,', a level '+a.lvl+' '+a.cls.toLowerCase()+', comes to '+at+', sent to take ',gd(q.name),'\'s place as the company\'s '+role+'.'];
   const ctx={arrival:1,recruit:a.id,fallen:q.fallen,fname:q.name,role,slot:q.slot||null,skip:[a.id],anchor:ld?ld.id:null,at,...(where==='town'?{setting:'tavern',town:homeOf(leadOf(C)||a).name}:{})};
@@ -238,6 +247,8 @@ function say(sc,text,from){const t=clean(text,ARRIVE.LINE_MAX);if(!t)return;cons
   const ids=sc.ids.concat(sc.ctx&&sc.ctx.recruit!=null?[sc.ctx.recruit]:[]);
   for(const id of ids){const b=byId(id);if(!living(b))continue;(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift()}
   sc.narr={t:e.t,text:t}}
+// What the campaign file's notes of one tag say (#922: the Prologue section), DM-only.
+export function campaignNotes(tag){const D=S.dmAgent,P=D&&D.notes&&D.notes.plans||[];return clean(P.filter(n=>(n.tags||[]).includes(tag)).map(n=>(n.title?n.title+': ':'')+n.text).join(' | '),600)}
 function premise(){const D=S.dmAgent;if(!D||!D.notes)return '';const P=(D.notes.plans||[]);
   const pr=P.filter(n=>(n.tags||[]).includes('premise')).map(n=>(n.title?n.title+': ':'')+n.text),ob=P.filter(n=>(n.tags||[]).includes('openings')).map(n=>n.text);
   return (pr.length?' Your premise: '+clean(pr.join(' | '),900)+'.':'')+(ob.length?' Your opening beats: '+clean(ob.join(' | '),600)+'.':'')}
@@ -245,10 +256,11 @@ const castOf=sc=>{const a=byId(sc.ctx.recruit);return a?[a.name+' (newcomer, lev
 const DM_OPEN={
   onFrame(sc){const L=sc.ids.map(byId).filter(living);
     push(sc,{kind:'frame',ms:TABLE.frameMs,who:'the narrator',about:'Session zero: frame the opening of the campaign for '+(sc.ctx.solo?L.map(a=>a.name+' ('+a.cls+', alone)').join(''):L.map(a=>a.name+' ('+a.cls+')').join(', '))+' in '+sc.ctx.town+
-      '. What the table already shows: '+plain(sc.frame)+premise()+' Write what they see and hear as they sit down (or set out): one or two short paragraphs. Hint at the premise through what can be seen; reveal none of your secrets; decide nothing for them.'})},
+      '. What the table already shows: '+plain(sc.frame)+premise()+(sc.ctx.prologue&&PRO?PRO.about(companyById(sc.company)||slotted()):'')+' Write what they see and hear as they sit down (or set out): one or two short paragraphs. Hint at the premise through what can be seen; reveal none of your secrets; decide nothing for them.'})},
   onAll(){},
   live,
-  fill(sc,c){resolve(sc,c,{text:pickH(sc.id,1,['The fire is low and the room smells of rain and old wood.','Outside, the gate bell marks the hour; inside, a bench scrapes as someone makes room.','Lamps along the road outside burn low, one already dark.'])+' '+plain(sc.frame),by:'scripted'})},
+  fill(sc,c){if(sc.ctx.prologue&&PRO){resolve(sc,c,{text:PRO.fillLine(companyById(sc.company)||slotted(),sc)+' '+plain(sc.frame),by:'scripted'});return}
+    resolve(sc,c,{text:pickH(sc.id,1,['The fire is low and the room smells of rain and old wood.','Outside, the gate bell marks the hour; inside, a bench scrapes as someone makes room.','Lamps along the road outside burn low, one already dark.'])+' '+plain(sc.frame),by:'scripted'})},
   done(sc){sc.summaryDone=1},
 };
 const DM_ARRIVE={
@@ -273,8 +285,10 @@ setSceneKind('arrival',{options:optsArrival,reflex:reflexArrival,apply:applyArri
 // runs after the DM's answer (the fireside reads rounds from it).
 const VOICED={opening:null,arrival:null};
 export function voicedKind(k,onAnswer){VOICED[k]=typeof onAnswer==='function'?onAnswer:null}
+// A scene of another kind the DM voices only sometimes (#922: a first delve's rooms, sim/prologue.js).
+const ALSO=[];export const voicedScene=f=>{ALSO.push(f)};
 export {push as pushCall,resolve as resolveCall,live as voiceLive,say as sayAtTable};
-export const ourScene=()=>findScene(sc=>sc.kind in VOICED); // any company's (#518)
+export const ourScene=()=>findScene(sc=>sc.kind in VOICED||ALSO.some(f=>f(sc))); // any company's (#518)
 export function sceneCall(){heard('table');const sc=ourScene();if(!sc)return null;const c=(sc.calls||[]).find(x=>!x.done)||null;
   const out={ok:true,staged:null,scene:{title:sc.title,kind:sc.kind,frame:plain(sc.frame),order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+')'),
     so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.kind==='arrival'?castOf(sc):[]},call:null};
@@ -291,7 +305,7 @@ export function sceneAnswer(a){a=a&&typeof a==='object'?a:{};const sc=ourScene()
 export function sessionTick(){const O=S.opening,CS=S.companies;
   if(!(O&&O.queue&&O.queue.length)&&!(CS&&CS.some(C=>C.arrivals&&C.arrivals.length)))return; // the common case: nothing to open
   if(!hosted()){if(O&&!O.queue.length)delete S.opening;return}
-  if(O&&O.queue&&O.queue.length){if(prepActive())return;const i=O.queue.findIndex(q=>heirReady(q)&&!sceneFor(companyById(q.company))&&gathered(q));
+  if(O&&O.queue&&O.queue.length){if(prepActive())return;if(PRO)PRO.ready();const i=O.queue.findIndex(q=>heirReady(q)&&!sceneFor(companyById(q.company))&&gathered(q));
     if(i>=0){const q=O.queue.splice(i,1)[0];if(!O.queue.length)delete S.opening;openOpening(q);return}}
   for(const C of companies()){if(!C.arrivals||!C.arrivals.length||sceneFor(C))continue; // each company its own table (#518)
     const where=settled(C)||(noOthers()&&!memOf(C).length?'town':false)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!memOf(C).some(cryptOfHero)?'town':false);if(!where)continue;
