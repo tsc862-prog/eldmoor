@@ -103,5 +103,5 @@ for(const c of CITY){const B=c.buildings||[];ok(B.length>=6,c.name+': has its bu
   ok(bad===0,'400 game minutes: no hero or townsperson stands still inside a building ('+bad+')')}
 console.log('solid tiles:',JSON.stringify(solidCounts()));
 // the other world, once
-if(!process.env.ELDMOOR_WORLD&&!process.env.PASSABLE_CHILD){const r=spawnSync(process.execPath,[process.argv[1]],{env:{...process.env,ELDMOOR_WORLD:'stepping',PASSABLE_CHILD:'1'},stdio:'inherit'});if(r.status)fail++}
+if(!process.env.ELDMOOR_WORLD&&!process.env.PASSABLE_CHILD)for(const w of ['stepping','vale']){const r=spawnSync(process.execPath,[process.argv[1]],{env:{...process.env,ELDMOOR_WORLD:w,PASSABLE_CHILD:'1'},stdio:'inherit'});if(r.status)fail++}
 if(fail){console.log(fail+' check(s) failed');process.exit(1)}console.log('passablecheck ok');
