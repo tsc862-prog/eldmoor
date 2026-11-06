@@ -47,5 +47,10 @@ export const SAVE_VERSION=7;
 export const newWorldId=()=>'w'+Date.now().toString(36)+[...globalThis.crypto.getRandomValues(new Uint8Array(5))].map(b=>b.toString(36).padStart(2,'0')).join('').slice(0,6);
 // The world setting others (#780): 'none' = no background heroes, only the setup's and whoever the DM summons. S.setup holds it, so a load keeps it.
 export const noOthers=()=>!!(S.setup&&S.setup.others==='none');
+// The world setting sides (#1025): 'lore' = Concord and Warband are peoples and history, not sides. S.setup holds it, so a load keeps it; a seeded or
+// older world has no such field and every gate reads as before. a.fac stays set on every hero and town as a lore tag.
+export const loreSides=()=>!!(S.setup&&S.setup.sides==='lore');
+export const sameSide=(a,b)=>loreSides()||a.fac===b.fac; // may these two stand together? Everyone may, in a lore world
+export const ownTown=(c,a)=>loreSides()||c.fac===a.fac; // does this town take hero a in? Any town does, in a lore world
 export const dayNo=()=>Math.floor(S.gameMin/1440)+1; // game day, 1-based (the UI shows D4 03:12 with it)
 export const clockStr=()=>{const m=Math.floor(S.gameMin)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};

@@ -14,7 +14,7 @@
 //             p:{placeName:{how:'home'|'been'|'seen'|'told', at, hurt, fell, warned, dm}}}
 //   dm: the id of a DM-marked place (S.places, #423), learned like a landmark; the entry fades with the marker.
 //   key: a MOBS key, a VARIANTS key (site foes), or 'n:'+name for a named elite or an adventure's named foe.
-import {S} from './state.js';
+import {S,ownTown} from './state.js';
 import {hash} from '../core/rng.js';
 import {ZONES,REGIONS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
@@ -221,7 +221,7 @@ export function loreView(a,about){const L=loreOf(a),q=clean(about,60).toLowerCas
   let cs=Object.keys(L.c).map(k=>creatureLine(a,k,L.c[k])),ps=Object.keys(L.p).map(n=>placeLine(a,n,L.p[n]));
   if(q){cs=cs.filter(x=>x.name.toLowerCase().includes(q)||(x.known||[]).some(s=>s.toLowerCase().includes(q)));ps=ps.filter(x=>x.place.toLowerCase().includes(q)||(x.notes||[]).some(s=>s.toLowerCase().includes(q)))}
   const hp=Object.keys(L.h||{}).map(n=>({person:n,how:'you have heard of them from '+L.h[n].from})).filter(x=>!q||x.person.toLowerCase().includes(q));
-  return {creatures:cs,places:ps,towns:CITY.filter(c=>c.fac===a.fac).map(c=>c.name),...(hp.length?{people:hp}:{})}}
+  return {creatures:cs,places:ps,towns:CITY.filter(c=>ownTown(c,a)).map(c=>c.name),...(hp.length?{people:hp}:{})}}
 // status.places: where this hero can walk by name.
 export function placesView(a){const L=loreOf(a);return Object.keys(L.p).map(n=>{const p=L.p[n],w=[];if(p.how==='home')w.push('home');else if(p.mk===1)w.push('yours');else if(p.mk)w.push('told by '+(p.src||'a companion'));else if(p.how==='told')w.push('heard of'+(p.from?' from '+p.from:''));{const y=dangerWhy(a,n,p);if(y)w.push('danger: '+y);else if(p.hurt||p.fell||p.warned)w.push('danger')}return w.length?n+' ('+w.join(', ')+')':n})}
 // The hero's warning words for a known region (move_to/lead_to), or null.
