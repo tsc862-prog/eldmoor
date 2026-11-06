@@ -17,6 +17,7 @@ import {heroSprite,outlined} from '../render/sprites.js';
 import {saveSummary,exportStored,importFile,takeSkipTitle,hasPending,afterReset} from './save.js';
 import {openSetup,pollRelay,watchRelay,relayState,pulledModels} from './setup.js';
 import {notesFrom,noteLabel} from './patchnotes.js';
+import {worldFacts,worldPreview} from '../render/worldpreview.js';
 
 const HELP_URL='https://github.com/tsc862-prog/eldmoor#readme';
 const DEFAULT_FIVE=['Warrior','Priest','Mage','Hunter','Rogue'];
@@ -78,12 +79,20 @@ function art(sum){const c=el('canvas','tart');const F=sum&&sum.fellowship;
     const sp=outlined(heroSprite(a,!!h.dead,0));x.drawImage(sp,i*W+Math.round((W-sp.width*S)/2),H-sp.height*S-2,sp.width*S,sp.height*S)}catch(e){}});
   x.fillStyle='#2e3456';x.fillRect(0,H-2,c.width,2);return c}
 
-function mapRow(){const row=el('div','tmap');row.setAttribute('role','group');row.setAttribute('aria-label','World map');
-  row.append(el('span','tlbl','Map'));
-  for(const id of Object.keys(WORLDS)){const sum=id===WORLD_ID?st.sum:saveSummary(id);
-    const b=btn(worldName(id),'map','tmapbtn');b.dataset.world=id;b.setAttribute('aria-pressed',String(id===WORLD_ID));
-    b.title=sum?'Saved world: day '+sum.day:'No saved world yet';b.append(el('span','tmapsub',sum?'day '+sum.day:'new'));row.append(b)}
-  return row}
+// The maps (WORLDS, however many): one card each with a small picture drawn from the built map, its name, a line about it,
+// its size and shape, and the save it holds. The card for the map this page runs is marked and the others reload into theirs.
+function worldCard(id){const f=worldFacts(id),on=id===WORLD_ID,sum=on?st.sum:saveSummary(id);
+  const b=el('button','tbtn tworld'+(on?' on':''));b.type='button';b.dataset.a='map';b.dataset.world=id;b.setAttribute('aria-pressed',String(on));
+  b.title=(sum?'Saved world: day '+sum.day+'. ':'No saved world yet. ')+(on?'This is the map you are on.':'Switch to this map (the page reloads).');
+  b.append(worldPreview(id,'tpv'));
+  const body=el('span','twbody');
+  const head=el('span','twhead');head.append(el('span','twname',f.name));
+  head.append(el('span','twtag'+(on?' on':''),on?'On this map':sum?'Day '+sum.day:'New'));body.append(head);
+  body.append(el('span','twblurb',f.blurb),el('span','twfact',f.line1),el('span','twfact',f.line2));
+  b.append(body);return b}
+function mapRow(){const row=el('section','tworlds');row.setAttribute('aria-label','World map');
+  row.append(el('div','tlbl','Choose a map'));
+  const grid=el('div','twgrid');for(const id of Object.keys(WORLDS))grid.append(worldCard(id));row.append(grid);return row}
 
 function relayText(){const s=relayState(),models=pulledModels();
   const t={checking:'Checking the relay…',offline:'Relay offline: agents will not play until it runs (npm run relay -- --runners).',
@@ -94,6 +103,7 @@ function paintRelay(){if(!root)return;const n=root.querySelector('.trelay');if(!
 
 function render(){const page=el('div','tpage'),sum=st.sum;
   page.append(art(sum),el('h1','ttl','Eldmoor'),el('div','tsub','A hardcore 8-bit world played by AI heroes. You watch the Fellowship’s story.'));
+  const cur=el('div','tcur');cur.append('Playing on ',el('b',null,worldName(WORLD_ID)));page.append(cur);
   page.append(mapRow());
   const menu=el('div','tmenu');
   if(sum){const c=btn('Continue','continue','primary');c.setAttribute('aria-describedby','tsaveline');menu.append(c);
