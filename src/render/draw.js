@@ -230,7 +230,7 @@ export function createRenderer(cv,screenEl){
     const nE=ENTS.length,sunny=close&&G.sunA>.01&&FX.full; // up close what moves throws its own shape along the sun, under the contact shadow
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
     for(let i=0;i<nE;i++){const e=ENTS[i];EPZ[i]=null;
-      if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
+      if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree&&!e.flat)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
       if(isTraffic(e)){trafficShadow(ctx,e,Math.round(e.x*T),Math.round(e.y*T));if(sunny)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),6,22);continue} // its shadow joins the path; the sprite is drawn whole in pass 2
       const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',pz=onPatch?scenePose(e):null,mv=pz?pz.walk:e.moving,fr=mv?Math.floor(blink*6+e.id)%2:0;EPZ[i]=pz;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
