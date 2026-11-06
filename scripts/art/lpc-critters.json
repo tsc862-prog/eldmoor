@@ -1,0 +1,30 @@
+{
+  "about": "Town and wild critter sheets (epic #830), cut by scripts/art/lpc-critters.mjs from LPC-compatible animal sets, as render/critters.js draws them: sprite:critter-<kind>-<variant>, the variant being the index of that kind's palette in critters.js, and birds also sprite:critter-<kind>-<variant>-fly. `sets` is where a set comes from and the licence it is used under: only CC-BY-SA 3.0, OGA-BY 3.0 or CC0. A kind: `set`, `src` the image in assets/packs/<set>/, `cell` [w, h] a frame, `dirs` the source row per sheet row (down, left, right, up), `fly` the same for a bird's flying frames, `cols` the source columns of stand, step, other step, `flip` the sheet rows mirrored from their source row, `xs`/`ys` where the frames of an uneven sheet start, `key` a background colour to clear, `outline` one art pixel round the figure, `ground` true when each frame must stand on the bottom row by itself (the rabbit's hop moves inside its cells), `side` true when the set has no front or back view (the renderer then keeps to left and right). A variant: `dc` a column offset (the colour blocks of a sheet), `tone` a colour multiplied over the grey pixels (white fur into brown), `map` exact colour swaps. Nothing is scaled: frames are cut at the set's own pixels. Not every kind is what it says: the goat is the LPC ram, and the chicken and deer are CC0 art that is LPC-compatible rather than LPC, because the LPC chicken, goat and deer are offered under CC-BY or GPL only.",
+  "sets": {
+    "lpc-cats-dogs": {"title": "[LPC] Cats and Dogs", "licence": "OGA-BY 3.0", "offered": "CC-BY 3.0, CC-BY-SA 3.0, GPL 2.0, GPL 3.0, OGA-BY 3.0", "authors": "bluecarrot16", "url": "https://opengameart.org/content/lpc-cats-and-dogs"},
+    "lpc-rabbit": {"title": "Reorganised LPC rabbit", "licence": "OGA-BY 3.0", "offered": "CC-BY 3.0, CC-BY-SA 3.0, OGA-BY 3.0", "authors": "Stephen Challener (Redshrike), commissioned by tebruno99; reorganised by Evert", "url": "https://opengameart.org/content/reorganised-lpc-rabbit"},
+    "lpc-birds": {"title": "[LPC] Birds", "licence": "OGA-BY 3.0", "offered": "CC-BY 3.0, CC-BY 4.0, CC-BY-SA 3.0, CC-BY-SA 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0", "authors": "bluecarrot16", "url": "https://opengameart.org/content/lpc-birds"},
+    "lpc-ram": {"title": "LPC style ram (male sheep)", "licence": "CC-BY-SA 3.0", "offered": "CC-BY-SA 3.0, GPL 3.0", "authors": "Evert", "url": "https://opengameart.org/content/lpc-style-ram-male-sheep"},
+    "chicken-sprites": {"title": "Chicken Sprites", "licence": "CC0", "offered": "CC0", "authors": "Shepardskin", "url": "https://opengameart.org/content/chicken-sprites"},
+    "wild-deer": {"title": "Animated Wild Animals (Deer)", "licence": "CC0", "offered": "CC0", "authors": "ScratchIO", "url": "https://opengameart.org/content/animated-wild-animals"}
+  },
+  "kinds": {
+    "cat": {"set": "lpc-cats-dogs", "src": "cat_0.png", "cell": [32, 32], "dirs": [2, 3, 0, 1], "cols": [1, 0, 2],
+      "variants": [{"dc": 4}, {"dc": 12}, {"dc": 0}]},
+    "dog": {"set": "lpc-cats-dogs", "src": "dog_2.png", "cell": [32, 32], "dirs": [2, 3, 0, 1], "cols": [1, 0, 2],
+      "variants": [{"dc": 4}, {"dc": 12}, {"dc": 8}]},
+    "hare": {"set": "lpc-rabbit", "src": "rabbit_3.png", "cell": [72, 72], "dirs": [2, 1, 3, 0], "cols": [0, 1, 2], "ground": true,
+      "variants": [{"tone": "#b08a60"}, {}]},
+    "goat": {"set": "lpc-ram", "src": "ram_walk.png", "cell": [128, 128], "dirs": [2, 1, 3, 0], "cols": [0, 1, 3],
+      "variants": [{}, {"tone": "#a07a54"}]},
+    "crow": {"set": "lpc-birds", "src": "bird_2_black.png", "cell": [32, 32], "dirs": [6, 4, 7, 5], "cols": [0, 1, 2], "fly": [2, 0, 3, 1],
+      "variants": [{}]},
+    "gull": {"set": "lpc-birds", "src": "bird_2_white.png", "cell": [32, 32], "dirs": [6, 4, 7, 5], "cols": [0, 1, 2], "fly": [2, 0, 3, 1],
+      "variants": [{}]},
+    "chicken": {"set": "chicken-sprites", "src": "chicken/chickenoriginal.gif", "key": "#a475a0", "cell": [11, 12], "xs": [0, 12, 24, 35, 47, 59, 71], "ys": [0, 12, 24],
+      "dirs": [1, 0, 0, 2], "flip": [2], "cols": [2, 3, 5], "outline": "#2a2024",
+      "variants": [{"map": {"#1c1c1c": "#c4b8a4", "#383838": "#f2ecdc"}}, {"map": {"#1c1c1c": "#8a5430", "#383838": "#c08a54"}}, {}]},
+    "deer": {"set": "wild-deer", "src": "Deer/Deer_Walk.png", "cell": [72, 52], "dirs": [0, 0, 0, 0], "flip": [2, 3], "cols": [0, 2, 6], "side": true,
+      "variants": [{}]}
+  }
+}

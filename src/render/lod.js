@@ -40,10 +40,10 @@ const beastOf={};
 function beast(m){const p=beastOf[m.type]||(beastOf[m.type]=[null,null]),i=m.face<0?1:0;if(p[i])return p[i];
   const M=MOBS[m.type],c=outlined(sprite(m.type+'0',SPR[M.spr][0],M.col)),b=p[i]=bucket(i?mirrored(c):c);BEASTS.push(b);return b}
 
-// Marks never ask for a sprite sheet, and a sheet only starts loading when asked for: one hero and one creature a frame
+// Marks never ask for a sprite sheet, and a sheet only starts loading when asked for: one hero, one creature and one townsperson a frame
 // asks here, so the sheets are in by the time the watcher zooms in.
 let warmAt=0;
-function warm(S){warmAt++;const a=S.agents,m=S.mobs;if(a.length)sheetFrame(a[warmAt%a.length],0,0);if(m.length)sheetFrame(m[warmAt%m.length],0,0)}
+function warm(S){warmAt++;const a=S.agents,m=S.mobs,p=S.npcs;if(a.length)sheetFrame(a[warmAt%a.length],0,0);if(m.length)sheetFrame(m[warmAt%m.length],0,0);if(p&&p.length)sheetFrame(p[warmAt%p.length],0,0)}
 
 // Queue the world's marks and push the entities that keep a full sprite onto out (draw.js's y-sorted list).
 export function gatherFar(S,cam,inView,margin,out){if(!FACS)looks();warm(S);

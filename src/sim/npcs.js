@@ -52,6 +52,7 @@ export const townNpc=(c,role)=>(S.npcs||[]).find(p=>p.town===c.name&&p.role===ro
 
 // Homes: a row along the back wall (opposite the gate), spread over the interior.
 function homeAt(c,i,n){const f=(i+.5)/n,g=c.gateSide;
+  if(c.homes){const [[ax,ay],[bx,by]]=c.homes;return{x:c.x0+ax+(bx-ax)*f,y:c.y0+ay+(by-ay)*f}} // a town whose back wall is all roofs says which lane they live on
   if(g==='E')return{x:c.x0+1.5,y:c.y0+1.5+f*(c.h-3)};
   if(g==='W')return{x:c.x1-1.5,y:c.y0+1.5+f*(c.h-3)};
   if(g==='S')return{x:c.x0+1.5+f*(c.w-3),y:c.y0+1.5};

@@ -58,7 +58,7 @@ h1{font-family:var(--px);font-size:clamp(20px,4vw,30px);margin:0;color:var(--gol
 .screen{position:relative;aspect-ratio:640/400;max-width:100%;background:#000;border:3px solid var(--edge);box-shadow:0 0 0 3px #05060c,6px 6px 0 0 #05060c;cursor:pointer;touch-action:manipulation}
 .screen canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
 .hint{position:absolute;left:8px;bottom:8px;font-family:var(--px);font-size:8px;color:#fff;background:rgba(0,0,0,.6);padding:5px 6px;pointer-events:none}
-.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;position:sticky;bottom:0;z-index:7;background:var(--bg);padding:6px 0 4px;box-shadow:0 -6px 0 var(--bg)}
 .group{display:flex;flex-wrap:wrap;gap:4px;max-width:100%}
 .lbl{font-family:var(--px);font-size:8px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;margin-right:4px}
 button{font-family:var(--px);font-size:10px;color:var(--ink);background:var(--panel2);border:2px solid var(--edge);padding:8px 10px;cursor:pointer;box-shadow:2px 2px 0 #05060c}
@@ -581,17 +581,33 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 /* Title screen: shown once per page load before any world runs (ui/title.js); same pixel look, one column, phone first */
 .title{position:fixed;inset:0;z-index:55;overflow:auto;background:var(--bg);padding:24px max(16px,env(safe-area-inset-left,0px)) 28px max(16px,env(safe-area-inset-right,0px));-webkit-overflow-scrolling:touch;box-sizing:border-box}
 .title[hidden]{display:none}
-.tpage{max-width:560px;margin:0 auto;display:flex;flex-direction:column;align-items:stretch;gap:14px;min-width:0}
+.tpage{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;align-items:stretch;gap:14px;min-width:0}
 .tart{display:block;margin:8px auto 0;max-width:100%;height:auto;image-rendering:pixelated}
 .ttl{text-align:center;font-size:clamp(26px,8vw,44px);margin:0}
-.tsub{text-align:center;color:var(--dim)}
-.tmap{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:center}
+.tsub{text-align:center;justify-content:center;color:var(--dim)}
+.tpage>.tmenu,.tpage>.tnews,.tpage>.trelay,.tpage>.tmsg,.tpage>.tfoot{width:100%;max-width:560px;align-self:center;box-sizing:border-box}
+.tcur{text-align:center;color:var(--dim);font-size:20px}
+.tcur b{color:var(--gold);font-weight:normal}
+/* The map choice: a card per world with its picture drawn from the built map (render/worldpreview.js) */
+.tworlds{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tworlds .tlbl{text-align:center}
+.twgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px;min-width:0}
+button.tbtn.tworld{display:flex;flex-direction:column;align-items:stretch;gap:10px;width:100%;padding:10px;text-align:left;font-family:var(--mono);font-size:18px;letter-spacing:0;text-transform:none;min-width:0;line-height:1.15}
+button.tbtn.tworld[aria-pressed="true"]{background:#1a1f3a;color:var(--ink)}
+button.tbtn.tworld.on{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),4px 4px 0 #05060c}
+button.tbtn.tworld:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.twpic{display:flex;align-items:center;justify-content:center;min-height:204px}
+.tpv,.spv{display:block;align-self:center;max-width:100%;height:auto;image-rendering:pixelated;border:2px solid var(--edge);background:#0a0c18}
+.twbody{display:flex;flex-direction:column;gap:4px;min-width:0}
+.twhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.twname{font-family:var(--px);font-size:11px;color:var(--ink);letter-spacing:.04em}
+.twtag{font-family:var(--px);font-size:7px;color:var(--dim);letter-spacing:.06em;text-transform:uppercase;white-space:nowrap}
+.twtag.on{color:var(--gold)}
+.twblurb{color:var(--ink)}
+.twfact{color:var(--dim)}
 .tlbl{font-family:var(--px);font-size:8px;color:var(--dim);letter-spacing:.08em;text-transform:uppercase}
-button.tmapbtn{font-size:9px;display:inline-flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
-.tmapsub{font-family:var(--mono);font-size:16px;letter-spacing:0}
 .tmenu{display:flex;flex-direction:column;gap:10px;background:var(--panel);border:2px solid var(--edge);box-shadow:4px 4px 0 #05060c;padding:14px;min-width:0}
 button.tbtn{font-size:11px;padding:12px 14px;width:100%;text-align:center}
-button.tmapbtn.tbtn{width:auto;padding:8px 12px}
 button.tbtn.primary{background:var(--gold);color:#1a1206;border-color:var(--gold)}
 button.tbtn.danger{border-color:var(--red)}
 .tsave{color:var(--dim);font-size:18px;overflow-wrap:anywhere;margin-top:-4px}
@@ -1022,5 +1038,68 @@ body:not(.docked) .fellately .flately{max-height:320px;overflow-y:auto}
   .title .tnews .tnread{width:auto;padding:8px 14px}
   .title .tpage{zoom:1.6;max-width:1500px;margin-top:6vh;display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);column-gap:40px;align-content:start}
   .title .tpage>*{grid-column:1}
-  .title .tpage>.tnews{grid-column:2;grid-row:1/span 7;align-self:start}
+  .title .tpage>.tart,.title .tpage>.ttl,.title .tpage>.tsub,.title .tpage>.tcur,.title .tpage>.tworlds{grid-column:1/-1}
+  .title .tpage>.tnews{grid-column:2;grid-row:auto/span 5;align-self:start}
 }
+/* The cinema view (#979, ui/cinema.js, render/director.js): the map is the whole window. The page stays laid out under it, hidden
+   by visibility, so scroll positions and open rows survive; .cinhole keeps the map's height in its column. The overlays are thin
+   and sit under the run gate, the alerts and anything else that asks the watcher to answer. */
+.cinhole[hidden],.cinema[hidden]{display:none}
+html:has(body.cinema),body.cinema{overflow:hidden}
+body.cinema .shell{visibility:hidden}
+body.cinema .screen{visibility:visible;position:fixed;inset:0;z-index:30;width:auto;height:auto!important;max-width:none;aspect-ratio:auto;border:0;box-shadow:none;cursor:default;background:#000}
+body.cinema.cinidle .screen{cursor:none}
+body.cinema .hint,body.cinema .minimap{display:none}
+body.cinema #holdbar{bottom:72px!important}
+body.cinema .tbanner{background:rgba(8,10,20,.78);border-color:rgba(120,130,170,.35);box-shadow:none}
+.cinema{position:absolute;inset:0;z-index:4;pointer-events:none}
+.cinclock,.cincap,.cinplates,.cinbar,body.cinema .rgate,body.cinema .ralert{zoom:var(--uiz)}
+.cinclock{position:absolute;right:12px;top:10px;text-align:right;padding:5px 9px 4px;background:rgba(8,10,20,.55);text-shadow:1px 1px 0 #000}
+.cinc{font-family:var(--px);font-size:9px;color:var(--ink);font-variant-numeric:tabular-nums}
+.cinz{margin-top:3px;font-size:17px;line-height:1;color:#c8cce0}
+.screen.scopen .cinclock{right:auto;left:12px}
+.cinshade{position:absolute;left:0;right:0;bottom:0;height:calc(150px * var(--uiz));background:linear-gradient(to top,rgba(6,7,14,.82),rgba(6,7,14,.62) 55%,rgba(6,7,14,0));opacity:0;transition:opacity .7s ease}
+.cinshade.on{opacity:1}
+.cincap{position:absolute;left:0;right:0;bottom:60px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0 24px;text-align:center}
+.cinsight{font-family:var(--px);font-size:9px;line-height:1.5;color:var(--gold);text-shadow:2px 2px 0 #000;padding:3px 8px;background:rgba(8,10,20,.42)}
+.cinsight[hidden]{display:none}
+.cinlines{display:flex;flex-direction:column;align-items:center;gap:2px;max-width:min(1100px,100%)}
+.cinl{font-size:23px;line-height:1.08;color:#f4efdc;text-shadow:2px 2px 0 #000,0 0 7px rgba(0,0,0,.9);overflow-wrap:anywhere;animation:cinin .7s ease-out both,cinout 1.2s ease-in 12.8s forwards}
+.cinl.story{color:#e8d8b0;font-style:italic}
+.cinw{color:var(--gold)}
+@keyframes cinin{from{opacity:0}to{opacity:1}}
+@keyframes cinout{to{opacity:0}}
+.screen.scopen .cincap,.screen.scopen .cinshade{display:none}
+.cinplates{position:absolute;left:12px;right:12px;bottom:8px;display:flex;justify-content:center;gap:6px;min-width:0}
+.cinp{flex:0 1 220px;min-width:0;height:40px;display:flex;align-items:center;gap:6px;padding:2px 8px 2px 6px;background:rgba(8,10,20,.5);border:1px solid rgba(150,160,200,.22);box-shadow:none;color:var(--ink);font-family:var(--mono);font-size:19px;text-transform:none;letter-spacing:0;pointer-events:auto;cursor:pointer}
+.cinp:hover,.cinp:focus-visible{background:rgba(8,10,20,.72);border-color:rgba(242,193,78,.7);outline:none}
+.cinp.sel{border-color:rgba(242,193,78,.6)}
+.cinp.down,.cinp.low{border-color:rgba(232,84,74,.75)}
+.cinp.dead{opacity:.55}
+.cinp canvas.cinf{display:block;flex:none;width:30px;height:auto;image-rendering:pixelated}
+.cint{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px}
+.cinr{display:flex;justify-content:space-between;align-items:baseline;gap:8px;line-height:1;min-width:0;text-shadow:1px 1px 0 #000}
+.cinn{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cins{flex:none;font-size:16px;color:#c8cce0}
+.cinp.down .cins{color:#ff9a8a}
+.cinm{display:block;height:4px;background:rgba(0,0,0,.55)}
+.cinm i{display:block;height:100%;background:var(--green)}
+.cinp.low .cinm i,.cinp.down .cinm i{background:var(--red)}
+.cinbar{position:absolute;left:12px;top:10px;display:flex;gap:4px;pointer-events:auto}
+.cinbar[hidden]{display:none}
+.screen.scopen .cinbar{top:52px}
+body.cinema .scview.scout .dgbar{display:none}
+body.cinema .screen.scopen .tbanner:not(.tlive){bottom:auto;max-height:calc(100% - 110px)}
+.screen.dgopen .cinplates,.screen.dgopen .cincap,.screen.dgopen .cinshade,.screen.dgopen .cinz,.screen.scin .cinplates,.screen.scin .cincap,.screen.scin .cinshade,.screen.scin .cinz{display:none}
+@media (max-width:700px){.cinf,.cins{display:none}.cinp{height:30px;padding:2px 5px;font-size:16px}.cinl{font-size:19px}.cincap{bottom:46px;padding:0 16px}.cinplates{left:8px;right:8px;gap:3px}}
+
+/* Setup: the chosen map beside its fields (ui/setup.js worldCard) */
+.swcard{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;border:2px solid var(--edge);padding:10px;min-width:0;background:#0d1020}
+.swcard.other{border-color:var(--amber)}
+.swbody{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 220px}
+.swname{font-family:var(--px);font-size:11px;color:var(--gold);letter-spacing:.04em}
+.swblurb{color:var(--ink)}
+.swfact{color:var(--dim)}
+.swnote{color:var(--amber)}
+.sopen{grid-column:1/-1}
+.swcard{max-width:720px}
