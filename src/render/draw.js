@@ -33,7 +33,7 @@ import {drawCamp,drawCampLight} from './camp.js';
 import {trafficEnts,isTraffic,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
-import {getChunk,CH,CHUNKS_X,CHUNKS_Y,chunkGen} from './terrain.js';
+import {getChunk,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {drawWholeMap} from './wholemap.js'; // company rings and name tags in the whole-map view (#844)
 import {syncSpells,drawSpells} from './spellfx.js';
@@ -178,7 +178,7 @@ export function createRenderer(cv,screenEl){
   // 0 camera+terrain, 1 ground layers (encounters, places, camp, spells), 2 entities (gather, sort, draw), 3 bolts and
   // weather, 4 night, lights and spells in the air, 5 labels and Fellowship markers, 6 bubbles, floating text and the minimap.
   let PH=null;const ph=i=>{if(PH){const t=performance.now();PH.ms[i]+=t-PH.t;PH.t=t}};
-  let blink=0;
+  let blink=0,frameNo=1;
   function draw(){PH=globalThis.__drawPhases&&globalThis.__drawPhases.on?globalThis.__drawPhases:null;if(PH){PH.t=performance.now();PH.n++}
     trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
     if(drawSceneView(performance.now()/1000)){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');return} // an indoor scene map covers the world too (#431)
@@ -230,6 +230,10 @@ export function createRenderer(cv,screenEl){
     if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
     lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;
     if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS); // road traffic, skipped at whole-map zoom (#856)
+    // whole trees (#834) are painted into the terrain chunk, under everything; one that stands in front of an entity (rooted below its feet)
+    // is sorted in among the entities and drawn again over it, with the trees near it, so a hero walks behind a trunk and not over a crown
+    if(close){const n=ENTS.length;for(let i=0;i<n;i++)treesNear(ENTS[i].x,ENTS[i].y,ENTS,frameNo)}
+    frameNo++;
     ENTS.sort(byY);
     // Pass 1 (#716): each entity's sprite (or generated sheet frame), size and x, and the shadows in one path a frame (the
     // living at full alpha, ghosts in a second path at theirs) instead of one fill per entity. Shadows now all sit under
@@ -237,7 +241,7 @@ export function createRenderer(cv,screenEl){
     const nE=ENTS.length;
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
     for(let i=0;i<nE;i++){const e=ENTS[i],ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',fr=e.moving?Math.floor(blink*6+e.id)%2:0;
-      if(e.kind==='deco'||isTraffic(e)){ESPR[i]=null;continue} // drawn whole in pass 2, with their own shadow
+      if(e.kind==='deco'||e.tree||isTraffic(e)){ESPR[i]=null;continue} // drawn whole in pass 2, with their own shadow
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
       else if(e.kind==='npc')s=npcSprite(e,e.moving?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
@@ -257,16 +261,17 @@ export function createRenderer(cv,screenEl){
     // Pass 2: the sprites in y order, and what rides on each. A mirrored sprite sets the transform once instead of
     // save/translate/scale/restore.
     const tf=ctx.getTransform();
-    for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=Math.round(e.y*T),live=e.state!=='dead';
-      if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);continue} // critters, stalls and guards (townlife.js)
-      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
-      if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
+    let ghostA=1; // 1, or the see-through strength of a member drawn again over the tree that stands in front of it
+    const drawEnt=i=>{const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=Math.round(e.y*T),live=e.state!=='dead';
+      if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);return} // critters, stalls and guards (townlife.js)
+      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);return}
+      if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6*ghostA;
       if(close&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
       if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);
       else{const o=worldSprite(s,live),ow=live?1/ART:0,x0=-Math.floor(s.width/2)*PROC_SCALE-ow; // living entities get the dark outline, one art pixel wide
         if(e.face<0){ctx.setTransform(-tf.a,0,0,tf.d,tf.e+px*tf.a,tf.f);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);ctx.setTransform(tf)} // mirrored about px
         else ctx.drawImage(o,px+x0,py-sh-ow,o.width/ART,o.height/ART)}
-      ctx.globalAlpha=1;
+      ctx.globalAlpha=ghostA;
       const top=py-sh;
       // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
       if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle=MARK.quest;ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
@@ -276,7 +281,12 @@ export function createRenderer(cv,screenEl){
         ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
       if(e.kind==='hero'&&!cut)drawIntentIcon(ctx,S,cam,e,px,top,sw,close); // the intent icon at the right shoulder (#534)
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
-    }
+    };
+    for(let i=0;i<nE;i++){const e=ENTS[i];
+      if(e.tree){drawTree(ctx,e); // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
+        for(let j=0;j<i;j++){const o=ENTS[j];if(o.tree||Math.abs(o.x-e.x)>2.4||o.y>=e.y||o.y<e.y-5||!(o===sel||(o.kind==='hero'&&inSlots(o))))continue;ghostA=.45;ctx.globalAlpha=.45;drawEnt(j);ghostA=1;ctx.globalAlpha=1}
+        continue}
+      drawEnt(i)}
     ph(2);
     // effects: bolts leave a short fading trail; the boss's breath ring
     for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;if(!inView(p.x0*T,p.y0*T,96))continue;ctx.fillStyle=p.col;

@@ -15,7 +15,7 @@ const out=o.out||join(ROOT,'logs','art','sheet.html'),dir=o.assets||ASSETS,tier=
 const man=loadManifest(),idx=loadIndex(dir);
 const PAL=await import('../../src/render/palette.js');
 const {FAC}=await import('../../src/data/factions.js');
-const {texel,ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS}=await import('../../src/render/terrain.js');
+const {texel,ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_CANOPY}=await import('../../src/render/terrain.js');
 const {tiles}=await import('../../src/world/map.js');
 const {W,H}=await import('../../src/world/tiles.js');
 
@@ -24,7 +24,7 @@ const uri=b=>'data:image/png;base64,'+Buffer.from(b).toString('base64');
 // up) starting at the first tile of that type.
 // A transition piece ([A,B]) shows A on its top half and B below, each from a tile of that type; a tree or rock
 // variant shows the procedural tile it stands on (a tree, or plain ground: rocks have no procedural version).
-function tileFallback(id,[w,h]){const v=ASSET_TILES[id]??ASSET_ROAD[id]??ASSET_EDGES[id]??ASSET_PROPS[id];if(v===undefined)return null;
+function tileFallback(id,[w,h]){const v=ASSET_TILES[id]??ASSET_ROAD[id]??ASSET_EDGES[id]??ASSET_PROPS[id]??ASSET_CANOPY[id];if(v===undefined)return null;
   const pair=Array.isArray(v)?v:[v,v],first=t=>{for(let i=0;i<W*H;i++)if(tiles[i]===t)return i;return 0};
   const at=pair.map(first),data=new Uint8Array(w*h*4);
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){const k=y<h/2?0:1,t=pair[k],tx=at[k]%W+Math.floor(x/tier),ty=Math.floor(at[k]/W)+Math.floor(y/tier);
