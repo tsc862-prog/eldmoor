@@ -242,10 +242,8 @@ export function createRenderer(cv,screenEl){
     // every sprite, which is where they belong anyway.
     const nE=ENTS.length;
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
-    for(let i=0;i<nE;i++){const e=ENTS[i];
-      if(e.tree){ESPR[i]=null;EPZ[i]=null;continue}
-      const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',pz=onPatch?scenePose(e):null,mv=pz?pz.walk:e.moving,fr=mv?Math.floor(blink*6+e.id)%2:0;EPZ[i]=pz;
-      if(e.kind==='deco'||isTraffic(e)){ESPR[i]=null;EPZ[i]=null;continue} // drawn whole in pass 2, with their own shadow
+    for(let i=0;i<nE;i++){const e=ENTS[i],ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',pz=onPatch?scenePose(e):null,mv=pz?pz.walk:e.moving,fr=mv?Math.floor(blink*6+e.id)%2:0;EPZ[i]=pz;
+      if(e.kind==='deco'||e.tree||isTraffic(e)){ESPR[i]=null;EPZ[i]=null;continue} // drawn whole in pass 2, with their own shadow
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
       else if(e.kind==='npc')s=npcSprite(e,mv?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
@@ -271,7 +269,7 @@ export function createRenderer(cv,screenEl){
       if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);return}
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6*ghostA;
       if(close&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
-      const tilt=pz&&pz.tilt;if(pz&&pz.fade<1)ctx.globalAlpha=pz.fade*ghostA;if(tilt){ctx.save();ctx.translate(px,py);ctx.rotate(tilt);ctx.translate(-px,-py)} // a stumble on a 1, a foe falling
+      const tilt=pz&&pz.tilt;if(pz&&pz.fade<1)ctx.globalAlpha=pz.fade;if(tilt){ctx.save();ctx.translate(px,py);ctx.rotate(tilt);ctx.translate(-px,-py)} // a stumble on a 1, a foe falling
       if(G){ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);if(pz&&pz.flash>0){ctx.globalAlpha=pz.flash;ctx.drawImage(sceneTint(G.img,pz.col),G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh)}}
       else{const o=worldSprite(s,live),ow=live?1/ART:0,x0=-Math.floor(s.width/2)*PROC_SCALE-ow; // living entities get the dark outline, one art pixel wide
         const fl=pz&&pz.flash>0?sceneTint(o,pz.col):null; // the hit flash
