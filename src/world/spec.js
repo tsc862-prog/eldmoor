@@ -33,7 +33,8 @@
 //             npcs: role ids staffed here (default: every role in data/npcs.js).
 //   outposts  {id, name, x, y, r} contested outposts (#11): data only, never painted; sim/outposts.js owns who holds them.
 //   landmarks {kind:'lair', name, x, y, r, inner, mouth:'W'|'E'|'N'|'S', exclude, light}
-//             {kind:'crypt', name, boss, x, y, mouth:{x0,y0,w,h}, exclude, cd, rooms}
+//             {kind:'crypt', name, boss, x, y, mouth:{x0,y0,w,h}, exclude, cd, rooms, entry}
+//             every crypt is a dungeon a group can enter (#891); entry: the level the background calls up for it (default 7)
 //             rooms (#65, optional): the dungeon's chambers in order, played room by room at the Table by
 //             the Fellowship (sim/crawl.js; background groups keep the one abstract roll). Each room:
 //             {id, name, frame, foes:[{type, n, name?, hits?, atk?}], lvl (foe level offset from the
@@ -174,8 +175,8 @@ const STEPPING_CRYPT_ROOMS=[
 ];
 
 // The Hollow Cairn's chambers (#717): four, pitched for Cairnwold (levels 8-13; offsets from the party's average).
-// Bestiary species only; the boss is a Grave Warden under the name the spec already reserved. The rooms are data on the
-// landmark; a group going down here needs the engine to name this dungeon, which dungeon.js does not yet (one CRYPT).
+// Bestiary species only; the boss is a Grave Warden under the name the spec already reserved, and its six blows get four rounds (#891: reflex parties clear about 60%, at three 18%). The rooms are data on the
+// landmark, and every crypt landmark is a dungeon of its own (sim/crypts.js, #891).
 const CAIRN_ROOMS=[
   {id:'throat',name:'The Cold Throat',frame:'The hill opens into a low passage of fitted stones, breathing out cold. Small legs click along the walls ahead of the light.',
     foes:[{type:'tombskit',n:4}],lvl:-1,hit:.23,rounds:2},
@@ -184,7 +185,7 @@ const CAIRN_ROOMS=[
   {id:'lamps',name:'The Hall of Unlit Lamps',frame:'Rows of stone lamps, every wick long dead. Archers stand among them, and something old and patient watches from behind the last row.',
     foes:[{type:'boneshot',n:2,hits:1},{type:'graveward',n:1,hits:2}],lvl:1,hit:.34,rounds:2},
   {id:'warden',name:"The Cairn-Warden's Door",frame:'The last chamber is closed by one great slab, and it stands open. The Warden within has kept the door against everyone, the living and the dead, and knows the weight of every name.',
-    foes:[{type:'graveward',n:1,name:'The Cairn-Warden',hits:4,atk:1.6},{type:'shambler',n:1}],lvl:2,hit:.42,rounds:2,boss:true},
+    foes:[{type:'graveward',n:1,name:'The Cairn-Warden',hits:4,atk:1.6},{type:'shambler',n:1}],lvl:2,hit:.42,rounds:4,boss:true},
 ];
 
 export const STEPPING={
@@ -229,7 +230,7 @@ export const STEPPING={
       sign:CRYPT_SIGN,captain:CRYPT_CAPTAIN},
     {kind:'lair',name:'Kragmaw',x:140.5,y:66.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
     // The second dungeon (#717): its chambers and boss are data here; see LORE.md.
-    {kind:'crypt',name:'The Hollow Cairn',boss:'The Cairn-Warden',x:84.5,y:14.1,mouth:{x0:83,y0:12,w:3,h:3},exclude:3.5,cd:25,rooms:CAIRN_ROOMS},
+    {kind:'crypt',name:'The Hollow Cairn',boss:'The Cairn-Warden',x:84.5,y:14.1,mouth:{x0:83,y0:12,w:3,h:3},exclude:3.5,cd:25,rooms:CAIRN_ROOMS,entry:10},
   ],
   points:{hubW:[58,46],hubE:[104,52],lairGate:[134,66],frostGate:[116,24],paleGate:[146,22]},
   roads:[

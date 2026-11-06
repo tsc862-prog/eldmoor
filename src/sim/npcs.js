@@ -11,7 +11,8 @@
 // character-builder; lines by lore-keeper. Canon: docs/LORE.md, "Townsfolk".
 import {pickA} from '../core/rng.js';
 import {keep} from './kept.js';
-import {CITY,CRYPT,ZONES,dist} from '../world/map.js';
+import {CITY,ZONES,dist} from '../world/map.js';
+import {gatheringFor} from './crypts.js';
 import {solidAt,standAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {RACES,racesOf,raceName} from '../data/races.js';
@@ -151,8 +152,8 @@ function sing(p,dt){if(p.songCd>0){p.songCd-=dt;return}if(p.chatCd>0)return;
 // The priest or shaman blesses a Crypt party of their faction gathering in town: one
 // strike at +20% (a.blessed, as the wayside shrines grant), hurrying to the gate while
 // unblessed members are still inside the walls.
-function bless(p,c){const g=CRYPT&&CRYPT.group;
-  if(!g||g.phase!=='gather'||g.fac!==p.fac){p.errand=null;return}
+function bless(p,c){const g=gatheringFor(p.fac);
+  if(!g){p.errand=null;return}
   const need=g.mem.filter(a=>!a.blessed&&a.state==='dungeon');
   p.errand=need.some(a=>a.x>=c.x0-2&&a.x<=c.x1+3&&a.y>=c.y0-2&&a.y<=c.y1+2)?gateIn(c):null;
   for(const a of need){if(dist(a,p)>BLESS_R)continue;a.blessed=1;pop(a.x,a.y-.6,'BLESSED','#9ad0ff');S.npcNews.stats.blessings++;
