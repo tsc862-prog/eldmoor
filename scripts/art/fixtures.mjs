@@ -108,7 +108,8 @@ function tree(b,i){const im=canvas(16,16),P={
   meadow:{lit:'#5cb84e',mid:['#2f8a36','#338f3a','#2a7e31'],dark:'#1e6a28',rim:'#1a5a22',bark:['#5a3a20','#3a2414']},
   fen:{lit:'#7a9a44',mid:['#4e6e2e','#4a6a2c','#46642a'],dark:'#34502a',rim:'#2a3a1e',bark:['#4a3a28','#2e2418'],moss:'#5a7a34'},
   ash:{lit:'#8a807a',mid:['#4a423e','#3a3432'],dark:'#2a2422',rim:'#1e1a1a',bark:['#3a302c','#221c1a'],ember:'#c8401a'},
-  tundra:{lit:'#3a7a66',mid:['#1e4f44','#24584a'],dark:'#163a30',rim:'#10302a',bark:['#3a2a20','#241810'],snow:'#eef2f8'}}[b];
+  tundra:{lit:'#3a7a66',mid:['#1e4f44','#24584a'],dark:'#163a30',rim:'#10302a',bark:['#3a2a20','#241810'],snow:'#eef2f8'},
+  highland:{lit:'#3a8a74',mid:['#1c5a50','#206456'],dark:'#143e3a',rim:'#0e2e2c',bark:['#3a2a20','#241810']}}[b];
   const trunk=(x0,top,w=2)=>{for(let y=top;y<16;y++)for(let k=0;k<w;k++)put(im,x0+k,y,P.bark[k?1:0])};
   if(b==='tundra'){const cx=[7.5,6.5,8.5][i-1],tall=[11,9,12][i-1],wide=[.6,.75,.5][i-1];trunk(Math.round(cx)-1,tall+1);
     for(let y=0;y<=tall;y++){const hw=.6+y*wide,tier=y%4;for(let x=0;x<16;x++){const dx=x-cx;if(Math.abs(dx)>=hw)continue;
@@ -130,7 +131,8 @@ function rock(b,i){const im=canvas(16,16),P={
   meadow:{lit:'#b0a898',mid:'#9a9080',dark:'#6a6058',rim:'#3a3430',top:'#6cc050'},
   fen:{lit:'#8a8a70',mid:'#6a6a54',dark:'#4a4a3a',rim:'#2a2a20',top:'#7a9a46'},
   ash:{lit:'#7a706a',mid:'#4a423e',dark:'#2e2826',rim:'#1a1616',top:'#c8401a'},
-  tundra:{lit:'#a8b0b8',mid:'#7a8490',dark:'#545c68',rim:'#30363e',top:'#f8fafc'}}[b];
+  tundra:{lit:'#a8b0b8',mid:'#7a8490',dark:'#545c68',rim:'#30363e',top:'#f8fafc'},
+  highland:{lit:'#a0aab4',mid:'#7a8694',dark:'#545e6c',rim:'#30363e',top:'#5aa04a'}}[b];
   const stones=[[[8,11,4.5,3.2]],[[6,11,3.5,2.8],[10.5,12,2.5,2]],[[8,10.5,5.5,4]]][i-1];
   for(const [cx,cy,rx,ry] of stones)for(let y=0;y<16;y++)for(let x=0;x<16;x++){const dx=x+.5-cx,dy=y+.5-cy,r=(dx*dx)/(rx*rx)+(dy*dy)/(ry*ry);
     if(r>=1)continue;const top=dy<-ry*.45&&hh(x,y,b.length+i)>.35&&(b==='tundra'||b==='meadow'||b==='fen');
@@ -196,16 +198,44 @@ function landmark(kind,[w,h],s){const im=canvas(w,h),cx=w/2,cy=h/2;
     put(im,x,y,d<R*.18?(hh(x>>1,y>>1,s)>.6?'#ffd04a':'#c8a040'):crack?(hh(x,y,s)>.5?'#f07a22':'#c8401a'):d>R-2&&!path?'#2a2422':hh(x>>2,y>>2,s+3)>.97?'#e8e0c8':path?'#4a423e':n>.66?'#655c58':n>.33?'#4a423e':'#3a1c16')}
   return im}
 
+// A whole tree for the canopy table (#834): an ellipse crown over a trunk, root on the 9/10 row, a translucent shadow.
+function canopy(b,i,[w,h]){const im=canvas(w,h),root=Math.round(h*.9),cx=w/2,col={meadow:'#4a9a40',fen:'#6e7e34',ash:'#4a423e',tundra:'#2e6a58',highland:'#2a6a5c'}[b];
+  for(let y=root-4;y<root+Math.round(h*.07);y++)for(let x=Math.round(cx-w*.3);x<cx+w*.3;x++)if(((x-cx)/(w*.3))**2+((y-root)/(h*.07))**2<1)put(im,x,y,'#2a3a22');
+  for(let y=Math.round(h*.35);y<=root;y++)for(let x=Math.round(cx-w*.07);x<=cx+w*.07;x++)put(im,x,y,'#5a3a20');
+  for(let y=0;y<h*.7;y++)for(let x=0;x<w;x++){const dx=(x-cx)/(w*.48),dy=(y-h*.35)/(h*.35);if(dx*dx+dy*dy<1)put(im,x,y,dx*dx+dy*dy>.8?'#1e4a24':col)}
+  void i;return im}
 export function fixtures(man,tier=32){const out={};
   for(const e of man.assets||[]){let m,im=null;const size=(e.sizes&&e.sizes[tier])||e.size;if(!size)continue;
     if(TILE_GROUND[e.id])im=baseTile(e.id,size,e.seed);
     else if((m=/^autotile:([a-z]+-[a-z]+)(-corner|-inner)?$/.exec(e.id))&&PAIR[m[1]])im=piece(m[1],m[2]?m[2].slice(1):'edge',e.seed,size[0]);
     else if((m=/^prop:(tree|rock)-([a-z]+)-(\d)$/.exec(e.id)))im=upscale((m[1]==='tree'?tree:rock)(m[2],+m[3]),size[0]);
+    else if((m=/^prop:canopy-([a-z]+)-(\d)$/.exec(e.id)))im=canopy(m[1],+m[2],size);
     else if(e.kind==='sprite'&&e.frames)im=sheet(e,size);
     else if((m=/^(?:building|tile):([a-z]+)-([a-z-]+)$/.exec(e.id))&&STYLE[m[1]])im=building(m[1],m[2],size,e.seed);
     else if((m=/^landmark:([a-z-]+)$/.exec(e.id)))im=landmark(m[1],size,e.seed);
     if(im&&im.w===size[0]&&im.h===size[1])out[e.id]=im}
   return out}
+
+// Portrait library fixtures (#710): a head-and-shoulders face per id (portrait:<race>-<cls>-<sex>-<nn>), size x size on a
+// transparent ground, lit from the top left with a one-pixel outline. Skin, hair and garment come from the id's hash, so
+// different ids look different and a check can tell which face was picked. Never written under assets/.
+// portraitFixtures(ids, size=64) -> {id: {w, h, data}}.
+const PSKIN=['#f0c8a0','#d8a878','#b07a50','#8a9a7a','#a8b0b8','#c89a7a'],PHAIR=['#2a2020','#6a4a2a','#c8a050','#e8e4d8','#4a5a7a','#8a2a1a'],
+  PCLOTH=['#5b8ff2','#c84a3a','#4a9a40','#8a5ac8','#c8a040','#3a7a8a'];
+const strHash=s=>{let h=7;for(let i=0;i<s.length;i++)h=(Math.imul(h,33)+s.charCodeAt(i))|0;return h};
+function face(id,N){const im=canvas(N,N),s=strHash(id),k=N/64,pk=(arr,salt)=>arr[Math.floor(hh(s,salt,11)*arr.length)];
+  const skin=pk(PSKIN,1),hair=pk(PHAIR,2),cloth=pk(PCLOTH,3),shade=c=>{const [r,g,b]=rgb(c);return '#'+[r,g,b].map(v=>Math.round(v*.7).toString(16).padStart(2,'0')).join('')};
+  const inHead=(x,y)=>((x-32)/14)**2+((y-28)/17)**2<1,inBody=(x,y)=>y>=46&&Math.abs(x-32)<10+(y-46)*1.6,inHair=(x,y)=>inHead(x,y+3)&&y<20+hh(s,x>>2,5)*4;
+  const at=(X,Y)=>{const x=(X+.5)/k,y=(Y+.5)/k;
+    if(inHair(x,y))return x<30?hair:shade(hair);
+    if(inHead(x,y)){if(Math.abs(y-28)<1.5&&(Math.abs(x-26)<1.5||Math.abs(x-38)<1.5))return '#1a1218';if(Math.abs(y-37)<1&&Math.abs(x-32)<4)return shade(shade(skin));return x+y<58?skin:shade(skin)}
+    if(y>=43&&y<46&&Math.abs(x-32)<5)return shade(skin);
+    if(inBody(x,y))return x<32?cloth:shade(cloth);return null};
+  for(let Y=0;Y<N;Y++)for(let X=0;X<N;X++)put(im,X,Y,at(X,Y));
+  const op=new Uint8Array(im.data);for(let Y=0;Y<N;Y++)for(let X=0;X<N;X++){if(op[(Y*N+X)*4+3])continue; // outline every empty pixel next to the figure
+    if([[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>{const x=X+dx,y=Y+dy;return x>=0&&y>=0&&x<N&&y<N&&op[(y*N+x)*4+3]}))put(im,X,Y,'#100c16')}
+  return im}
+export function portraitFixtures(ids,size=64){const out={};for(const id of ids)out[id]=face(id,size);return out}
 
 // A fixture inbox for art:review (#712): pure data, the artcheck writes it to a temp folder.
 // -> {queue: assets/queue.json, files: [relative path under the assets folder], accepted: [keys already in the index]}

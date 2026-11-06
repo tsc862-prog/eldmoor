@@ -20,7 +20,7 @@ the hero card ("People: Tarrow of Highgate") and in the recruit line ("A new Ash
 warrior, Kardul, joins <BF> Bloodfang in Grimhold."). Recruits are drawn to keep the living
 roster of each faction roughly even across its peoples, with a nudge toward the classes a
 people favours. Peoples differ in skin and hair, names, home and culture only; stats come
-from class and level. Home towns not yet on the map are reserved names: Cairnmoot, Brinereach (today a hamlet), Murkstead and Thornteeth (today a camp).
+from class and level. Home towns not yet on the Eldmoor map are reserved names: Cairnmoot, Brinereach (today a hamlet), Murkstead and Thornteeth (today a camp). Brinereach and Thornteeth are real towns on the Stepping Lands test continent (see The Stepping Lands).
 
 | People | Faction | Home | Look | Favours | Culture |
 | --- | --- | --- | --- | --- | --- |
@@ -263,6 +263,26 @@ At level 10 a hero takes one of two paths for their class (`SPECS` in `src/data/
 
 The **Warden** path is a living warrior's vow to stand guard over friends; it has nothing to do with the undead wardens of the Sunken Crypt (Lich-Warden Vesk and his Grave Wardens), who guard the dead. The word is shared, the calling is not. Trapper: Thornfield now also opens on one worthwhile foe (an elite, a boss, a duellist or a mob near the Trapper's level), not only on a pack; Mender: Mending Touch answers a friend below 72% health.
 
+### Level-15 capstones (issue #713)
+Each path learns a second ability at level 15 (rows of `src/data/moves.js` carrying `spec:` and `lvl:15`), the longest cooldown of the hero's list, a heavier version of what the path already does. All names are plain-English coinages.
+
+| Path | Capstone | Gist |
+| --- | --- | --- |
+| Warden | **Gatewall** | the shield planted as a gate: every friend within five tiles takes blows at 72% for 8 s |
+| Reaver | **Red Harvest** | a reaping circle: 140% to every foe at your side, costs 8% of your health |
+| Runescribe | **Last Rune** | the rune that ends the sentence: 320%, +15% crit |
+| Rimekeeper | **Deep Winter** | winter on the whole fight: 50% and 4 s to every foe within four tiles (a save halves the delay; at the Table a failed save stuns) |
+| Stalker | **Hawkfall** | the arrow that drops like a stooping hawk: 340%, +25% crit |
+| Trapper | **Deadfall** | a hidden pit and a weighted log: 80% and 7 s on one foe (at the Table it roots) |
+| Battle-Cleric | **Bell of Reckoning** | a bell struck once over the fight: 120% and 1.5 s to every foe within two and a half tiles |
+| Mender | **Second Dawn** | the light comes up again: every friend within five tiles heals 24 + 4 per level + 12% of their health |
+| Cutthroat | **Last Whisper** | the blow it never hears: 400%, +20% crit, on a fresh, unhurt foe |
+| Trickster | **Mirror Trick** | three of you and none where the blade falls: foes on you lose 3 s, blows land at 40% for 4 s |
+| Warchanter | **Battle-Saga** | the saga at full voice: 110% and 1 s to every foe within three and a half tiles |
+| Soothsinger | **Evensong** | the last song of the day: every friend within five tiles heals 14 + 3.5 per level + 8% and takes blows at 88% for 6 s |
+| Thornbinder | **Thornstorm** | briars in a storm: 90% and 2.5 s to every foe within four tiles (at the Table it roots) |
+| Springwarden | **Heart of Spring** | the green heart of the wood opens: friends within five tiles take blows at 70% for 8 s and are mended a little |
+
 ## Skald (issue #83)
 The sixth class: a **Skald** is a war-singer, one of the road-poets who march behind a shield wall and make the fight easier to bear. Not a healer and not a mage: the voice is the weapon, and the work is done to the whole company at once. In the Fellowship a Skald is a DPS pick (Mage, Hunter, Rogue or Skald); the three DPS places still prefer three different classes. Ability score Presence (then Wits); trained in Persuasion, Lore, Intimidation and Perception. Mid health, a medium reach of about three tiles, no armour training (light gear, hide and cloth like a Rogue: armour weight .25, the main hand carries the weapon damage). Skald gear nouns (#274, `SLOT_NOUNS` in `src/data/items.js`): Cap (head), Doublet (chest), Bracers (hands), Marchboots (feet), Warhorn (main hand), Songstone (off hand, a hand-sized stone that rings when struck) and Lutecharm (trinket). Banner colours: rose and plum, with a gold-bodied lute carried on the right.
 
@@ -382,9 +402,15 @@ buy from each other without a word said.
     - **The Drowned Court**: a floor of black still water, Grave Wardens standing in it to the knee (the court Ossian Vael drowned).
     - **The Vigil Chamber**: the last door; Lich-Warden Vesk with Tomb Skitters at his feet. He is a keeper holding Ossian Vael's oath, not a usurper (see the campaign seed), so his scene should read as a watch kept, not a lair raided. The boss fight's second phase is also called *The Drowned Court*: the same water, the same room, deliberately.
 - **DM-made sites** (#69): the DM raises dungeon sites as the story needs them (`create_site`; `src/data/sites.js`). Each is a barrow, fortress, temple, mine, den or ruin on open ground off the roads, 3-8 chambers of the region's own creatures and the site foes of its kind, and a boss from the encounter tables' site bosses (the Grave-Sexton, Captain Redhand, the Veiled Cantor, the Cave Duchess, Mother Thistlewick, the Stone Steward and their stronger kin). It stands until a company clears it (a ruin is left for a while) or, left alone about ten days, it falls in on itself.
-  - **Names** are built from a place word in the region's own vocabulary and the kind: *the Sedgemere Barrow*, *Cinderscar Hold*, *the Temple of Rimecairn*, *the Flinthearth Delvings*, *the Woldwick Den*, *the Ruins of Thornhollow*. Place words, first part then second, by the land: meadow (Thornvale) Thorn, Bramble, Oak, Hawk, Briar, Wold + hollow, ford, wick, dell, stead, ley; fen (Mirefen) Sedge, Reed, Murk, Eel, Bitter, Silt + mere, holm, fen, marsh, water, pool; ash (Cinderpass) Cinder, Ember, Slag, Soot, Char, Flint + crag, fell, gorge, scar, hearth, rock; tundra (Hoarfell) Rime, Frost, Hoar, Snow, Tarn, Winter + fell, cairn, reach, howe, moor, tor; any other land Grey, Stone, Black, Old, Raven, Wyrm + moor, holt, stead, cairn, dale, by. Never paired: a join that doubles a letter (Wold-dell, Frost-tor), a pair that names a region or town (Hoarfell, Sedgewater), Winterfell (another world's), Soothearth, Slagcrag, Brambleley.
+  - **Names** are built from a place word in the region's own vocabulary and the kind: *the Sedgemere Barrow*, *Cinderscar Hold*, *the Temple of Rimecairn*, *the Flinthearth Delvings*, *the Woldwick Den*, *the Ruins of Thornhollow*. Place words, first part then second, by the land: meadow (Thornvale) Thorn, Bramble, Oak, Hawk, Briar, Wold + hollow, ford, wick, dell, stead, ley; fen (Mirefen) Sedge, Reed, Murk, Eel, Bitter, Silt + mere, holm, fen, marsh, water, pool; ash (Cinderpass) Cinder, Ember, Slag, Soot, Char, Flint + crag, fell, gorge, scar, hearth, rock; tundra (Hoarfell) Rime, Frost, Hoar, Snow, Tarn, Winter + fell, cairn, reach, howe, moor, tor; any other land Grey, Stone, Black, Old, Raven, Wyrm + moor, holt, stead, cairn, dale, by. Never paired: a join that doubles a letter (Wold-dell, Frost-tor), a pair that names a region or town (Hoarfell, Sedgewater), Winterfell (another world's), Soothearth, Slagcrag, Brambleley, Rimereach, Oldmoor.
   - **Chambers** by kind (a site walks its plan in order): barrow: the Bone Passage, the Grave Niches, the Low Hall, the Sunken Floor, the Narrow Stair, the Door of Names, the Candle Alcove, the Grave-Goods Vault, the Barrow-Heart. Fortress: the Gatehouse, the Barracks, the Wall Walk, the Killing Yard, the Murder Holes, the Barred Postern, the Old Chapel, the Strongroom, the Great Hall. Temple: the Narthex, the Cloister, the Choir, the Flooded Aisle, the Fallen Nave, the Rune Door, the Lady Chapel, the Reliquary, the Sanctum. Mine: the Upper Gallery, the Ore Chute, the Long Seam, the Shaft, the Rotten Props, the Winch Room, the Miners' Shrine, the Tally Room, the Deep Seam. Den: the Run, the Gnawing Hollow, the Litter Cave, the Sinkhole, the Loose Scree, the Choked Passage, the Old Spring, the Hoard of Bones, the Deep Den. Ruin: the Broken Court, the Cellars, the Collapsed Hall, the Fallen Stair, the Sagging Gallery, the Sealed Study, the Household Shrine, the Hidden Strongroom, the Throne Room.
   - **Loot**: the boss always carries one epic: a barrow's or temple's from the Sunken Crypt's epics, the others from the region's own.
+- **First delves** (#922; `src/data/prologues.js`): the short dungeon a new company plays before the open world, set by its hall and ended at about level 2 (plain loot, no epic). Each is a small, grounded chore, not a grand evil, and the gate captain's closing words point at the Sunken Crypt as the real thing. Four, one each:
+  - **The Wick Barrow** (barrow), keeper **Old Tallow**, a village sexton who kept the barrow lamps for forty years and would not stop when he died. Belongs to Highgate, then any Concord hall. Rooms: the Lamp Passage, the Bearers' Niches, the Last Lamp.
+  - **The Toll-House Cellars** (ruin), keeper **Hob Reckoner**, a greedy road-thief who burned the toll-house himself and dug in below with his cousins. Any Concord hall after Highgate's. Rooms: the Beer Cellar, the Tally Vault, the Strong Cellar.
+  - **The Ashpit Den** (den), keeper **Mother Soot**, a scarred she-beast fat on the town's goats (a Den Mother, an animal, not a villain). Belongs to Grimhold, then any Warband hall. Rooms: the Ash Run, the Gnawing Hollow, the Warm Bed.
+  - **The Slag Delving** (mine), keeper **Gaffer Crook**, a petty tyrant who led the rail-strippers and robbed the next shift. Any Warband hall after Grimhold's. Rooms: the Rail Gallery, the Scrap Heap, the Gaffer's Gallery.
+  - A town added later gets its own row in the same table. Tone: Concord delves end with a warning, Warband delves with a sneer; death here is as final as anywhere.
 - **Contested outposts** (#11): two watch-posts on the roads that belong to whichever faction holds them. **Fenmarch Cross** (Mirefen, levels 6-10): a weathered standing-stone cross on dry ground in the fen, off the roads. **Ashgate Watch** (Cinderpass, levels 11-15): a ruined gate-tower on the lair road. A faction takes one by holding its ring unopposed; a hero of both banners there freezes it. The holder's banner flies, its heroes heal faster nearby, and kills within a couple of tiles of an outpost count double honor.
 - **Kragmaw's Lair**: lava ring in eastern Cinderpass. World boss **Kragmaw the Cinder Wyrm**, level 20, raided by 5-6 heroes of level 14+ (or four well-geared ones).
 
@@ -406,18 +432,94 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 | --- | --- | --- | --- |
 | Highgate | Concord | Hallowan | As in Eldmoor, in the north-west corner. |
 | Cairnmoot | Concord | Tarrow | A cairn-ringed hill market on the western bank of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Brinereach | Concord | Skerrin | A salt-reach fishing town of net-menders on the western bank of the Greywater, south of Cairnmoot. Its name was reserved in "Peoples of Eldmoor". |
 | Grimhold | Warband | Ashfolk | As in Eldmoor, in the south-west corner. |
 | Murkstead | Warband | Mirekin | A stilted salt-boilers' town at the fen margin, west of the Greywater. Its name was reserved in "Peoples of Eldmoor". |
+| Thornteeth | Warband | Thornhide | A bone-carvers' ridge-town in the south-east of the fen country, on the road to the Sunken Crypt. Its name was reserved in "Peoples of Eldmoor". |
 
 - **The Greywater**: the river that divides Lowmark from the fen and the upland.
+- **Brinereach** (Stepping Lands town, Concord, Skerrin home, Lowmark, level 1-5): a salt-reach fishing town of net-menders on the west bank of the Greywater, road to the western hub. Not Eldmoor canon geography.
+- **Thornteeth** (Stepping Lands town, Warband, Thornhide home, Sedgewater, level 4-9): a bone-carvers' ridge-town in the south, roads to Murkstead and the Sunken Crypt. Not Eldmoor canon geography.
 - **The Sunken Crypt of the Stepping Lands** (level 4-9, Sedgewater): the same dungeon name, but the crawl here is three chambers of its own (#309), proving the rooms are data per world. Creatures are the Crypt species (Tomb Skitters, Crypt Shamblers, Bone Archers, Grave Wardens).
   - **The Reed Sump**: a flooded stair-foot choked with dead reeds; Tomb Skitters under the water-mat.
   - **The Salt-Bone Hall**: shelves crusted white with fen salt; a Crypt Shambler and a Bone Archer.
   - **The Mere-Warden's Seat**: a round pool with a stone chair in it; the boss room. **Mere-Warden Hask** (a Grave Warden, pitched for the 4-9 band though the species starts at level 7; deliberate, he is a named exception) keeps the watch while the fen rises, with a Tomb Skitter at his feet.
-- **The Hollow Cairn** (level 8-13, Cairnwold): placeholder second dungeon. Only the entrance exists today; it has no group runs, boss fight or loot. Its warden, **The Cairn-Warden**, is reserved for the future dungeon.
+- **The Hollow Cairn** (level 8-13, Cairnwold): the second dungeon of the Stepping Lands, a barrow cut into the Cairnwold hills (#717); groups go down it since #891, tried blades of level 10 and up among the background. Four chambers, as data on the landmark; creatures are the Crypt species. The rooms are written, but a group can only go down the world's first dungeon until the engine learns a second (see the issue).
+  - **The Cold Throat**: a low passage of fitted stones that breathes out cold; Tomb Skitters on the walls.
+  - **The Ring of Heaped Stones**: a round hall of man-high burial heaps; two Crypt Shamblers and a Bone Archer.
+  - **The Hall of Unlit Lamps**: rows of dead stone lamps; two Bone Archers and a Grave Warden behind the last row.
+  - **The Cairn-Warden's Door**: the boss room, a great slab standing open. **The Cairn-Warden** (a Grave Warden, pitched above the party; a named exception like Mere-Warden Hask) keeps the door against the living and the dead, with a Crypt Shambler at its heel.
 - **Brask Ironhorn, the Ram-King of the Cairnwold** (Cairnwold elite, level 15, kin Tundra Shaghorn): a crag-ram with one horn snapped and the other grown into his own shoulder. Placeholder.
 - **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.
-- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth stay reserved.
+- The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (see the town table and entries above).
+
+### The Wending Vale (third world, epic #940)
+`VALE` in `src/world/spec.js` is a 144x60 map shaped for the owner's wide screen. One river, the **Wend**, rises from a spring in the high north-east and runs west to the sea off the map's west edge. The Concord holds the north bank, the Warband the south. Three crossings carry all travel: the **Low Bridge** at the home towns, the **Weirgate ford** in the middle (the only wading place, with the great dungeon beside it) and the **High Bridge** at the contested upper edge. Creatures are a first pass in `src/data/fauna.js`. Select it as the third world; geography is its own, not Eldmoor's.
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Wendmouth | 1-5 | Meadow at the river's mouth in the west; the four home towns and the Low Bridge. Everyone starts here. |
+| Sallowfen | 3-8 | Fen and willow-flats on the south bank. The Sallow Vaults lie in its edge. |
+| Hawkwold | 3-8 | Windy highland on the north bank, facing Sallowfen across the water. The Kestrel Barrow is cut into its hills. |
+| Greywood | 6-11 | Old wood and meadow in the middle vale, around the Weirgate ford. |
+| Ashenfold | 10-15 | Ash-fields and cold slag where the old kilns burned. |
+| Rimecrown | 14+ | The tundra crown above the High Bridge, squalls off the snow. The Wend rises here and Kragmaw's lair sits at its head. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Aldermere | Concord | Hallowan | Alder-shaded home town in the north-west, first of the Concord towns on the Wend. A market green inside the walls, the forge and halls fronting a paved lane, the inn on the green's west edge. |
+| Gullstrand | Concord | Skerrin | A gull-loud harbour town just south of Aldermere, at the river's mouth. Its gate faces the water: a street climbs from the quay and jetty to a lane under the halls. |
+| Hawkstead | Concord | Tarrow | A falconers' upland market on the north bank, road to the Kestrel Barrow and the ford. Built on terraces, the chapel on the hall's shoulder and a stair up the middle. |
+| Brandhold | Warband | Ashfolk | Brand-marked home town in the south-west, first of the Warband towns. A forge town with its gate in the north wall and one straight street to the yard before the inn. |
+| Stiltmere | Warband | Mirekin | A stilted fen town in Sallowfen, road to the Sallow Vaults. Wide and loose, its buildings standing apart along planked lanes. |
+| Hornridge | Warband | Thornhide | A horn-and-bone ridge-town on the south bank, road to the ford. A hold on a long slope, gate at the top and two terraces down to the inn. |
+
+- **The Wend**: the one river of the vale; the name is the vale's too, the Wending Vale. **The Low Bridge, the Weirgate ford, the High Bridge**: its three crossings, west to east.
+- **The Drowned Weir** (dungeon, level 7+ entry, south bank beside the Weirgate ford): the great delve, five chambers, a flooded sluice-works of green stone. Boss **Weir-Warden Orsk** (a Grave Warden of the old weir-keepers, named exception like Mere-Warden Hask). Chambers: **The Sluice Stair**, **The Millrace Gallery**, **The Weighing Hall**, **The Flooded Granary**, **The Weir-Warden's Chair**.
+- **The Kestrel Barrow** (dungeon, level 4+, Hawkwold): a falconer-lord's grassed mound. Boss **Lord Merrin Hawkwright**. Chambers: **The Low Door**, **The Kestrel Niches**, **The Falconer's Mews**.
+- **The Sallow Vaults** (dungeon, level 4+, Sallowfen): cellars under a burnt kiln, a smugglers' hold. Boss **Captain Dane Sallow**. Chambers: **The Eel Cellar**, **The Salt Tally**, **The Cold Store**.
+- **The Brandwright Kiln** (dungeon, level 10+, Ashenfold): a great kiln still red at the heart. Boss **The Kiln-Warden**, a golem built to tend it. Chambers: **The Flue Gallery**, **The Ash Floor**, **The Kiln Heart**.
+- **Weirgate Watch** (outpost, Greywood, level 6-11): the old guard-post on the north bank by the ford. **Kilnmark Cross** (outpost, Ashenfold, level 10-15): a crossroads post on the road to the Brandwright Kiln.
+- **Kragmaw's Lair** (Rimecrown, level 20): the same wyrm and raid as Eldmoor, here at the river's head.
+- **Greymane, the Pack-Father of the Hawkwold** (elite, Hawkwold, wolf): a grey wolf grown huge on the uplands' flocks. **Thornback, the Boar-King of the Greywood** (elite, Greywood, mud-boar): a tusked boar with a back like a hedge.
+- **First delves of the Vale** (`src/data/prologues.js`, one a home town, each about level 2, plain loot): **the Drowned Millhouse** (Aldermere, ruin, keeper **Miller Quill**, a frightened miller run by river-thieves), **the Gull Cliff Den** (Gullstrand, den, keeper **Old Brine**, a sea-wolf mother), **the Herders' Cairn** (Hawkstead, barrow, keeper **Shepherd Wick**, an old herder counting lost sheep), **the Cold Forge** (Brandhold, mine, keeper **Slagmaster Brok**, a self-crowned smith), **the Salt Pans** (Stiltmere, ruin, keeper **Boil-Master Garr**, a short-weight smuggler) and **the Bone Pit** (Hornridge, den, keeper **Mother Rattle**, a goat-fat she-beast). Campaign seed: `docs/campaigns/vale.md`.
+- **Grimbrand, the Kiln-Golem of the Ashenfold** (elite, Ashenfold, level 17, golem kin): the last kiln-tender's guardian, gone wild when there was nobody left to tend. Slag-grey, cracked along the ribs, and one arm is still a bellows that wheezes before it swings. It walks the ash-fields between the old kilns as if still making its rounds.
+- Dungeon boss chambers run longer at the table: the Kestrel Mews 3 rounds; the Weir-Warden's Chair, the Cold Store and the Kiln Heart 4 each.
+
+#### Creatures of the Vale
+Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names and trade goods (goods in `VALE_GOODS`, Vale-only). Kin is the Eldmoor creature a species borrows its build and look from.
+
+| Creature | Region | Levels | Drops | Quest | Kin |
+| --- | --- | --- | --- | --- | --- |
+| Strand Wolf | Wendmouth | 1-3 | Strandpelt | Wolves on the Strand | Timber Wolf |
+| Reed Boar | Wendmouth | 2-4 | Reed-Tusk | Tusks from the Reeds | Bristleback Boar |
+| Dyke Weaver | Wendmouth | 3-5 | Dyke Silk | Sweep the Dykes | Webspinner |
+| Sallow Bogling | Sallowfen | 2-4 | Sallow Moss | Boglings in the Willows | Bogling |
+| Sallow Hog | Sallowfen | 3-6 | Willow Hide | Hides from the Flats | Mudback Boar |
+| Eel Lurker | Sallowfen | 5-8 | Eel Venom | Venom for the Stilt-Healers | Fen Lurker |
+| Heath Wolf | Hawkwold | 2-4 | Heath Pelt | Wolves on the Heath | Timber Wolf |
+| Crag Boar | Hawkwold | 3-5 | Crag Tusk | Tusks from the Crags | Bristleback Boar |
+| Windhound | Hawkwold | 4-7 | Gale Sinew | Windhounds on the Ridge | Rimehound |
+| Oak Weaver | Greywood | 6-8 | Oak Silk | Webs in the Old Wood | Webspinner |
+| Thicket Boar | Greywood | 7-10 | Thicket Hide | Hides from the Thicket | Mudback Boar |
+| Grey Stalker | Greywood | 9-11 | Greywood Fur | Stalkers of the Greywood | Timber Wolf |
+| Ash Weaver | Ashenfold | 10-12 | Ash Silk | Webs in the Ash | Webspinner |
+| Slag Golem | Ashenfold | 11-14 | Slag Core | Cores from the Slag | Cinder Golem |
+| Ember Hound | Ashenfold | 12-15 | Ember Fur | Hounds of the Old Kilns | Timber Wolf |
+| Squall Wolf | Rimecrown | 14-16 | Squall Pelt | Wolves in the Squall | Timber Wolf |
+| Crown Hound | Rimecrown | 15-18 | Crown Rime | Howls on the Crown | Rimehound |
+| Crown Wight | Rimecrown | 17-20 | Crown Marrow | What the Crown Keeps | Tarn Wight |
+
+- **Wendmouth**: the strand wolves are salt-matted and bold, and the reed boars root up the dykes the farmers swear they mended last spring. Dyke weavers hang their webs between the sluice-posts, which is a nuisance to everyone but the flies.
+- **Sallowfen**: boglings and hogs share the willow-flats in an uneasy truce; the eel lurkers are another matter. The Stilt-Healers of Stiltmere pay well for the venom and ask nobody how it was got.
+- **Hawkwold**: the heath wolves follow the flocks up the slopes, the crag boars hold the broken ground, and windhounds run the ridge-tops so lean and fast that the falconers say the hawks give way to them.
+- **Greywood**: the old wood is quiet in the wrong places. Oak weavers spin across the deer-paths, the thicket boars live in the hedge-tangles, and the grey stalkers wait where the trees go dark.
+- **Ashenfold**: whatever the kilns burned, the fold has not forgotten it. Slag golems wander the cold floors with the patience of things nobody told to stop, and the ember hounds still den in the warm brick.
+- **Rimecrown**: the squall wolves hunt inside the storm, crown hounds answer them from the snow, and what the crown wights leave is sold as marrow. As in Hoarfell, nobody in Hornridge asks what it is for.
+- Elites of the Vale: Hollowfang (Wendmouth), Old Mother Sedge (Sallowfen), Greymane (Hawkwold, level 9), Thornback (Greywood), Grimbrand (Ashenfold, level 17) and Ulfryn Coldmarrow (Rimecrown) all stalk their regions; Hollowfang, Old Mother Sedge and Ulfryn Coldmarrow are the Eldmoor elites re-used and re-levelled, as in the Stepping Lands, the other three are the Vale's own.
+- Name check (2026-11-05): no clash found in LORE.md or the repo; Grimbrand shares only the "brand" sound with Brandhold and the Brandwright Kiln, which suits it (the kiln-tender's guardian). No changes made to fauna.js.
+
+- Name notes: Greywood stands beside Eldmoor's Greywater and Stepping's Greyreach by sound only; the town Wendmere of the test fixture shares the Wend root and stays reserved and unused.
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
@@ -754,6 +856,21 @@ Moss, Venom Sac, Ember Core, Rime Pelt, Hoar Wool) are ordinary creature loot, n
 | Fenmire Eel Stew | A camp meal; the name is the camp cook's joke, the recipe is serious. |
 | Tarn Whitefish Chowder | A camp meal; the best the Hoarfell camps can offer. |
 | Hoarfell Survey Chart | A scribed map of the high country that tells a reader where they are. |
+| Fenwater Salve | A thin green potion of redroot in fen-water (crafted, skill band 1). |
+| Wightbone Philtre | Tarn Wight marrow cut with rimebloom; the strongest crafted draught (band 4). |
+| Hearthbloom Fish Pie | A camp meal of perch in a petal crust; sharpens the eye (band 1). |
+| Tarn Hunter's Feast | A Hoarfell hunter's winter-march meal of whitefish and eel (band 4). |
+| Scroll of the Brief Ward | A hurried, weak ward (band 1). |
+| Scroll of the Unbroken Line | A strong ward inked with grave dust (band 4). |
+
+**Crafted gear pieces** (`CRAFT_GEAR` rows for skill bands 1 and 4; a gear row, not a consumable):
+
+| Name | Slot | Item level | What it is |
+| --- | --- | --- | --- |
+| Mireforged Greaves | feet | 8 | Fen-forged boots of tin and bogiron (smithing band 1). |
+| Boarhide Buckler | off hand | 7 | A small round shield of wolf pelt and mud-boar bristle (leatherworking band 1). |
+| Rimesteel Greatblade | main hand | 20 | A frost-hard master's weapon of icevein and cinder scale (smithing band 4). |
+| Shagmane Hood | head | 20 | A master's hood of hoar wool and shaghorn horn (leatherworking band 4). |
 
 **Crafted gear** (`CRAFT_GEAR`): Tinforged Weapon, Bogiron Handguard, Ashsteel Cuirass, Wolfhide Cowl, Hoarfrost Greatcoat.
 Tinforged is a new material word (tin-forged, the plain first alloy of a new smith, sitting below Bogiron in the
@@ -778,6 +895,16 @@ Thornvale tier); the other material words are the existing ones under Equipment.
 | Scribing | scroll-hearthward | 0 | 2 Rushpulp, Redroot Leaf | Scroll of Hearthward |
 | Scribing | scroll-steadfast | 2 | Rushpulp, Venom Sac | Scroll of the Steadfast Hour |
 | Scribing | chart-hoarfell | 3 | 3 Rushpulp, Venom Sac | Hoarfell Survey Chart |
+| Alchemy | salve-fenwater | 1 | 2 Redroot Leaf, Fen Moss | Fenwater Salve |
+| Alchemy | philtre-wightbone | 4 | Rimebloom, Wight Marrow, Hearthbloom | Wightbone Philtre |
+| Smithing | forge-mireforged | 1 | 2 Tin Ore, 2 Bogiron Ore | Mireforged Greaves |
+| Smithing | forge-rimesteel | 4 | 3 Icevein Ore, 2 Cinder Scale, 2 Ember Core | Rimesteel Greatblade |
+| Leatherworking | cure-boarhide | 1 | 2 Wolf Pelt, 2 Mudback Bristle | Boarhide Buckler |
+| Leatherworking | cure-shagmane | 4 | 3 Hoar Wool, 2 Shaghorn Horn, Cinder Scale | Shagmane Hood |
+| Cooking | meal-bloom-pie | 1 | 2 River Perch, Hearthbloom | Hearthbloom Fish Pie |
+| Cooking | meal-hunters-feast | 4 | 2 Tarn Whitefish, Hearthbloom, Mere Eel | Tarn Hunter's Feast |
+| Scribing | scroll-brief-ward | 1 | 2 Rushpulp, Fen Moss | Scroll of the Brief Ward |
+| Scribing | scroll-unbroken | 4 | 3 Rushpulp, Grave Dust, Venom Sac | Scroll of the Unbroken Line |
 
 **Where things are made (issue #258).** Every recipe can be made at the workshops of a friendly town; at a camp fire only
 cooking and alchemy (a meal over the coals, a draught in a pot). A crafted piece of gear takes the crafter's class noun
@@ -1039,6 +1166,29 @@ road and stay there, nursing the grudge, for two days.
 The DM's own people (new canon): **Peddler, Hermit, Drover, Sellsword, Minstrel, Stranger**,
 named from the peoples of Eldmoor; place markers: **ruin, camp, shrine, cairn door,
 watchtower**, named like "the lantern cairn of Mirefen" or "the drovers' camp of Thornvale".
+
+### DM-made sites (issue #69, names checked in #919)
+With the `create_site` lever the DM raises a new dungeon on open ground, in one of six themes (`src/data/sites.js`). The theme fixes how the place is named, the look of its mouth and the names of its chambers; the place word comes from the region's biome. All of it is generic fantasy vocabulary and none of it copies another world's proper nouns.
+
+| Theme | Name pattern | Mouth, as first seen | Chambers (guard / trap / puzzle / shrine / treasure / boss) |
+| --- | --- | --- | --- |
+| Barrow | "the Sedgemere Barrow" | A low stone door in a grassed mound, its lintel cut with worn signs. | the Bone Passage, the Grave Niches, the Low Hall / the Sunken Floor, the Narrow Stair / the Door of Names / the Candle Alcove / the Grave-Goods Vault / the Barrow-Heart |
+| Fortress | "Cindercrag Hold" | A palisade of sharpened stakes round a squat stone keep, smoke rising. An outlaw hold. | the Gatehouse, the Barracks, the Wall Walk / the Killing Yard, the Murder Holes / the Barred Postern / the Old Chapel / the Strongroom / the Great Hall |
+| Temple | "the Temple of Murkholm" | Broken steps going down to a pillared door half buried in silt. | the Narthex, the Cloister, the Choir / the Flooded Aisle, the Fallen Nave / the Rune Door / the Lady Chapel / the Reliquary / the Sanctum |
+| Mine | "the Flintrock Delvings" | A timbered adit in the hillside, rails running into the dark. | the Upper Gallery, the Ore Chute, the Long Seam / the Shaft, the Rotten Props / the Winch Room / the Miners' Shrine / the Tally Room / the Deep Seam |
+| Den | "the Wyrmby Den" | A dark hollow under roots and boulders, the ground trodden bare and strewn with bones. | the Run, the Gnawing Hollow, the Litter Cave / the Sinkhole, the Loose Scree / the Choked Passage / the Old Spring / the Hoard of Bones / the Deep Den |
+| Ruin | "the Ruins of Oakwick" | Roofless walls and a cellar stair, the stones scorched black. | the Broken Court, the Cellars, the Collapsed Hall / the Fallen Stair, the Sagging Gallery / the Sealed Study / the Household Shrine / the Hidden Strongroom / the Throne Room |
+
+**Place words.** A site's name joins a first part and a second part by the region's biome, written to read like the zone names (Thornvale, Mirefen, Cinderpass, Hoarfell). A biome not listed uses the last row.
+- Meadow (Thornvale): Thorn, Bramble, Oak, Hawk, Briar, Wold + hollow, ford, wick, dell, stead, ley.
+- Fen (Mirefen): Sedge, Reed, Murk, Eel, Bitter, Silt + mere, holm, fen, marsh, water, pool.
+- Ash (Cinderpass): Cinder, Ember, Slag, Soot, Char, Flint + crag, fell, gorge, scar, hearth, rock.
+- Tundra (Hoarfell): Rime, Frost, Hoar, Snow, Tarn, Winter + fell, cairn, reach, howe, moor, tor.
+- Other: Grey, Stone, Black, Old, Raven, Wyrm + moor, holt, stead, cairn, dale, by.
+
+**Never paired.** Winterfell (a famous name), Sedgewater (a Stepping Lands region), Hoarfell (a real zone), and Soothearth, Slagcrag and Brambleley (they read badly). The generator also skips a join that doubles a letter (Wold + dell) and one that equals a region or town name. Reserved so a DM site never shadows canon: Greyreach, Lowmead, Wendmere (test fixture), and Rimeholt, Cairnwold, Cinderreach, Palereach (Stepping Lands). "Rimereach" and "Cinderrock" are legal but sit close to those; the DM should not raise both beside one company.
+
+**Notes for the DM.** A barrow's boss is a never-lain-down dead thing, a fortress's an outlaw captain of the roads, a temple's a keeper turned from the altar, a mine's whatever dug the last seam, a den's its mother, a ruin's the last lord holding court. Barrows and temples draw their relic from the Crypt's epics, the rest from the region's own.
 
 ## Minds
 

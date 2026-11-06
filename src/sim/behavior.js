@@ -29,6 +29,8 @@
 //             dm-spoke-for (issue #750): a DM-voiced line quoted an agent-played member and the game cut it (seat dm, the DM model).
 //             no-aim: an agent hero with no stated aim (issue #535, sim/intent.js) for BW.NO_AIM_MIN outside camp and town
 //             rest (the digest counts aims stated per hero, by name).
+//             errand-unacted (issue #727): an aim with town-errand words (ask, information, buy, sell, a trainer, the board) that
+//             was held in town and ended (done, stale or replaced) with no talk, list_jobs, buy, sell or earshot in between.
 //   decision  each hero's Mind entry (sim/brain.js) once it settles: kind, provider, model, options,
 //             choice, outcome (applied, late, rejected, offline, superseded, overruled), latency, error.
 // Read only: it never writes S or a hero, rolls no random number and is not part of step(), so a world
@@ -40,7 +42,7 @@ import {maxHp} from './heroes.js';
 import {companies,minds,inSlots,slotKeyOf,slotMembers,slotted} from './company.js'; // per-company digest (#460)
 import {playerSeats} from './player.js';
 import {focus,touches,countable} from './dmfocus.js';
-import {INTENT,aimHeld} from './intent.js'; // the stated aim (#535)
+import {INTENT,aimHeld,aimState} from './intent.js'; // the stated aim (#535)
 import {gambitRec,noFlee} from './gambits.js';
 import {takeWishes} from './wish.js'; // wishes for the builders (#663)
 import {drainHolds} from './gambithold.js'; // finished gambit holds (#630) // the hero's own rules (#617)
@@ -92,7 +94,7 @@ export function makeWatch(opts={}){
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map(),iseq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
     levers:{pulled:0,refused:0,by:{}},dmlog:{},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{},talkRefused:{},gambits:{}});
-  const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0}:{scenes:0,agent:0,reflex:0}};
+  const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0,capped:(t.capped||0)+(t.stalled||0),fights:t.fights||0}:{scenes:0,agent:0,reflex:0,capped:0,fights:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
   function baseline(){base=true;seenRuling.clear();for(const p of (S.rulings&&S.rulings.past)||[])seenRuling.add(p.id);lastGm=S.gameMin;hour=Math.floor(S.gameMin/BW.DIGEST_MIN);dmSeen=S.dmLogSeq||0;scene=S.table||null;sceneRun=voteRun=0;refusals=[];pulls=[];
@@ -108,7 +110,7 @@ export function makeWatch(opts={}){
 
   function track(out,a,dt){let t=T.get(a.id);const now=S.gameMin;
     if(!t){t={ax:a.x,ay:a.y,since:now,idleNext:BW.IDLE_MIN,state:a.state,stSince:now,kills:a.kills||0,lvl:a.lvl,stuck:false,act:a.playActAt,nseq:seq0.has(a.id)?seq0.get(a.id):a.memories?a.memories.seq||0:0,noteAt:now,iseq:iseq0.has(a.id)?iseq0.get(a.id):a.intentSeq||0,aimAt:now};T.set(a.id,t)}
-    notes(out,a,t,now);refusedTalk(out,a,t);aims(out,a,t,now);townIdle(out,a,t,now);rules(out,a,t,now);
+    notes(out,a,t,now);refusedTalk(out,a,t);aims(out,a,t,now);errands(out,a,t,now);townIdle(out,a,t,now);rules(out,a,t,now);
     H.share[mindOf(a)]+=dt;
     if(a.player&&a.playActAt!==t.act){t.act=a.playActAt;H.acts++}
     // idle in one place (outside camp)
@@ -138,6 +140,14 @@ export function makeWatch(opts={}){
     if(!a.player||aimHeld(a)||a.state==='camp'||a.state==='dead'||a.state==='ghost'||resting){t.aimAt=now;return}
     if(now-t.aimAt>=BW.NO_AIM_MIN){const I=a.intent;anomaly(out,'no-aim',a,a.name+' has had no stated aim for '+Math.round((now-t.aimAt)/60*10)/10+' game hours ('+(I?'the last one is '+(I.done?'done':'stale'):'never stated')+')',
       {minutes:Math.round(now-t.aimAt),state:a.state,place:place(a),mind:mindOf(a),last:I?(I.done?'done':'stale'):'none',aims:a.intentSeq||0});t.aimAt=now}}
+  // town errands (issue #727): an errand aim (not a rest) that was held in town is watched until it ends; ended with none of the
+  // errand's tools used -> errand-unacted (once per aim). Only the errand word leaves the hero, never the aim's text.
+  function errands(out,a,t,now){if(!a.player)return;const I=a.intent,W=t.errI;
+    if(W&&(W!==I||W.done||(aimState(a)==='stale'&&!(W.order&&W.order.kind==='wait')))){ // a wait goes stale at 2 h but is still held (#790): it can yet be run, so judge it when it ends
+     t.errI=null;t.errN=W.n;
+      if(W.inTown&&!W.acted)anomaly(out,'errand-unacted',a,a.name+' held an aim to '+W.errand+' in town and let it go ('+(W!==I?'replaced':W.done?'done: '+W.done.why:'stale')+') without talk, list_jobs, buy, sell or earshot',
+        {errand:W.errand,ended:W!==I?'replaced':W.done?'done':'stale',minutes:Math.round(now-W.set),place:place(a),mind:mindOf(a)})}
+    if(I&&!I.done&&I.errand&&I.errand!=='rest'&&t.errI!==I&&t.errN!==I.n&&aimState(a)!=='stale')t.errI=I}
   // town-idle (issue #790): an agent hero in town with nothing earned for BW.TOWN_IDLE_MIN game minutes (sim/player.js townGuard woke it); again every BW.TOWN_IDLE_MIN
   function townIdle(out,a,t,now){const T=a.player&&a.state==='town'?a.townIdle:null;if(!T||now-T.at<BW.TOWN_IDLE_MIN){t.tiAt=null;return}
     if(t.tiAt==null||now-t.tiAt>=BW.TOWN_IDLE_MIN){t.tiAt=now;anomaly(out,'town-idle',a,a.name+' has earned nothing in town for '+Math.round((now-T.at)/60*10)/10+' game hours',{hours:Math.round((now-T.at)/60*10)/10,place:place(a),mind:mindOf(a),aim:a.intent&&!a.intent.done?a.intent.goal:null,level:a.lvl})}}
@@ -187,7 +197,7 @@ export function makeWatch(opts={}){
   // gambit holds (#630): the digest counts holds and held seconds per hero; one that ran to HOLD_MAX_S unanswered is an anomaly
   function holds(out){for(const h of drainHolds()){const t=H.holds||(H.holds={n:0,heldS:0,expired:0,by:{}}),b=t.by[h.name]||(t.by[h.name]={n:0,s:0});t.n++;t.heldS+=h.s;b.n++;b.s+=h.s;
     if(h.how==='expired'){t.expired++;const a=byId(h.id);anomaly(out,'hold-expired',a||null,h.name+' held the world with "'+h.rule+'" and did not act in '+h.s+' s',{rule:h.rule,seconds:h.s},'warn')}}}
-  function table(out){const t=tStats();H.table.opened+=Math.max(0,t.scenes-tLast.scenes);H.table.agentTurns+=Math.max(0,t.agent-tLast.agent);H.table.reflexTurns+=Math.max(0,t.reflex-tLast.reflex);tLast=t;
+  function table(out){const t=tStats();H.table.opened+=Math.max(0,t.scenes-tLast.scenes);H.table.agentTurns+=Math.max(0,t.agent-tLast.agent);H.table.reflexTurns+=Math.max(0,t.reflex-tLast.reflex);H.table.capped=(H.table.capped||0)+Math.max(0,t.capped-tLast.capped);H.table.fights=(H.table.fights||0)+Math.max(0,t.fights-tLast.fights);tLast=t;
     const sc=S.table;
     if(scene&&(scene!==sc||scene.phase==='outcome')&&!seenScene.has(scene)){seenScene.add(scene);H.table.resolved++;
       const mine=scene.beats.filter(b=>{const a=byId(b.id);return a&&a.player});

@@ -72,7 +72,7 @@ function placeBox(t,[bx,by,bw,bh]){const fx=(bx+bw/2)/(TOWN_REF[0]-1),fy=(by+bh/
 function planBuildings(t,gateTiles){
   const x0=t.x0,y0=t.y0,x1=x0+t.w-1,y1=y0+t.h-1,g=t.gate||'E',along=g==='E'||g==='W',E=1e-6;
   if(Array.isArray(t.buildings))return t.buildings.map(b=>{const [bx,by,bw,bh]=b.box;
-    return{piece:b.piece,box:[bx,by,bw,bh],door:b.door?[b.door[0],b.door[1]]:[bx+Math.floor((bw-1)/2),by+bh-1],serves:b.serves||null,draw:b.draw||[bx,by,bw,bh]}});
+    return{piece:b.piece,box:[bx,by,bw,bh],door:b.door?[b.door[0],b.door[1]]:[bx+Math.floor((bw-1)/2),by+bh-1],serves:b.serves||null,draw:b.draw||[bx,by,bw,bh],...(b.kit?{kit:b.kit}:{})}});
   // the street: the line through the middle of the two gate tiles
   const sx=gateTiles[0][0]+(along?0:1),sy=gateTiles[0][1]+(along?1:0);
   return TOWN_PIECES.map(P=>{const d=placeBox(t,P.box);
@@ -96,7 +96,7 @@ function mkTown(t){
     spots[k]=o?{x:x0+o[0],y:y0+o[1]}:spotAt(t,SPOT_DEFAULTS[k][0],SPOT_DEFAULTS[k][1])}
   for(const k in t.spots||{})if(!spots[k])spots[k]={x:x0+t.spots[k][0],y:y0+t.spots[k][1]};
   for(const k of Object.keys(spots)){const b=buildings.find(q=>q.serves===k);if(b)spots[k]={x:b.door[0]+.5,y:b.door[1]+.5}} // the keeper stands at the door
-  return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,buildings,
+  return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,buildings,...(t.wall?{wall:t.wall}:{}),...(t.ground?{ground:t.ground}:{}),
     spots,npcs:t.npcs||null,ah:spots.quartermaster,qg:spots.gate,gate,grave:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
 
 // ---- roads
@@ -146,8 +146,10 @@ export function buildWorld(spec){
   // river
   if(spec.river){const c=curves[spec.river.curve];if(!c)throw new Error('world spec: unknown river curve '+spec.river.curve);
     const wd=spec.river.width||2;
-    if(c.axis==='y'){for(let y=0;y<h;y++){const x0=c.fn(y);for(let k=0;k<wd;k++)if(x0+k>=0&&x0+k<w)tiles[I(x0+k,y)]=RIVER}}
-    else{for(let x=0;x<w;x++){const y0=c.fn(x);for(let k=0;k<wd;k++)if(y0+k>=0&&y0+k<h)tiles[I(x,y0+k)]=RIVER}}}
+    // spec.river.span [from,to] (optional): painted only for those rows (a north-south river) or columns, so a river can rise in a spring.
+    const sp=spec.river.span,s0=sp?Math.max(0,sp[0]):0,s1=sp?sp[1]:Infinity;
+    if(c.axis==='y'){for(let y=s0;y<h&&y<=s1;y++){const x0=c.fn(y);for(let k=0;k<wd;k++)if(x0+k>=0&&x0+k<w)tiles[I(x0+k,y)]=RIVER}}
+    else{for(let x=s0;x<w&&x<=s1;x++){const y0=c.fn(x);for(let k=0;k<wd;k++)if(y0+k>=0&&y0+k<h)tiles[I(x,y0+k)]=RIVER}}}
   // fords (#794): spec.river.fords, places along the river (a y on a north-south river, an x on an east-west one) where it
   // can be waded. The tiles stay RIVER, so they keep its slow pace; the solid grid leaves them open.
   const fords=[];
@@ -160,12 +162,21 @@ export function buildWorld(spec){
     for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++)
       tiles[I(x,y)]=(x===c.x0||x===c.x1||y===c.y0||y===c.y1)?WALL:FLOOR;
     for(const [gx,gy] of c.gateTiles)tiles[I(gx,gy)]=FLOOR}
+  // A town's streets and approaches (epic #940 slice C): spec town `ground: [[dx,dy,w,h], ...]`, rects from the town's top-left
+  // corner, laid as ROAD over anything but wall, water and a building's footprint (inside the walls this turns floor into street;
+  // outside it is a causeway or quay). Absent, nothing is painted: Eldmoor and Stepping build as before.
+  (spec.towns||[]).forEach((t,i)=>{const c=CITY[i];
+    for(const [dx,dy,rw,rh] of t.ground||[])for(let y=c.y0+dy;y<c.y0+dy+rh;y++)for(let x=c.x0+dx;x<c.x0+dx+rw;x++){
+      if(x<0||y<0||x>=w||y>=h)continue;const q=tiles[I(x,y)];
+      if(q===WALL||q===RIVER||q===BRIDGE)continue;
+      if(c.buildings.some(b=>x>=b.box[0]&&x<b.box[0]+b.box[2]&&y>=b.box[1]&&y<b.box[1]+b.box[3]&&!(x===b.door[0]&&y===b.door[1])))continue;
+      tiles[I(x,y)]=ROAD}});
 
   // landmarks
   // A dungeon's chambers (#65): plain data, checked for shape here; the creature types are the bestiary's (checked by crawlcheck).
   const roomsOf=L=>{const rs=L.rooms||[];if(!Array.isArray(rs))throw new Error('world spec: rooms of '+L.name+' must be a list');
     rs.forEach((r,i)=>{if(!r||!r.name||!Array.isArray(r.foes)||!r.foes.length||!r.foes.every(f=>f&&f.type&&f.n>=1))throw new Error('world spec: room '+i+' of '+L.name+' needs a name and foes [{type,n}]')});return rs};
-  const LANDMARKS=[];let LAIR=null,CRYPT=null;
+  const LANDMARKS=[],CRYPTS=[];let LAIR=null; // CRYPTS: every dungeon a group can enter, spec order; the first is CRYPT (#891)
   for(const L of spec.landmarks||[]){
     if(L.kind==='lair'){const r=L.r||5.4,inner=L.inner||4,m=L.mouth||'W';
       for(let y=0;y<h;y++)for(let x=0;x<w;x++){const dx=x+.5-L.x,dy=y+.5-L.y,d=Math.hypot(dx,dy);
@@ -177,7 +188,7 @@ export function buildWorld(spec){
       if(mouth)for(let y=mouth.y0;y<=mouth.y1;y++)for(let x=mouth.x0;x<=mouth.x1;x++)if(x>=0&&y>=0&&x<w&&y<h)tiles[I(x,y)]=ROCK;
       const rooms=roomsOf(L);
       const o={kind:'crypt',name:L.name,boss:L.boss,x:L.x,y:L.y,mouth,exclude:L.exclude||0,light:L.light||null,rooms,sign:L.sign||null,captain:L.captain||null};LANDMARKS.push(o);
-      if(!CRYPT)CRYPT={name:L.name,boss:L.boss,x:L.x,y:L.y,group:null,cd:L.cd===undefined?25:L.cd,mouth,rooms}}
+      CRYPTS.push({name:L.name,boss:L.boss,x:L.x,y:L.y,group:null,cd:L.cd===undefined?25:L.cd,mouth,rooms,entry:L.entry})}
     else throw new Error('world spec: unknown landmark kind '+L.kind)}
 
   // roads: polylines are painted as drawn; {from,to,via} endpoints are routed.
@@ -237,6 +248,6 @@ export function buildWorld(spec){
   const OUTPOSTS=(spec.outposts||[]).map(o=>({id:o.id,name:o.name,x:o.x,y:o.y,r:o.r||3.5,z:zoneAt(o.x,o.y)})); // contested outposts (#11): data only, never painted
   const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS,land,mainLand},spec); // gathering nodes (#255): an overlay list, not tiles
   return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
-    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT,ROUTES,OUTPOSTS,
+    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT:CRYPTS[0]||null,CRYPTS,ROUTES,OUTPOSTS,
     zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,solid,land,mainLand,fords,
     road:pts=>paintPolyline(world,pts)}}

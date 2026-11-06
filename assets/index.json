@@ -91,6 +91,366 @@
       ],
       "accepted": "2026-11-04"
     },
+    "prop:canopy-ash-1@32": {
+      "id": "prop:canopy-ash-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-ash-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "caf8c389414fe27886ff8f2059f6ce6c6bf53dbdb1776700bd4a290b75f2bfe0",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-ash-2@32": {
+      "id": "prop:canopy-ash-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-ash-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "4c8f02d7e70f8d697de4ecda9e988ed4b27f52d03a9b455de9dcc6ff0d31baac",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-ash-3@32": {
+      "id": "prop:canopy-ash-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-ash-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "7570e2c7b222c1ba21a0d85bdf01ab9e62796b6ce6a7d14a8a477e11b9453968",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-fen-1@32": {
+      "id": "prop:canopy-fen-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-fen-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "396d6a1a022f28451e166727e8fa5e7362c8448b745df0eadf68bf6acdb3f5d2",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-fen-2@32": {
+      "id": "prop:canopy-fen-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-fen-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "15be7e4f622d52f79d2ea3514c43ffba1136d2cd8fc3b5456724097da66f1667",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-fen-3@32": {
+      "id": "prop:canopy-fen-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-fen-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "902a6bb22c7399b0dd1cedf533714b789dfcc9d2d5be04cca973650ce5d90418",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-meadow-1@32": {
+      "id": "prop:canopy-meadow-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-meadow-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "c2c8ca99f5e1817241397cc7dc2b4a3d05333c86a126aa1b3b2cc0506c7c8e19",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-meadow-2@32": {
+      "id": "prop:canopy-meadow-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-meadow-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "e21f03f647cbe3e04f9a3b0dbb3bada756e01fb879d8dfed25342ef56094ada7",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-meadow-3@32": {
+      "id": "prop:canopy-meadow-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-meadow-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "d863cec88649ca21574ebd6aba8f03661b3e64c21f62e29c89fa4a06311494ee",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-tundra-1@32": {
+      "id": "prop:canopy-tundra-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-tundra-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "e100b255d44ab2a3d9e8136fe7ced8df6bcfd292318bfeea0a6c6577bdeb4ac8",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-tundra-2@32": {
+      "id": "prop:canopy-tundra-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-tundra-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "449f422c4c055f8ce7940f6159d8637f12b7a118c3d6d63cf6251ae5ee732678",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-tundra-3@32": {
+      "id": "prop:canopy-tundra-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-tundra-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "e100b255d44ab2a3d9e8136fe7ced8df6bcfd292318bfeea0a6c6577bdeb4ac8",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-ash-1@32": {
+      "id": "prop:rock-ash-1",
+      "kind": "prop",
+      "file": "prop/32/rock-ash-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "87e3f5aef32aebea15e44d0e3bee36e452f32901fd2e4a0330bb23724828f256",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-ash-2@32": {
+      "id": "prop:rock-ash-2",
+      "kind": "prop",
+      "file": "prop/32/rock-ash-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "0aa2b9b7a9aeb2951279d85f2851c2034aa4175bffe4a7f026b8f9e03b1340b0",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-ash-3@32": {
+      "id": "prop:rock-ash-3",
+      "kind": "prop",
+      "file": "prop/32/rock-ash-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "3d8d1e7abe06f9ab972e24d26ea9b41ac13c61da584f42ed964d1d3f2d7949bd",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-fen-1@32": {
+      "id": "prop:rock-fen-1",
+      "kind": "prop",
+      "file": "prop/32/rock-fen-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "6f0975ea1389d11a365fdf9ea25b69dc8d7c7c3c1f722992d21b5638a675c026",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-fen-2@32": {
+      "id": "prop:rock-fen-2",
+      "kind": "prop",
+      "file": "prop/32/rock-fen-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "7688969334f44233e91c354ad92d652aa5e302b0145b7b6cc8105525f0c7e6c3",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-fen-3@32": {
+      "id": "prop:rock-fen-3",
+      "kind": "prop",
+      "file": "prop/32/rock-fen-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "2623d5771eed87edf174e580fe100aebe2e5a53517d16d9cf5779292aeb9dc8a",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-meadow-1@32": {
+      "id": "prop:rock-meadow-1",
+      "kind": "prop",
+      "file": "prop/32/rock-meadow-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "c10805cc49222cc3e20627e28f84df6d776a1cd3f6eafcda78f33fdbdfc6885a",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-meadow-2@32": {
+      "id": "prop:rock-meadow-2",
+      "kind": "prop",
+      "file": "prop/32/rock-meadow-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "3c739145f9b102d8a0d92af9d92df05a5a2a991f37371643b8e3fcf3ad3dbb38",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-meadow-3@32": {
+      "id": "prop:rock-meadow-3",
+      "kind": "prop",
+      "file": "prop/32/rock-meadow-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "c6b704bd8b51679189fd0bf2af7df77d512eb3c8bfc885a1ce043655aea3f94c",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-tundra-1@32": {
+      "id": "prop:rock-tundra-1",
+      "kind": "prop",
+      "file": "prop/32/rock-tundra-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "de0d6f4a1f55ce1d5823040985306b437bea2dba588c2d542d4e28e6c64cd411",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-tundra-2@32": {
+      "id": "prop:rock-tundra-2",
+      "kind": "prop",
+      "file": "prop/32/rock-tundra-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "fbc5071c4a08f83cba5bf435910f8b53a02669e074635ee7a0a14d82df811adc",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-tundra-3@32": {
+      "id": "prop:rock-tundra-3",
+      "kind": "prop",
+      "file": "prop/32/rock-tundra-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "278cbaa723b4c54b74bdc275daa189b9c2ba915adf14af70ad16565ba9f923ea",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
     "sprite:hero-hunter-ashfolk@32": {
       "id": "sprite:hero-hunter-ashfolk",
       "kind": "sprite",
@@ -1608,6 +1968,1202 @@
         "Leana Zimmerman (Sharm)"
       ],
       "accepted": "2026-11-04"
+    },
+    "landmark:crypt-mouth@32": {
+      "id": "landmark:crypt-mouth",
+      "kind": "landmark",
+      "file": "landmark/32/crypt-mouth.png",
+      "w": 96,
+      "h": 96,
+      "sha256": "416f1df576fdb8c54387edc7880d8e6c130f9bdaf0ebb153567622b317c49cf6",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "landmark:lair@32": {
+      "id": "landmark:lair",
+      "kind": "landmark",
+      "file": "landmark/32/lair.png",
+      "w": 256,
+      "h": 256,
+      "sha256": "2eeb8a322c3bc851cd8b31c97a98e2c357d0e81ebf493b5515b5403f6b416c43",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "building:lpc-stone-auction@32": {
+      "id": "building:lpc-stone-auction",
+      "kind": "building",
+      "file": "building/32/lpc-stone-auction.png",
+      "w": 96,
+      "h": 96,
+      "sha256": "0719a637e018fc2236b43391ec90d6c8901b7f3ee5e777b39c09ed4011b22ad4",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05",
+      "foot": [
+        3,
+        2
+      ],
+      "door": [
+        1,
+        1
+      ]
+    },
+    "building:lpc-stone-board@32": {
+      "id": "building:lpc-stone-board",
+      "kind": "building",
+      "file": "building/32/lpc-stone-board.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "af305130c56fd8c8108479a0cc5d46b015ecdde454c1f48da9d21322642632c7",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05",
+      "foot": [
+        1,
+        1
+      ],
+      "door": [
+        0,
+        0
+      ]
+    },
+    "building:lpc-stone-chapel@32": {
+      "id": "building:lpc-stone-chapel",
+      "kind": "building",
+      "file": "building/32/lpc-stone-chapel.png",
+      "w": 32,
+      "h": 112,
+      "sha256": "48fe804409bd6595a939a7608a3d3eac6517b2ff641735649be60c8a8f7ff69a",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05",
+      "foot": [
+        1,
+        2
+      ],
+      "door": [
+        0,
+        1
+      ]
+    },
+    "building:lpc-stone-hall@32": {
+      "id": "building:lpc-stone-hall",
+      "kind": "building",
+      "file": "building/32/lpc-stone-hall.png",
+      "w": 96,
+      "h": 96,
+      "sha256": "408dc59cc0fe2ef4aca2a2c5bb5ca28630bd61852d9205e63eefb4f3e2450148",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05",
+      "foot": [
+        3,
+        2
+      ],
+      "door": [
+        1,
+        1
+      ],
+      "spots": {
+        "flag": [
+          48,
+          4
+        ]
+      }
+    },
+    "building:lpc-stone-inn@32": {
+      "id": "building:lpc-stone-inn",
+      "kind": "building",
+      "file": "building/32/lpc-stone-inn.png",
+      "w": 96,
+      "h": 64,
+      "sha256": "5a18463c94b087b362e45375ca9bcee68cd2b9af0df3be297c0fdf5ca6041f5e",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05",
+      "foot": [
+        3,
+        2
+      ],
+      "door": [
+        1,
+        0
+      ],
+      "spots": {
+        "chimney": [
+          81,
+          2
+        ]
+      }
+    },
+    "building:lpc-stone-smithy@32": {
+      "id": "building:lpc-stone-smithy",
+      "kind": "building",
+      "file": "building/32/lpc-stone-smithy.png",
+      "w": 32,
+      "h": 96,
+      "sha256": "19f8d0bb6bfe717b11ef2e73bc6d48de1969999f16f9b9e3748e74d47b1d3ea8",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05",
+      "foot": [
+        1,
+        2
+      ],
+      "door": [
+        0,
+        1
+      ],
+      "spots": {
+        "chimney": [
+          23,
+          1
+        ]
+      }
+    },
+    "building:lpc-timber-auction@32": {
+      "id": "building:lpc-timber-auction",
+      "kind": "building",
+      "file": "building/32/lpc-timber-auction.png",
+      "w": 96,
+      "h": 96,
+      "sha256": "02aa81a31a517e8b11a103ab705ffd6b91b9e260316b2dee4b502a6ba73a3e17",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-05",
+      "foot": [
+        3,
+        2
+      ],
+      "door": [
+        1,
+        1
+      ]
+    },
+    "building:lpc-timber-board@32": {
+      "id": "building:lpc-timber-board",
+      "kind": "building",
+      "file": "building/32/lpc-timber-board.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "1ea3709274bfd7cddf464e9acec62df6c2091b17739fe6430035fb4fbadba279",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05",
+      "foot": [
+        1,
+        1
+      ],
+      "door": [
+        0,
+        0
+      ]
+    },
+    "building:lpc-timber-chapel@32": {
+      "id": "building:lpc-timber-chapel",
+      "kind": "building",
+      "file": "building/32/lpc-timber-chapel.png",
+      "w": 32,
+      "h": 112,
+      "sha256": "0d3bbb080709747f4c9fa495e696f745a094d5daff0f3290c8910466285921b3",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-05",
+      "foot": [
+        1,
+        2
+      ],
+      "door": [
+        0,
+        1
+      ]
+    },
+    "building:lpc-timber-hall@32": {
+      "id": "building:lpc-timber-hall",
+      "kind": "building",
+      "file": "building/32/lpc-timber-hall.png",
+      "w": 96,
+      "h": 96,
+      "sha256": "aed0d3adec50c09089b36e41130dcad294c9d4e737eecc4be455615d12712667",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-05",
+      "foot": [
+        3,
+        2
+      ],
+      "door": [
+        1,
+        1
+      ],
+      "spots": {
+        "flag": [
+          48,
+          4
+        ]
+      }
+    },
+    "building:lpc-timber-inn@32": {
+      "id": "building:lpc-timber-inn",
+      "kind": "building",
+      "file": "building/32/lpc-timber-inn.png",
+      "w": 96,
+      "h": 64,
+      "sha256": "ccb64e1eeee7d309fea4a87b1e68179e03f999fc1cb968da726c3a0ce03dea21",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-05",
+      "foot": [
+        3,
+        2
+      ],
+      "door": [
+        1,
+        0
+      ],
+      "spots": {
+        "chimney": [
+          81,
+          2
+        ]
+      }
+    },
+    "building:lpc-timber-smithy@32": {
+      "id": "building:lpc-timber-smithy",
+      "kind": "building",
+      "file": "building/32/lpc-timber-smithy.png",
+      "w": 32,
+      "h": 96,
+      "sha256": "01c26206190b185b2b2ed789a982b1160dbd2a721b7471ded108385fe355a000",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-05",
+      "foot": [
+        1,
+        2
+      ],
+      "door": [
+        0,
+        1
+      ],
+      "spots": {
+        "chimney": [
+          23,
+          1
+        ]
+      }
+    },
+    "building:lpc-stone-pier-tall@32": {
+      "id": "building:lpc-stone-pier-tall",
+      "kind": "building",
+      "file": "building/32/lpc-stone-pier-tall.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "84f4e6cd0c918a2fb5e80868648757a79dd6ba33dd199349a8f3630ab38db695",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "building:lpc-stone-pier@32": {
+      "id": "building:lpc-stone-pier",
+      "kind": "building",
+      "file": "building/32/lpc-stone-pier.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "5bb03169d84a5f86c5d1d1ec4b2129a06928475ad48b42134487e7b49bffefa6",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "building:lpc-stone-tower@32": {
+      "id": "building:lpc-stone-tower",
+      "kind": "building",
+      "file": "building/32/lpc-stone-tower.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "b7d401f8192fbf74bbe8d31f6c2375da0faa3ecc91d0bedb004d8ed7f1eb66f6",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "building:lpc-timber-pier-tall@32": {
+      "id": "building:lpc-timber-pier-tall",
+      "kind": "building",
+      "file": "building/32/lpc-timber-pier-tall.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "a98fbbf7b06a219be01a8d327c89f14104961fbef5b5c15ff660c814fdacec3d",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "building:lpc-timber-pier@32": {
+      "id": "building:lpc-timber-pier",
+      "kind": "building",
+      "file": "building/32/lpc-timber-pier.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "cffec6149d1353c5d9e81a1e1eb9e8b2d86638683ba5210d5c052e93b4388729",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "building:lpc-timber-tower@32": {
+      "id": "building:lpc-timber-tower",
+      "kind": "building",
+      "file": "building/32/lpc-timber-tower.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "029fd9cab7dec154da34eb32eb7fe9c8841a4902c1e49fb6dd3d7ba96fb6af68",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-stone-plaza@32": {
+      "id": "tile:lpc-stone-plaza",
+      "kind": "tile",
+      "file": "tile/32/lpc-stone-plaza.png",
+      "w": 128,
+      "h": 128,
+      "sha256": "93cbfa7d1e29bb6cef20df24916c8a0f68a2dcbc1b5d92318687f71c122a9f5f",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-stone-wall-e@32": {
+      "id": "tile:lpc-stone-wall-e",
+      "kind": "tile",
+      "file": "tile/32/lpc-stone-wall-e.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "b5fd202a43d3fb75b3b8efc383786dcd2a711283f184370f207eb43a3776b1be",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-stone-wall-n@32": {
+      "id": "tile:lpc-stone-wall-n",
+      "kind": "tile",
+      "file": "tile/32/lpc-stone-wall-n.png",
+      "w": 64,
+      "h": 32,
+      "sha256": "84cc411a46cefdffa5b7d0832d95599801d647ad350b165a6597db19ce07f059",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-stone-wall-s@32": {
+      "id": "tile:lpc-stone-wall-s",
+      "kind": "tile",
+      "file": "tile/32/lpc-stone-wall-s.png",
+      "w": 64,
+      "h": 32,
+      "sha256": "53c33f7780b7c4b48aa4d2c14421e8eb5c9b77aa0804744d10d1e50bb7e9f2f6",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-stone-wall-w@32": {
+      "id": "tile:lpc-stone-wall-w",
+      "kind": "tile",
+      "file": "tile/32/lpc-stone-wall-w.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "b5dd322c1af4328ef6a4099dfda0cbb81ccb7267d5f3b7e5836aafd94edc7ab3",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-timber-plaza@32": {
+      "id": "tile:lpc-timber-plaza",
+      "kind": "tile",
+      "file": "tile/32/lpc-timber-plaza.png",
+      "w": 128,
+      "h": 128,
+      "sha256": "1c9a56b36a935c83cc5d59e2dbcbce148926d1b2e8017c7d77c3eb92d2734d93",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-timber-wall-e@32": {
+      "id": "tile:lpc-timber-wall-e",
+      "kind": "tile",
+      "file": "tile/32/lpc-timber-wall-e.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "6e89c80e3f0c46c88204eec4381d3059ecd7f6a42b633333feb4e82c1ce9e280",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-timber-wall-n@32": {
+      "id": "tile:lpc-timber-wall-n",
+      "kind": "tile",
+      "file": "tile/32/lpc-timber-wall-n.png",
+      "w": 64,
+      "h": 32,
+      "sha256": "275f0814603e314d05d6a39307e36f51cefba2e70ee98dcac8fcdc41c757b971",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-timber-wall-s@32": {
+      "id": "tile:lpc-timber-wall-s",
+      "kind": "tile",
+      "file": "tile/32/lpc-timber-wall-s.png",
+      "w": 64,
+      "h": 32,
+      "sha256": "b2f214f67d939745dc779454a1f323ba04678badee31dbf3bbffd255b5661dc5",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "tile:lpc-timber-wall-w@32": {
+      "id": "tile:lpc-timber-wall-w",
+      "kind": "tile",
+      "file": "tile/32/lpc-timber-wall-w.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "c6e8eded100f39b7100cb5571b1773ba9b0d2a118efd082999d05ffa411953ae",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-05"
+    },
+    "prop:canopy-highland-1@32": {
+      "id": "prop:canopy-highland-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-highland-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "c79050e2ad476ef78cf363fa6d91c2034258bcfbaf1c4035bfca7e57bc609201",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:canopy-highland-2@32": {
+      "id": "prop:canopy-highland-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-highland-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "bd7c9e0e1e8ea6f041297f9aaba855a085bd8dd7f3e2692a90bbc2a2b3337d7d",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:canopy-highland-3@32": {
+      "id": "prop:canopy-highland-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-highland-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "6fd20291034f4ca98fe86da58a8d0efa3f9561e6ac6d751a7df867e4167f1530",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:rock-highland-1@32": {
+      "id": "prop:rock-highland-1",
+      "kind": "prop",
+      "file": "prop/32/rock-highland-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "3ff2bcf4b7aa30dafc32774ceb029247258f80b92d09f1fca543ac4c49ac9258",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:rock-highland-2@32": {
+      "id": "prop:rock-highland-2",
+      "kind": "prop",
+      "file": "prop/32/rock-highland-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "7538e45bb4f25c9ac19b5daaa6c4ae02028c7d0924dc57f37f6cf9747b3ffecf",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:rock-highland-3@32": {
+      "id": "prop:rock-highland-3",
+      "kind": "prop",
+      "file": "prop/32/rock-highland-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "e91427d67ee3e3e96a7069f83a562148ec75f1d8cb9827fbfa3c5605ea0fd9f7",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "building:lpc-palisade-pier-tall@32": {
+      "id": "building:lpc-palisade-pier-tall",
+      "kind": "building",
+      "file": "building/32/lpc-palisade-pier-tall.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "0375fe253ca0ee5a3126ec494b8b20001e711079b676ab5596dccf1b742a5d19",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-06"
+    },
+    "building:lpc-palisade-pier@32": {
+      "id": "building:lpc-palisade-pier",
+      "kind": "building",
+      "file": "building/32/lpc-palisade-pier.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "eaa90afb87786cf1d21b971e8c79606234ab73a1345a9a914fdcee78f50b7711",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-06"
+    },
+    "building:lpc-palisade-tower@32": {
+      "id": "building:lpc-palisade-tower",
+      "kind": "building",
+      "file": "building/32/lpc-palisade-tower.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "0375fe253ca0ee5a3126ec494b8b20001e711079b676ab5596dccf1b742a5d19",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-06"
+    },
+    "building:lpc-stone-house-cottage@32": {
+      "id": "building:lpc-stone-house-cottage",
+      "kind": "building",
+      "file": "building/32/lpc-stone-house-cottage.png",
+      "w": 64,
+      "h": 64,
+      "sha256": "a8d47de38a027eba8cf6f7cd2fa2ee4d0b743e6e404f2e274ec7eb5571376601",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06",
+      "foot": [
+        2,
+        2
+      ],
+      "door": [
+        0,
+        1
+      ],
+      "spots": {
+        "chimney": [
+          50,
+          1
+        ]
+      }
+    },
+    "building:lpc-stone-house-gable@32": {
+      "id": "building:lpc-stone-house-gable",
+      "kind": "building",
+      "file": "building/32/lpc-stone-house-gable.png",
+      "w": 64,
+      "h": 96,
+      "sha256": "260017b0fa96f914c245c6f36446bacde6665d7e1beecd3989f1f3ddff6202a2",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06",
+      "foot": [
+        2,
+        3
+      ],
+      "door": [
+        0,
+        2
+      ]
+    },
+    "building:lpc-stone-house-row@32": {
+      "id": "building:lpc-stone-house-row",
+      "kind": "building",
+      "file": "building/32/lpc-stone-house-row.png",
+      "w": 96,
+      "h": 96,
+      "sha256": "d21977c9ad11cadccc188c132934c4a40b43f673d32e3358ab7300a699ab634c",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06",
+      "foot": [
+        3,
+        2
+      ],
+      "door": [
+        1,
+        1
+      ],
+      "spots": {
+        "chimney": [
+          77,
+          1
+        ]
+      }
+    },
+    "building:lpc-stone-inn-harbour@32": {
+      "id": "building:lpc-stone-inn-harbour",
+      "kind": "building",
+      "file": "building/32/lpc-stone-inn-harbour.png",
+      "w": 128,
+      "h": 96,
+      "sha256": "b9dccaa0d6245d601e0b6f0f0bcead913452f4c05ebaaa5c746961b1c30e1edb",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06",
+      "foot": [
+        4,
+        3
+      ],
+      "door": [
+        2,
+        2
+      ],
+      "spots": {
+        "chimney": [
+          103,
+          1
+        ]
+      }
+    },
+    "building:lpc-timber-hall-long@32": {
+      "id": "building:lpc-timber-hall-long",
+      "kind": "building",
+      "file": "building/32/lpc-timber-hall-long.png",
+      "w": 160,
+      "h": 96,
+      "sha256": "24cbf29ec96a6cf161f5e367a49e5bd0b1e6f08952f96caf15f97b04c95753dd",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-06",
+      "foot": [
+        5,
+        2
+      ],
+      "door": [
+        2,
+        1
+      ],
+      "spots": {
+        "flag": [
+          80,
+          4
+        ]
+      }
+    },
+    "building:lpc-timber-house-cottage@32": {
+      "id": "building:lpc-timber-house-cottage",
+      "kind": "building",
+      "file": "building/32/lpc-timber-house-cottage.png",
+      "w": 64,
+      "h": 64,
+      "sha256": "228011412303f5617effebe5f883522c45046cef82ade9e73412c6c6ed011b99",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-06",
+      "foot": [
+        2,
+        2
+      ],
+      "door": [
+        0,
+        1
+      ],
+      "spots": {
+        "chimney": [
+          50,
+          1
+        ]
+      }
+    },
+    "building:lpc-timber-house-croft@32": {
+      "id": "building:lpc-timber-house-croft",
+      "kind": "building",
+      "file": "building/32/lpc-timber-house-croft.png",
+      "w": 64,
+      "h": 64,
+      "sha256": "8212236a466bcae276a053024c269dc948bc9b5ba5bdc5ec3128f48c3683e870",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-06",
+      "foot": [
+        2,
+        2
+      ],
+      "door": [
+        1,
+        1
+      ],
+      "spots": {
+        "chimney": [
+          13,
+          1
+        ]
+      }
+    },
+    "building:lpc-timber-house-gable@32": {
+      "id": "building:lpc-timber-house-gable",
+      "kind": "building",
+      "file": "building/32/lpc-timber-house-gable.png",
+      "w": 64,
+      "h": 96,
+      "sha256": "e908a56cc3bc8b5fee22135a73784839252eac97c6941596a6177eb4c0a5b377",
+      "tier": 32,
+      "source": "lpc-base, lpc-roofs",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Lanea Zimmerman (Sharm)",
+        "Michele Bucelli (Buch)",
+        "Casper Nilsson",
+        "Xenodora",
+        "keith karnage",
+        "NaRNeRZz",
+        "Talon (Talosaurus)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-roofs",
+      "accepted": "2026-11-06",
+      "foot": [
+        2,
+        3
+      ],
+      "door": [
+        0,
+        2
+      ]
+    },
+    "tile:lpc-palisade-plaza@32": {
+      "id": "tile:lpc-palisade-plaza",
+      "kind": "tile",
+      "file": "tile/32/lpc-palisade-plaza.png",
+      "w": 128,
+      "h": 128,
+      "sha256": "0e5a016513173a27134376588c58bc6593fc79e9c0aefc29d7454a9d543c31d3",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06"
+    },
+    "tile:lpc-palisade-wall-e@32": {
+      "id": "tile:lpc-palisade-wall-e",
+      "kind": "tile",
+      "file": "tile/32/lpc-palisade-wall-e.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "42bfff2540fdfbfa2d1e64842675964f90f96f274e43b398d8b271c0da24655c",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06"
+    },
+    "tile:lpc-palisade-wall-n@32": {
+      "id": "tile:lpc-palisade-wall-n",
+      "kind": "tile",
+      "file": "tile/32/lpc-palisade-wall-n.png",
+      "w": 64,
+      "h": 32,
+      "sha256": "8de466c42977e780e2c9455e2da2c93ee0d6e42f4dedd9de7e2346b9367e67a9",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06"
+    },
+    "tile:lpc-palisade-wall-s@32": {
+      "id": "tile:lpc-palisade-wall-s",
+      "kind": "tile",
+      "file": "tile/32/lpc-palisade-wall-s.png",
+      "w": 64,
+      "h": 32,
+      "sha256": "911456e4571d74bee89d2c2aa83f87dca952fe62df9402b0b73a4574099464c5",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06"
+    },
+    "tile:lpc-palisade-wall-w@32": {
+      "id": "tile:lpc-palisade-wall-w",
+      "kind": "tile",
+      "file": "tile/32/lpc-palisade-wall-w.png",
+      "w": 32,
+      "h": 64,
+      "sha256": "7fcf0996105230e3f16b54f9248a4e9e98d865b29bcf287a633d03ae60b2d764",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)"
+      ],
+      "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
+      "accepted": "2026-11-06"
     }
   }
 }

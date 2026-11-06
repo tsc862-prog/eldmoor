@@ -205,12 +205,12 @@ function place(adv,at,prev,L){const z=adv.z,fac=adv.fac,d=adv.data,home=homeOf(L
 function giverOf(town,roles){const ps=(S.npcs||[]).filter(p=>p.town===town.name&&roles.includes(p.role));
   const p=ps.length?pickA(ps):null;return p?{name:p.title+' '+p.name,role:p.role}:{name:'the gate captain',role:'captain'}}
 // The board itself (the post_hook lever in sim/levers.js calls this; nothing else should).
-export function postHook(c,tpl,src,o={}){const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
+export function postHook(c,tpl,src,o={}){ensure();const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
   const h={id:++S.uid,phase:'open',town:c.name,fac:c.fac,tpl,src,giver:g,zone:o.zone==null?null:o.zone,for:o.for==null?null:o.for,
     data:{thing:o.thing||(T.things?pickA(T.things):null),...(o.data||{})},born:S.gameMin,until:S.gameMin+ri(...K.HOOK_LIFE)*(o.zone==null?1:.5)}; // news tied to one place goes stale sooner
   if(o.by&&o.by!=='scripted')h.by=o.by;if(o.ff)h.ff=1;if(o.ff&&o.cid!=null)h.cid=o.cid;if(o.solo)h.solo=1; // who made it, for the quest log (sim/questlog.js): the DM agent, or the scripted DM's Fellowship-first job
   S.adventures.push(h);bump(stats().hooks,src);bump(stats().offered,tpl);return h}
-export function withdrawHook(id){const i=S.adventures.findIndex(h=>h.id===id&&h.phase==='open');if(i<0)return null;return S.adventures.splice(i,1)[0]}
+export function withdrawHook(id){ensure();const i=S.adventures.findIndex(h=>h.id===id&&h.phase==='open');if(i<0)return null;return S.adventures.splice(i,1)[0]}
 // The scripted DM posts every hook through the post_hook lever. On the board refresh the lever's
 // log entry is folded into the board's own entry (boardLever) instead of standing alone.
 let boardLever=null;
@@ -624,7 +624,29 @@ function worldAfter(adv,outcome,why){const by={by:'scripted',adv};
     if(p&&ready('mark_cleared',zoneAt(p.x,p.y)))pull('mark_cleared',{at:p,r:4,hours:24},{...by,reason:'the den of '+(adv.data.beast||'the pack')+' was cleared'})}
   if(outcome==='success'&&(adv.tpl==='escort'||adv.tpl==='investigate'&&adv.src==='remnant')&&ready('price_shock')){
     const ks=Object.keys(GOODS).filter(g=>!activeOf('price_shock').some(x=>x.params.good===g));
-    if(ks.length)pull('price_shock',{good:ks[adv.id%ks.length],direction:'down',size:1,hours:8},{...by,reason:(adv.data.thing||'a caravan')+' came through to '+(adv.data.place||adv.town)+': the stalls fill'})}}
+    if(ks.length)pull('price_shock',{good:ks[adv.id%ks.length],direction:'down',size:1,hours:8},{...by,reason:(adv.data.thing||'a caravan')+' came through to '+(adv.data.place||adv.town)+': the stalls fill'})}
+  if(outcome==='success'&&DSITE.FROM[adv.tpl]&&(adv.id*7)%10<DSITE.P*10){const z=adv.z,L=DSITE.FROM[adv.tpl],raid=adv.id%2===0;
+    const F=hero(adv.lead);raiseSite(z,L[adv.id%L.length],raid,adv.tpl==='clear'?'the den '+adv.title+' cleared ran deeper: something older lairs below':'the trail of '+plain([adv.data.thing||'the relic'])+' leads on to a deeper place',alive(F)?F:null)}}
+// Sites the scripted DM raises (#642): a lair cleared or a relic brought home leaves a deeper place behind (worldAfter), and a
+// migration or an invasion raises a den or a hold in its region (eventSite). Through the create_site lever, so its limits,
+// cooldown, the companies' reserved share and the DM log all hold; a raid site only where the region's band reaches the raid
+// level. No dice: the adventure's id picks, so the gameplay RNG is not touched.
+export const DSITE={P:.3,FROM:{clear:['den','mine'],relic:['barrow','temple','ruin']},EVENT:{migration:'den',invasion:'fortress'},RETRY:360};
+// sim/sites.js siteRoom(z, raid) -> {ok, raid}: the open-site caps (checked first so no refusal is logged) and whether the region's
+// band reaches the raid level. Set from sim/index.js (wireSites), as sites.js cannot be imported here (an import cycle through crawl.js).
+let siteRoom=()=>({ok:false});export function setSiteRoom(f){siteRoom=f}
+// finder: the hero who found the way in (an adventure's leader), so the site starts discovered and the background can answer it;
+// a world event's site is talked of on the roads and starts discovered too.
+export function raiseSite(z,theme,raid,reason,finder){if(z==null||z<0||!ready('create_site',z))return null;
+  const w=siteRoom(z,raid);if(!w.ok)return null;
+  const r=pull('create_site',{theme,region:z,...(w.raid?{raid:true}:{})},{by:'scripted',reason});if(!r.ok||!r.ret)return null;
+  const st=r.ret;st.state='discovered';st.found={at:Math.round(S.gameMin),by:finder?finder.name:'the roads'};if(S.sites)S.sites.stats.found++;
+  if(finder){record(finder,'Found the way into ',{t:st.name,c:'gd',dg:'site:'+st.id},'.');log(finder,' found the way into ',{t:st.name,c:'gd',dg:'site:'+st.id},' in '+ZONES[z]+(st.raid?', a place for a raid':'')+'.')}
+  else log('Word goes round the roads of '+ZONES[z]+' of ',{t:st.name,c:'gd',dg:'site:'+st.id},st.raid?', a stronghold no small party will take.':'.');
+  return st}
+function eventSite(){const ev=S.worldEvent&&S.worldEvent.cur,th=ev&&DSITE.EVENT[ev.kind];if(!th||ev.site||(ev.siteT!=null&&S.gameMin<ev.siteT))return;
+  const s=raiseSite(ev.z,th,ev.kind==='invasion',ev.kind==='invasion'?'the raiders of the invasion in '+ZONES[ev.z]+' hold a stronghold there':'the migration in '+ZONES[ev.z]+' drives a great beast to lair');
+  if(s)ev.site=s.id;else ev.siteT=S.gameMin+DSITE.RETRY}
 // An angered stranger (the hostile complication at a parley) may stay on the road: a camp on
 // the nearest clear road tile and a hostile person in it, for two game days. Social rolls near
 // them are harder (attitudeDc) and they have cold words for passing heroes. No dice: the
@@ -661,7 +683,7 @@ export function dmTick(dt){ensure();S.dmClock=(S.dmClock||0)+dt;S.dmT+=dt;if(S.d
       if(field&&!(b.party&&b.party===L.party))drop(b)}}
   // foes of finished or abandoned scenes never respawn
   for(const m of S.mobs)if(m.adv!=null&&!m.gone&&!m.alive){m.gone=true}
-  S.dmHookT-=step;if(S.dmHookT<=0){S.dmHookT=K.REFILL;refill();postBounties()}}
+  S.dmHookT-=step;if(S.dmHookT<=0){S.dmHookT=K.REFILL;refill();postBounties();eventSite()}}
 
 function refill(){const gone={};
   for(let i=S.adventures.length-1;i>=0;i--){const h=S.adventures[i];

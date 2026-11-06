@@ -9,6 +9,7 @@
 - [Towns and landmarks](towns.md) — #177 slice 3: townart.js pieces, faction styles in data/townart.js, wall is tile kind, Node raster check
 - [Site dungeon view](sitesview.md) — #642 themed site interiors, per-dungeon keys, staging a site crawl shot
 - [Session zero room](sessionzero.md) — #701 ctx.setting indoors for opening/arrival, npc home column stagger, staging notes
+- [Portrait library](portraitlib.md) — #710 library faces by hash, 5:6 frame resample, fixtures, staging frames/sheet shots
 - [Frame-time probe](perfprobe.md) — #716 npm run perfprobe, A/B with --base and --speeds 0 (the box is noisy), whole-map fixes and what is left
 - [Art post-processing](artpost.md) — stripes were grid multiples, autotile raws were wrong subject; fundamental() and the piece check
 - [Sprite sheets](spritesheets.md) — #711 post-sheet.mjs: figures from the full image (no pixel grid), layout/key rejection, staging a sheets shot
@@ -19,5 +20,11 @@
 - [Image to image](img2img.md) — #763 owner decision: art from procedural init, layout contract, real Gradio facts, local Space test
 - [Town life](townlife.md) — #795 render-only critters/smoke/stalls/guards, deco entities, staging
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
+- [LPC landmarks](lpclandmarks.md) — #836 crypt mouth and lair from LPC castlewalls/lavarock, landmark shot staging, C: full gotcha
+- [Whole-map marks](entitylod.md) — #729 lod.js: threshold, pawns plus 1:1 creature sprites, sheet warm-up, probe in a junction worktree
+- [LPC trees and rocks](lpctrees.md) — #834 whole canopy trees painted in chunk, redrawn over entities; cutter needs ELDMOOR_PACKS; C: disk full gotcha
 - [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
+- [LPC town buildings](lpcbuildings.md) — #833 cutter, rise rule, north-door inn, shared Vite port trap
+- [Town walls and plaza](lpcwalls.md) — #830 LPC walls per side, towers, shadows, LPC Roofs shakes, vite restart trap
+- [Kit rows and houses](lpchouses.md) — plan `kit` rows, houses out of TOWN_PIECES, palisade wall set, streets through the plaza
