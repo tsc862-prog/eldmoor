@@ -4,6 +4,7 @@
 //   seats, --no-behavior (no file, the save still has them), the report's Wishes section (grouping, best example, seats, the two evidence
 //   lists), the one orders line on both seats, and a seeded world that does not move.
 // No model, no network. Usage: node scripts/wishcheck.mjs
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {mkdtempSync, existsSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -11,7 +12,7 @@ import {join} from 'node:path';
 
 let seed = 0x06630663;
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
-const ROOT = mkdtempSync(join(tmpdir(), 'eldmoor-wish-')); process.env.AGENT_LOGS = ROOT; process.env.BEHAVIOR_DIR = join(ROOT, 'behavior');
+const ROOT = mkTmp('eldmoor-wish-'); process.env.AGENT_LOGS = ROOT; process.env.BEHAVIOR_DIR = join(ROOT, 'behavior');
 
 const SIM = await import('../src/sim/index.js');
 const {init, step, S, snapshot, restore} = SIM;

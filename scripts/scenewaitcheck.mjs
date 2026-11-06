@@ -14,6 +14,7 @@
 //      every member answers by its agent inside the window (TABLE.liveMs set to 15 s here), the mid-turn member gives its turn
 //      up for the scene, and the turn lines carry the table's wait.
 // Usage: npm run scenewaitcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, rmSync} from 'node:fs';
@@ -131,7 +132,7 @@ const gather = () => {const L = mem.find(a => a.state !== 'dead'); let i = 0; fo
 // ---------------------------------------------------------------- D. five slow local members, end to end
 console.log('D. five slow local members on one Ollama queue answer an everyone-at-once scene in time');
 const {url: OLLAMA, seen, close: closeOllama} = await startMockOllama();
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-scenewait-'));
+const tmp = mkTmp('eldmoor-scenewait-');
 const kids = [];
 {
   const {localBackend} = await import('./play-headless.mjs');
@@ -225,7 +226,7 @@ console.log('F. three Claude slots, five Claude members and the DM: every vote l
   const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
   const play = attachPlay(server, {backend: localBackend(), log: () => {}}); setRunnerLinks(() => 'connected'); // every member's runner holds it (after the backend's own links)
   const fakeSpawn = () => {const k = new EventEmitter(); k.pid = 50000 + Math.floor(Math.random() * 1000); k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write() {}}); k.kill = () => setTimeout(() => k.emit('exit', null), 5); return k};
-  const tmpF = mkdtempSync(join(tmpdir(), 'eldmoor-slotscene-'));
+  const tmpF = mkTmp('eldmoor-slotscene-');
   let PBF = null;
   const sup = attachRunners(server, {play, enabled: true, log: () => {}, spawnImpl: fakeSpawn, base: () => PBF, logs: tmpF, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '3', RUNNER_DM_SLOTS: '0', RUNNER_SCENE_SLOTS: '0'}}); // the DM in the shared pool (#733), no slot kept for scenes (#868): the queue's own scene-first order is what this case measures
   await new Promise(r => server.listen(0, '127.0.0.1', r)); PBF = `http://127.0.0.1:${server.address().port}`;
@@ -342,7 +343,7 @@ console.log('H. the slot deadlock: four companions waiting at the table, the fif
   const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
   const play = attachPlay(server, {backend: localBackend(), log: () => {}}); setRunnerLinks(() => 'connected');
   const fakeSpawn = () => {const k = new EventEmitter(); k.pid = 51000 + Math.floor(Math.random() * 1000); k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write() {}}); k.kill = () => setTimeout(() => k.emit('exit', null), 5); return k};
-  const tmpH = mkdtempSync(join(tmpdir(), 'eldmoor-slotstall-'));
+  const tmpH = mkTmp('eldmoor-slotstall-');
   let PB = null; const supLog = [];
   const sup = attachRunners(server, {play, enabled: true, log: s => supLog.push(s), spawnImpl: fakeSpawn, base: () => PB, logs: tmpH, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '5'}});
   await new Promise(r => server.listen(0, '127.0.0.1', r)); PB = `http://127.0.0.1:${server.address().port}`;

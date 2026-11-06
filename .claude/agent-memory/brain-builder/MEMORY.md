@@ -88,3 +88,6 @@
 - [Chatbot voice](chatbot-voice.md) — #837 chatbotVoice guard, refusal note, FP count 0/1646, flag plumbing
 - [Slot stall](slot-stall.md) — #868 turn_over + PostToolUse continue:false, scene slot, lease beats/tickets, real leak, measured calls
 - [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
+- [sessioncheck scene flake](sessioncheck-scene-flake.md) — #898 fresh-line/roll flake = real Table scene holds the roll; play-headless --watch fix
+- [Nightly mock scenes](nightly-mock-scenes.md) — #822 reflex-scenes cause: mock-tools never answered scenes; mock-table, near-copy lines, 60 calls/min cap
+- [Long company run](long-company-run.md) — #926 longrun.mjs harness, scene dedupe key + wake spam + --warm fixes, what mock minds do and do not prove

@@ -44,7 +44,7 @@ h1{font-family:var(--px);font-size:clamp(20px,4vw,30px);margin:0;color:var(--gol
   .shell{max-width:none}:root{--side:clamp(380px,24vw,620px)}}
 @media (min-width:2200px){
   :root{--sideL:clamp(420px,20vw,700px);--side:clamp(440px,22vw,760px)}
-  html,body{overflow:hidden;height:100%}body{box-sizing:border-box;padding-block:12px}
+  html,body{overflow:hidden;height:100%}body{box-sizing:border-box;margin:0;padding-block:12px}
   .shell{height:100%}
   .main.cols3{flex:1;min-height:0;grid-template-columns:var(--sideL) minmax(0,1fr) var(--side);align-items:stretch}
   .main.cols3>.col{overflow-y:auto;overflow-x:hidden;min-height:0;overscroll-behavior:contain}
@@ -503,7 +503,7 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .badge.b-dma{color:#7fd6c2}
 
 /* New World setup page (#133): a full-screen sheet over the game; same pixel look, single column on a phone */
-.setup{position:fixed;inset:0;z-index:60;overflow:auto;background:rgba(5,6,12,.94);padding:16px max(16px,env(safe-area-inset-left,0px)) 28px;-webkit-overflow-scrolling:touch}
+.setup{position:fixed;inset:0;z-index:60;overflow:auto;background:#05060c;padding:16px max(16px,env(safe-area-inset-left,0px)) 28px;-webkit-overflow-scrolling:touch}
 .setup[hidden]{display:none}
 .spage{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
 .shead h2{font-family:var(--px);font-size:clamp(14px,3.4vw,20px);color:var(--gold);margin:0 0 6px;text-shadow:2px 2px 0 #6a3a10}
@@ -814,6 +814,7 @@ button.tbtn.danger{border-color:var(--red)}
 .dgbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;padding:5px 8px;background:rgba(8,10,20,.88);border-top:2px solid var(--edge)}
 .dgback{font-family:var(--px);font-size:8px;padding:5px 8px;min-height:26px;background:#1a1d2c;color:var(--gold);border:1px solid var(--gold);cursor:pointer}
 .dgback:focus-visible,.dglink:focus-visible{outline:2px solid var(--gold)}
+.dgname{cursor:pointer;text-decoration:underline dotted}.dgname:focus-visible{outline:2px solid var(--gold)} /* a DM-made site's name in a hero's Log opens its dungeon view (#642) */
 .dgtxt{flex:1 1 240px;min-width:0;font-size:16px;line-height:1.1;color:#e8e4d0}
 .dgname{font-family:var(--px);font-size:8px;color:#9ae0b8;letter-spacing:.04em}
 .dgrooms{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:3px 10px;margin:0;padding:0;list-style:none;font-size:15px;color:var(--dim)}

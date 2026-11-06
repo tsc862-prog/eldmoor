@@ -10,6 +10,7 @@
 //      a dead local address only, never the real API.
 //      Patch notes (#664): start records HEAD in logs/last-seen.json; a pull bringing "Merge pull request #101" prints that
 //      PR's note under [notes] (a note of an unmerged PR is not shown) and records the new HEAD; n shows the last notes.
+import {mkTmp, tmpRoot} from './tmp.mjs';
 import http from 'node:http';
 import net from 'node:net';
 import {ms as fastMs} from './ci-clock.mjs'; // CI_FAST=1 scales the waits below tenfold (issue #543)
@@ -28,7 +29,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // One upcheck at a time per checkout (#324 family): every launcher watches this checkout's scripts/, and the code-change test writes
 // a file there, so a second upcheck running at once would trip the first one's notice early (it prints once, then stays quiet) and
 // fail it. A run waits its turn on a lock file; a lock whose owner is gone is taken over.
-{const lock = join(tmpdir(), 'eldmoor-upcheck-' + Buffer.from(ROOT).toString('hex').slice(-24) + '.lock'), t0 = Date.now();
+{const lock = join(tmpRoot(), 'eldmoor-upcheck-' + Buffer.from(ROOT).toString('hex').slice(-24) + '.lock'), t0 = Date.now();
   const gone = p => {try {process.kill(p, 0); return false} catch {return true}};
   for (;;) {
     try {writeFileSync(lock, String(process.pid), {flag: 'wx'}); break} catch {
@@ -47,10 +48,24 @@ const freePort = () => new Promise(res => {const s = net.createServer(); s.liste
 const listen1 = (port, host) => new Promise(res => {const s = net.connect({port, host}); s.setTimeout(500); s.once('connect', () => {s.destroy(); res(true)}); s.once('timeout', () => {s.destroy(); res(false)}); s.once('error', () => res(false))});
 const listening = async port => (await listen1(port, '127.0.0.1')) || (await listen1(port, '::1'));
 
+// ---------------------------------------------------------------- 0. temp stays in the project (scripts/tmp.mjs)
+console.log('temp on the project drive');
+{
+  const {spawnSync: ss} = await import('node:child_process'), {utimesSync, mkdirSync: mk0, existsSync: ex0, writeFileSync: wf0} = await import('node:fs'), {tmpEnv, cleanOld, mkTmp: mt} = await import('./tmp.mjs');
+  const e = tmpEnv();
+  ok(e.TEMP === e.TMP && e.TMP === e.TMPDIR && (!!process.env.ELDMOOR_TMP || e.TEMP.split('\\').join('/').endsWith('/logs/tmp')), 'children get TEMP, TMP and TMPDIR in logs/tmp: ' + e.TEMP);
+  const r = ss(process.execPath, ['-e', "import('./scripts/tmp.mjs').then(m=>{const d=m.mkTmp('eldmoor-upcheck-leak-');require('fs').writeFileSync(d+'/x','1');console.log(d)})"], {cwd: ROOT, encoding: 'utf8'});
+  const d = r.stdout.trim();
+  ok(d && d.startsWith(e.TEMP) && !ex0(d), 'mkTmp makes its directory in logs/tmp and removes it when the process exits');
+  const old = mt('eldmoor-upcheck-old-'), fresh = mt('eldmoor-upcheck-fresh-'); wf0(join(old, 'f'), 'x');
+  const past = new Date(Date.now() - 3 * 86400000); utimesSync(old, past, past);
+  cleanOld(); ok(!ex0(old) && ex0(fresh), 'cleanOld removes what is older than a day and keeps the rest');
+}
+
 // ---------------------------------------------------------------- 1. active.json, fake children
 console.log('active.json and resume (fake children)');
 {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-upcheck-'));
+  const tmp = mkTmp('eldmoor-upcheck-');
   const active = join(tmp, 'runners', 'active.json');
   const readActive = () => {try {return JSON.parse(readFileSync(active, 'utf8')).runners} catch {return null}};
   let heroes = [{id: 1, name: 'Ann', alive: true}, {id: 2, name: 'Bo', alive: true}, {id: 3, name: 'Cy', alive: true}, {id: 4, name: 'Di', alive: false}];
@@ -129,7 +144,7 @@ console.log('active.json and resume (fake children)');
 // ---------------------------------------------------------------- 2. the launcher
 console.log('launcher (real children on spare ports)');
 {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-up-'));
+  const tmp = mkTmp('eldmoor-up-');
   const git = (cwd, ...a) => { const r = spawnSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], {encoding: 'utf8'}); if (r.status !== 0) throw new Error('git ' + a.join(' ') + ': ' + r.stderr); return r.stdout.trim() };
   const bare = join(tmp, 'origin.git'), work = join(tmp, 'work'), other = join(tmp, 'other');
   git(tmp, 'init', '-q', '--bare', '-b', 'main', bare); git(tmp, 'clone', '-q', bare, work);
@@ -270,7 +285,7 @@ console.log('launcher (real children on spare ports)');
 
 console.log('launcher --no-art');
 {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-upart-'));
+  const tmp = mkTmp('eldmoor-upart-');
   const RP = await freePort(), VP = await freePort();
   let out = '', exited = null;
   const proc = spawn(process.execPath, ['scripts/up.mjs', '--relay-port', String(RP), '--vite-port', String(VP), '--no-open', '--no-art', '--repo', ROOT], {cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'],

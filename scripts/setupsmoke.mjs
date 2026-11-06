@@ -127,12 +127,15 @@ if(mode==='a'){
   ok(all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1').value.length>=3,'name reroll fills a name');
   {const o=sels(ids.get('setup'),'others');ok(o&&o.value==='full'&&o.childNodes.map(x=>x.value).join()==='full,none','Other heroes (#780): the usual roster by default, or none');
    o.value='none';o.dispatch('change',{target:o});ok(sels(ids.get('setup'),'others').value==='none','the choice stays on the page')}
+  {const p=sels(ids.get('setup'),'prologue');ok(p&&p.value==='delve'&&p.childNodes.map(x=>x.value).join()==='delve,none'&&p.childNodes[0].text==='A first delve'&&p.childNodes[1].text==='Straight to the hall','Opening (#922): a first delve by default, or straight to the hall');
+   p.value='none';p.dispatch('change',{target:p});ok(sels(ids.get('setup'),'prologue').value==='none','the Opening choice stays on the page')}
   click(ids.get('setup'),b=>b.dataset.a==='start');
   for(let i=0;i<100&&reloads<1;i++)await new Promise(r=>setTimeout(r,20)); // the reload follows the runners' stop call (#691)
   const pend=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
   ok(pend&&pend.world==='eldmoor'&&reloads===1&&pend.v===2&&pend.mode==='together'&&pend.heroes.length===5&&pend.heroes[0].cls==='Warrior'&&pend.heroes[0].mind.mode==='agent','Start queues the setup (v2 together, #453) and reloads');
   ok(sim.validateSetup(pend).length===0,'the queued setup validates');
   ok(pend.others==='none','the queued setup carries Other heroes: none');
+  ok(pend.prologue==='none','the queued setup carries Opening: straight to the hall (#922)');
   {const last=JSON.parse(localStorage.getItem('eldmoor.setup.last')||'null');setup.openSetup({first:false});
    const nm=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1');
    ok(last&&last.v===2&&all(ids.get('setup'),'.scard').length===5&&nm&&nm.value===pend.heroes[2].name,'a stored v2 last setup opens on the page as its five places (#453)')}
@@ -193,6 +196,7 @@ if(mode==='a'){
   reloads=0;click(sp,b=>b.dataset.a==='start');
   for(let i=0;i<100&&reloads<1;i++)await new Promise(r=>setTimeout(r,20)); // after the runners' stop call (#691)
   ok(reloads===1&&!localStorage.getItem(SAVE_KEY)&&!!localStorage.getItem(PENDING_KEY),'Start does not ask a second time: the save goes and the setup is queued');
+  {const q=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');ok(q&&q.prologue===undefined,'the default Opening stores nothing in the queued setup (#922)')}
   ok(title.titleWanted('')===false,'the reload into the queued setup skips the title');
   localStorage.removeItem(PENDING_KEY);
   // Continue
@@ -263,7 +267,7 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   // the hall picker (#771): only where the faction has a choice of towns; a pick lasts until another faction or map
   {const change=(f,v)=>{const s=sel(f);s.value=v;s.dispatch('change',{target:s})},w0=sel('world').value,f0=sel('fac').value;
    change('world','eldmoor');ok(!sel('hall'),'hall: no picker with one town to choose');
-   change('world','stepping');const o=sel('hall').childNodes.map(x=>x.value);ok(o[0]===''&&o.length===3,'hall: the default and the two towns of the faction: '+o);
+   change('world','stepping');const o=sel('hall').childNodes.map(x=>x.value);ok(o[0]===''&&o.length===4,'hall: the default and the three towns of the faction: '+o);
    change('hall',o[2]);ok(sel('hall').value===o[2],'hall: the pick stands');
    change('fac',f0==='0'?'1':'0');ok(sel('hall').value==='','hall: another faction goes back to the default');
    change('fac',f0);change('world',w0)}
