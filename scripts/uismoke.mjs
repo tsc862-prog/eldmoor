@@ -478,6 +478,7 @@ console.log('start gate: ready, not just claimed');
   ok(ctl.held&&!gate.gateMissing().some(m=>m.hero===down.id)&&box.textContent.includes(slow.name),'a failed warm-up whose runner is there counts as active (owner, #559): only the seat still warming holds');
   gate.startAnyway();
   ok(!ctl.held&&box.hidden,'Start anyway releases the world');
+  ok(gate.seatWaived(slow)&&!gate.seatWaived(F[0]),'and waives just the seats that held it, so their members may answer by reflex');
   R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
   L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+40000);
   L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+41000);
