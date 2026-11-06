@@ -3,14 +3,15 @@
 // vote passed. The leader's propose still goes (the whole company, together); a solo has go_crypt and join_raid; a world with no
 // host (npm run sim, the seeded checks) keeps the reflex draft, because a reflex company has no mind to initiate. askCompany is
 // the one door for a question someone in the world puts to a company.
-// Usage: npm run initiatecheck
+// Usage: npm run initiatecheck (also runs itself in every other world); ELDMOOR_WORLD=<id> npm run initiatecheck for one
 let seed = 0x5eed826;
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const SIM = await import('../src/sim/index.js');
 const {init, step, S, markPlayer, playerAct, setRunnerLinks, setReflexAck} = SIM;
 const CO = await import('../src/sim/company.js'), CN = await import('../src/sim/council.js'), T = await import('../src/sim/table.js');
 const {homeOf} = await import('../src/data/races.js');
-const {CRYPT, LAIR, dist} = await import('../src/world/map.js');
+const {CRYPT, CRYPTS, LAIR, dist} = await import('../src/world/map.js');
+const {cryptOfCtx} = await import('../src/sim/crypts.js');
 const {rebuild} = await import('../src/sim/spatial.js');
 const {maxHp} = await import('../src/sim/heroes.js');
 const {PLAYER_TOOLS} = await import('../src/data/player-tools.js');
@@ -23,14 +24,17 @@ const txt = ps => (ps || []).map(p => typeof p === 'string' ? p : p && (p.t || p
 const logOf = C => (C.log || []).map(e => txt(e.parts)).join('\n');
 const events = a => (a.playEv || []).map(e => e.text || e.t || String(e)).join('\n');
 const put = (a, x, y, st = 'hunt') => {a.x = x; a.y = y; a.state = st; a.hidden = false; a.target = null; a.dest = null; a.pq = []; a.moving = false; a.hp = maxHp(a); a.raid = false; a.adv = null};
+// A world may have several dungeons (#891) and a background group answers the one that fits its heroes, not the first: read them all.
+const groupOf = f => CRYPTS.map(D => D.group).find(g => g && (f == null || g.fac === f)) || null;
+const clearGroups = () => {for (const D of CRYPTS) D.group = null};
 const SAFE = () => {for (const m of S.mobs || []) m.alive = false; rebuild()};
 // a faction's heroes in town at raid level, so both musters have all they want
 const field = f => {for (const a of S.agents) if (a.fac === f && living(a)) {const c = homeOf(a); put(a, c.gate.x, c.gate.y - 1, 'town'); a.lvl = 15; a.gear = 12; a.townStep = 2; a.wait = 9}};
 const company = () => CO.slotted();
 const fresh = o => {setRunnerLinks(null); setReflexAck(null); T.TABLE.mode = 'auto'; T.TABLE.speed = 1; T.TABLE.drop = null; init(o); delete S.opening; S.boss.alive = true;
-  if (CRYPT.group) CRYPT.group = null};
+  clearGroups()};
 // Force both musters to look, step by step, for s simulated seconds; `each` runs after every step. The world stays free of scenes it did not ask for.
-const muster = (f, s, each) => {for (let k = 0; k < s * 60; k++) {if (!(k % 60)) {field(f); CRYPT.cd = 0; S.raidT = 0; S.raidOn[f] = false; if (CRYPT.group && !CRYPT.group.mem.some(CO.companyOf)) {for (const a of CRYPT.group.mem) {a.state = 'hunt'; a.hidden = false} CRYPT.group = null}} step(1 / 60); if (each) each(k)}};
+const muster = (f, s, each) => {for (let k = 0; k < s * 60; k++) {if (!(k % 60)) {field(f); for (const D of CRYPTS) D.cd = 0; S.raidT = 0; S.raidOn[f] = false; for (const D of CRYPTS) if (D.group && !D.group.mem.some(CO.companyOf)) {for (const a of D.group.mem) {a.state = 'hunt'; a.hidden = false} D.group = null}} step(1 / 60); if (each) each(k)}};
 
 // ---- A. a background muster never opens a vote for an agent company ----
 for (const [label, link, ack] of [['live runners', () => 'connected', null], ['runners gone, the owner resumed: reflexes play them', () => 'none', () => true]]) {
@@ -39,9 +43,9 @@ for (const [label, link, ack] of [['live runners', () => 'connected', null], ['r
   const F = company(), M = CO.members(F), f = F.fac; let group = 0, raid = 0, took = 0, asked = 0, scene = 0;
   for (const a of M) a.playEv = [];
   muster(f, 240, () => {
-    if (CRYPT.group && CRYPT.group.fac === f) group++;
+    if (groupOf(f)) group++;
     if (S.raidOn[f]) raid++;
-    if ((CRYPT.group && CRYPT.group.mem.some(a => M.includes(a))) || M.some(a => a.raid)) took++;
+    if (CRYPTS.some(D => D.group && D.group.mem.some(a => M.includes(a))) || M.some(a => a.raid)) took++;
     if ((F.props || []).some(P => P.kind === 'crypt' || P.kind === 'raid')) asked++;
     if (T.sceneFor(F) && T.sceneFor(F).kind === 'decision') scene++});
   ok(group > 0 && raid > 0, 'the background still musters for both (' + group + ' Crypt, ' + raid + ' raid steps)');
@@ -147,7 +151,7 @@ section('C. a solo: go_crypt, join_raid');
 section('D. no host: the reflex draft');
 {
   fresh({}); T.TABLE.mode = 'off'; const F = company(), M = CO.members(F), f = F.fac; let went = false, P = null;
-  for (let k = 0; k < 60 * 300 && !went; k++) {if (!(k % 60)) {field(f); CRYPT.cd = 0} step(1 / 60); P = P || (F.props || []).find(q => q.kind === 'crypt'); went = !!(CRYPT.group && M.every(a => CRYPT.group.mem.includes(a)))}
+  for (let k = 0; k < 60 * 300 && !went; k++) {if (!(k % 60)) {field(f); for (const D of CRYPTS) D.cd = 0} step(1 / 60); P = P || (F.props || []).find(q => q.kind === 'crypt'); went = CRYPTS.some(D => D.group && M.every(a => D.group.mem.includes(a)))}
   ok(went && P && P.src === 'call', 'the company votes by reflex and goes whole: ' + (P && P.details));
 }
 
@@ -160,7 +164,7 @@ section('E. askCompany: src and caller');
   ok(M.every(a => /Captain Haldra asks you/.test(events(a))), 'every member hears who asks');
   const sc = T.sceneFor(F);
   ok(sc && sc.kind === 'decision' && /Captain Haldra/.test(txt(sc.frame)), 'the decision scene names the caller: ' + (sc && txt(sc.frame)));
-  ok(CN.cryptReserved(), 'the Crypt is reserved as for any open vote');
+  ok(CN.cryptReserved(cryptOfCtx(P)), 'the dungeon asked about is reserved as for any open vote');
   ok(typeof CN.askCompany(F, 'job', {}) === 'string', 'only the Crypt or a raid');
 }
 
@@ -188,6 +192,8 @@ section('G. the words');
 }
 
 setRunnerLinks(null); setReflexAck(null);
+// every other world in the table, in a child each (scripts/worlds.mjs); a run with ELDMOOR_WORLD set is one of those
+if (!process.env.ELDMOOR_WORLD) { const {runWorlds} = await import('./worlds.mjs'); fail += runWorlds('initiatecheck'); }
 if (fail) {console.error('\ninitiatecheck: ' + fail + ' failure(s)'); process.exit(1)}
 console.log('\ninitiatecheck: all checks passed');
 process.exit(0);
