@@ -14,7 +14,7 @@
 //             p:{placeName:{how:'home'|'been'|'seen'|'told', at, hurt, fell, warned, dm}}}
 //   dm: the id of a DM-marked place (S.places, #423), learned like a landmark; the entry fades with the marker.
 //   key: a MOBS key, a VARIANTS key (site foes), or 'n:'+name for a named elite or an adventure's named foe.
-import {S} from './state.js';
+import {S,ownTown} from './state.js';
 import {hash} from '../core/rng.js';
 import {ZONES,REGIONS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
@@ -26,6 +26,7 @@ import {moment} from './reflect.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {held} from './scenes.js';
 import {sightFor} from './weather.js';
+import {clearLine} from './path.js';
 
 export const LORE={
   DC:12,          // the first-sight read (d20 + the better of Lore and Perception)
@@ -219,7 +220,7 @@ export function loreView(a,about){const L=loreOf(a),q=clean(about,60).toLowerCas
   let cs=Object.keys(L.c).map(k=>creatureLine(a,k,L.c[k])),ps=Object.keys(L.p).map(n=>placeLine(a,n,L.p[n]));
   if(q){cs=cs.filter(x=>x.name.toLowerCase().includes(q)||(x.known||[]).some(s=>s.toLowerCase().includes(q)));ps=ps.filter(x=>x.place.toLowerCase().includes(q)||(x.notes||[]).some(s=>s.toLowerCase().includes(q)))}
   const hp=Object.keys(L.h||{}).map(n=>({person:n,how:'you have heard of them from '+L.h[n].from})).filter(x=>!q||x.person.toLowerCase().includes(q));
-  return {creatures:cs,places:ps,towns:CITY.filter(c=>c.fac===a.fac).map(c=>c.name),...(hp.length?{people:hp}:{})}}
+  return {creatures:cs,places:ps,towns:CITY.filter(c=>ownTown(c,a)).map(c=>c.name),...(hp.length?{people:hp}:{})}}
 // status.places: where this hero can walk by name.
 export function placesView(a){const L=loreOf(a);return Object.keys(L.p).map(n=>{const p=L.p[n],w=[];if(p.how==='home')w.push('home');else if(p.mk===1)w.push('yours');else if(p.mk)w.push('told by '+(p.src||'a companion'));else if(p.how==='told')w.push('heard of'+(p.from?' from '+p.from:''));{const y=dangerWhy(a,n,p);if(y)w.push('danger: '+y);else if(p.hurt||p.fell||p.warned)w.push('danger')}return w.length?n+' ('+w.join(', ')+')':n})}
 // The hero's warning words for a known region (move_to/lead_to), or null.
@@ -236,11 +237,13 @@ export function roadsLine(a){if(!learner(a)||!a.lore)return null;const P=a.lore.
 export function preyKey(a,name){const s=clean(name,60).toLowerCase().replace(/^(an?|the)\s+/,'');if(!s)return null;const L=loreOf(a);
   for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e))continue;const n=keyName(key).toLowerCase(),p=keyPlural(key).toLowerCase();if(s===n||s===p||s===n.replace(/^the /,''))return key}
   return null}
-// hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear).
-export function pickPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y));let best=null,bs=1e9;
+// hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear). The tool says "where
+// you stand" (#822): with no clear line (#794) it is not prey, and with no prey named neither is one in another region, or a level 3
+// hunter on the bank of the river walks round by the bridge to a Hoarfell creature it saw across the water. What comes at the hero always counts.
+export function pickPrey(a,cmd){const z=zoneAt(a.x,a.y),R=9*sightFor(a,z);let best=null,bs=1e9;
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a)||held(m))continue; // held in a scene (#518)
-    if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(m.target!==a&&feared(a,m))continue;
-    const d=dist(a,m);if(d>R)continue;const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
+    if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(m.target!==a&&(feared(a,m)||zoneAt(m.x,m.y)!==z))continue;
+    const d=dist(a,m);if(d>R||(m.target!==a&&!clearLine(a,m)))continue;const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
   if(best)sight(a,best);return best}
 
 // ---- what people say (a townsperson's advice, the gate's rumour of a job) ----

@@ -47,6 +47,13 @@ export function othersStart(o={}){let v=o.others!=null?o.others:o.setup&&o.setup
   if(v==null){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_OTHERS!=null)v=p.env.ELDMOOR_OTHERS}
   return String(v==null?'':v).trim().toLowerCase()==='none'?'none':'full'}
 
+// The sides setting (#1025): 'lore' or nothing, read as others is: init's option, the setup's, ?sides= in the browser, ELDMOOR_SIDES in Node.
+export function sidesStart(o={}){let v=o.sides!=null?o.sides:o.setup&&o.setup.sides;
+  try{if(v==null&&typeof location!=='undefined'&&location.search)v=new URLSearchParams(location.search).get('sides')}catch(e){}
+  if(v==null&&typeof globalThis.ELDMOOR_SIDES!=='undefined')v=String(globalThis.ELDMOOR_SIDES);
+  if(v==null){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_SIDES!=null)v=p.env.ELDMOOR_SIDES}
+  return String(v==null?'':v).trim().toLowerCase()==='lore'?'lore':null}
+
 // The first delve (#922): 'delve' or 'none', or null when nothing asks. init's option wins, then the setup's, then ?prologue= in the browser, then
 // ELDMOOR_PROLOGUE in Node. noteProlog keeps it in S.setup only when it differs from what the world would do by itself.
 export function prologueStart(o={}){let v=o.prologue!=null?o.prologue:o.setup&&o.setup.prologue;const page=!!o.setup; // a setup has chosen, the default included: the URL and the environment do not overrule it

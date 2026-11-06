@@ -8,14 +8,14 @@ import {DM_TOOLS} from '../src/data/dm-tools.js';
 
 export const MAP_HEAD = 'TOOL MAP (every tool you have, by situation; the situations above say when):';
 export const MAP_TAIL = '(end of tool map)';
-export const MAP_BUDGET_CHARS = 7000; // about 1.7k tokens; room for a dozen more tools
+export const MAP_BUDGET_CHARS = 7600; // about 1.9k tokens; room for a dozen more tools
 
 // group title -> tool names. Names that do not exist are caught by orderscheck; tools not listed land in "More tools".
 export const HERO_GROUPS = {
   'Look and learn': ['look', 'status', 'inventory', 'combat_log', 'places', 'lore', 'inspect', 'examine', 'search', 'companions', 'earshot', 'outposts', 'mark', 'unmark', 'read_chronicle'],
   'Move and fight': ['move_to', 'follow', 'hunt', 'fight', 'flee', 'rest', 'use_ability', 'use_item', 'finish', 'spare', 'choose_specialisation', 'raise_score', 'gambits', 'set_gambit', 'move_gambit', 'toggle_gambit', 'drop_gambit', 'reset_gambits'],
   'Town, trade and craft': ['shop', 'buy', 'sell', 'equip', 'auction_browse', 'auction_list', 'auction_buy', 'auction_cancel', 'give', 'pay', 'bequeath', 'drop', 'recipes', 'learn_profession', 'unlearn_profession', 'guild_join', 'guild_found', 'nodes', 'gather', 'smith', 'craft'],
-  'Jobs and quests': ['list_jobs', 'take_adventure', 'choose', 'quests', 'take_quest', 'focus_quest', 'abandon_quest', 'swear_oath', 'keep_oath', 'renounce_oath', 'turn_in', 'post_notice', 'intent', 'enter_site', 'go_crypt', 'join_raid'],
+  'Jobs and quests': ['list_jobs', 'take_adventure', 'choose', 'quests', 'take_quest', 'focus_quest', 'abandon_quest', 'swear_oath', 'keep_oath', 'renounce_oath', 'turn_in', 'post_notice', 'intent', 'enter_site', 'go_crypt', 'join_raid', 'answer_call'],
   'Talk and company': ['say', 'whisper', 'emote', 'talk', 'party_say', 'chat_read', 'party_read', 'invite', 'hire', 'dismiss', 'join_party', 'accept', 'decline', 'leave_party', 'propose', 'vote', 'challenge', 'answer_challenge', 'break_camp', 'lead_to', 'send_courier'],
   'Memory and self': ['journal_read', 'journal_write', 'journal_search', 'remember', 'recall', 'update_memory', 'forget', 'pin', 'self', 'become', 'wish'],
   'The table and the unforeseen': ['scene_act', 'attempt', 'wait'],
@@ -25,7 +25,7 @@ export const DM_GROUPS = {
   'Read the world': ['dm_status', 'read_timeline', 'read_chronicle', 'read_dm_log', 'regions', 'npcs', 'hooks', 'levers', 'survey', 'world_standing'],
   'Read the companies': ['fellowship_view', 'companies_view', 'heroes_near', 'hear'],
   'Your notes': ['notes_read', 'notes_write', 'remember', 'recall', 'update_memory', 'forget', 'pin', 'log_intent', 'wish'],
-  'Shape the world': ['pull_lever', 'post_hook', 'place_person', 'mark_place', 'give_item', 'take_item', 'stage_scene', 'create_site', 'retire_person', 'withdraw_hook', 'set_attitude', 'set_condition', 'price_shock', 'mark_danger', 'start_event', 'nudge_relation', 'custom_foe', 'seed_rumour', 'bestow'],
+  'Shape the world': ['pull_lever', 'post_hook', 'place_person', 'mark_place', 'give_item', 'take_item', 'stage_scene', 'create_site', 'retire_person', 'withdraw_hook', 'set_attitude', 'set_condition', 'price_shock', 'mark_danger', 'start_event', 'nudge_relation', 'custom_foe', 'seed_rumour', 'bestow', 'call_to'],
   'Take back and plan ahead': ['undo', 'dismiss', 'unstage', 'when', 'whens', 'unwhen', 'watch', 'watches', 'unwatch'],
   'Speak in the game': ['narrate', 'npc_say', 'whisper', 'dream', 'npc_call', 'npc_offer', 'companion_call', 'companion_say'],
   'At the table': ['table_call', 'table_answer', 'ruling_call', 'ruling_answer', 'prep_done'],

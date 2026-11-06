@@ -16,7 +16,7 @@
 // DOM-free, no RNG (the wording is picked by a hash of ids). Owned by brain-builder.
 import {S,dayNo} from './state.js';
 import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
-import {MOBS} from '../data/mobs.js';
+import {MOBS,ELITES} from '../data/mobs.js';
 import {RUMOUR_LINES} from '../data/renown-lines.js';
 import {register,LEVERS} from './levers.js';
 import {dmlog} from './dmlog.js';
@@ -24,6 +24,7 @@ import {notEnglish} from './lang.js';
 import {heardOf,hear} from './lore.js';
 import {remember} from './memory.js';
 import {ensureNpcs} from './npcs.js';
+import {markNamed,nameHint} from './dmnames.js'; // the names on the map (#1017)
 
 export const RUMOUR={
   MAX:6,        // live rumours in the world
@@ -47,15 +48,16 @@ export const rumourState=()=>S.rumours||(S.rumours={seq:0,list:[],stats:{seeded:
 // a kind of creature, a person.
 export function aboutOf(text){const s=clean(text,60),lo=s.toLowerCase(),bare=lo.replace(/^the\s+/,'');if(!s)return null;
   const eq=n=>{const x=String(n||'').toLowerCase();return x===lo||x.replace(/^the\s+/,'')===bare};
-  const pl=(S.places||[]).find(p=>eq(p.name)||String(p.id)===s);if(pl)return {kind:'place',name:pl.name,id:pl.id,z:pl.z};
+  const pl=markNamed(s);if(pl)return {kind:'place',name:pl.name,id:pl.id,z:pl.z};
   const lm=LANDMARKS.find(l=>eq(l.name))||(CRYPT&&eq(CRYPT.name)?CRYPT:null);if(lm)return {kind:'landmark',name:lm.name,z:zoneAt(lm.x,lm.y)};
   const c=CITY.find(x=>eq(x.name));if(c)return {kind:'town',name:c.name};
   const z=ZONES.findIndex(n=>eq(n));if(z>=0)return {kind:'region',name:ZONES[z],z};
   const m=(S.mobs||[]).find(x=>x.alive&&!x.gone&&(x.elite||x.named)&&x.name&&(eq(x.name)||eq(x.name+' '+(x.title||''))));
   if(m)return {kind:'foe',name:m.name,id:m.id,z:zoneAt(m.x,m.y)};
+  const E=ELITES.find(x=>eq(x.name));if(E)return {kind:'foe',name:E.name}; // a named foe of this world, out of sight or not risen yet (#1017): the townsfolk may still speak of it
   const k=Object.keys(MOBS).find(x=>eq(MOBS[x].name)||eq(MOBS[x].pl));if(k)return {kind:'creature',name:MOBS[k].name,key:k,z:MOBS[k].z};
   const q=people().find(p=>eq(p.name)||eq(full(p))||String(p.id)===s);if(q)return {kind:'person',name:full(q),id:q.id};
-  return {err:'about: no place, region, creature or person called "'+s+'" (a marked place, a landmark, a town, a region, a named foe alive now, a kind of creature, or a person from npcs)'}}
+  return {err:'about: no place, region, creature or person called "'+s+'" (a marked place, a landmark, a town, a region, a named foe, a kind of creature, or a person from npcs). Leave about out, or name a real one.'+nameHint(s,{mark:true})}}
 
 // The towns that carry a rumour: the town, or the towns whose gate lies in the region, else those whose gate is within
 // RUMOUR.NEAR tiles of it, else the nearest one.
@@ -68,7 +70,7 @@ const tellersIn=(town,who)=>people().filter(p=>p.town===town&&TELLERS.includes(p
 
 // ---- lapse ----
 function lapsedWhy(r){if(S.gameMin>=r.until)return 'its days ran out';const A=r.about;if(!A)return null;
-  if(A.kind==='foe'&&!(S.mobs||[]).some(m=>m.id===A.id&&m.alive&&!m.gone))return A.name+' is dead';
+  if(A.kind==='foe'&&A.id!=null&&!(S.mobs||[]).some(m=>m.id===A.id&&m.alive&&!m.gone))return A.name+' is dead';
   if(A.kind==='place'&&!(S.places||[]).some(p=>p.id===A.id))return A.name+' has faded';
   if(A.kind==='person'&&!people().some(p=>p.id===A.id))return A.name+' is gone';
   return null}
