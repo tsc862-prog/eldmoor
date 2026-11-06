@@ -9,6 +9,7 @@
 // rpm spacing), the relay (/decide, /health, its queue), the runner checks and tables, a real
 // `agent-player.mjs --provider google` run and a real `dm-agent.mjs --provider google` run on headless worlds.
 // Usage: npm run googlecheck
+import {mkTmp} from './tmp.mjs';
 import {dmMindCases} from './dm-mind-cases.mjs';
 import {schemaFill, toolsProblem, isDmTurn, dmTurnMessage} from './mock-dm.mjs';
 import http from 'node:http';
@@ -218,7 +219,7 @@ console.log('runner checks and mind tables');
   ok(!sd.error && sd.req.provider === 'google', 'a DM runner may start with google' + (sd.error ? ': ' + sd.error : ''));
 }
 
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-googlecheck-')), kids = [];
+const tmp = mkTmp('eldmoor-googlecheck-'), kids = [];
 const env = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', HF_TOKEN: '', GOOGLE_API_KEY: KEY, GOOGLE_BASE_URL: url, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0', RELAY_VERBOSE: ''};
 delete env.GOOGLE_MODEL; delete env.GOOGLE_TIER; delete env.GOOGLE_NATIVE;
 const start = (args, {wait: ready = null, e = env} = {}) => {

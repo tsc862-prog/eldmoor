@@ -24,6 +24,7 @@
 //   5. The runner end to end: `npm run dm -- --provider ollama` against a mock Ollama and a headless
 //      world opened with --dm: it claims the seat, reads, writes a note, pulls a lever, gets one
 //      refused, prints a cost line per turn and keeps its session in logs/agents/dm.json (resumed next run).
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn, spawnSync as realSpawnSync} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync, writeFileSync, renameSync} from 'node:fs';
@@ -44,7 +45,7 @@ const kidPool = new Map(); let kidDir = null;
 const KID_LAUNCH = "const {spawnSync}=require('child_process'),fs=require('fs');const [out,j]=process.argv.slice(1);const {args,cwd,env}=JSON.parse(j);const r=spawnSync(process.execPath,args,{cwd,encoding:'utf8',env:{...process.env,...env}});fs.writeFileSync(out+'.tmp',JSON.stringify({stdout:r.stdout,stderr:r.stderr,status:r.status}));fs.renameSync(out+'.tmp',out)";
 function primeKids(list) {
   if (process.env.DMCHECK_SERIAL === '1') return;
-  kidDir = mkdtempSync(join(tmpdir(), 'dmcheck-kids-'));
+  kidDir = mkTmp('dmcheck-kids-');
   list.forEach(([args, env], i) => {
     const out = join(kidDir, i + '.json'), full = [fileURLToPath(import.meta.url), ...args];
     const k = realSpawn(process.execPath, ['-e', KID_LAUNCH, out, JSON.stringify({args: full, cwd: ROOT, env: env || {}})], {stdio: 'ignore'}); k.unref();
@@ -897,6 +898,23 @@ console.log('NPC conversations');
     const nr = dmAct('narrate', {text: long, near: A.name}), ns = dmAct('npc_say', {npc: String(smith.id), text: long});
     ok(nr.ok && nr.narrated === long && ns.ok && ns.said === long && long.length > 600, `narrate and npc_say keep a ${long.length}-character line whole`);
     ok(dmAct('npc_say', {npc: String(smith.id), text: 'x'.repeat(5000)}).said.length === DMA.NPC_SAY_MAX, `with a technical ceiling of ${DMA.NPC_SAY_MAX} characters`)}
+  // the DM never speaks for a member (#750): a voiced line that quotes an agent-played member is cut, logged and told; a description passes
+  {beside(A, smith); beside(B, smith, 1.5); S.table = {ids: [A.id, B.id], beats: []}; S.dmAgent.day.narr = 0; const sp0 = dmAct('dm_status').spoke_for_today || 0;
+    const keep = A.name + '\'s eyes settle on ' + B.name + ' across the fire.';
+    const q = dmAct('narrate', {near: 'table', text: keep + ' ' + A.name + ' speaks quietly: \'' + B.name + ', before the night is out, I would know one thing. What are you afraid of?\''});
+    ok(q.ok && q.spoke_for && q.spoke_for.join() === A.name && /members speak for themselves/.test(q.warning) && q.narrated === keep && !(B.chat || []).some(e => /afraid of/.test(e.text)) && !/afraid of/.test(S.table.narr.text),
+      'a frame that quotes a member is cut to its narration and the DM is told (' + JSON.stringify(q).slice(0, 160) + ')');
+    const le = (S.dmLog || []).find(e => e.detail && e.detail.voice === 'narrate');
+    ok(le && le.detail.spoke_for === A.name && !/afraid of/.test(le.detail.text), 'the DM log entry of that call carries spoke_for: ' + (le && le.detail.spoke_for));
+    const d = dmAct('narrate', {near: 'table', text: A.name + ' turns his symbol over in his hands. The innkeeper tells ' + B.name + ': "Not tonight."'});
+    ok(d.ok && !d.spoke_for && /symbol over/.test(d.narrated) && /Not tonight/.test(d.narrated), 'a frame that describes a member (and a person speaking to one) passes whole');
+    const all = dmAct('npc_say', {npc: String(smith.id), text: '"Hold the line," says ' + B.name + '.'});
+    ok(all.ok === false && all.spoke_for && all.spoke_for.join() === B.name && /spoke for/.test(all.error) && !(A.chat || []).some(e => /Hold the line/.test(e.text)), 'a line that is nothing but a member\'s words is refused, nobody hears it');
+    A.talkSaid = ['Your gate tax is robbery, captain.'];
+    const own = dmAct('narrate', {near: 'table', text: 'The fire hisses. ' + A.name + ' says: "Your gate tax is robbery, captain."'});
+    ok(own.ok && !own.spoke_for && /robbery/.test(own.narrated), 'a quote of what the member really said stays');
+    ok(dmAct('dm_status').spoke_for_today === sp0 + 2, 'dm_status counts spoke_for_today (' + dmAct('dm_status').spoke_for_today + ')');
+    S.table = null}
   // whisper and dream (#523): reach, day limits, delivery on waking
   {beside(A, smith); beside(B, smith, 20); S.table = null;
     const near = dmAct('whisper', {hero: A.name, text: 'The ledger is false.', as: String(smith.id)});
@@ -1334,7 +1352,7 @@ const mock = http.createServer((req, res) => {
 });
 await new Promise(res => mock.listen(0, '127.0.0.1', res));
 const OLLAMA = `http://127.0.0.1:${mock.address().port}`;
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-dmcheck-'));
+const tmp = mkTmp('eldmoor-dmcheck-');
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, RELAY_VERBOSE: '', AGENT_MIN_GAP: '0'};
 const kids = [];
 function start(args, ready) {

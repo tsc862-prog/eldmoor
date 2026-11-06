@@ -32,6 +32,7 @@
 //   encSpot(spots) a spot inside a danger area     sightLever(z)    fog-bound sight multiplier
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
 import {clamp} from '../core/rng.js';
+import {keep} from './kept.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
@@ -81,6 +82,7 @@ const FORBIDDEN=/^(hp|maxhp|xp|lvl_?up|level_?up|stats?|abil|cls|class|hardcore|
 // Private LCG for cosmetic picks (names, looks, strolls): never perturbs the gameplay RNG.
 const SEED0=0x2545f491;let seed=SEED0;export const resetLeverSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('levers',()=>seed,v=>{seed=v}); // saved with the world
 const pickR=a=>a[Math.floor(r()*a.length)];
 
 // ---- state ----
@@ -468,9 +470,9 @@ register({name:'custom_foe',about:'A special foe from the bestiary: base creatur
 // or replaces the lever outright with register().
 // create_site (#69, slice 1): sim/sites.js provides the generator and owns the site's lifecycle (it is not an expiring lever:
 // a site stays until cleared or collapsed, so the open-site caps, 1 a region and 3 a world, are checked there).
-register({name:'create_site',stub:'createSite',about:'Raise a dungeon site a company can enter: a '+SITE_THEME_IDS.join(', ')+' in a region, its level clamped to the region’s band (band: the level wanted), 3-8 rooms, a named boss with a guaranteed epic. At most 1 open site a region and 3 in the world.',
-  params:{theme:{type:'enum',values:SITE_THEME_IDS},region:{type:'region'},band:{type:'int',min:1,max:60,opt:true},rooms:{type:'int',min:3,max:8,opt:true},at:{type:'point',opt:true},name:{type:'str',max:40,opt:true}},
-  limits:{perDay:2,perRegionPerDay:1},cooldown:120,apply:(p,ctx)=>IMPL.createSite(p,ctx),describe:p=>p.theme+(p.name?' "'+p.name+'"':'')+' in '+ZONES[p.region]+(p.band!=null?' (level '+p.band+')':'')});
+register({name:'create_site',stub:'createSite',about:'Raise a dungeon site a company can enter: a '+SITE_THEME_IDS.join(', ')+' in a region, its level clamped to the region’s band (band: the level wanted), 3-8 rooms, a named boss with a guaranteed epic. raid: true makes it a raid site (5 or more heroes, a boss that fights in phases, locked for 2 days after each kill). At most 1 open site a region and 3 in the world.',
+  params:{theme:{type:'enum',values:SITE_THEME_IDS},region:{type:'region'},band:{type:'int',min:1,max:60,opt:true},rooms:{type:'int',min:3,max:8,opt:true},at:{type:'point',opt:true},name:{type:'str',max:40,opt:true},raid:{type:'bool',opt:true}},
+  limits:{perDay:2,perRegionPerDay:1},cooldown:120,apply:(p,ctx)=>IMPL.createSite(p,ctx),describe:p=>(p.raid?'raid ':'')+p.theme+(p.name?' "'+p.name+'"':'')+' in '+ZONES[p.region]+(p.band!=null?' (level '+p.band+')':'')});
 register({name:'start_event',stub:'startEvent',about:'A world event (#10).',params:{kind:{type:'str',max:24},region:{type:'region'},scale:{type:'int',min:1,max:3,def:1}},
   limits:{maxActive:1,perDay:1},cooldown:1440,apply:(p,ctx)=>IMPL.startEvent(p,ctx),expire(rec){if(IMPL.endEvent)IMPL.endEvent(rec);S.conditions=(S.conditions||[]).filter(c=>c.lever!==rec.id)},describe:p=>p.kind+' in '+ZONES[p.region]});
 register({name:'nudge_relation',stub:'nudgeRelation',about:'Shift how two parties of the world regard each other (#11).',params:{a:{type:'str',max:24},b:{type:'str',max:24},delta:{type:'int',min:-2,max:2}},

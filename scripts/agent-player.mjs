@@ -61,7 +61,7 @@ import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
-import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, tableHooks, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
+import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, tableHooks, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export {RUNNER_PROVIDERS}; // providers with an agent runner (scripts/agent-sessions.mjs)
@@ -342,7 +342,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}
       if (first && first.tools) {freeSlot(); pacer.turnDone(); sess.turns++; spent += first.cost; sess.costUsd += first.cost;
         console.log(`[turn ${sess.turns}] scene answer first | ${model} | tokens in ${first.in} / out ${first.out} | ${money(first.cost)} | run ${money(spent)}`);
-        reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
+        reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
         saveSess(); fails.ok(true); continue}}
     turnAbort = new AbortController(); let rested = false;
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the next turn carries on
@@ -357,7 +357,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       settings: {autoCompactEnabled: true}, maxTurns: refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv, hooks: tableHooks({idle: on => freeSlot.idle(on), onOver: () => {rested = true; console.log('  [table: nothing to wait for here; the turn ends and pacing wakes it]')}}), // #868
     }});
+    const gs = grabSpend(); // #747: what an aborted query reports before the cut
     try {for await (const m of q) {
+      if (m.type === 'assistant') gs.add(m);
       if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; if (!refl) delete sess.rolled; saveSess(); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => console.log('  ' + s))}}
       else if (m.type === 'system' && m.subtype === 'compact_boundary') {sess.compacts = (sess.compacts || 0) + 1; console.log(`  [compacted: ${m.compact_metadata.pre_tokens} -> ${m.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (m.type === 'assistant' && !m.parent_tool_use_id) {
@@ -377,7 +379,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else if (result && result.subtype === 'error_max_turns') console.log(`[agent] turn hit the ${toolTurns} model-call cap; continuing next turn`);
       else {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`); failed = true}}
     grab.stop(); freeSlot(); pacer.turnDone(); sess.turns++;
-    let turnCost = null, tin = null, tout = null, cread = null, cwrite = null;
+    let turnCost = null, tin = null, tout = null, cread = null, cwrite = null, grabCost = null;
+    if (grab.grabbed() && !result) { // the cut query sent no result: count what it spent (#747)
+      grabCost = gs.cost(model, {sent: String(sess.system || '').length + prompt.length}); spent += grabCost.usd; sess.costUsd += grabCost.usd; turnCost = grabCost.usd;
+      console.log(`[turn ${sess.turns}] cut for its scene | ${grabCost.how} ${money(grabCost.usd)} (${grabCost.calls} model calls reported) | run ${money(spent)} | session ${money(sess.costUsd)}`)}
     if (result) {
       // total_cost_usd is cumulative for the session when resumed; take the part this turn added.
       const ud = usageDelta(sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)
@@ -396,7 +401,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
     if (refl) {const wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; await closeReflection(base, heroId, RUNNER, refl.id, wrote); console.log(`  [reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(rd ? ['session-rolled'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(rd ? ['session-rolled'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSess(); if (grab.grabbed() && !failed && !stopReq) resume = true;
     if (fails.ok(!failed && (tools > 0 || !!refl)) && !ended) ended = fails.why();
   }

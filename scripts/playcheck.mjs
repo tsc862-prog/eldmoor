@@ -11,6 +11,7 @@
 //   goes on with say and ends after a few exchanges or when the member walks off), and a dead hero's answers. The mock agent's waits drive game time themselves, so the
 //   run depends on the seed (PLAYCHECK_SEED), not on how fast the machine is.
 // Usage: npm run playcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 
 // Seeded Math.random before the sim is imported (core/rng.js reads it at call time).
@@ -478,7 +479,7 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   const {mkdtempSync, writeFileSync: wf, existsSync: ex, readdirSync, rmSync} = await import('node:fs');
   const {tmpdir} = await import('node:os'); const {join} = await import('node:path');
   const SS = await import('./agent-sessions.mjs');
-  const logs = mkdtempSync(join(tmpdir(), 'eldmoor-sess-'));
+  const logs = mkTmp('eldmoor-sess-');
   wf(join(logs, 'agent-session.json'), JSON.stringify({sessionId: 's-old', heroId: 5, heroName: 'Ann', turns: 3}));
   const note = SS.migrateLegacy(logs);
   ok(ex(SS.sessionPath(5, logs)) && !ex(join(logs, 'agent-session.json')) && /moved/.test(note), 'the old single session file moves to logs/agents/5.json on first run');
@@ -612,11 +613,14 @@ driven = false; // from here on tool calls arrive over sockets; the background t
   // and whether a stale claim of theirs still covered this hero depended on how much real time had passed (red on slow CI).
   // Every other hero keeps the link the host reports.
   if (hostLinks) RL.setRunnerLinks(x => x === c ? 'connected' : hostLinks(x));
-  const out = S.agents.find(x => x !== c && x.state === 'hunt' && !x.player && x.kind === 'hero');
+  // The open ground this block stands on, fixed once: a hunter walking along a town wall counts as in town (autopilot's town branch), and
+  // which hunter is where at this moment depends on real time, so reading one anew at each idle() was red on some CI runs.
+  const {CITY} = await import('../src/world/map.js'), walled = p => CITY.some(t => p.x >= t.x0 - 3 && p.x <= t.x1 + 4 && p.y >= t.y0 - 3 && p.y <= t.y1 + 4);
+  const out = S.agents.find(x => x !== c && x.state === 'hunt' && !x.player && x.kind === 'hero' && !walled(x)), ground = {x: out.x, y: out.y};
   const calm = () => {S.pvpT = 1; c.spotCd = 99; for (const m of S.mobs) {if (m.target === c) m.target = null; if (dist(m, c) < 30) m.scan = 1}
     if (c.state === 'fight' || c.state === 'duel' || c.state === 'assist' || c.state === 'return') {c.state = 'hunt'; c.target = null}};
   const stepFor = (gameMin, f) => {const end = S.gameMin + gameMin; while (S.gameMin < end) {calm(); step(1 / 60); if (f && f()) return true} return false};
-  const idle = () => {c.x = out.x; c.y = out.y; c.state = 'hunt'; c.pq = []; c.target = null; c.dest = null; c.inv = {list: []}; c.hp = maxHp(c);
+  const idle = () => {c.x = ground.x; c.y = ground.y; c.state = 'hunt'; c.pq = []; c.target = null; c.dest = null; c.inv = {list: []}; c.hp = maxHp(c);
     c.playOrder = {kind: 'hunt', n: 2, flee: .15}; c.playActAt = S.gameMin - 200; c.playIdle = false; c.playAuto = null};
   const autoStarted = () => c.playIdle || c.playAuto || (c.pq[0] && c.pq[0].auto);
   // a turn opens with the agent's first tool call: two game hours past its last order, autopilot still starts nothing

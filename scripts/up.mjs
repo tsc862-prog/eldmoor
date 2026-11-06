@@ -30,6 +30,7 @@ import {join, dirname, basename} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import net from 'node:net';
 import {unseenNotes, lastNotes, formatMerge} from './patchnotes.mjs';
+import {tmpEnv, tmpRoot, cleanOld} from './tmp.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const WIN = process.platform === 'win32';
@@ -57,7 +58,7 @@ function killTree(pid) { // the whole tree, so no runner, esbuild or shell stays
   });
 }
 function launch(name, args, {env = {}, cwd = ROOT, onLine} = {}) {
-  const child = spawn(process.execPath, args, {cwd, env: {...process.env, ...env}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: !WIN});
+  const child = spawn(process.execPath, args, {cwd, env: {...process.env, ...tmpEnv(), ...env}, stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, detached: !WIN});
   const p = {name, child, pid: child.pid, exited: false, started: Date.now(), expected: false};
   p.done = new Promise(res => {child.on('exit', (code, sig) => {p.exited = true; p.code = code; p.sig = sig; live.delete(p); res()}); child.on('error', e => {say('up', `${name}: could not start: ${e.message}`); p.exited = true; live.delete(p); res()})});
   if (child.stdin) child.stdin.on('error', () => {});
@@ -168,6 +169,7 @@ async function update() {
   const files = (await git('diff', '--name-only', before, after)).out.split('\n').map(s => s.trim()).filter(Boolean);
   up(`updated ${before.slice(0, 7)} -> ${after.slice(0, 7)}: ${files.length} file(s) changed`);
   if (!NO_ART) {await stopArt(); startArt()} // the loop runs the new scripts/art
+  try {const n = cleanOld(); up(`temp files live in ${tmpRoot()}` + (n ? ` (${n} older than a day removed)` : ''))} catch {}
   showUnseen();
   const lock = files.includes('package-lock.json'), viteChanged = lock || files.includes('package.json') || files.includes('vite.config.js');
   if (lock) { // dependencies changed: nothing may hold node_modules while npm works

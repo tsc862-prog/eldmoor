@@ -7,7 +7,6 @@
 import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
-import {heroStream,sysLine} from './chatpanel.js';
 import {CITY,CRYPT,LAIR,ZONES,OUTPOSTS,zoneFor} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -48,6 +47,7 @@ import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 import {downView,downText,downTitle,flashOf,pips,downKind,DOWN_BADGE} from './downview.js'; // the downed (#659)
+import {siteById} from '../sim/sites.js'; // a DM-made site's record, for the activity line (#917)
 import {threadText} from '../sim/oath.js'; // an unsworn thread, in words (#800)
 
 const $=id=>document.getElementById(id);
@@ -64,7 +64,7 @@ const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className
 export const hn=a=>{const s=el('span','hn f'+a.fac,styled(a));s.dataset.hid=a.id;return s};
 const meter=(cls,frac)=>{const m=el('div','meter '+cls);const i=document.createElement('i');i.style.width=clamp(frac*100,0,100)+'%';m.append(i);return m};
 // Render chronicle-style parts (strings, heroes, {t,c} spans) into a node.
-const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p)node.append(el('span',p.c||'',p.t))}};
+const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p){const sp=el('span',p.c||'',p.t);if(p.dg){sp.dataset.dungeon=p.dg;sp.classList.add('dgname');sp.title='Open the dungeon view';sp.setAttribute('role','button');sp.tabIndex=0}node.append(sp)}}}; // p.dg: a DM-made site's name opens its dungeon view (#642)
 // Zone index from a number or a zone name; -1 when unknown.
 const zoneIdx=z=>typeof z==='number'?z:ZONES.indexOf(z);
 
@@ -88,7 +88,9 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'follow':return a.party?`Following ${a.party.leader.name}'s party in ${zn}`:'Following the party';
     case 'camp':return a.playDoing||'Resting at camp';
     case 'regroup':return 'Pulling back after a skirmish';
-    case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
+    case 'dungeon':{const s=a.siteIn!=null?siteById(a.siteIn):null; // a DM-made site names itself, never the Crypt (#917)
+      if(a.siteIn!=null){const n=s?s.name:'a hidden place',t=s&&s.boss?(s.bossTitle?s.boss+', '+s.bossTitle:s.boss):'';if(s&&s.raid)return a.hidden?`Raiding ${n}${t?', fighting toward '+t:''}`:`Gathering a raid at ${n}`;return a.hidden?`Inside ${n}${t?', fighting toward '+t:''}`:`Gathering a group at ${n}`}
+      return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`}}return ''}
 
 // ---- hero dossier ----
 const TABS=[['stats','Stats'],['quests','Quests'],['log','Log'],['combat','Combat'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['inv','Pack'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
@@ -288,14 +290,10 @@ function tabParty(b,a){const p=a.party;
 
 function tabChat(b,a){
   // a Fellowship member: its slice of the chat panel's stream (lines it said or heard, and its proposals and votes), newest first
-  if(slotted()&&inSlots(a)){const rows=heroStream(a).reverse().slice(0,40);
-    if(!rows.length){b.append(el('div','dm','Nothing said or heard yet.'));return}
-    const ul=el('ul','log chat');let last=null;
-    const gs=[];for(const it of rows){const p=gs[gs.length-1];
-      if(p&&it.kind==='chat'&&p.it.kind==='chat'&&p.it.e.from===it.e.from&&p.it.e.text===it.e.text&&!!p.it.e.party===!!it.e.party)p.n++;else gs.push({it,n:1})}
-    for(const {it,n} of gs){const d=it.kind==='chat'?dayOf(it.e):Math.floor(it.gm/1440)+1;if(d!=null&&d!==last){ul.append(daySep(d));last=d}
-      ul.append(it.kind==='chat'?chatLine(it.e,n):sysLine(it))}
-    b.append(el('div','meta','This hero’s part of the Fellowship chat; the Chat panel has it all.'),ul);return}
+  // a Fellowship member's chat is the Chat panel's stream (#845): one place for it, so this tab only points there
+  if(slotted()&&inSlots(a)){const dk=typeof document!=='undefined'&&document.getElementById&&document.getElementById('dock-chat');
+    b.append(el('div','meta',a.name+'’s lines, and what they heard, are in the Chat panel with the rest of the company’s talk.'));
+    if(dk){const g=el('button','mini','Open the Chat tab');g.dataset.gochat='1';b.append(g)}return}
   const all=(a.chat||[]).slice(-20).reverse(),c=all.filter(e=>chatVisible(e,S));
   if(!c.length){b.append(el('div','dm',all.length?'Only background chatter so far (Settings, World chatter, shows it).':'Nothing said or heard yet.'));return}
   const ul=el('ul','log chat');chatByDay(ul,chatGroups(c));b.append(ul)}
@@ -311,6 +309,7 @@ export function chatLine(e,n=1){const li=el('li','chl');li.setAttribute('data-k'
   li.append(e.courier?' sends word: ':e.whisper?': ':none?' calls out, but no one is near: ':e.party?' shouts: ':': ',e.text);
   if(e.by==='scripted'&&e.trigger==='npc')li.append(el('span','dm chscr',' scripted'));
   if(e.comp)li.append(el('span','dm chscr',' DM voice'+(e.by==='scripted'?' · scripted':''))); // a companion of an agent company, voiced by the DM (#764); the watcher only // the scripted DM's townsfolk, not the DM agent's words (#540)
+  if(e.opt!=null)li.append(el('span','dm chopt',' ('+(e.rfx?'reflex: ':'')+String(e.opt).replace(/^use:/,'use ')+')')); // the act this table line went with (#734)
   if(n>1)li.append(el('span','dm chx',' ×'+n));
   if(e.party&&!e.courier&&e.heard&&e.heard.length)li.append(el('span','dm chheard',' ('+e.heard.join(', ')+')'));return li}
 // The same speaker saying the same thing on the same channel back to back shows once with a count.
@@ -483,7 +482,7 @@ export function renderClock(){$('clock').textContent=`Day ${Math.floor(S.gameMin
 // Chronicle: render what the sim already logged, then follow new entries.
 function initChronicle(){const el_=$('log');
   const add=e=>{if(!chronicleShows(e))return;const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';
-    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} // the downed, a rescue, a mercy, a finish (#659)li.append(el('time',null,e.t));parts(li,e.parts);
+    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} li.append(el('time',null,e.t));parts(li,e.parts); // the downed, a rescue, a mercy, a finish (#659)
     keepView(el_,()=>{el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()})}; // a new line on top keeps the line being read in view (#145)
   const all=()=>{el_.replaceChildren();for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i])};all();
   setChronicleRefresh(all); // the Fellowship only filter toggles re-render from S.chronicle
@@ -493,6 +492,7 @@ function initChronicle(){const el_=$('log');
 // tab buttons ([data-tab]) switch the dossier tab.
 function initClicks(){const host=document.querySelector('.main')||document.body;
   host.addEventListener('click',e=>{const t=e.target;if(!t||!t.closest)return;
+    if(t.closest('[data-gochat]')){const d=document.getElementById('dock-chat');if(d)d.click();return}
     const ag=t.closest('[data-agent]');if(ag){const a=cam.sel;if(a){if(a.player)agentOff(a);else if(agentOn(a))tab='agent';renderHero()}return}
     const ai=t.closest('[data-ai]');if(ai){const a=cam.sel;if(a){if(a.brain)disableBrain(a);else enableBrain(a);renderHero()}return}
     const mp=t.closest('[data-mprompt]');if(mp){if(mindOpen)mindOpen.prompt=!mindOpen.prompt;renderHero();return}

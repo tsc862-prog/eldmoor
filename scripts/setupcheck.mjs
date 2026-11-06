@@ -107,7 +107,7 @@ bad(t => {t.mode = 'apart'; t.heroes[T].group = 1; t.heroes[H].group = 1; t.hero
 
 // ---- the hall (#771) ----
 {const st = peopled(PEOPLES, 'Murkstead');
- ok(hallTowns('stepping', 1).join() === 'Grimhold,Murkstead' && hallTowns('eldmoor', 1).join() === 'Grimhold', 'the hall picker lists the towns of the faction on the chosen map');
+ ok(hallTowns('stepping', 1).join() === 'Grimhold,Murkstead,Thornteeth' && hallTowns('eldmoor', 1).join() === 'Grimhold', 'the hall picker lists the towns of the faction on the chosen map');
  ok(validateSetup(st).length === 0 && cleanSetup(st).hall === 'Murkstead', 'a town of the faction is a legal hall, and cleaning keeps it: ' + validateSetup(st).join(' | '));
  ok(validateSetup({...st, hall: 'Highgate'}).some(x => /hall.*not a town/i.test(x)), 'a town of the other faction is refused as a hall');
  ok(!('hall' in cleanSetup(s)) && !('hall' in slotsView(cleanSetup(s))), 'no hall chosen: the setup carries none (the old shape)');
@@ -234,11 +234,11 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  const a = stand('mixed'), A = a.cos[0];
  ok(a.valid === '' && a.cos.length === 1 && A.n === 5 && A.hall === 'Grimhold' && !('hall' in a.setup), 'mixed peoples, together: one company, the hall the Tank\'s home town as ever (' + A.hall + ')');
  ok(A.inHall && A.far <= 4 && A.home && A.town && A.party === 5, `every member stands in the hall town, within 4 tiles (${A.far && A.far.toFixed(1)}), home there, in state town, one party of five`);
- ok(A.born.join() === ',Murkstead,Murkstead,,' && /Murkstead, come from|come from Murkstead/.test(A.log), 'those from another town are marked, and the campaign log says where they came from: ' + A.born);
+ ok(A.born.join() === ',Murkstead,Murkstead,,Thornteeth' && /Murkstead, come from|come from Murkstead/.test(A.log), 'those from another town are marked, and the campaign log says where they came from: ' + A.born);
  ok(A.story[1].includes('Murkstead'), 'the people\'s home town stays in the origin text');
  const h = stand('hall'), B = h.cos[0];
  ok(B.hall === 'Murkstead' && B.inHall && B.far <= 4 && B.home && h.setup.hall === 'Murkstead', 'the setup\'s hall: all five start there, and S.setup records it');
- ok(B.born.join() === 'Grimhold,,,Grimhold,Grimhold', 'the hall is the setup\'s choice, not the leader\'s people: ' + B.born);
+ ok(B.born.join() === 'Grimhold,,,Grimhold,Thornteeth', 'the hall is the setup\'s choice, not the leader\'s people: ' + B.born);
  const g = stand('single'), G = g.cos[0];
  ok(G.hall === 'Grimhold' && G.inHall && G.born.every(x => !x) && !/come from/.test(G.log), 'a single-people company is left where it stood: nobody moved, no line');
  ok(stand('foreign').cos[0].hall === 'Grimhold', 'a remembered hall that is no town of this map falls back to the Tank\'s home town');

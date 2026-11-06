@@ -6,6 +6,7 @@
 // own random numbers so the gameplay stream is untouched. Per-hero fields (chat, chatCd,
 // bubble, spotTgt, duelFoe) are created lazily here so heroes.js only gains say() calls.
 import {dist} from '../world/map.js';
+import {keep} from './kept.js';
 import {MOBS} from '../data/mobs.js';
 import {BARKS,CLASS_BARKS} from '../data/barks.js';
 import {S,clockStr,dayNo} from './state.js';
@@ -25,6 +26,7 @@ export function agentLine(a,e){if(!e||e.from!==a)return e;e.agent=true;delete e.
 // Private LCG so picking lines never perturbs the gameplay RNG.
 const SEED0=0x2545f491;let seed=SEED0;export const resetChatSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('chat',()=>seed,v=>{seed=v}); // saved with the world
 
 // Fill placeholders, then fix the article before a vowel ("a Ash Drake" -> "an Ash Drake").
 const fill=(s,a,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?a.name:ctx[k]!=null?String(ctx[k]):k).replace(/\b([Aa]) (?=[AEIOUaeiou])/g,'$1n ');
@@ -81,8 +83,9 @@ export function chatTick(dt){
   for(const a of S.agents){if(a.chatCd>0)a.chatCd-=dt;
     if(a.bubble){a.bubble.life-=dt;if(a.bubble.life<=0)a.bubble=null}}
   for(const p of S.parties){
-    const out=p.mem.filter(b=>b.state==='hunt'||b.state==='follow'||b.state==='fight');
-    if(out.length<2){p.chatT=0;continue}
+    let n=0;for(const b of p.mem)if(afield(b))n++; // #730: count first; the list is built only when banter is due
+    if(n<2){p.chatT=0;continue}
     p.chatT=(p.chatT||0)+dt;if(p.chatT<BANTER)continue;p.chatT=0;
-    say(out[Math.floor(r()*out.length)],'banter',{zone:p.zone})}}
+    const out=p.mem.filter(afield);say(out[Math.floor(r()*out.length)],'banter',{zone:p.zone})}}
+const afield=b=>b.state==='hunt'||b.state==='follow'||b.state==='fight';
 export const worldMuted=()=>S.worldVoice==='dm';

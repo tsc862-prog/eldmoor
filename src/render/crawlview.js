@@ -20,7 +20,7 @@ import {roomSpots,roomGrid,spotAt} from '../sim/roomgrid.js';
 import {TABLE} from '../sim/table.js';
 import {maxHp} from '../sim/heroes.js';
 import {isDown} from '../sim/downed.js';
-import {heroSprite,outlined} from './sprites.js';
+import {outlined,sceneFigure,sceneCreature} from './sprites.js';
 import {foeSprite,foeKind} from './dgfoes.js';
 import {classColor,DISP} from '../core/colors.js';
 import {MARK,DUNGEON as D} from './palette.js';
@@ -42,18 +42,21 @@ function pop(x,y,txt,col,now){let p=pops[0];for(const q of pops){if(!q.on){p=q;b
 function reset(){heroes.clear();foes.length=0;queue.length=0;V.seen=0;V.summary='';V.sumSc=null;V.sumAt=-1;V.foes=null;V.scene=null;V.play=null;for(const p of pops)p.on=false}
 const hero=a=>{let h=heroes.get(a.id);if(!h){h={x:0,y:0,tx:0,ty:0,hp:a.hp,pend:0,moved:-9,face:1,seen:false,placed:false,spot:null,down:false,flash:0,stumble:0};heroes.set(a.id,h)}return h};
 const nameOf=f=>f.name||foeKind(f.type).name;
-// The first foe standing (counting the blows still to be shown), as the sim strikes it (sim/crawl.js liveFoes(cr)[0]).
+// The first foe standing (counting the blows still to be shown): the fallback when a beat carries no target (a blow on a hero, an older save). Strikes name their foe (beat.at).
 function frontFoe(){for(let k=0;k<foes.length;k++)if(foes[k].alive)return k;return -1}
 const RING={ward:'#bfe8a8',heal:'#8ee0a0',potion:'#e07a9a',guard:'#e8c860',hold:'#e8c860'};
 const beat=(k,id,dur)=>({k,id,res:'',n:0,foe:-1,dmg:0,dur,t0:-1,p:0,hit:false,crit:false,fumble:false,kill:false,tgt:null,popped:false});
 // One beat from the scene (b: a beat of sc.beats), queued with what the view needs to show it.
 function enqueue(b,party){const k=b.k,res=String(b.res||''),q=beat(k,b.id,BEAT.other);q.res=res;
-  if(k==='strike'){q.dur=BEAT.strike;q.hit=/^(hit|struck down|a crushing blow)/.test(res);q.crit=/crushing/.test(res);q.fumble=/missed badly/.test(res);q.kill=/^struck down/.test(res)}
+  if(k==='strike'&&/^out of reach/.test(res)){q.k='walk';q.dur=BEAT.other} // a step toward the foe, not a swing
+  else if(k==='strike'){q.dur=BEAT.strike;if(b.at>=0&&b.at<foes.length)q.foe=b.at;q.hit=/^(hit|struck down|a crushing blow)/.test(res);q.crit=/crushing/.test(res);q.fumble=/missed badly/.test(res);q.kill=/^struck down/.test(res)}
   else if(k==='save')q.dur=BEAT.save;
+  else if(Array.isArray(b.hits)&&b.hits.length){q.blast=b.hits} // a blast: every foe it took flashes
   else if(RING[k]){q.dur=BEAT.ring;const mt=/^\+(\d+) to (.+?)(?: \(|$)/.exec(res);if(mt){q.dmg=+mt[1];q.tgt=party.find(a=>a.name===mt[2])||null}}
   queue.push(q)}
 // Foe HP that fell this frame goes to this frame's landed strikes, in order (a 20 takes two); what no strike explains is not held back.
 function settleFoeHits(from){for(let i=from;i<queue.length;i++){const q=queue[i];if(q.k!=='strike'||!q.hit)continue;let want=q.crit?2:1;
+    if(q.foe>=0&&foes[q.foe]){const F=foes[q.foe];if(F.drop>0){const d=Math.min(F.drop,want);F.drop-=d;want-=d;q.n+=d}} // the foe the sim aimed at takes its blow first
     for(let k=0;k<foes.length&&want>0;k++){const F=foes[k];if(F.drop>0){const d=Math.min(F.drop,want);F.drop-=d;want-=d;q.n+=d;if(q.foe<0)q.foe=k}}
     if(q.foe<0)q.foe=frontFoe();if(!q.n)q.n=q.crit?2:1}
   for(const F of foes){if(F.drop>0)F.pend=Math.max(0,F.pend-F.drop);F.drop=0;if(F.hp<=0&&F.pend<=0)F.alive=false}
@@ -103,7 +106,7 @@ export function crawlView(m,st,now){const cr=st.crawl,on=!!(cr&&st.phase==='craw
 
 // ---- playing the beats ----
 const pace=()=>TABLE.speed>=8?0:TABLE.speed>=3?.4:1; // at 3x the beats play fast; at 8x they are skipped
-const WORD={guard:'on me',hold:'hold!',ward:'ward',scout:'a gap!',read:'wards turn',retreat:'fall back',stabilize:'bound',stunned:'stunned',attempt:'tries'};
+const WORD={guard:'on me',hold:'hold!',ward:'ward',scout:'a gap!',read:'wards turn',retreat:'fall back',walk:'closing in',stabilize:'bound',stunned:'stunned',attempt:'tries'};
 const whoAt=(party,id)=>{for(const a of party)if(a.id===id)return a;return null};
 // A beat's lasting part, once it lands (or is skipped): the HP bars show the blow.
 function settle(q,party){if(q.settled)return;q.settled=true;
@@ -128,6 +131,8 @@ function land(q,party,now){q.popped=true;settle(q,party);const a=whoAt(party,q.i
   if(q.k==='blow'){h.flash=now;pop(h.x,h.y-1.35,'-'+q.dmg,'#ff6a5a',now);return}
   if(q.k==='save'){const d=/d20 (\d+) vs DC (\d+)/.exec(q.res);if(d)pop(h.x,h.y-1.1,'save '+d[1],+d[1]>=+d[2]?'#8ee0a0':'#e0584a',now);return}
   if((q.k==='heal'||q.k==='potion')&&q.dmg){const t=q.tgt&&heroes.get(q.tgt.id);pop(t?t.x:h.x,(t?t.y:h.y)-1.35,'+'+q.dmg,'#8ee0a0',now);return}
+  if(q.blast)for(const i of q.blast){const F=foes[i];if(F){F.flash=now;pop(F.x,F.y-1.45,'blast',DISP.hostile.color,now)}}
+  if(q.blast)return;
   const t=WORD[q.k];if(t)pop(h.x,h.y-1.35,t,q.k==='retreat'||q.k==='stunned'||q.k==='attempt'?'#b8b4c8':RING[q.k]||'#9ad8f0',now)}
 
 // ---- light ----
@@ -162,27 +167,28 @@ export function drawCrawl(ctx,m,v,now,dpr,sc,PS){if(!v.live||!v.spots)return fal
   return true}
 function lungeOf(q,id,h){if(!q||q.id!==id||q.k!=='strike'||!foes[q.foe])return 0;const F=foes[q.foe],e=Math.sin(Math.min(1,q.p/.8)*Math.PI);return e*Math.min(.65,Math.max(0,Math.hypot(F.x-h.x,F.y-h.y)-.75))}
 function drawHero(ctx,a,h,q,now,dpr,sc,PS,close,fight){const down=h.down,walking=now-h.moved<.15,fr=walking?Math.floor(now*6)&1:0;
-  const s=outlined(heroSprite(a,false,fr));let x=h.x,y=h.y;
+  let x=h.x,y=h.y;
   const lg=lungeOf(q,a.id,h);if(lg){const F=foes[q.foe],d=Math.hypot(F.x-h.x,F.y-h.y)||1;x+=(F.x-h.x)/d*lg;y+=(F.y-h.y)/d*lg}
   if(!walking&&foes.length&&V.spots)h.face=V.spots.den.x>=h.x-.05?1:-1;const face=h.face;
-  const px=Math.round(x*T),py=Math.round(y*T),sw=Math.floor(s.width/2);
+  const s=sceneFigure(a,face,fr?(Math.floor(now*6)&2?2:1):0),px=Math.round(x*T),py=Math.round(y*T); // a step frame, the two feet in turn
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,down?8:6,1.8,0,0,7);ctx.fill();
   const stb=h.stumble&&now-h.stumble<.9?Math.sin(Math.min(1,(now-h.stumble)/.9)*Math.PI):0,fl=!down&&h.flash&&now-h.flash<.35;
   ctx.save();ctx.translate(px,py);
-  if(down){ctx.rotate(-Math.PI/2*face);ctx.globalAlpha=.85;ctx.drawImage(s,-s.width+2,-sw)}
-  else{if(stb)ctx.rotate(stb*.5*face);ctx.scale(face,1);ctx.drawImage(s,-sw,-s.height+Math.round(stb*2));
-    if(fl){ctx.globalAlpha=.8*(1-(now-h.flash)/.35);ctx.drawImage(tinted(s,'#ff5a48'),-sw,-s.height)}}
+  if(down){ctx.rotate(-Math.PI/2*face);ctx.globalAlpha=.85;ctx.drawImage(s.img,s.sx,s.sy,s.sw,s.sh,-s.dw+2,-s.dw/2,s.dw,s.dh)}
+  else{if(stb)ctx.rotate(stb*.5*face);if(s.mirror)ctx.scale(-1,1);const dy=s.oy+Math.round(stb*2);ctx.drawImage(s.img,s.sx,s.sy,s.sw,s.sh,s.ox,dy,s.dw,s.dh);
+    if(fl){ctx.globalAlpha=.8*(1-(now-h.flash)/.35);ctx.drawImage(tinted(s.img,'#ff5a48'),s.sx,s.sy,s.sw,s.sh,s.ox,dy,s.dw,s.dh)}}
   ctx.restore();ctx.globalAlpha=1;
   // a ring under the feet as a guard, a hold, a ward or a heal plays (the ward's spreads over the party)
   if(q&&q.id===a.id&&RING[q.k]){const p=q.p,rr=q.k==='ward'?.6+p*2.6:.5+p*.5;ring(ctx,px,py,rr,RING[q.k],1-p)}
   if(q&&q.tgt===a&&q.id!==a.id&&(q.k==='heal'||q.k==='potion'))ring(ctx,px,py,.5+q.p*.4,RING.heal,1-q.p);
-  const top=down?py-9:py-s.height;
+  const top=down?py-9:py-s.h;
   if(fight){const mh=maxHp(a),f=mh>0?Math.max(0,Math.min(1,(a.hp+h.pend)/mh)):1;bar(ctx,px-BAR_W/2,top-2,BAR_W,f,false)}
   if(close)label(ctx,a.name+(down?' (down)':''),px,top-5,classColor(a.cls),13,dpr,sc);
   if(a.eff)drawConditions(ctx,null,PS,a,px,py,top-(close?17*dpr/sc:4),now)}
 function ring(ctx,px,py,r,col,a){ctx.strokeStyle=col;ctx.globalAlpha=Math.max(0,a)*.9;ctx.lineWidth=1.2;ctx.beginPath();ctx.ellipse(px,py-1,r*T,r*T*.45,0,0,7);ctx.stroke();ctx.globalAlpha=1}
 function drawFoe(ctx,m,f,F,k,q,now,dpr,sc,PS,close,party){if(!f)return;const dead=f.hp<=0&&F.pend<=0&&!(F.flash&&now-F.flash<.3),s0=foeSprite(f.type,(Math.floor(now*1.8)+k)&1);if(!s0)return;
-  const scl=s0.height<11?1.5:1,o=dead?outlined(s0):rimmed(s0,FOE_RIM),w=o.width*scl,hgt=o.height*scl; // small creatures drawn half again as large: hero size
+  const fcol=(Math.floor(now*1.8)+k)&1,faceIn=V.spots&&V.spots.stair.x<F.x-.05?1:-1,G=sceneCreature(f.type,-faceIn,fcol?(fcol&&k&1?2:1):0); // a generated creature sheet when there is one (#862), looking the way in
+  const scl=G?1:s0.height<11?1.5:1,o=G?G.img:dead?outlined(s0):rimmed(s0,FOE_RIM),w=(G?G.dw:o.width)*scl,hgt=(G?G.dh:o.height)*scl; // small creatures drawn half again as large: hero size
   let x=F.x,y=F.y;
   if(q&&q.k==='blow'&&q.foe===k){const a=whoAt(party,q.id),h=a&&heroes.get(a.id);if(h){const e=Math.sin(Math.min(1,q.p/.8)*Math.PI)*.55,d=Math.hypot(h.x-x,h.y-y)||1;x+=(h.x-x)/d*e;y+=(h.y-y)/d*e}}
   const sh=F.shake&&now-F.shake<.45?Math.round(Math.sin((now-F.shake)*70)*1.5):0;
@@ -193,10 +199,14 @@ function drawFoe(ctx,m,f,F,k,q,now,dpr,sc,PS,close,party){if(!f)return;const dea
     ctx.globalAlpha=1}
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py-1,w*.42,2,0,0,7);ctx.fill();
   const face=V.spots&&V.spots.stair.x<x-.05?1:-1; // foes face the way in, where the party comes from
-  ctx.save();ctx.translate(px,py);ctx.scale(-face*scl,scl);
+  if(G){ctx.save();ctx.translate(px,py);const lift=G.oy+(wet?1:0);
+    if(dead){ctx.globalAlpha=.5;ctx.rotate(Math.PI/2);ctx.drawImage(G.img,G.sx,G.sy,G.sw,G.sh,-G.dw*.5,-G.dh*.5,G.dw,G.dh)}
+    else{ctx.drawImage(G.img,G.sx,G.sy,G.sw,G.sh,G.ox,lift,G.dw,G.dh);
+      if(F.flash&&now-F.flash<.3){ctx.globalAlpha=1-(now-F.flash)/.3;ctx.drawImage(tinted(G.img,'#ffffff'),G.sx,G.sy,G.sw,G.sh,G.ox,lift,G.dw,G.dh)}}}
+  else{ctx.save();ctx.translate(px,py);ctx.scale(-face*scl,scl);
   if(dead){ctx.globalAlpha=.5;ctx.rotate(Math.PI/2);ctx.drawImage(o,-o.width*.5-1,-o.height*.5)} // a body for the room
   else{const lift=-o.height+(wet?1:0);ctx.drawImage(o,-Math.floor(o.width/2),lift);
-    if(F.flash&&now-F.flash<.3){ctx.globalAlpha=1-(now-F.flash)/.3;ctx.drawImage(tinted(o,'#ffffff'),-Math.floor(o.width/2),lift)}}
+    if(F.flash&&now-F.flash<.3){ctx.globalAlpha=1-(now-F.flash)/.3;ctx.drawImage(tinted(o,'#ffffff'),-Math.floor(o.width/2),lift)}}}
   ctx.restore();ctx.globalAlpha=1;
   drawn.push({f,x0:px-w/2,y0:py-hgt-6,x1:px+w/2,y1:py+2});if(dead)return;
   const hits=Math.max(1,f.hits||f.hp),shown=Math.max(0,f.hp+F.pend),top=py-hgt,bw=f.boss?18:BAR_W;

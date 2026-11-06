@@ -9,12 +9,15 @@
 // the cooler retry at 0.4 plays like mock-tools), mock-slow (the start gate's warm-up call, issue #222, answers after WARM_SLOW_MS,
 // then plays like mock-tools), mock-down (every call fails: a crashed warm-up), mock-busy (issue #515: every tool-loop call takes
 // BUSY_MS, look, status, rest, wait, so a member is nearly always mid-turn; a scene answer (format with option) comes in SCENE_MS
-// with press or the first option). Each turn it plays status,
+// with press or the first option), mock-pose (issue #801: the same emote every turn). Each turn it plays status,
 // rest 20, a bad tool (fly), wait 20, then narrates.
 // startMockOllama() -> {url, seen (every /api/chat body; seen.final counts closing calls), close()}
 import http from 'node:http';
 
-export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b', 'mock-busy:1b'];
+export const MOCK_MODELS = ['mock-tools:1b', 'mock-json:1b', 'mock-text:1b', 'mock-lazy:1b', 'mock-zh:1b', 'mock-fumble:1b', 'mock-intro:1b', 'mock-loop:1b', 'mock-loop1:1b', 'mock-slow:1b', 'mock-down:1b', 'mock-busy:1b', 'mock-pose:1b', 'mock-table:1b', 'mock-crypt:1b'];
+// Lines of different words: the table turns away a line that near-copies another member's, and a refused answer is a failed turn (five in a row end the runner).
+export const MOCK_TABLE_LINES = ['Steady now, keep the torches low.', 'I have the left flank; mind the roots.', 'Something moved beyond the stones.', 'Rest your arm, I will take the first watch.', 'We came for the lantern and we leave with it.', 'Count the arrows before we press on.', 'The wind has turned; I smell smoke.', 'Stay together and nobody gets lost.', 'That road did not look like this at noon.', 'Bind the cut before it stiffens.', 'Hush, the birds have gone quiet.', 'One breath, then we move.'];
+export const MOCK_TABLE_MS = 500; // mock-table's answer time (#822)
 export const WARM_SLOW_MS = 2500; // mock-slow's warm-up answer takes this long (issue #222)
 export const MOCK_BUSY = {BUSY_MS: 1200, SCENE_MS: 150}; // mock-busy's tool-loop call and scene answer times (issue #515); a check may change them
 // Embeddings (issue #553): startMockOllama({embed: true}) also lists the model MOCK_EMBED_MODEL and answers POST /api/embed with a
@@ -46,7 +49,7 @@ export async function startMockOllama({embed = false} = {}) {
     json: [{tool: 'status', args: {}}, {tool: 'wait', args: {minutes: 20}}, {tool: 'end', args: {}, narration: 'The hero waited, local and free.'}],
   };
   const server = http.createServer((req, res) => {
-    const send = (code, o) => {res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(o))};
+    let send = (code, o) => {res.writeHead(code, {'content-type': 'application/json'}); res.end(JSON.stringify(o))};
     if (req.url === '/api/tags') return send(200, {models: (embed ? [...MOCK_MODELS, MOCK_EMBED_MODEL] : MOCK_MODELS).map(name => ({name, model: name}))});
     if (req.url === '/api/embed' && req.method === 'POST') {
       let eb = ''; req.on('data', c => eb += c);
@@ -77,6 +80,27 @@ export async function startMockOllama({embed = false} = {}) {
         return body.model === 'mock-slow:1b' ? void setTimeout(answer, WARM_SLOW_MS) : answer();
       }
       if (body.model === 'mock-down:1b') return send(500, {error: 'model runner has unexpectedly stopped'});
+      if (body.model === 'mock-table:1b' || body.model === 'mock-crypt:1b') { // nightly run (#822): plays like mock-tools, but answers a scene with a legal option and its own line, so the table sees an agent, not a reflex
+        const send0 = send; send = (code, o) => void setTimeout(() => send0(code, o), MOCK_TABLE_MS); // a real model is not instant: at 0 ms a member passes the runner's 60 calls a minute cap (#467) in a burst of scene wakes and its turns end empty
+        const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
+        if (en) {
+          const who = ((msgs[0] && msgs[0].content || '').match(/^You are (\w+)/) || [])[1] || 'Someone', pick = (body.model === 'mock-crypt:1b' ? ['heal', 'stabilize', 'potion', 'press', 'strike', 'listen', 'speak'] : ['press', 'listen', 'speak']).find(o => en.includes(o)) || en[0]; // mock-crypt stays alive a little longer: it heals and stabilizes before it strikes
+          seen.tableScene = (seen.tableScene || 0) + 1;
+          return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: pick, line: `${who} says: ${MOCK_TABLE_LINES[seen.tableScene % MOCK_TABLE_LINES.length]}`})}});
+        }
+        // a free turn: look, set out to hunt, then wait (mock-tools only rests, so its company never leaves town and stuck-state and idle would measure the mock)
+        const k = after.filter(m => m.role === 'assistant').length, walk = [['status'], ['hunt', body.model === 'mock-crypt:1b' && !/"level":[12],/.test(String((after.find(m => m.role === 'tool') || {}).content || '')) ? {count: 4} : {count: 2, where: 'Thornvale'}], ['wait', {minutes: 30}]];
+        if (body.model === 'mock-crypt:1b') { // long company run (#926): reads its level from status; the leader of a company (or a solo) proposes the Crypt from level 8 and Kragmaw from level 14, a solo walks in with go_crypt / join_raid
+          const st = String((after.filter(m => m.role === 'tool' && /"level":\d+/.test(m.content)).pop() || {}).content || ''), lvl = Number((st.match(/"level":(\d+)/) || [])[1] || 1), inParty = /"party":\[/.test(st), led = /leads"/.test(st);
+          seen.crypt = seen.crypt || {turns: 0, calls: {}}; if (k === 1) seen.crypt.turns++;
+          const raid = lvl >= 14 && seen.crypt.turns % 2 === 0, act = lvl < 8 || led ? null : raid ? (inParty ? ['propose', {kind: 'raid', details: 'Kragmaw has had his way long enough.'}] : ['join_raid', {}]) : (inParty ? ['propose', {kind: 'crypt', details: 'We are ready for the Sunken Crypt.'}] : ['go_crypt', {join: 'yes'}]);
+          if (act && !inParty && k === 1) return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: 'read_chronicle', arguments: {}}}]}}); // a solo asks the town criers first: a hero that never heard of the Crypt cannot walk to it
+          if (act && !inParty && k === 2) { seen.crypt.calls[act[0] + ':'] = (seen.crypt.calls[act[0] + ':'] || 0) + 1; return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: act[0], arguments: act[1]}}]}}); }
+          if (act && k === 1) { seen.crypt.calls[act[0] + ':' + (act[1].kind || '')] = (seen.crypt.calls[act[0] + ':' + (act[1].kind || '')] || 0) + 1; return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: act[0], arguments: act[1]}}]}}); }
+        }
+        if (!body.tools || k >= walk.length) return send(200, {...done, message: {role: 'assistant', content: 'The hero set out and waited.'}});
+        return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: walk[k][0], arguments: walk[k][1] || {}}}]}});
+      }
       if (body.model === 'mock-busy:1b') { // issue #515: slow free turns, quick scene answers
         const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
         if (en) {seen.busyScene = (seen.busyScene || 0) + 1; return void setTimeout(() => send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: en.includes('press') ? 'press' : en[0], line: 'Steady, I am with you.'})}}), MOCK_BUSY.SCENE_MS)}
@@ -110,6 +134,12 @@ export async function startMockOllama({embed = false} = {}) {
         const plan = [['party_say', {text: `Hello friends! I am ${who} of the Concord, sworn to recover the Fenlight Lantern.`}], ['wait', {minutes: 10}]];
         if (!body.tools || n >= plan.length) return send(200, {...done, message: {role: 'assistant', content: `${who} greeted the party.`}});
         return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: plan[n][0], arguments: plan[n][1]}}]}});
+      }
+      if (body.model === 'mock-pose:1b') { // issue #801 (qwen2.5:14b live): one emote, the same words every turn, then narrates
+        const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
+        if (en) return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: en[0], line: 'Here.'})}});
+        if (!body.tools || n >= 1) return send(200, {...done, message: {role: 'assistant', content: 'I struck a pose with my cloak flaring.' + ' '.repeat(n)}});
+        return send(200, {...done, message: {role: 'assistant', content: '', tool_calls: [{function: {name: 'emote', arguments: {text: 'strikes a pose with his cloak flaring out'}}}]}});
       }
       if (body.model === 'mock-zh:1b') // answers in Chinese, never calling a tool (issue #126, the owner's live bug)
         return send(200, {...done, message: {role: 'assistant', content: '我将带领团队去见萨满奥兹雷克，询问新的任务。'}});
