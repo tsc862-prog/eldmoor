@@ -20,6 +20,11 @@
 // no stakes or log walls, so they are laid from its deck boards (bridges.png), each stake a board stood on end, sharpened; the
 // blockhouses that stand for towers and piers wear the LPC Roofs shakes; the plaza is plank decking on the same boards.
 //
+// The gatehouse (#979): building:lpc-<style>-gate-ns, -gate-ns-back and -gate-ew, for a gate of two tiles, laid from the same parts as the piers. A wall drawn for this view
+// shows a north or south gate as a face with an arch, so -gate-ns is that face with the arch cut clear, and -back the dark of the vault behind it; an east or west gate shows no
+// arch, only two towers and the span between them seen from above. They stand over ground people walk on, so they are not terrain art alone: townart.js sorts them in among the
+// entities. Solid tiles are as they were: a gatehouse is drawing, and the sim walks the same gap.
+//
 // Assets: tile:lpc-<style>-plaza (a 4x4 tile patch, the palisade's decking 12x8), tile:lpc-<style>-street (one tile, a plan's streets only),
 // tile:lpc-<style>-wall-<n|e|s|w> (two tiles long), and
 // building:lpc-<style>-tower / -pier / -pier-tall. No manifest row, `source` and `license` on the entry. townart.js draws the set
@@ -59,10 +64,11 @@ function flags(w,h,R,seed,{tones=[.46,.52,.58,.64],hi=.2,lo=.18}={}){const W=w*T
   return im}
 
 // ---- a wall's parts ----
-function kitOf(style){const K=kit(style),G=TOWN_GROUND[style],P=K.P.stone;return {...K,plaza:ramp(G.plaza,5),walk:ramp(G.walk,4),street:G.street?ramp(G.street,5):null,face:ramp([P[3],P[2],P[1],P[0]],6)}}
+function kitOf(style){const K=kit(style),G=TOWN_GROUND[style],P=K.P.stone;return {...K,plaza:ramp(G.plaza,5),walk:ramp(G.walk,4),fine:ramp(G.walk,9),street:G.street?ramp(G.street,5):null,face:ramp([P[3],P[2],P[1],P[0]],6)}}
 // The walk on top of a wall: flat like the kit's wall tops, with cross joints so a run reads as laid stone. `along` y or x.
-function walk(im,K,x,y,w,h,along){rect(im,x,y,w,h,K.walk(.62));const n=along==='y'?h:w;
-  for(let s=0;s<n;s+=16){if(along==='y'){rect(im,x,y+s,w,1,K.walk(.22));rect(im,x,y+s+1,w,1,K.walk(.8))}else{rect(im,x+s,y,1,h,K.walk(.22));rect(im,x+s+1,y,1,h,K.walk(.8))}}}
+function walk(im,K,x,y,w,h,along){const n=along==='y'?h:w;
+  for(let s=0;s<n;s+=16){const t=.62+(hash(s>>4,x+y,41)-.5)*.2,l=Math.min(16,n-s); // a slab a tone of its own: long stones read as a laid walk, small ones as noise (#830)
+    if(along==='y'){rect(im,x,y+s,w,l,K.fine(t));rect(im,x,y+s,w,1,K.walk(.22));rect(im,x,y+s+1,w,1,K.fine(t+.18))}else{rect(im,x+s,y,l,h,K.fine(t));rect(im,x+s,y,1,h,K.walk(.22));rect(im,x+s+1,y,1,h,K.fine(t+.18))}}}
 // An ashlar face over w x h at x,y. The course part does not tile at the wall's length, so a joint closes each repeat.
 function faceOf(im,K,x,y,w,h,{bias=0,sx=0}={}){lay(im,'course',x,y,w,h,K.face,{bias,sx});rect(im,x,y,1,h,K.face(.15))}
 // A merlon seen from the south: a capped block w wide, h tall, lit on its left.
@@ -73,12 +79,13 @@ const PERIOD=16,LEN=2*T;
 
 function wallS(K){const im=blank(LEN,T);walk(im,K,0,0,LEN,9,'x');rect(im,0,0,LEN,1,K.line);rect(im,0,1,LEN,1,K.walk(.9));
   rect(im,0,7,LEN,3,K.walk(0));
-  for(let x=0;x<LEN;x+=PERIOD)merlonS(im,K,x+2,6,11,11);
+  for(let x=0;x<LEN;x+=PERIOD){rect(im,x+3,5,11,1,K.fine(.34));merlonS(im,K,x+2,6,11,11);rect(im,x+13,8,2,8,K.walk(0))} // each merlon stands proud of the walk: its foot on the stones, its side in shade
   rect(im,0,16,LEN,1,K.line);rect(im,0,17,LEN,1,K.face(.75));rect(im,0,18,LEN,1,K.face(.2));
   faceOf(im,K,0,19,LEN,11,{sx:9});rect(im,0,30,LEN,1,K.face(.1));rect(im,0,31,LEN,1,K.line);return im}
 function wallN(K){const im=blank(LEN,T);rect(im,0,0,LEN,7,K.walk(0));
   for(let x=0;x<LEN;x+=PERIOD)merlonS(im,K,x+2,0,11,7,{cap:1,bias:-.2});
-  walk(im,K,0,7,LEN,7,'x');rect(im,0,14,LEN,1,K.face(.8));rect(im,0,15,LEN,1,K.line);
+  walk(im,K,0,7,LEN,7,'x');for(let x=0;x<LEN;x+=PERIOD)rect(im,x+3,7,12,2,K.fine(.26)); // the merlons' shade falls down the walk, so it reads as a step and not a stripe
+  rect(im,0,14,LEN,1,K.face(.8));rect(im,0,15,LEN,1,K.line);
   faceOf(im,K,0,16,LEN,14,{sx:31,bias:-.22});rect(im,0,16,LEN,2,K.face(.15));rect(im,0,30,LEN,1,K.face(.1));rect(im,0,31,LEN,1,K.line);return im}
 function wallW(K){const im=blank(T,LEN);walk(im,K,0,0,T,LEN,'y');
   rect(im,0,0,8,LEN,K.walk(0));
@@ -105,13 +112,37 @@ function tower(K){const W=T,H=2*T,im=blank(W,H),cx=15.5,cy=12.5,rx=15.5,ry=12.5;
     set(im,x,y,(u+v)<-.15?K.walk(.05):K.walk(.45))}
   rect(im,15,37,2,9,K.line);rect(im,14,40,4,2,K.line);return im}
 // A square pier beside the gate: a battlemented top and, seen from the south, h pixels of face.
-function pier(K,h){const W=T,top=20,H=top+h,im=blank(W,H);rect(im,0,0,W,top,K.walk(0));rect(im,6,7,W-12,top-14,K.walk(.5));
+function pier(K,h,W=T){const top=20,H=top+h,im=blank(W,H);rect(im,0,0,W,top,K.walk(0));rect(im,6,7,W-12,top-14,K.walk(.5));
   for(let x=2;x<W-6;x+=10)merlonS(im,K,x,0,8,7,{cap:1,bias:-.15});
   merlonTop(im,K,0,6,7,9);merlonTop(im,K,W-7,6,7,9);
   for(let x=2;x<W-6;x+=10)merlonS(im,K,x,top-7,8,8);
-  faceOf(im,K,1,top+1,W-2,h-1,{sx:40});rect(im,0,top,W,1,K.line);rect(im,0,H-1,W,1,K.line);rect(im,1,H-2,W-2,1,K.face(.1));
+  faceOf(im,K,1,top+1,W-2,h-1,{sx:40,bias:W>T?-.16:0});rect(im,0,top,W,1,K.line);rect(im,0,H-1,W,1,K.line);rect(im,1,H-2,W-2,1,K.face(.1));
   rect(im,0,0,1,H,K.line);rect(im,W-1,0,1,H,K.line);
-  if(h>30){rect(im,15,top+10,2,10,K.line);rect(im,14,top+14,4,2,K.line)}return im}
+  if(h>30){const c=(W>>1)-1;rect(im,c,top+10,2,10,K.line);rect(im,c-1,top+14,4,2,K.line)}return im}
+
+// ---- the gatehouse ----
+const GN=[144,96],GE=[56,160],GCX=72,GSPRING=62,GR=27,GRING=5; // sizes in art pixels; the north or south arch: centre, spring line, radius, ring of voussoirs
+const blit=(dst,src,dx,dy)=>{for(let y=0;y<src.h;y++)for(let x=0;x<src.w;x++){const p=get(src,x,y);if(p[3]>=128)set(dst,dx+x,dy+y,p)}};
+const clear=(im,x,y)=>{if(x>=0&&y>=0&&x<im.w&&y<im.h)im.data[(y*im.w+x)*4+3]=0};
+// 0 outside the arch, 1 the ring round it, 2 the opening; u the place round the ring.
+function archAt(x,y){const dx=x+.5-GCX,dy=y+.5-GSPRING,r=y<GSPRING?Math.hypot(dx,dy):Math.abs(dx);return r<GR?2:r<GR+GRING?1:0}
+function gateNS(K){const [W,H]=GN,im=blank(W,H),x0=38,w=68;
+  walk(im,K,x0,10,w,12,'x');rect(im,x0,9,w,1,K.line);rect(im,x0,10,w,1,K.walk(.9));rect(im,x0,18,w,3,K.walk(0));
+  for(let x=x0+1;x<x0+w-9;x+=11)merlonS(im,K,x,17,10,12);
+  rect(im,x0,29,w,1,K.line);rect(im,x0,30,w,1,K.face(.75));rect(im,x0,31,w,1,K.face(.2));
+  faceOf(im,K,x0,32,w,H-32,{sx:5,bias:-.22});rect(im,x0,H-1,w,1,K.line);
+  for(let y=26;y<H;y++)for(let x=x0;x<x0+w;x++){const a=archAt(x,y);if(a===2)clear(im,x,y);else if(a===1){const dx=x+.5-GCX,dy=y+.5-GSPRING,top=y<GSPRING,joint=top?Math.floor(Math.atan2(dy,dx)*7.5)!==Math.floor(Math.atan2(dy,dx+1)*7.5):y%8===0;
+      set(im,x,y,joint?rgb(K.line):K.face(.72-dx/(GR*3.2)-(top?dy/(GR*4):0)))}}
+  for(let y=26;y<H;y++)for(let x=x0;x<x0+w;x++)if(archAt(x,y)===1&&(archAt(x-1,y)===0||archAt(x+1,y)===0||archAt(x,y-1)===0))set(im,x,y,rgb(K.line));
+  rect(im,GCX-5,GSPRING-GR-GRING-2,10,GRING+5,K.line);rect(im,GCX-4,GSPRING-GR-GRING-1,8,GRING+3,K.face(.92));rect(im,GCX-4,GSPRING-GR+1,8,1,K.face(.3)); // the keystone
+  blit(im,pier(K,H-20,42),0,0);blit(im,pier(K,H-20,42),W-42,0);return im}
+// The vault behind the arch: dark, a little of its side courses, the portcullis drawn up into it. Only over the tiles behind the wall: under the arch is the ground.
+function gateBack(K){const [W,H]=GN,im=blank(W,H),end=H-T;for(let y=GSPRING-GR-1;y<end;y++)for(let x=GCX-GR-1;x<GCX+GR+1;x++){if(archAt(x,y)===0)continue;const dx=Math.abs(x+.5-GCX)/GR,d=K.face(.02+Math.max(0,dx-.62)*.42+(y-GSPRING+GR)/(end-GSPRING+GR)*.1);set(im,x,y,(y%8===0&&dx>.62)?rgb(K.line):d)}
+  for(let x=GCX-GR+3;x<GCX+GR-2;x+=7){const top=GSPRING-Math.round(Math.sqrt(Math.max(0,GR*GR-(x-GCX)**2)));for(let y=top;y<GSPRING-7;y++){set(im,x,y,K.face(.34));set(im,x+1,y,K.face(.12))}rect(im,x,GSPRING-7,2,2,K.face(.5))}
+  rect(im,GCX-GR+1,GSPRING-13,2*GR-2,2,K.face(.28));return im}
+function gateEW(K){const [W,H]=GE,im=blank(W,H),x0=10,w=W-20;rect(im,x0,50,w,44,K.walk(0));walk(im,K,x0+7,50,w-14,44,'y');
+  for(let y=56;y<90;y+=12){merlonTop(im,K,x0,y,9,11);merlonTop(im,K,x0+w-9,y,9,11)}rect(im,x0,50,1,44,K.line);rect(im,x0+w-1,50,1,44,K.line);
+  blit(im,pier(K,44,W),0,0);blit(im,pier(K,56,W),0,84);return im}
 
 // ---- the palisade ----
 const palKit=()=>{const K=kit('timber');return {...K,log:ramp(PALISADE.log,6),deck:ramp(PALISADE.deck,5)}};
@@ -139,12 +170,22 @@ const palSide=(K,x0,flip)=>{const im=blank(T,LEN);deck(im,K,0,0,T,LEN,flip?30:9)
   return im};
 const palW=K=>palSide(K,0,false),palE=K=>palSide(K,T-10,true);
 // A blockhouse: a shake roof over a log wall h pixels deep, corner posts, an arrow slit where it stands tall enough.
-function block(K,H){const W=T,rf=19,im=blank(W,H);lay(im,'boards',1,rf,W-2,H-rf,K.log,{bias:-.06,at:i=>i>W*.7?-.18:.04});
+function block(K,H,W=T){const rf=19,im=blank(W,H);lay(im,'boards',1,rf,W-2,H-rf,K.log,{bias:-.06,at:i=>i>W*.7?-.18:.04});
   for(const x of [1,W-5]){rect(im,x,rf,4,H-rf,K.log(.3));rect(im,x,rf,1,H-rf,K.log(.7));rect(im,x+3,rf,1,H-rf,K.log(.02))}
   rect(im,0,rf,1,H-rf,K.line);rect(im,W-1,rf,1,H-rf,K.line);rect(im,0,H-1,W,1,K.line);rect(im,1,rf,W-2,2,K.log(0));
   const e=j=>Math.round(9*(1-j/(rf-1)));lay(im,'shake',0,0,W,rf,K.roof,{bias:-.1,at:(i,j)=>.24*(1-j/rf)-(i>W*.66?.2:0),clip:(x,y)=>x>=e(y)&&x<W-e(y)});
   for(let j=0;j<rf;j++){set(im,e(j),j,rgb(K.line));set(im,W-e(j)-1,j,rgb(K.line))}rect(im,e(0),0,W-2*e(0),1,K.line);rect(im,0,rf-1,W,1,K.line);
-  if(H>40){rect(im,15,rf+13,2,11,K.line);rect(im,13,rf+17,6,2,K.line)}return im}
+  if(H>40){const c=(W>>1)-1;rect(im,c,rf+13,2,11,K.line);rect(im,c-2,rf+17,6,2,K.line)}return im}
+// The palisade's gate: two blockhouses, a stake-faced bridge between them and a square-cut way through on a log lintel. Its back and its east-west form as the stone ones.
+function palGateNS(K){const [W,H]=GN,im=blank(W,H),x0=38,w=68;deck(im,K,x0,8,w,12,4);rect(im,x0,8,w,1,K.line);stakes(im,K,x0,14,w,H-14);
+  for(let y=30;y<H;y++)for(let x=GCX-GR;x<GCX+GR;x++)clear(im,x,y);
+  rect(im,GCX-GR-4,27,2*GR+8,6,K.line);rect(im,GCX-GR-3,28,2*GR+6,4,K.log(.55));rect(im,GCX-GR-3,28,2*GR+6,1,K.log(.85));
+  for(const x of [GCX-GR-4,GCX+GR]){rect(im,x,33,4,H-33,K.log(.35));rect(im,x,33,1,H-33,K.line);rect(im,x+3,33,1,H-33,K.line)}
+  blit(im,block(K,H,42),0,0);blit(im,block(K,H,42),W-42,0);return im}
+function palGateBack(K){const [W,H]=GN,im=blank(W,H),end=H-T;for(let y=33;y<end;y++)for(let x=GCX-GR;x<GCX+GR;x++)set(im,x,y,K.log(.02+Math.max(0,Math.abs(x+.5-GCX)/GR-.7)*.3));
+  for(let x=GCX-GR+3;x<GCX+GR-2;x+=9){rect(im,x,33,3,end-41,K.log(.3));rect(im,x,33+end-44,3,3,K.log(.5))}return im}
+function palGateEW(K){const [W,H]=GE,im=blank(W,H),x0=10,w=W-20;deck(im,K,x0,50,w,44,6);rect(im,x0,50,9,44,K.line);rect(im,x0+w-9,50,9,44,K.line);for(let y=50;y<94;y+=8){logEnd(im,K,x0,y,9);logEnd(im,K,x0+w-9,y,9)}
+  blit(im,block(K,64,W),0,0);blit(im,block(K,76,W),0,84);return im}
 // Plank decking: rows of boards cut to lengths of their own, each with its tone, some grain and now and then a knot. The kit's board has
 // its marks only at its two ends, so they go where a board really ends: tiled along a row they came back every 62 pixels as a pattern.
 const BOARD=62,END=6;
@@ -157,13 +198,13 @@ function planks(w,h,K,seed){const W=w*T,H=h*T,im=blank(W,H);
       const e=x0%W;rect(im,e,y,1,16,K.deck(0));rect(im,(e+1)%W,y+1,1,14,K.deck(.85))}
     rect(im,0,y,W,1,K.deck(0))}
   return im}
-const PALISADE_PIECES={plaza:K=>planks(12,8,K,23),'wall-n':palN,'wall-e':palE,'wall-s':palS,'wall-w':palW,tower:K=>block(K,2*T),pier:K=>block(K,T),'pier-tall':K=>block(K,2*T)};
+const PALISADE_PIECES={plaza:K=>planks(12,8,K,23),'wall-n':palN,'wall-e':palE,'wall-s':palS,'wall-w':palW,tower:K=>block(K,2*T),pier:K=>block(K,T),'pier-tall':K=>block(K,2*T),'gate-ns':palGateNS,'gate-ns-back':palGateBack,'gate-ew':palGateEW};
 
 // A town's street: the road's own dirt where the paving is light, along the town's ramp where a street that bright would not sit in it.
 function street(K){const src=decodePng(fs.readFileSync(path.join(ROOT,'assets','tile','32','road.png')));if(!K.street)return src;const im=blank(src.w,src.h),v=[];
   for(let y=0;y<im.h;y++)for(let x=0;x<im.w;x++)v.push(lum(get(src,x,y)));const lo=Math.min(...v),hi=Math.max(...v);
   for(let y=0;y<im.h;y++)for(let x=0;x<im.w;x++)set(im,x,y,K.street((lum(get(src,x,y))-lo)/(hi-lo||1)));return im}
-const PIECES={street,plaza:K=>flags(4,4,K.plaza,17),'wall-n':wallN,'wall-e':wallE,'wall-s':wallS,'wall-w':wallW,tower,pier:K=>pier(K,T-20),'pier-tall':K=>pier(K,2*T-20)};
+const PIECES={street,plaza:K=>flags(4,4,K.plaza,17),'wall-n':wallN,'wall-e':wallE,'wall-s':wallS,'wall-w':wallW,tower,pier:K=>pier(K,T-20),'pier-tall':K=>pier(K,2*T-20),'gate-ns':gateNS,'gate-ns-back':gateBack,'gate-ew':gateEW};
 const idOf=(style,k)=>`${k==='plaza'||k==='street'||k.startsWith('wall')?'tile':'building'}:lpc-${style}-${k}`;
 export function cutWalls(){const out={};for(const style of Object.keys(TOWN_STYLES)){const K=kitOf(style);for(const [k,f] of Object.entries(PIECES))out[idOf(style,k)]=f(K)}
   const K=palKit();for(const [k,f] of Object.entries(PALISADE_PIECES))out[idOf('palisade',k)]=f(K);return out}

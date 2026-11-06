@@ -14,6 +14,7 @@
 // homeOf(a). Nothing here hard-codes the number of races, factions or towns.
 import {rnd,pickA} from '../core/rng.js';
 import {CITY} from '../world/map.js';
+const T=f=>(CITY.find(c=>c.fac===f)||CITY[0]).name; // a faction's first town, for the cultures that name their home hall
 
 export const RACES=[
   // ---- The Concord ----
@@ -21,7 +22,7 @@ export const RACES=[
     skin:['#f0c8a0','#d8a878','#b88058','#e8b890'],hair:['#5a3a22','#c89a4a','#8a4a2a','#2a2020'],
     names:[['Al','Bren','Cor','Dar','Em','Fen','Gar','Hal','Isa','Jor','Kae','Lor','Mir','Nor','Pell','Quin','Ros','Syl','Tor','Val','Wyn','Ari','Cae','Lys'],
            ['a','en','ic','ion','ara','eth','wyn','dor','is','iel','ric','anne','ius','ora']],
-    culture:'River-valley farmers, millers and ledger-keepers of the hedged lowlands around Highgate; swear by the harvest and bury their dead facing the water.',
+    culture:'River-valley farmers, millers and ledger-keepers of the hedged lowlands around '+T(0)+'; swear by the harvest and bury their dead facing the water.',
     lean:{Warrior:1.3,Priest:1.3}},
   {id:'tarrow',abil:'insight',name:'Tarrow',plural:'Tarrows',fac:0,home:'Cairnmoot',
     skin:['#d9a07c','#c08a62','#a8724e','#e6b494'],hair:['#7a3a1e','#1e1a1c','#c8b890','#4a2a1a'],
@@ -40,7 +41,7 @@ export const RACES=[
     skin:['#8fb070','#a08c6c','#7a9a88','#6e8a5a'],hair:['#1a1616','#4a4a50','#7a3a24','#2c2420'],
     names:[['Gor','Thrak','Ur','Zug','Mog','Kar','Grim','Drak','Vor','Rok','Skar','Bru','Norr','Gash','Krul','Ozz','Rag','Vex'],
            ['ash','gul','nok','rek','tusk','mar','dul','zar','osh','ga','ka','tharn','rim','gash']],
-    culture:'Crag-dwellers of the ridges above Grimhold; raised in the fighting pits, measure worth in scars, and stand as the Warband’s shield wall.',
+    culture:'Crag-dwellers of the ridges above '+T(1)+'; raised in the fighting pits, measure worth in scars, and stand as the Warband’s shield wall.',
     lean:{Warrior:1.8,Rogue:.8}},
   {id:'mirekin',abil:'reflex',name:'Mirekin',plural:'Mirekin',fac:1,home:'Murkstead',
     skin:['#5f8e6e','#6fa08a','#4e7a66','#7fae8e'],hair:['#101c18','#2e5a40','#d8d8c8','#1e3028'],
