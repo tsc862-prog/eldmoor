@@ -13,6 +13,7 @@
 // inSlots(a), slotKeyOf(a) and partySlotted(p). Saves carry only S.companies / a.company / p.company (the old
 // S.fellowship, a.fellow, a.fellowRole and p.fellow accessors are gone; save.js migrates v6 saves that stored them).
 import {S,clockStr} from './state.js';
+import {keep} from './kept.js';
 import {swornOf,hushOath} from './oath.js'; // only a sworn oath is an open thread (#800)
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
@@ -238,8 +239,9 @@ export function checkSlots(slots,fac){const seen=new Set(),F=slotted();
 // The next recruit of a class: a pending recruit of that faction and class arrives now, else a fresh one.
 // It arrives a few levels under the company's lowest living member (balance #107), not at level 1 beside veterans.
 export const SEED_BEHIND=2;
+export const NEW_BLOOD=480; // game minutes a fresh Fellowship replacement is no chance-duel target (#660: no spiral onto a green newcomer); grudges still hold
 function recruit(C,fac,cls){const i=S.recruits.findIndex(r=>r.fac===fac&&r.cls===cls);if(i>=0)S.recruits.splice(i,1);
-  const mates=slotHeroes(C),a=hushOath(()=>makeHero(fac,cls,null,1));if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
+  const mates=slotHeroes(C),a=hushOath(()=>makeHero(fac,cls,null,1));if(mates.length)seedLevel(a,Math.min(...mates.map(b=>b.lvl))-SEED_BEHIND);a.newBlood=S.gameMin+NEW_BLOOD;log('A new ',cls.toLowerCase(),', ',a,', is sent for to fill a place in the Fellowship.');return a}
 
 // ---- founding, joining, leaving ----
 // Where the i-th of n stands around a point: two rows, a tile and a half apart, in order. No dice.
@@ -416,6 +418,9 @@ function muster(F){const L=slotHeroes(F);let P=slotParty(F);
   for(const b of L)if(!b.party&&!b.splitUntil&&(b.state==='town'||(loose(b)&&b.state!=='return'&&dist(b,P.leader)<12))){P.mem.push(b);b.party=P}}
 
 const fightSeen=new Map(),lastState=new Map();
+// Saved with the world (kept.js): a member mid-fight at a reload still remembers how it ended; the foe goes by id.
+keep('watch',()=>({seen:[...fightSeen].map(([id,f])=>[id,{...f,m:f.m.id}]),last:[...lastState]}),
+  v=>{fightSeen.clear();lastState.clear();for(const [id,f] of v.seen)fightSeen.set(id,{...f,m:S.mobs.find(m=>m.id===f.m)||{id:f.m,alive:false}});for(const [id,st] of v.last)lastState.set(id,st)});
 function watch(F,a){const st=a.state,prev=lastState.get(a.id);lastState.set(a.id,st);
   if(st==='fight'&&a.target&&a.target.kind==='mob'){const m=a.target;fightSeen.set(a.id,{m,lvl:m.lvl,elite:!!m.elite,name:m.elite?m.name:MOBS[m.type].name,z:zoneAt(a.x,a.y)});}
   else if(fightSeen.has(a.id)){const f=fightSeen.get(a.id);fightSeen.delete(a.id);
@@ -454,6 +459,7 @@ function session(F){const d=day();if(d<=F.day)return;const prev=F.day;F.day=d;
   for(const a of slotHeroes(F))refreshStances(a,F.ids)}
 
 let acc=0;
+keep('slots',()=>acc,v=>{acc=v});
 export function resetCompanyWatch(){fightSeen.clear();lastState.clear();acc=0} // a new world starts the per-hero watch over (#674)
 // Once per step: every company's upkeep, then the slotted company's muster, hold, watch and DM beats.
 export function slotsTick(dt){companyTick();const F=slotted();if(!F)return;
