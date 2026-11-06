@@ -24,3 +24,4 @@
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
 - [LPC town buildings](lpcbuildings.md) — #833 cutter, rise rule, north-door inn, shared Vite port trap
 - [Town walls and plaza](lpcwalls.md) — #830 LPC walls per side, towers, shadows, LPC Roofs shakes, vite restart trap
+- [Kit rows and houses](lpchouses.md) — plan `kit` rows, houses out of TOWN_PIECES, palisade wall set, streets through the plaza

@@ -20,7 +20,8 @@
 //   towns     {name, fac, x0, y0, w, h, gate:'E'|'W'|'N'|'S', race, spots, npcs}
 //             WALL border, FLOOR inside, two gate tiles in the middle of the gate
 //             wall; gate point and graveyard are derived from the rect by gen.js.
-//             buildings: (optional) [{piece, box:[x,y,w,h], door:[x,y], serves}] in world tiles;
+//             wall: (optional) the wall set drawn instead of the town style's own ('palisade'), art only;
+//             buildings: (optional) [{piece, box:[x,y,w,h], door:[x,y], serves, kit}] in world tiles;
 //             missing, gen.js lays out the town plan of data/townart.js TOWN_PIECES: each
 //             building is solid except its one door tile, and the spot it `serves` is that door.
 //             spots: interior points as [dx,dy] offsets from x0,y0 where the
@@ -291,12 +292,22 @@ const VALE_KILN_ROOMS=[
 // tiles, the door tile inside it, and `rise`, how many tiles of art stand over the tiles behind it, which must be the town wall or
 // another building). What makes a town its own is where the pieces stand, the town's size, its gate side and its streets
 // (`ground`, rects from the town's corner, laid as road). scripts/worldcheck.mjs holds the Vale to the kit.
+//
+// A row's key is the plan's `kit` and the art's name (building:lpc-<style>-<kit>): a piece may have rows of its own footprints beside the
+// plain one (`piece` names it), and `house` is only such rows: a house is sim-solid art that serves nobody. These stay out of
+// data/townart.js TOWN_PIECES, because planBuildings puts every row of that table in every town of a world without plans.
 export const TOWN_KIT={auction:{foot:[3,2],door:[1,1],rise:1},smithy:{foot:[1,2],door:[0,1],rise:1},hall:{foot:[3,2],door:[1,1],rise:1},
-  chapel:{foot:[1,2],door:[0,1],rise:2},board:{foot:[1,1],door:[0,0],rise:0},inn:{foot:[3,2],door:[1,0],rise:0}};
+  chapel:{foot:[1,2],door:[0,1],rise:2},board:{foot:[1,1],door:[0,0],rise:0},inn:{foot:[3,2],door:[1,0],rise:0},
+  'house-cottage':{piece:'house',foot:[2,2],door:[0,1],rise:0}, // low, door on the left, on the street's south side or in a yard
+  'house-croft':{piece:'house',foot:[2,2],door:[1,1],rise:0},   // the same footprint under wood shakes, door on the right
+  'house-gable':{piece:'house',foot:[2,3],door:[0,2],rise:0},   // gable end to the street: three tiles deep, so a door of full height
+  'house-row':{piece:'house',foot:[3,2],door:[1,1],rise:1},     // against the north wall, as tall as the halls beside it
+  'inn-harbour':{piece:'inn',foot:[4,3],door:[2,2],rise:0},     // two storeys, its door on the south side
+  'hall-long':{piece:'hall',foot:[5,2],door:[2,1],rise:1}};
 const TOWN_SERVES={auction:'quartermaster',smithy:'smith',hall:'gate',chapel:'chapel',board:'gate',inn:'inn'};
-// [piece, dx, dy] from the town's top-left corner -> the plan's buildings (hall first among 'gate' servers is not needed: the list order decides the gate captain's door).
-function townPlan(x0,y0,list){return list.map(([piece,dx,dy])=>{const k=TOWN_KIT[piece];
-  return{piece,box:[x0+dx,y0+dy,k.foot[0],k.foot[1]],door:[x0+dx+k.door[0],y0+dy+k.door[1]],serves:TOWN_SERVES[piece]}})}
+// [kit, dx, dy] from the town's top-left corner -> the plan's buildings (hall first among 'gate' servers is not needed: the list order decides the gate captain's door).
+function townPlan(x0,y0,list){return list.map(([kit,dx,dy])=>{const k=TOWN_KIT[kit],piece=k.piece||kit;
+  return{piece,kit,box:[x0+dx,y0+dy,k.foot[0],k.foot[1]],door:[x0+dx+k.door[0],y0+dy+k.door[1]],serves:TOWN_SERVES[piece]||null}})}
 export const VALE={
   name:'The Wending Vale',
   size:{w:144,h:60},
@@ -335,7 +346,7 @@ export const VALE={
       ground:[[1,3,9,1],[5,4,5,2]]},
     // Gullstrand: a harbour. The gate faces the river; a street runs up from it to a lane under the halls, and a quay and jetty reach out south.
     {name:'Gullstrand',fac:0,x0:6,y0:17,w:13,h:9,gate:'S',race:'skerrin',spots:{square:[6.5,4.1]},
-      buildings:townPlan(6,17,[['auction',8,1],['smithy',11,1],['hall',2,1],['chapel',1,1],['board',8,7],['inn',2,5]]),
+      buildings:townPlan(6,17,[['auction',8,1],['smithy',11,1],['hall',2,1],['chapel',1,1],['board',8,7],['inn-harbour',1,4],['house-row',5,1],['house-gable',8,4],['house-cottage',10,4]]),
       ground:[[1,3,11,1],[6,3,2,5],[6,9,2,3],[5,12,4,1]]},
     // Hawkstead: a ridge town on terraces: the chapel stands on the hall's shoulder, a stair climbs the middle.
     {name:'Hawkstead',fac:0,x0:52,y0:10,w:11,h:11,gate:'E',race:'tarrow',spots:{square:[5.5,5.1]},
@@ -346,13 +357,13 @@ export const VALE={
     {name:'Brandhold',fac:1,x0:6,y0:42,w:11,h:9,gate:'N',race:'ashfolk',spots:{square:[5.5,4.1]},
       buildings:townPlan(6,42,[['smithy',1,1],['hall',2,1],['auction',7,1],['chapel',9,3],['board',7,3],['inn',2,5]]),
       ground:[[5,1,2,7],[1,3,9,1],[4,5,5,2]]},
-    // Stiltmere: wide and loose, a fen town of planked lanes; the pieces stand apart with a spine between them.
-    {name:'Stiltmere',fac:1,x0:44,y0:40,w:13,h:9,gate:'E',race:'mirekin',spots:{square:[8.5,4.1]},
-      buildings:townPlan(44,40,[['auction',2,1],['smithy',6,1],['hall',8,1],['chapel',11,1],['inn',3,5],['board',9,6]]),
+    // Stiltmere: wide and loose, a fen town of planked lanes inside a palisade; a long hall on the north wall, the houses off a spine.
+    {name:'Stiltmere',fac:1,x0:44,y0:40,w:13,h:9,gate:'E',race:'mirekin',spots:{square:[8.5,4.1]},wall:'palisade',
+      buildings:townPlan(44,40,[['auction',1,1],['smithy',4,1],['hall-long',6,1],['chapel',11,1],['inn',3,5],['board',6,4],['house-gable',1,4],['house-croft',8,6]]),
       ground:[[1,3,11,1],[7,3,1,5],[10,4,2,2]]},
     // Hornridge: a hold on a long slope, the gate at the top and two terraces down to the inn.
     {name:'Hornridge',fac:1,x0:58,y0:45,w:11,h:13,gate:'N',race:'thornhide',spots:{square:[5.5,6.1]},
-      buildings:townPlan(58,45,[['auction',1,1],['smithy',4,1],['hall',7,1],['chapel',9,3],['inn',2,8],['board',8,8]]),
+      buildings:townPlan(58,45,[['auction',1,1],['smithy',4,1],['hall',7,1],['chapel',9,3],['inn',2,8],['board',8,8],['house-cottage',1,4],['house-croft',3,4],['house-cottage',7,4]]),
       ground:[[5,1,2,11],[1,3,9,1],[1,6,9,1]]},
   ],
   landmarks:[

@@ -72,7 +72,7 @@ function placeBox(t,[bx,by,bw,bh]){const fx=(bx+bw/2)/(TOWN_REF[0]-1),fy=(by+bh/
 function planBuildings(t,gateTiles){
   const x0=t.x0,y0=t.y0,x1=x0+t.w-1,y1=y0+t.h-1,g=t.gate||'E',along=g==='E'||g==='W',E=1e-6;
   if(Array.isArray(t.buildings))return t.buildings.map(b=>{const [bx,by,bw,bh]=b.box;
-    return{piece:b.piece,box:[bx,by,bw,bh],door:b.door?[b.door[0],b.door[1]]:[bx+Math.floor((bw-1)/2),by+bh-1],serves:b.serves||null,draw:b.draw||[bx,by,bw,bh]}});
+    return{piece:b.piece,box:[bx,by,bw,bh],door:b.door?[b.door[0],b.door[1]]:[bx+Math.floor((bw-1)/2),by+bh-1],serves:b.serves||null,draw:b.draw||[bx,by,bw,bh],...(b.kit?{kit:b.kit}:{})}});
   // the street: the line through the middle of the two gate tiles
   const sx=gateTiles[0][0]+(along?0:1),sy=gateTiles[0][1]+(along?1:0);
   return TOWN_PIECES.map(P=>{const d=placeBox(t,P.box);
@@ -96,7 +96,7 @@ function mkTown(t){
     spots[k]=o?{x:x0+o[0],y:y0+o[1]}:spotAt(t,SPOT_DEFAULTS[k][0],SPOT_DEFAULTS[k][1])}
   for(const k in t.spots||{})if(!spots[k])spots[k]={x:x0+t.spots[k][0],y:y0+t.spots[k][1]};
   for(const k of Object.keys(spots)){const b=buildings.find(q=>q.serves===k);if(b)spots[k]={x:b.door[0]+.5,y:b.door[1]+.5}} // the keeper stands at the door
-  return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,buildings,
+  return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,buildings,...(t.wall?{wall:t.wall}:{}),...(t.ground?{ground:t.ground}:{}),
     spots,npcs:t.npcs||null,ah:spots.quartermaster,qg:spots.gate,gate,grave:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
 
 // ---- roads
