@@ -3,6 +3,7 @@
 // instead of a glow floating over a dark picture. After the multiply the flames themselves are added on top, thinly, with the lava, which glows at
 // all hours. One small canvas, a handful of stamps from cached sprites (no gradient made per light), two full-screen blits.
 import {W,H,LAVA,TREE,WALL,PEAK} from '../world/tiles.js';
+import {peakArt} from './peaks.js';
 import {tiles,I,LANDMARKS,LIGHTS,CITY} from '../world/map.js';
 import {vnoise} from '../core/rng.js';
 import {U as T,HEAD,PROC_SCALE} from './tile.js';
@@ -46,7 +47,7 @@ function buildShade(){shade=mk(W*SH,H*SH);const x=shade.getContext('2d'),m=mk(W*
   for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];
     if(t===TREE){const a=canopy?treeAnchor(tx,ty):null;if(a){blob(a.x,a.y-.1,1.5,.75,.34);blob(a.x+.25,a.y-1.1,1.2,1,.1)}else if(!canopy)blob(tx+.5,ty+.9,.8,.5,.3)}
     else if(t===WALL){if(ty+1<H&&tiles[I(tx,ty+1)]!==WALL){o.fillStyle='rgba(10,12,36,.34)';o.fillRect(tx*SH,(ty+1)*SH,SH,SH*.6)}}
-    else if(t===PEAK&&ty+1<H&&tiles[I(tx,ty+1)]!==PEAK){o.fillStyle='rgba(10,12,36,.3)';o.fillRect(tx*SH,(ty+1)*SH,SH,SH*.8)}}
+    else if(t===PEAK&&!peakArt()&&ty+1<H&&tiles[I(tx,ty+1)]!==PEAK){o.fillStyle='rgba(10,12,36,.3)';o.fillRect(tx*SH,(ty+1)*SH,SH,SH*.8)}}
   for(const c of CITY)for(const b of c.buildings||[]){if(b.piece==='board')continue;const [bx,by,bw,bh]=b.box;o.fillStyle='rgba(10,12,36,.34)';o.fillRect((bx-.1)*SH,(by+bh)*SH,(bw+.2)*SH,SH*.7)}
   x.fillStyle='#fff';x.fillRect(0,0,W*SH,H*SH);
   // the mottling: a pixel per two tiles, smoothed by the scale
@@ -71,7 +72,7 @@ function cloudShadows(k,ox,oy,w,h,now){if(!FX.full)return;const a=Math.min(1,G.s
   const s=k*3.4,dx=now*5.5*k,dy=now*1.6*k;lx.globalAlpha=a;lx.setTransform(s,0,0,s,ox+dx,oy+dy);lx.fillStyle=skyPat;lx.fillRect((-ox-dx)/s-1,(-oy-dy)/s-1,w/s+2,h/s+2);lx.globalAlpha=1;lx.setTransform(1,0,0,1,0,0)}
 
 // Light the frame. o: {S, sel, sc, inView, cut}. The caller's ctx is in the world transform and is left there.
-export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut}=o,dk=G.dk,w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR),now=performance.now()/1000;
+export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut,seen}=o,dk=G.dk,w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR),now=performance.now()/1000;
   if(lm.width!==w||lm.height!==h){lm.width=w;lm.height=h}
   if(!shade||shadeGen!==chunkGen)buildShade();
   const k=sc/NR,ox=cam.offX/NR,oy=cam.offY/NR,A=G.amb,night=Math.min(1,dk/.4);
@@ -83,14 +84,14 @@ export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut}=o,dk=G.dk,w=
   cloudShadows(k,ox,oy,w,h,now);
   // the lights
   qn=0;
-  if(dk>0){let n=0;const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;glow(x,y,r,PERSON,a*night*.8,true)};
+  if(dk>0){let n=0;const low=Math.max(0,1-G.washA*4); /* no lantern yet while the low sun is up: on water pushed blue for the hour (sheen.js) it lit an electric patch round the company */ const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;glow(x,y,r,PERSON,a*night*.8*low,true)};
     for(const m of S.mobs){if(m.alive&&!m.hidden)lit(m,18,.3,6)}
     for(const a of S.agents){if(a.hidden||a.state==='dead')continue;if(a===sel||a.company!=null)lit(a,a===sel?56:48,.8,7);else lit(a,26,.42,7)}}
   for(const L of LIGHTS){const r=L.big?120:40;if(!inView(L.x*T,L.y*T,r))continue;const fl=flick(L.x*3.1+L.y,now);
     glow(L.x*T,L.y*T,r*(.96+.04*fl),LIGHT.torch,L.big?Math.max(dk*1.3,.2)*fl:dk*1.2*fl)}
   for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,48))glow(x,y,36,LIGHT.crypt,dk*(.7+.15*Math.sin(now*1.3)))}
   if(dk>0){drawCampLight(glow,S,dk,inView,now);if(!cut)lifeLight(null,glow,dk,LIGHT);
-    if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-HEAD/2,22*PROC_SCALE*.85,SCENE,dk*1.1,true)}
+    if(cut)for(const e of cut.members.concat(cut.foes)){const p=seen?seen(e):e;glow(p.x*T,p.y*T-HEAD/2,22*PROC_SCALE*.85,SCENE,dk*1.1,true)}}
   lx.globalCompositeOperation='lighter';
   const lava=lavaGlow(!S.boss.alive),pulse=.9+.1*Math.sin(now*.9);
   if(lava){lx.setTransform(k,0,0,k,ox,oy);lx.globalAlpha=Math.min(1,.25+dk*1.5)*pulse;lx.drawImage(lava,0,0,W,H,0,0,W*T,H*T);lx.setTransform(1,0,0,1,0,0)}

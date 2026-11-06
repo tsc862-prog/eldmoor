@@ -723,14 +723,17 @@ console.log('renderer with assets off, on and off again');
   ok(Tr.terrainArt(),'a terrain asset loaded: chunks are painted at TILE');
   A.setAssetPixels('tile:grass',null);const back=sample();ok(back.every((v,i)=>v[1]===off[i][1]),'asset removed: the procedural terrain is back exactly');ok(!Tr.terrainArt(),'and chunks go back to the procedural grid')}
 
-console.log('mountains (#895): the cliff atlases over the ground, the procedural mountain without them');
+console.log('mountains (#895, #989): the height field over the ground once the atlases are in, the procedural mountain without them');
 {const A=await import('../src/render/assets.js'),Pk=await import('../src/render/peaks.js'),Tr=await import('../src/render/terrain.js'),{W,H,PEAK}=await import('../src/world/tiles.js'),{tiles,I}=await import('../src/world/map.js');
   const ids=Object.keys(Pk.ASSET_PEAKS),n=W*H;let p=-1,far=-1;for(let i=0;i<n;i++){const x=i%W,y=(i/W)|0;let q=false;for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)if(x+dx>=0&&y+dy>=0&&x+dx<W&&y+dy<H&&tiles[I(x+dx,y+dy)]===PEAK)q=true;if(tiles[I(x,y)]===PEAK&&p<0)p=i;if(!q&&far<0)far=i}
   const px=(i,ax,ay)=>Tr.pixel(tiles[i],i%W,(i/W)|0,ax,ay);ok(!Pk.peakArt(),'no atlas: no cliffs');
   const before=Tr.texel(PEAK,p%W,(p/W)|0,4,4),im={w:512,h:148,data:new Uint8Array(512*148*4)};for(let i=0;i<512*148;i++)im.data.set([0x11,0x22,0x33,255],i*4);
   ok(Tr.artTexel(PEAK,p%W,(p/W)|0,8,8)===before,'and a mountain tile keeps its procedural texel');
   for(const id of ids)A.setAssetPixels(id,A.pixelsOf(im.w,im.h,im.data));
-  ok(Pk.peakArt()&&Tr.terrainArt(),'three atlases loaded: cliffs, painted at TILE');ok(px(p,8,8)==='#112233','a mountain tile draws from the atlas');ok(Pk.peakPixel(far%W,(far/W)|0,8,8)===null,'and a tile with no mountain near it does not');
+  ok(Pk.peakArt()&&Tr.terrainArt(),'three atlases loaded: cliffs, painted at TILE');let rock=null;for(let y=0;y<32&&!rock;y++)for(let x=0;x<32&&!rock;x++){const c=Pk.peakPixel(p%W,(p/W)|0,x,y);if(c&&px(p,x,y)===c)rock=c}ok(rock,'a mountain tile draws its rock');ok(Pk.peakPixel(far%W,(far/W)|0,8,8)===null,'and a tile with no mountain near it does not');
+  {const Q=await import('../src/render/peaks.js?backwards'),n=[];for(let i=p,k=0;i<W*H&&k<400;i++)if(tiles[i]===PEAK||k){n.push(i);k++}
+    const read=(M,i)=>{const o=[];for(let y=0;y<32;y++)for(let x=0;x<32;x++)o.push(M.peakPixel(i%W,(i/W)|0,x,y));return o.join()},fwd=n.map(i=>read(Pk,i)),back=[...n].reverse().map(i=>read(Q,i)).reverse();
+    ok(fwd.every((v,i)=>v===back[i]),'a chunk paints the same whichever tile comes first');const drawn=fwd.filter(v=>v.replace(/,/g,'').length>700);ok(new Set(drawn).size===drawn.length,'no two mountain tiles alike (a tile with a lone stone on it aside)')}
   A.setAssetPixels(ids[0],null);ok(!Pk.peakArt(),'one atlas missing: the procedural mountains, all of them');
   for(const id of ids)A.setAssetPixels(id,null);ok(!Tr.terrainArt(),'none: chunks back on the procedural grid')}
 

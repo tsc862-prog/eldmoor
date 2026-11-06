@@ -34,14 +34,14 @@ import {trafficEnts,isTraffic,trafficShadow,drawTrafficEnt} from './traffic.js';
 import {farMarks,gatherFar,drawMarks,homeLane} from './lod.js'; // the whole map's marks (#729)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
-import {getChunk,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terrain.js';
+import {getChunk,warmChunks,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {drawWholeMap} from './wholemap.js'; // company rings and name tags in the whole-map view (#844)
 import {syncSpells,drawSpells} from './spellfx.js';
 import {TEXT,MARK,BOSS_PAL} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
 import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
-import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
+import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor,scenePose,sceneFallen,sceneTint} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
 import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
@@ -56,6 +56,8 @@ import {drawMotes} from './motes.js';
 import {drawSheen} from './sheen.js';
 import {FX} from './quality.js';
 import {skyAt} from './life.js';
+const HIT_NUM=/^\d+!?$/; // a blow's number from the sim; a fight on a patch shows it as its beat lands instead (#746)
+const EPZ=[],EPY=[]; // per entity this frame: its pose on a patch (#746), its feet row
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
@@ -163,7 +165,7 @@ export function createRenderer(cv,screenEl){
     if(drawSceneView(performance.now()/1000)){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');return} // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
-    const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height)),cin=cam.director; // cin: the cinema view's director (#979), null in every other view
+    const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height)),cin=cam.director,onPatch=!!(cut&&cut.patch),seen=e=>onPatch&&scenePose(e)||e; // cin: the cinema view's director (#979), null in every other view
     if(cut){ // an outdoor scene (#431): the camera frames the scene's cut of the world below the banner and above the bar
       const top=cut.top*cam.dpr,bot=cut.bottom*cam.dpr,rt=(cut.right||0)*cam.dpr,want=Math.max(cam.fit*2,Math.min(Math.max(40,cv.width-rt)/(cut.w*T),Math.max(40,cv.height-top-bot)/(cut.h*T)));
       if(cin){cam.cut=true;cin.step(cam,cv.width,cv.height,{x:cut.cx*T,y:cut.cy*T,sc:want,dx:rt/2,dy:-(top-bot)/2})} // the cinema view eases into the cut (#979)
@@ -181,7 +183,7 @@ export function createRenderer(cv,screenEl){
     const vx0=cam.camX-vw/2,vy0=cam.camY-vh/2,vx1=vx0+vw,vy1=vy0+vh;
     const inView=(x,y,m)=>x>vx0-m&&x<vx1+m&&y>vy0-m&&y<vy1+m;
     if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
-    drawTerrain(sc);ph(0);
+    drawTerrain(sc);warmChunks(cam.camX/T,cam.camY/T);ph(0);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
     gradeAt((S.gameMin/60)%24,skyNow());drawCast(ctx,S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
     // lava shimmer: embers drifting around the lair ring
@@ -216,6 +218,7 @@ export function createRenderer(cv,screenEl){
       if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
       lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;
       if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS)} // road traffic, skipped at whole-map zoom (#856)
+    if(onPatch)sceneFallen(ENTS); // a foe whose last blow is still to play, or who is falling
     // whole trees (#834) are painted into the terrain chunk, under everything; one that stands in front of an entity (rooted below its feet)
     // is sorted in among the entities and drawn again over it, with the trees near it, so a hero walks behind a trunk and not over a crown
     if(close&&!far){const n=ENTS.length;for(let i=0;i<n;i++)treesNear(ENTS[i].x,ENTS[i].y,ENTS,frameNo)}
@@ -226,51 +229,53 @@ export function createRenderer(cv,screenEl){
     // every sprite, which is where they belong anyway.
     const nE=ENTS.length,sunny=close&&G.sunA>.01&&FX.full; // up close what moves throws its own shape along the sun, under the contact shadow
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
-    for(let i=0;i<nE;i++){const e=ENTS[i];
+    for(let i=0;i<nE;i++){const e=ENTS[i];EPZ[i]=null;
       if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
       if(isTraffic(e)){trafficShadow(ctx,e,Math.round(e.x*T),Math.round(e.y*T));if(sunny)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),6,22);continue} // its shadow joins the path; the sprite is drawn whole in pass 2
-      const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',fr=e.moving?Math.floor(blink*6+e.id)%2:0;
+      const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',pz=onPatch?scenePose(e):null,mv=pz?pz.walk:e.moving,fr=mv?Math.floor(blink*6+e.id)%2:0;EPZ[i]=pz;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
-      else if(e.kind==='npc')s=npcSprite(e,e.moving?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
+      else if(e.kind==='npc')s=npcSprite(e,mv?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
       else if(e.state==='dead')s=sprite('grave'+e.fac,SPR.grave[0],{G:'#8a8a96',F:'#3a3a46',B:FAC[e.fac].dark});
       else s=heroSprite(e,ghost,fr);
       // a generated sheet (#177) for a living hero or creature, else the procedural sprite scaled to the same height
-      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob'||e.kind==='npc'||e.kind==='boss')?sheetFrame(e,e.kind==='npc'&&!e.moving?0:e.kind==='boss'?1:dirOf(e),e.kind==='boss'?STEP[Math.floor(blink*2.2)%4]:e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
+      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob'||e.kind==='npc'||e.kind==='boss')?sheetFrame(e,e.kind==='npc'&&!mv?0:e.kind==='boss'?1:pz?pz.dir:dirOf(e),e.kind==='boss'?STEP[Math.floor(blink*2.2)%4]:mv?STEP[Math.floor(blink*6+e.id)%4]:0):null;
       let F=null;if(G){F=EGF[i]||(EGF[i]={img:null,sx:0,sy:0,fw:0,fh:0});F.img=G.img;F.sx=G.sx;F.sy=G.sy;F.fw=G.fw;F.fh=G.fh} // sheetFrame hands back one shared object
       ESPR[i]=s;EG[i]=F;ESW[i]=G?G.fw/ART:s.width*PROC_SCALE;ESH[i]=G?G.fh/ART:s.height*PROC_SCALE;
-      const px=EPX[i]=Math.round((e.x+homeLane(e))*T);
-      if(live&&!ghost){const py=Math.round(e.y*T),w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7)}}
+      const px=EPX[i]=Math.round((pz?pz.x:e.x+homeLane(e))*T),py=EPY[i]=Math.round((pz?pz.y:e.y)*T);
+      if(live&&!ghost&&!(pz&&pz.fade<1)){const w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7)}}
     ctx.fill();
     let ghosts=false;ctx.beginPath();
-    for(let i=0;i<nE;i++){const e=ENTS[i];if(e.kind!=='hero'||e.state!=='ghost')continue;const px=EPX[i],py=Math.round(e.y*T),w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7);ghosts=true}
+    for(let i=0;i<nE;i++){const e=ENTS[i];if(e.kind!=='hero'||e.state!=='ghost')continue;const px=EPX[i],py=EPY[i],w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7);ghosts=true}
     if(ghosts){ctx.globalAlpha=.6;ctx.fill();ctx.globalAlpha=1}
     const tf=ctx.getTransform();
     if(sunny){ctx.globalAlpha=G.sunA*.9;
-      for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i];if(!s||e.state==='dead'||e.state==='ghost')continue;const F=EG[i],px=EPX[i],py=Math.round(e.y*T);
-        if(F)castFigure(ctx,tf,F.img,F.sx,F.sy,F.fw,F.fh,px,py,ESW[i],ESH[i],false);else{const o=worldSprite(s,true);castFigure(ctx,tf,o,0,0,o.width,o.height,px,py,ESW[i],ESH[i],e.face<0)}}
+      for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i];if(!s||e.state==='dead'||e.state==='ghost')continue;const pz=EPZ[i];if(pz&&pz.fade<1)continue;const F=EG[i],px=EPX[i],py=EPY[i]; // a figure posed in a scene casts from where it stands (#746)
+        if(F)castFigure(ctx,tf,F.img,F.sx,F.sy,F.fw,F.fh,px,py,ESW[i],ESH[i],false);else{const o=worldSprite(s,true);castFigure(ctx,tf,o,0,0,o.width,o.height,px,py,ESW[i],ESH[i],(pz?pz.face:e.face)<0)}}
       ctx.setTransform(tf);ctx.globalAlpha=1}
     // Pass 2: the sprites in y order, and what rides on each. A mirrored sprite sets the transform once instead of
     // save/translate/scale/restore.
     let ghostA=1; // 1, or the see-through strength of a member drawn again over the tree that stands in front of it
-    const drawEnt=i=>{const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=Math.round(e.y*T),live=e.state!=='dead';
+    const drawEnt=i=>{const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=EPY[i],pz=EPZ[i],live=e.state!=='dead';
       if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);return} // critters, stalls and guards (townlife.js)
       if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink);return}
       if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6*ghostA;
       if(close&&!cin&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
-      if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);
+      const tilt=pz&&pz.tilt;if(pz&&pz.fade<1)ctx.globalAlpha=pz.fade;if(tilt){ctx.save();ctx.translate(px,py);ctx.rotate(tilt);ctx.translate(-px,-py)} // a stumble on a 1, a foe falling
+      if(G){ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);if(pz&&pz.flash>0){ctx.globalAlpha=pz.flash;ctx.drawImage(sceneTint(G.img,pz.col),G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh)}}
       else{const o=worldSprite(s,live),ow=live?1/ART:0,x0=-Math.floor(s.width/2)*PROC_SCALE-ow; // living entities get the dark outline, one art pixel wide
-        if(e.face<0){ctx.setTransform(-tf.a,0,0,tf.d,tf.e+px*tf.a,tf.f);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);ctx.setTransform(tf)} // mirrored about px
-        else ctx.drawImage(o,px+x0,py-sh-ow,o.width/ART,o.height/ART)}
-      ctx.globalAlpha=ghostA;
+        const fl=pz&&pz.flash>0?sceneTint(o,pz.col):null; // the hit flash
+        if((pz?pz.face:e.face)<0){ctx.setTransform(-tf.a,0,0,tf.d,tf.e+px*tf.a,tf.f);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,x0,py-sh-ow,o.width/ART,o.height/ART)}ctx.setTransform(tf)} // mirrored about px
+        else{ctx.drawImage(o,px+x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,px+x0,py-sh-ow,o.width/ART,o.height/ART)}}}
+      if(tilt)ctx.restore();ctx.globalAlpha=ghostA;
       const top=py-sh;
       // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
       if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle=MARK.quest;ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
         else if(e.role==='quartermaster'){ctx.fillStyle='#f2c14e';ctx.fillRect(px-2,top-8,4,4);ctx.fillStyle='#8a6a1a';ctx.fillRect(px-1,top-6,2,1)}}
       if(e===sel&&!cin){ctx.fillStyle=Math.floor(blink*3)%2?MARK.sel:MARK.selHi;ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
-      if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=(e.kind==='boss'?21:8)*PROC_SCALE;
-        ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
-      if(e.kind==='hero'&&!cut&&!cin)drawIntentIcon(ctx,S,cam,e,px,top,sw,close); // the intent icon at the right shoulder (#534)
+      const hp=pz?pz.show:e.hp; // a blow's HP falls as its beat lands (#746)
+      if(close&&hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&!(pz&&(hp<=0||pz.fade<1))&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=(e.kind==='boss'?21:8)*PROC_SCALE;
+        ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*hp/mx),2)}
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     };
     for(let i=0;i<nE;i++){const e=ENTS[i];
@@ -288,7 +293,7 @@ export function createRenderer(cv,screenEl){
     lt=performance.now();if(!cut)lifeAir(ctx,blink);lifeStats.acc+=performance.now()-lt;
     if(!cut&&FX.full)drawMotes(ctx,0);drawWeather(ctx,S,cam,blink);drawAir(ctx,cv,cam,sc,performance.now()/1000);ph(3);
     // the light: the hour's ambient, soft dark, flames and lava, in one multiply and a thin add (lightmap.js, #979)
-    const dk=G.dk;lt=performance.now();lightPass(ctx,cv,cam,{S,sel,sc,inView,cut});if(!cut&&FX.full)drawMotes(ctx,1);lifeStats.acc+=performance.now()-lt;
+    const dk=G.dk;lt=performance.now();lightPass(ctx,cv,cam,{S,sel,sc,inView,cut,seen});if(!cut&&FX.full)drawMotes(ctx,1);lifeStats.acc+=performance.now()-lt;
     ph(4);if(far){drawMarks(ctx,cam.dpr,dk);ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ph(2)} // the marks, timed with the entities
     drawSpells(ctx,1,close,inView,fxNow);ph(4); // spell effects in the air, over the night wash: they carry their own light (#374)
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
@@ -313,14 +318,14 @@ export function createRenderer(cv,screenEl){
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         if(cin&&!cut&&!cin.named(a,cam))continue; // the cinema view names only the hovered hero and the selected company, with no plate (#979)
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
-        const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),y=a.y*T-HEAD-condLift(a,cam);
+        const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),ap=seen(a),y=ap.y*T-HEAD-condLift(a,cam);
         if(inCut&&a.bubble&&a.bubble.life>0&&bubbleVisible(a,S))continue; // its bubble names it already: one label per member
-        if(inCut){lab(a.name,a.x*T,y,inSlots(a)?classColor(a.cls):FAC[a.fac].color,cin?LS-6:14,inSlots(a)?9:8,[y-lh*1.05,a.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
+        if(inCut){lab(a.name,ap.x*T,y,inSlots(a)?classColor(a.cls):FAC[a.fac].color,cin?LS-6:14,inSlots(a)?9:8,[y-lh*1.05,ap.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
         const mate=!dead&&inSlots(a); // a company member is always named: big, class colour, a plate, stacked when bunched (#842)
         lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:mate?classColor(a.cls):dead?TEXT.dead:FAC[a.fac].color,cin?LS-6:mate||a===sel?LS:LS-4,a===sel?10:mate?8:dead?1:4,null,!cin&&(mate||a===sel),mate?6:0)}
       if(!cin)for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,slotted(),S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
         lab(toneName(p,t),p.x*T,p.y*T-HEAD-condLift(p,cam),t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
-      if(!cin)for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-HEAD-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
+      if(!cin)for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;const p=seen(m);lab(m.name,p.x*T,p.y*T-HEAD-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
       if(!cin&&boss.alive&&inView(boss.x*T,boss.y*T,LM))lab('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-BOSS_HEAD-condLift(boss,cam),TEXT.elite,15,9)}
     // The Fellowship (#94): a role marker over each member and their name at any zoom (close views
     // queue the names above), plus a dashed ring around the party in Follow Fellowship.
@@ -332,12 +337,12 @@ export function createRenderer(cv,screenEl){
         const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-HEAD-15*px1-m-condLift(a,cam);
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
-        lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,16,a===sel?10:7,null,true,3)}}
+        if(a!==sel)lab(a.name,a.x*T,a.y*T-HEAD,col,16,7,null,true,3)}} // the selected hero is named above, at any zoom: a second plate would stack on it (#967)
     flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;ph(5);
     const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
     if(whole)drawWholeMap(ctx,cam,blink);
     if(close){drawBubbles(ctx,S,cam,drawText);
-      for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
+      for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)&&!(onPatch&&HIT_NUM.test(p.txt))){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
     if(mini&&!cin)mini.draw(S);if(cin)cin.paint(ctx,cv.width,cv.height);ph(6);
   }

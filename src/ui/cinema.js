@@ -7,8 +7,8 @@
 //   plates   one slim plate per place of the followed company along the bottom edge: face, name, level, health, and a word
 //            when something is wrong. A click (or keys 1-9) picks that hero and the director goes to them.
 //   clock    the day, the hour and the land under the camera, top right; says so when the world is paused or held.
-//   caption  the last line or two of the company's talk or the Chronicle, fading after a while; while the director looks
-//            elsewhere, a line naming what it is looking at.
+//   caption  the last line or two of the company's talk or the Chronicle, fading after a while, on a soft dark gradient that
+//            comes and goes with it; while the director looks elsewhere, a line naming what it is looking at.
 //   the Table banner, the run gate, the DM's prep, the runner alerts and the gambit hold bar live inside #screen, so
 //   they show here as they do anywhere, above the overlays, with their buttons working. A held world says why.
 //   bar      moving the pointer shows Pause, 1x, 3x, 8x and Leave at the top left for a few seconds; they press the real
@@ -40,7 +40,7 @@ const store=()=>{try{return typeof localStorage!=='undefined'?localStorage:null}
 export const cinemaWish=()=>{try{return store().getItem(KEY)==='1'}catch(e){return false}};
 export function setCinemaWish(v){try{if(v)store().setItem(KEY,'1');else store().removeItem(KEY)}catch(e){}}
 
-let R=null,root=null,on=false,saved=null,hole=null,plates=null,clock=null,place=null,capBox=null,sight=null,chrome=null,rosterSig=null,moved=0,backTo=null;
+let R=null,root=null,on=false,saved=null,hole=null,plates=null,clock=null,place=null,capBox=null,sight=null,shade=null,chrome=null,rosterSig=null,moved=0,backTo=null;
 const director=createDirector({still:()=>ctl.held||ctl.speed===0,reduced:()=>typeof matchMedia==='function'&&matchMedia('(prefers-reduced-motion: reduce)').matches});
 export const cinemaOn=()=>on;
 export const cinemaDirector=()=>director;
@@ -62,7 +62,7 @@ function renderCaption(){const t=now();
   lines=lines.filter(l=>t-l.at<CAPTION.HOLD_S);
   const kids=[...capBox.children];for(const k of kids)if(!lines.includes(k._l))k.remove();
   for(const l of lines)if(!kids.some(k=>k._l===l))capBox.append(lineEl(l));
-  const s=director.sightLabel;setText(sight,s);sight.hidden=!s}
+  const s=director.sightLabel;setText(sight,s);sight.hidden=!s;const said=!!(s||lines.length);if(shade._on!==said){shade._on=said;shade.classList.toggle('on',said)}}
 
 // ---- plates ----
 function plateFor(c,i){const b=el('button','cinp');b.type='button';b.dataset.hid=c.hero?c.hero.id:'';const face=el('canvas','cinf');face.setAttribute('aria-hidden','true');
@@ -90,12 +90,13 @@ export function renderCinema(){if(!on||!root)return;hearChat();renderCaption();r
 function build(){const scr=$('screen');if(!scr)return false;root=el('div','cinema');root.id='cinema';root.hidden=true;
   const top=el('div','cinclock');clock=el('div','cinc');place=el('div','cinz');top.append(clock,place);
   const cap=el('div','cincap');cap.setAttribute('aria-live','off');sight=el('div','cinsight');sight.hidden=true;capBox=el('div','cinlines');cap.append(sight,capBox);
+  shade=el('div','cinshade');
   plates=el('div','cinplates');plates.setAttribute('role','group');plates.setAttribute('aria-label','The company');
   plates.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('.cinp'):null;if(t&&t._p&&t._p.a&&t._p.a.state!=='dead')select(t._p.a);e.stopPropagation()});
   chrome=el('div','cinbar');chrome.hidden=true;chrome.setAttribute('role','group');chrome.setAttribute('aria-label','Cinema view');
   for(const [n,t] of [[0,'Pause'],[1,'1×'],[3,'3×'],[8,'8×']]){const b=el('button','mini',t);b.type='button';b.addEventListener('click',e=>{e.stopPropagation();const s=$('sp'+n);if(s)s.click()});chrome.append(b)}
   const out=el('button','mini','Leave · C');out.type='button';out.dataset.cinleave='1';out.addEventListener('click',e=>{e.stopPropagation();leaveCinema()});chrome.append(out);
-  root.append(top,cap,plates,chrome);scr.append(root);
+  root.append(top,shade,cap,plates,chrome);scr.append(root);
   hole=el('div','cinhole');hole.hidden=true;scr.parentNode.insertBefore(hole,scr);
   scr.addEventListener('pointermove',()=>{moved=now();if(on&&chrome.hidden){chrome.hidden=false;document.body.classList.remove('cinidle')}},true);return true}
 
