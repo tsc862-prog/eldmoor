@@ -58,7 +58,7 @@ const stage=(id,b64)=>`(async()=>{
   const {S}=await import('/src/sim/state.js'),{CITY}=await import('/src/world/map.js'),TD=await import('/src/data/townart.js'),{U}=await import('/src/render/tile.js');
   for(const sel of ['#setup','#ralert','#title'])for(const e of document.querySelectorAll(sel))e.style.display='none';
   C.ctl.speed=0;S.gameMin=Math.floor(S.gameMin/1440)*1440+720;
-  for(const k of [...Object.keys(TA.ASSET_TOWNS),...A.assetIds().filter(k=>k.startsWith('building:lpc-'))])if(A.hasAsset(k))A.setAssetPixels(k,null);
+  for(const k of [...Object.keys(TA.ASSET_TOWNS),...A.assetIds().filter(k=>/^(building|tile):lpc-/.test(k))])if(A.hasAsset(k))A.setAssetPixels(k,null);
   const img=new Image();img.src='data:image/png;base64,${b64}';await img.decode();
   const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.drawImage(img,0,0);
   A.setAssetPixels(${JSON.stringify(id)},A.pixelsOf(c.width,c.height,x.getImageData(0,0,c.width,c.height).data));
