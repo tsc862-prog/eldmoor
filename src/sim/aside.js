@@ -63,7 +63,7 @@ export function emoteAct(a,{text}){
   const fail=error=>({ok:false,error});
   if(a.state==='ghost')return fail('Ghosts leave no sign.');
   let t=String(text==null?'':text).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/["\u201c\u201d*]/g,'').replace(/\s+/g,' ').trim();
-  const nm=String(a.name).replace(/[.*+?^${}()|[]\]/g,'\$&'),re=new RegExp('^'+nm+'\s+','i');t=t.replace(re,'').trim();
+  const nm=String(a.name).replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),re=new RegExp('^'+nm+'\\s+','i');t=t.replace(re,'').trim(); // a leading own name is dropped (the line is shown as "<you> <line>"); the escapes were unescaped before and never matched
   if(!t)return fail('Emote what? emote takes text: a short act, like "spits in the fire".');
   if(t.length>ASIDE.EMOTE_LEN)return fail('Too long: keep an emote under '+ASIDE.EMOTE_LEN+' characters (this was '+t.length+').');
   if(notEnglish(t))return fail(ENGLISH);
