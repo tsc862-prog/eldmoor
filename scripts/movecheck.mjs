@@ -163,7 +163,7 @@ if (SLT.slotted()) {
   const hl = mem.find(x => CLS[x.cls].heal), mate = mem.find(x => x !== hl);
   if (hl && mate) {
     for (const b of mem) b.hp = combatStats(b).health;
-    hl.lvl = 12; hl.traits = ['Pious']; delete hl.spec; // Pious leans to the Mender path, so the pick does not depend on the world's seed hl.mcd = {}; hl.mcr = {}; hl.mvAt = 0; hl.hp = combatStats(hl).health;
+    hl.lvl = 12; hl.traits = ['Pious']; delete hl.spec; hl.mcd = {}; hl.mcr = {}; hl.mvAt = 0; hl.hp = combatStats(hl).health; // Pious leans to the Mender path, so the pick does not depend on the world's seed
     mate.x = hl.x + 1; mate.y = hl.y; mate.hp = combatStats(mate).health * .5; const fo = foeNear(hl); fo.target = mate; rebuild();
     ok(hl.player, `the Fellowship ${hl.cls} is agent-played`);
     setRunnerLinks(() => 'connected'); const h0 = mate.hp;
