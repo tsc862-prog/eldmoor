@@ -57,7 +57,7 @@ const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are place
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null,hover:null,icons:true}; // hover, icons: the hovered hero and the Intent icons switch in Settings (#534, render/purposefx.js)
-const BOSS_HEAD=SPR.boss[0].length*PROC_SCALE+6; // Kragmaw's nameplate height over its feet
+const BOSS_HEAD=82; // Kragmaw's nameplate height over its feet: the sheet stands 76 units, the procedural sprite less
 // The facing of each entity for a generated sheet (0 down, 1 left, 2 right, 3 up), from how it last moved.
 const FACE=new WeakMap();
 function dirOf(e){let f=FACE.get(e);if(!f){f={x:e.x,y:e.y,d:e.face<0?1:2};FACE.set(e,f)}
@@ -127,7 +127,7 @@ export function createRenderer(cv,screenEl){
         const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12+(L.up?1:0);let hit=false;
         for(let k=0;k<BOX.length;k+=4)if(BOX[k]<x1&&BOX[k+2]>x0&&BOX[k+1]<y1&&BOX[k+3]>y0){hit=true;break}
         if(hit)continue;BOX.push(x0,y0,x1,y1);
-        if(L.pl){ctx.fillStyle='rgba(8,10,20,.82)';ctx.fillRect((x0-cam.offX)/sc,(y0-1-cam.offY)/sc,(x1-x0)/sc,(y1-y0+3)/sc)}
+        if(L.pl){ctx.fillStyle='rgba(8,10,20,.3)';ctx.fillRect((x0-cam.offX)/sc,(y0-1-cam.offY)/sc,(x1-x0)/sc,(y1-y0+3)/sc)}
         drawText(L.t,L.x,y,L.col,L.css);break}}}
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
   // pixels so neighbouring chunks never show a seam at fractional scales.
@@ -231,7 +231,7 @@ export function createRenderer(cv,screenEl){
       else if(e.state==='dead')s=sprite('grave'+e.fac,SPR.grave[0],{G:'#8a8a96',F:'#3a3a46',B:FAC[e.fac].dark});
       else s=heroSprite(e,ghost,fr);
       // a generated sheet (#177) for a living hero or creature, else the procedural sprite scaled to the same height
-      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob'||e.kind==='npc')?sheetFrame(e,e.kind==='npc'&&!e.moving?0:dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
+      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob'||e.kind==='npc'||e.kind==='boss')?sheetFrame(e,e.kind==='npc'&&!e.moving?0:e.kind==='boss'?1:dirOf(e),e.kind==='boss'?STEP[Math.floor(blink*2.2)%4]:e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
       let F=null;if(G){F=EGF[i]||(EGF[i]={img:null,sx:0,sy:0,fw:0,fh:0});F.img=G.img;F.sx=G.sx;F.sy=G.sy;F.fw=G.fw;F.fh=G.fh} // sheetFrame hands back one shared object
       ESPR[i]=s;EG[i]=F;ESW[i]=G?G.fw/ART:s.width*PROC_SCALE;ESH[i]=G?G.fh/ART:s.height*PROC_SCALE;
       const px=EPX[i]=Math.round((e.x+homeLane(e))*T);
