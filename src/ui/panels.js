@@ -482,7 +482,7 @@ export function renderClock(){$('clock').textContent=`Day ${Math.floor(S.gameMin
 // Chronicle: render what the sim already logged, then follow new entries.
 function initChronicle(){const el_=$('log');
   const add=e=>{if(!chronicleShows(e))return;const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';
-    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} // the downed, a rescue, a mercy, a finish (#659)li.append(el('time',null,e.t));parts(li,e.parts);
+    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} li.append(el('time',null,e.t));parts(li,e.parts); // the downed, a rescue, a mercy, a finish (#659)
     keepView(el_,()=>{el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()})}; // a new line on top keeps the line being read in view (#145)
   const all=()=>{el_.replaceChildren();for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i])};all();
   setChronicleRefresh(all); // the Fellowship only filter toggles re-render from S.chronicle

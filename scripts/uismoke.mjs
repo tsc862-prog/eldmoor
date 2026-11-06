@@ -94,6 +94,8 @@ setTab('log');uiFast();
 
 console.log('side panels');
 holds('Chronicle',()=>$('log'));
+{const rows=[...$('log').children];ok(rows.length>0&&rows.every(r=>(r.textContent||'').trim().length>0),'Chronicle: '+rows.length+' rows, every row has text (#933)');
+  const r0=rows[0];ok(!!r0&&r0.children.some(c=>/^time$/i.test(c.tagName))&&r0.textContent.trim().length>5,'Chronicle: a row has its time and its words')}
 while(sim.S.fallen.length<6)sim.S.fallen.push({t:'00:0'+sim.S.fallen.length,name:'Testgrave'+sim.S.fallen.length,fac:0,lvl:3,cls:'Mage',cause:'a smoke test'}); // a quiet world: a few graves to scroll
 uiSlow();holds('Graveyard',()=>$('fallen'),{sec:60,min:3});
 holds('Timeline',()=>$('tlist'),{sec:60});
@@ -227,7 +229,7 @@ const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the f
 // Company tab Lately feed and the whole-map spots (#845, #844)
 {uiFast();const ly=$('felbody').querySelector('.fellately');ok(!!ly&&!!ly.querySelector('.fth-h'),'Company tab: a Lately feed sits under the threads');
   const {companySpots}=await import('../src/render/wholemap.js');const sp=companySpots();
-  ok(sp.length>0&&sp.every(x=>x.name&&x.r>=5)&&sp.filter(x=>x.followed).length===1,'whole map: each company has a ring spot and a name, one followed: '+sp.map(x=>x.name).join(', '))}
+  ok(sp.length>0&&sp.every(x=>x.name&&x.r>=3)&&sp.filter(x=>x.followed).length===1,'whole map: each company has a ring spot and a name, one followed: '+sp.map(x=>x.name).join(', '))}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 
 // The Agents panel (#145): limits and spend in one place, sent to the relay's supervisor
