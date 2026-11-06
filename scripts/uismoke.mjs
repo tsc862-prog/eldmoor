@@ -1669,7 +1669,7 @@ console.log('page watchdog');
     L.pop();a.state=keep.st;a.hidden=keep.hid;if(keep.si!=null)a.siteIn=keep.si}}
 // ---- #979: the cinema view: in and out leaves the page as it was, the key, the gate over it, the director's moves ----
 console.log('cinema view');
-{const C=await import('../src/ui/cinema.js'),{cam}=await import('../src/render/draw.js'),{createDirector,roadScale,closeScale,coverScale}=await import('../src/render/director.js'),gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js'),{W:WT}=await import('../src/world/tiles.js');
+{const C=await import('../src/ui/cinema.js'),{cam}=await import('../src/render/draw.js'),{DIR,createDirector,restScale,wideScale,closeScale,coverScale}=await import('../src/render/director.js'),gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js'),{W:WT}=await import('../src/world/tiles.js');
   const fs=await import('node:fs'),css=fs.readFileSync(new URL('../src/style.css',import.meta.url),'utf8'),src=fs.readFileSync(new URL('../src/render/director.js',import.meta.url),'utf8');
   const btn=$('vCin'),co=SLT.followed(),heroes=SLT.members(co),body=document.body,key=(k,x={})=>{for(const f of document._ls.keydown||[])f({key:k,target:body,preventDefault(){},stopPropagation(){},...x})};
   const page=()=>JSON.stringify({view:cam.view,zoom:cam.zoom,camX:cam.camX,camY:cam.camY,sc:cam.sc,dir:cam.director||null,body:body.className,order:[...$('side').children].map(n=>n.id||n.className),colM:[...$('colM').children].filter(n=>!n.classList.contains('cinhole')).map(n=>n.id||n.className),scr:$('screen').parentNode.id,rows:$('felbody').children.length});
@@ -1700,7 +1700,7 @@ console.log('cinema view');
   // the director, on a fake clock
   const fake={sel:heroes[0],hover:null,camX:0,camY:0,sc:1},w=3440,h=1440,D=createDirector({seed:7,still:()=>true}),run=(n,f)=>{for(let i=0;i<n;i++){const x=fake.camX,y=fake.camY,fade=D.fade;D.step(fake,w,h,null,1/60);const px=Math.hypot(fake.camX-x,fake.camY-y)*fake.sc;if(f)f(px,fade)}};
   const keep=heroes.map(a=>({a,x:a.x,y:a.y,st:a.state,hid:a.hidden}));for(const a of heroes){a.state='town';a.hidden=false;a.moving=false;a.x=heroes[0].x;a.y=heroes[0].y}
-  const G0=sim.S.gameMin;D.enter(fake,w,h);ok(D.fade===1,'entering starts in the dark');let big=0;run(180,(px)=>{big=Math.max(big,px)});ok(D.fade===0,'and fades up');ok(big<40,'the camera moves softly ('+big.toFixed(1)+' px a frame at most)');
+  const G0=sim.S.gameMin;D.enter(fake,w,h);ok(D.fade===1,'entering starts in the dark');ok(Math.abs(fake.sc-restScale(w,h))<.01,'and close on the company ('+fake.sc.toFixed(2)+')');let big=0;run(180,(px)=>{big=Math.max(big,px)});ok(D.fade===0,'and fades up');ok(big<40,'the camera moves softly ('+big.toFixed(1)+' px a frame at most)');
   ok(Math.abs(fake.sc*2-Math.round(fake.sc*2))<.01&&fake.sc>=2&&fake.sc>=coverScale(w,h),'at rest the scale is on a half step, from 2, covering the window ('+fake.sc.toFixed(2)+')');
   const a0=heroes[0],sc0=fake.sc;for(const a of heroes)a.state='fight';run(300);ok(fake.sc>sc0,'a fight pulls in ('+sc0.toFixed(1)+' -> '+fake.sc.toFixed(1)+')');for(const a of heroes)a.state='town';run(900);ok(Math.abs(fake.sc-sc0)<.05,'and back out ('+fake.sc.toFixed(2)+', '+D.shotKind+')');
   const far=2;let jumps=0,dark=0,dips=0;const F2=createDirector({seed:3,still:()=>true}),w2=1280,h2=800;for(const a of heroes)a.x=WT-2;F2.enter(fake,w2,h2);for(let i=0;i<120;i++)F2.step(fake,w2,h2,null,1/60);for(const a of heroes)a.x=far;
@@ -1714,7 +1714,12 @@ console.log('cinema view');
     for(const [a,x,y,s,t] of k){a.x=x;a.y=y;a.state=s;a.target=t}}
   ok(D.named(a0,fake)&&!D.named({company:-5},fake),'names: the selected company only, not a stranger');
   ok(sim.S.gameMin===G0&&!/core\/rng\.js/.test(src.split('\n').filter(l=>l.startsWith('import')&&/\brnd\b|\bri\b/.test(l)).join('')),'the director takes no sim dice and moves no game time');
-  ok(roadScale(1280,800)>=2&&closeScale(3440,1440)>roadScale(3440,1440)&&roadScale(3840,2160)>roadScale(1280,800),'distances follow the window');
+  ok(restScale(1280,800)>=2&&wideScale(3440,1440)<restScale(3440,1440)&&closeScale(3440,1440)>restScale(3440,1440)&&restScale(3840,2160)>restScale(1280,800),'distances follow the window');
+  {const r=restScale(w,h);ok(r*24>=90&&r*24<=110,'at 3440x1440 a hero stands about 100 px tall at rest ('+r*24+' px)');
+    for(const a of heroes){a.x=20+heroes.indexOf(a)%3*2;a.y=20+Math.floor(heroes.indexOf(a)/3)*2;a.state='town';a.moving=false}
+    const B=createDirector({seed:5,still:()=>true});B.enter(fake,w,h);for(let i=0;i<60;i++)B.step(fake,w,h,null,1/60);const vt=h/fake.sc/16,ht=w/fake.sc/16;ok(vt>=10&&ht>=20,'five together fit the close view ('+ht.toFixed(0)+'x'+vt.toFixed(0)+' tiles)');
+    for(const a of heroes)a.moving=true;let low=9,late=0;for(let i=0;i<60*(DIR.BEAT_GAP/2+DIR.BEAT_S+16);i++){B.step(fake,w,h,null,1/60);if(fake.sc<low)low=fake.sc;late=fake.sc}
+    ok(low<r-.5,'the road brings a beat: it pulls out ('+low.toFixed(2)+')');ok(Math.abs(late-r)<.1,'and eases back in with the company still walking ('+late.toFixed(2)+')');for(const a of heroes)a.moving=false}
   for(const k of keep){k.a.x=k.x;k.a.y=k.y;k.a.state=k.st;k.a.hidden=k.hid}
   key('Escape');ok(!C.cinemaOn(),'left')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
