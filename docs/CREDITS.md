@@ -60,7 +60,7 @@ pieces name the set in their index entries (`source`, `authors`, `url`) and stay
 
 ## LPC town walls and plaza
 
-`tile:lpc-<style>-plaza`, `tile:lpc-<style>-wall-<n|e|s|w>`, `building:lpc-<style>-tower`, `-pier` and `-pier-tall` are laid up by
+`tile:lpc-<style>-plaza`, `tile:lpc-<style>-wall-<n|e|s|w>`, `building:lpc-<style>-tower`, `-pier`, `-pier-tall`, `-gate-ns`, `-gate-ns-back` and `-gate-ew` are laid up by
 `scripts/art/packcut-walls.mjs` from `castlefloors_outside.png`, `castle_outside.png` and `castlewalls.png` of the LPC base
 assets by Daniel Armstrong (HughSpectrum) and Leana Zimmerman (Sharm), CC-BY-SA 3.0 (also GPL 3.0), recoloured to the town
 palettes, with slab tones, merlons and the courses on the towers added in code. Derivative works, under CC-BY-SA 3.0.
@@ -68,7 +68,7 @@ palettes, with slab tones, merlons and the courses on the towers added in code. 
 The houses and the other kit rows, `building:lpc-<style>-house-<cottage|croft|gable|lane|row>`, `-inn-harbour`, `-inn-deck` and `-hall-long`, are laid
 up the same way and also use `barrel.png` (Sharm); `-croft` wears the wood shakes of [LPC] Roofs in a colour of its own, `-gable` the slopes
 and ridge of that set's slate gable, and each names that set in its index entry. `tile:lpc-<style>-street` is `dirt.png` (Sharm), recoloured for the timber towns. The palisade, `tile:lpc-palisade-plaza`, `tile:lpc-palisade-wall-<n|e|s|w>` and
-`building:lpc-palisade-tower`, `-pier` and `-pier-tall`, is laid up by `scripts/art/packcut-walls.mjs` from the deck boards of
+`building:lpc-palisade-tower`, `-pier`, `-pier-tall`, `-gate-ns`, `-gate-ns-back` and `-gate-ew`, is laid up by `scripts/art/packcut-walls.mjs` from the deck boards of
 `bridges.png` (Sharm), stood on end and sharpened in code; the blockhouses' roofs are the [LPC] Roofs wood shakes and name that set.
 All of these are derivative works under CC-BY-SA 3.0.
 
