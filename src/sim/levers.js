@@ -55,6 +55,7 @@ import {moveTo} from './heroes.js';
 import {clearLine} from './path.js';
 import {spawnMob} from './mobs.js';
 import {postHook,withdrawHook} from './dm.js';
+import {jobBar} from './jobbar.js';
 import {postSupply,withdrawSupply,openAt as supplyOpenAt,SUP} from './supply.js'; // goods jobs (#720): post_hook takes their names as tpl
 import {customFoe,spawnFoe} from './encounterbuilder.js';
 import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
@@ -363,7 +364,10 @@ register({name:'post_hook',about:'Post a job on a town board: template, giver ro
     if(SUPPLY[p.tpl]){const j=postSupply(c,p.tpl,{...o,by:ctx&&ctx.by,src:p.src,reward:p.reward,for:p.forHero!=null?p.forHero:o.for});
       return {ok:true,effect:{hook:j.id,tpl:j.tpl,giver:j.giver?j.giver.name:null,zone:'any',wants:j.want.n+' '+j.want.id,pays:j.gold+'g'},ret:j}}
     if(p.reward!=='fair')o.data.payMul=REWARD[p.reward];
-    const h=postHook(c,p.tpl,p.src,o);return {ok:true,effect:{hook:h.id,tpl:h.tpl,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone]},ret:h}},
+    const h=postHook(c,p.tpl,p.src,o);
+    // the DM agent is told what the job asks (#1016): a company below it is turned away at the gate, so post it for later or pick another
+    const lows=ctx&&ctx.by==='dm-agent'?(S.companies||[]).filter(C=>C.hall===p.town).map(C=>Math.min(...C.ids.map(i=>(S.agents.find(x=>x.id===i)||{lvl:99}).lvl))):[],need=jobBar(h),short=lows.filter(l=>l<need);
+    return {ok:true,effect:{hook:h.id,tpl:h.tpl,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone],...(ctx&&ctx.by==='dm-agent'?{needs_level:need}:{}),...(short.length?{warning:'This job asks for level '+need+' and a company of '+p.town+' is level '+Math.min(...short)+': the job-giver will turn it away until it grows. Do not offer it as their first move; post it for later or choose a template the board can give them now.'}:{})},ret:h}},
   describe:p=>p.tpl+' at '+p.town+(p.giver?' from the '+p.giver:'')});
 register({name:'withdraw_hook',about:'Take an open job down from a board.',params:{hook:{type:'id'}},limits:{perDay:60},
   check(p){const h=(S.adventures||[]).find(x=>x.id===p.hook)||(S.supply||[]).find(x=>x.id===p.hook);return !h?'no such hook':h.phase!=='open'?'hook #'+p.hook+' is already taken':null},

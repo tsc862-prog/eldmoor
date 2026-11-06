@@ -39,6 +39,7 @@ import {TRAITS,tm} from '../data/traits.js';
 import {listings,mine,listFor,buyListing,cancelListing,gearRef,goodRef,gearUpgrade,TRADE} from './market.js'; // hero-to-hero trades (#14)
 import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../data/items.js';
 import * as D from '../data/adventures.js';
+import {jobBar} from './jobbar.js';
 import {PLAYER_TOOLS,ATTEMPT_INVITE} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
 import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
@@ -1545,7 +1546,7 @@ function growHint(a,w,mem){if(!/^needs level/.test(w))return '';const lo=mem.red
   return (bd.length?' The board has, for you now: '+bd.join('; ')+'.':' Nothing else on this board suits you yet.')+' Grow first: '+(g?'hunt {where: "'+g+'"}':'hunt out in the world')+(n?(a.party&&a.party.leader===a?' and your companions follow you out':'; tell the others where you hunt'):'')+'. Left at the gate, autopilot hunts there too.'}
 function jobFit(a,h,mem){const T=D.ADVENTURES[h.tpl];if(!T)return 'unknown job';const lo=Math.min(...mem.map(b=>b.lvl));
   if(h.for!=null&&!mem.some(b=>b.id===h.for))return 'it is meant for someone else';
-  if(lo<Math.max(DMK.MIN_LVL,T.lvl||0))return 'needs level '+Math.max(DMK.MIN_LVL,T.lvl||0);
+  if(lo<jobBar(h))return 'needs level '+jobBar(h);
   if(mem.length<T.size[0])return 'needs a party of '+T.size[0]+'+';if(mem.length>T.size[1])return 'for at most '+T.size[1];
   if(h.data&&h.data.eliteId!=null&&mem.length<2)return 'a hunt for a named beast needs a party';
   return null}
