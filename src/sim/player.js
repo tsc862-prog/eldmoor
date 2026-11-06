@@ -41,7 +41,7 @@ import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../dat
 import * as D from '../data/adventures.js';
 import {jobBar} from './jobbar.js';
 import {PLAYER_TOOLS,ATTEMPT_INVITE} from '../data/player-tools.js';
-import {S,clockStr,dayNo,loreSides,ownTown,sameSide} from './state.js';
+import {S,clockStr,dayNo,loreSides,ownTown,sameSide,foeOf,mayFight} from './state.js';
 import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
@@ -577,7 +577,7 @@ const idIn=v=>{if(v==null||v==='')return null;if(typeof v==='number')return Numb
 const nameKey=v=>String(v==null?'':v).toLowerCase().replace(/\s*[#(].*$/,'').replace(/^(?:an?|the)\s+/,'').trim();
 const byDist=a=>(x,y)=>dist(a,x)-dist(a,y);
 function friendsInSight(a){const R=sightOf(a);return (a.party?a.party.mem:[]).filter(b=>b!==a&&b.state!=='dead'&&!b.hidden&&dist(a,b)<=R).sort(byDist(a))}
-function foesInSight(a){const R=sightOf(a);return [...nearMobs(a.x,a.y,R).filter(m=>alive(m)&&!m.hidden),...nearHeroes(a.x,a.y,R).filter(b=>b.fac!==a.fac&&b.state!=='dead'&&!b.hidden)].filter(t=>dist(a,t)<=R).sort(byDist(a))}
+function foesInSight(a){const R=sightOf(a);return [...nearMobs(a.x,a.y,R).filter(m=>alive(m)&&!m.hidden),...nearHeroes(a.x,a.y,R).filter(b=>foeOf(a,b)&&b.state!=='dead'&&!b.hidden)].filter(t=>dist(a,t)<=R).sort(byDist(a))}
 const friendList=a=>{const L=friendsInSight(a);return L.length?'Companions in sight: '+L.slice(0,5).map(b=>b.name+' (id '+b.id+', '+Math.round(dist(a,b))+' tiles)').join(', ')+'; or leave the target out for yourself.':'No companion is in sight; leave the target out for yourself.'};
 const taken=(a,t)=>t.kind==='mob'&&t.target&&t.target!==a&&t.target.state!=='dead';
 const foeList=(a,free)=>{const L=foesInSight(a).filter(t=>!free||!taken(a,t));return L.length?(free?'Free foes in sight: ':'Foes in sight: ')+L.slice(0,6).map(t=>foeName(a,t)+' (id '+t.id+', '+Math.round(dist(a,t))+' tiles'+(taken(a,t)?', taken':'')+')').join(', ')+'.':(free?'No free foe is in sight.':'No foe is in sight.')};
@@ -881,7 +881,7 @@ function heroLook(a,b){const self=b===a,o={ok:true,kind:'hero',name:b.name,...(t
   if(a.nemesis&&a.nemesis[b.id])ties.push('a blood debt: you are sworn to pay them back');
   if(metIds(a).includes(b.id))ties.push('you have spoken with them');
   o.to_you=ties.length?ties.join('; '):b.fac===a.fac?'a stranger of your own side':'a stranger of the other side';
-  o.next=b.fac===a.fac?(dist(a,b)<=PK.TALK?'talk {target: "'+b.name+'"}':'move_to {target: "'+b.name+'"} to come within talking distance'):'fight {target: "'+b.name+'"} if you mean to, or keep your distance';
+  o.next=!foeOf(a,b)?(dist(a,b)<=PK.TALK?'talk {target: "'+b.name+'"}':'move_to {target: "'+b.name+'"} to come within talking distance'):'fight {target: "'+b.name+'"} if you mean to, or keep your distance';
   return o}
 function personLook(a,p){const o={ok:true,kind:'person',name:fullName(p),role:p.role,
     faction:p.fac===0||p.fac===1?FAC[p.fac].name+(p.fac===a.fac?' (your side)':' (the other side)'):'of no side',
@@ -954,7 +954,7 @@ function choiceInfo(a){const adv=advOf(a),p=adv&&adv.pick;if(!p||p.chosen||adv.s
   return {adventure:adv.title,scene:p.frame,options:{a:p.opts.a,b:p.opts.b},minutes_left:Math.max(0,Math.round(p.until-S.gameMin))}}
 
 // A hero of your faction in sight, by id or name (join_party, invite): the hero, or a Rule naming who is in sight.
-function sideHero(a,hero_id,who){const n=nameKey(who!=null&&who!==''?who:hero_id),i=idIn(hero_id)??idIn(who),seen=()=>nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a));
+function sideHero(a,hero_id,who){const n=nameKey(who!=null&&who!==''?who:hero_id),i=idIn(hero_id)??idIn(who),seen=()=>nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&sameSide(x,a)&&x.state!=='dead'&&!x.hidden).sort(byDist(a));
   const b=i!=null?hero(i):seen().find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
   need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(seen().slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');return b}
 const T={
@@ -1068,7 +1068,7 @@ const T={
       return rr}
     const id=Number(target),b=S.agents.find(x=>x!==a&&x.state!=='dead'&&(x.id===id||x.name.toLowerCase()===t));
     need(b,'Nobody called "'+target+'" is here.');need(dist(a,b)<=PK.TALK*1.5,b.name+' is too far away to talk to.');
-    if(b.fac!==a.fac)return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
+    if(!sameSide(a,b))return {ok:true,who:b.name,answer:'('+b.name+' of the '+FAC[b.fac].name+' answers with a hand on their weapon.)'};
     if(voiced(b)&&companyOf(b)===companyOf(a)){need(a.state!=='ghost','Ghosts do not speak.');let line=''; // a companion of your company answers through the DM's voice (#764)
       if(text!=null&&String(text).trim()){const L=spokenLine(a,text,PK.SAY_LEN);need(!L.error,L.error);need(!notEnglish(L.text),ENGLISH);line=L.text;agentLine(a,speak(a,line,'agent'))}
       talked(a,[b.name]);return {...talkCompanion(a,b,line),...(line?{said:line}:{})}}
@@ -1083,11 +1083,11 @@ const T={
   whisper(a,args){return whisperTo(a,args)}, // a line only one hero within 2 tiles hears (#627)
   emote(a,args){return emoteAct(a,args)}, // a wordless act seen by those in earshot (#627)
   join_party(a,{hero_id,who}){const n=nameKey(who!=null&&who!==''?who:hero_id),i=idIn(hero_id)??idIn(who);
-    const b=i!=null?hero(i):nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
-    need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&x.fac===a.fac&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');
+    const b=i!=null?hero(i):nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&sameSide(x,a)&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).find(x=>x.name.toLowerCase()===n||x.name.toLowerCase().split(' ')[0]===n)||null;
+    need(b&&b!==a&&b.state!=='dead','No such hero'+givenAs(hero_id,who)+'. Heroes of your faction in sight: '+(nearHeroes(a.x,a.y,sightOf(a)).filter(x=>x!==a&&sameSide(x,a)&&x.state!=='dead'&&!x.hidden).sort(byDist(a)).slice(0,5).map(x=>x.name+' (id '+x.id+')').join(', ')||'none')+'.');
     if(inSlots(a)&&inSlots(b)){delete a.splitUntil;a.partyOk=true;return {ok:true,note:'You will fall in with the Fellowship again the next time you meet them in town or on the road.'}}
     {const r=askToJoin(a,b);if(r)return r} // toward an agent hero or a company's companion: an offer to that company's leader (#442)
-    need(b.fac===a.fac,b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
+    need(sameSide(a,b),b.name+' is of the '+FAC[b.fac].name+'.');need(dist(a,b)<=PK.JOIN,b.name+' is too far away (within '+PK.JOIN+' tiles).');
     need(Math.abs(b.lvl-a.lvl)<=3,'Too far apart in level (more than 3).');need(!['dungeon','raid','duel','ghost'].includes(b.state),b.name+' is busy.');
     need(tm(b,'social')||b.player,b.name+' is a loner and will not travel with anyone.');
     if(a.party&&a.party===b.party)return {ok:true,party:a.party.mem.map(x=>x.name),note:'Already together.'};
@@ -1225,7 +1225,7 @@ const T={
     if(t.kind==='mob'){need(!(t.target&&t.target!==a&&t.target.state!=='dead'),'Someone else is already fighting it. '+foeList(a,true));
       a.pq=[{kind:'fight',id:t.id,flee:fb}];a.target=t;a.state='fight';a.dest=null;
       const pr=perceived(a,t);return {ok:true,target:foeName(a,t),threat:threatText(a,t),warning:pr==null?'You cannot tell how strong it is.':pr>=3?'You judge it '+threatText(a,t).replace(/^looks /,'')+'.':undefined}}
-    need(t.kind==='hero'&&t!==a,'No such target'+givenAs(target_id,target)+'. '+foeList(a));need(t.fac!==a.fac,'You will not raise a hand against your own faction.');
+    need(t.kind==='hero'&&t!==a,'No such target'+givenAs(target_id,target)+'. '+foeList(a));need(mayFight(a,t),loreSides()?t.name+' is no foe of yours: talk to them, or challenge them to an honour duel.':'You will not raise a hand against your own faction.');
     need(zoneAt(a.x,a.y)>=1&&zoneAt(t.x,t.y)>=1,WORDS.lowRegion+' is the peaceful vale: no duels there.');
     need(['hunt','travel','return','follow'].includes(t.state),t.name+' is not free to be challenged right now.');
     a.pq=[];a.state=t.state='duel';a.target=t;t.target=a;a.dest=t.dest=null;record(a,'Challenged ',t,'.');
@@ -1472,7 +1472,7 @@ const T={
 };
 const AID_BREAK=new Set(['move_to','hunt','follow','fight','flee','rest','gather','enter_site','go_crypt','join_raid','lead_to','take_adventure']); // orders that end helping a downed hero (#658)
 // The downed of your side in sight (#658): a companion or any hero of your faction lying at zero health, nearest first.
-function downedInSight(a){const R=sightOf(a);return nearHeroes(a.x,a.y,R).filter(b=>b!==a&&b.kind==='hero'&&b.state==='downed'&&b.fac===a.fac&&!b.hidden&&dist(a,b)<=R).sort(byDist(a))}
+function downedInSight(a){const R=sightOf(a);return nearHeroes(a.x,a.y,R).filter(b=>b!==a&&b.kind==='hero'&&b.state==='downed'&&sameSide(a,b)&&!b.hidden&&dist(a,b)<=R).sort(byDist(a))}
 const downedList=a=>{const L=downedInSight(a);return L.length?'Down in sight: '+L.slice(0,5).map(b=>b.name+' (id '+b.id+', '+Math.round(dist(a,b))+' tiles'+(b.down&&b.down.stable?', stable':', bleeding')+')').join(', ')+'.':'No one of your side lies downed in sight.'};
 function aidTool(a,who,hero_id,how,verb){const L=downedInSight(a),i=idIn(hero_id!=null&&hero_id!==''?hero_id:who),n=nameKey(who);
   need(!['dungeon','raid','duel','camp','ghost'].includes(a.state)&&!a.hidden,'Not now ('+(ST_WORD[a.state]||a.state)+').');
@@ -1490,7 +1490,7 @@ function aidTool(a,who,hero_id,how,verb){const L=downedInSight(a),i=idIn(hero_id
   return out}
 // A hero of your side in sight by name or id, yourself included (#656).
 function nearSide(a,who,hero_id){const i=idIn(hero_id!=null&&hero_id!==''?hero_id:who),n=nameKey(who),R=sightOf(a);if(i===a.id||n&&a.name.toLowerCase().startsWith(n))return a;
-  const L=nearHeroes(a.x,a.y,R).filter(b=>b!==a&&b.kind==='hero'&&b.fac===a.fac&&b.state!=='dead'&&!b.hidden&&dist(a,b)<=R).sort(byDist(a));
+  const L=nearHeroes(a.x,a.y,R).filter(b=>b!==a&&b.kind==='hero'&&sameSide(a,b)&&b.state!=='dead'&&!b.hidden&&dist(a,b)<=R).sort(byDist(a));
   return (i!=null?L.find(b=>b.id===i):n?L.find(b=>b.name.toLowerCase()===n)||L.find(b=>b.name.toLowerCase().split(' ')[0]===n)||L.find(b=>b.name.toLowerCase().startsWith(n)):null)||null}
 // Whom tend means when it is a wound and not the downed (#656): the one named, if standing and wounded; with no name and no one down, the nearest who can be tended. null: the downed path.
 function woundTarget(a,who,hero_id){const named=who!=null&&String(who).trim()||hero_id!=null&&hero_id!=='';

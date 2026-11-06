@@ -92,6 +92,53 @@ console.log('Any town takes a company in');
  at(M, {x: foeTown.spots.square.x, y: foeTown.spots.square.y}); r = act(m, 'learn_profession', {id: 'mining'}); ok(!r.ok && /not a town of your side/.test(r.error), 'no setting: its trainers refuse as ever');
 }
 
+console.log('Between sides');
+{const {playerAct} = await import('../src/sim/player.js'), {dmAct, setDmSeat} = await import('../src/sim/dmagent.js'), {takeWound, tendBlock} = await import('../src/sim/tend.js'), {maxHp, slay} = await import('../src/sim/heroes.js'), {rebuild} = await import('../src/sim/spatial.js'), {nearestFoe} = await import('../src/sim/party.js'), {foeOf, inCompany, sidesOff, mayFight} = await import('../src/sim/state.js'), {zoneFor, zonePoint} = await import('../src/world/map.js'), {TABLE} = await import('../src/sim/table.js');
+ const act = (a, t, x) => playerAct(a.id, t, x || {});
+ init({setup: cleanSetup(mixed(1025))}); if (S.opening) S.opening.queue.length = 0; setDmSeat(true); TABLE.mode = 'off';
+ const F = SLT.slotted(), L = SLT.slotHeroes(F), con = L.find(a => a.fac === 0), war = L.find(a => a.fac === 1), bg = f => S.agents.filter(a => !inCompany(a) && a.fac === f && a.state !== 'dead');
+ for (const a of L) a.lvl = Math.max(a.lvl, 6);
+ const p = zonePoint(zoneFor(6, CITY[0].gate), null, CITY[0].gate);
+ const put = (list, q) => {list.forEach((a, i) => {Object.assign(a, {x: q.x + (i % 3) * .5, y: q.y + (i > 2 ? .5 : 0), state: 'hunt', hp: maxHp(a), dest: null, target: null, pq: []})}); rebuild()};
+ put(L, p);
+ ok(!foeOf(con, war) && !foeOf(war, con), 'two of one company are no foes, whatever their history');
+ {const b = bg(1)[0], c = bg(0)[0]; ok(!foeOf(con, b) && !foeOf(b, con) && !sidesOff(c, b) && sidesOff(con, b), 'a background hero is no foe of a company'); ok(foeOf(c, b), 'the background keeps its sides among itself');
+  put([b], {x: p.x + 1, y: p.y + 1}); ok(!nearestFoe(con, 6) && !nearestFoe(b, 6), 'nearestFoe: neither sees the other');
+  let r = act(con, 'look'); ok(!JSON.stringify(r.foes || []).includes(b.name), 'look lists no background hero as a foe');
+  r = act(con, 'fight', {target: b.name}); ok(!r.ok && /no foe of yours|No such target/.test(r.error), 'fight is refused against a background hero: ' + r.error);
+  r = act(con, 'talk', {target: b.name}); ok(r.ok && !/hand on their weapon/.test(JSON.stringify(r)), 'a hero of the other history answers without a hand on a weapon')}
+ // company verbs
+ {const C2 = SLT.companies()[0], s = bg(1)[1]; ok(SLT.refuseJoin(C2, s) === null || !/faction/.test(SLT.refuseJoin(C2, s)), 'refuseJoin says nothing of factions');
+  let r = act(con, 'follow', {who: war.name}); ok(r.ok, 'follow a companion of the other history: ' + (r.error || 'ok')); con.pq = [];
+  takeWound(war, 'a test'); ok(!/no friend/.test(tendBlock(con, war) || ''), 'tend: a companion of the other history is a friend');
+  r = act(con, 'challenge', {hero: war.name}); ok(r.ok, 'challenge: an honour duel with a companion of the other history: ' + (r.error || 'offered'));
+  con.pq = []; if (S.challenges) S.challenges.length = 0}
+ // the DM's antagonist
+ {put(L, p); let r = dmAct('summon_hero', {fac: FAC[1 - F.fac].name, cls: 'Rogue', level: con.lvl, near: 'fellowship', name: 'Sefa Dray', why: 'a rival'}); const foe = S.agents.find(a => a.name === 'Sefa Dray');
+  ok(r.ok && foe && foe.summoned, 'summon_hero brings an antagonist: ' + (r.error || foe.name));
+  r = dmAct('summon_hero', {fac: FAC[F.fac].name, cls: 'Priest', level: con.lvl, near: 'fellowship', name: 'Ansa Wey', why: 'a healer'}); const kind = S.agents.find(a => a.name === 'Ansa Wey');
+  ok(foeOf(con, foe) && foeOf(war, foe) && foeOf(foe, war), 'a summon of the other fac from the company\'s own is a foe to every member, of either history');
+  ok(kind && !foeOf(con, kind) && !foeOf(war, kind) && mayFight(con, kind), 'a summon of the company\'s own fac is no foe, though a hero may turn on it');
+  put([foe], {x: p.x + 1, y: p.y}); put(L, p); const hon = con.honor, fh = S.facStats[con.fac].honor;
+  r = act(war, 'look'); ok(JSON.stringify(r).includes('Sefa Dray'), 'look shows the antagonist');
+  r = act(war, 'fight', {target: 'Sefa Dray'}); ok(r.ok, 'fight is valid against a summoned antagonist: ' + (r.error || r.duel));
+  ok(foe.state === 'duel' && war.state === 'duel', 'and it is a duel');
+  war.state = 'hunt'; war.target = null; foe.state = 'hunt'; foe.target = null; foe.guild = null;
+  const mate = L.find(a => a !== con), n0 = Object.keys(mate.nemesis || {}).length; slay(mate, foe);
+  ok(Object.keys(con.nemesis || {}).length === 0 && !L.some(a => a !== mate && a.nemesis && a.nemesis[foe.id]), 'a companion slain by the antagonist leaves no nemesis in the company');
+  ok(foe.honor === 0 || foe.honor == null, 'no honour credit for that kill'); foe.hp = 1;
+  slay(foe, con); ok(con.honor === hon && S.facStats[con.fac].honor === fh, 'nor for slaying the antagonist')}
+ // a long run: a full roster around a mixed company
+ {init({setup: cleanSetup(mixed(1025))}); if (S.opening) S.opening.queue.length = 0; TABLE.mode = 'off';
+  let touched = 0, bgDuels = 0; const seen = new Set();
+  for (let i = 0; i < 1800; i++) {step(1); for (const a of S.agents) {if (a.state !== 'duel' && a.state !== 'assist') continue; if (!a.target || a.target.kind !== 'hero') continue; if (inCompany(a) || inCompany(a.target)) touched++; else if (!seen.has(a.id)) {seen.add(a.id); bgDuels++}}}
+  const nem = S.agents.filter(a => inCompany(a) && Object.keys(a.nemesis || {}).length), onCo = S.agents.filter(a => !inCompany(a) && Object.keys(a.nemesis || {}).some(id => {const k = S.agents.find(x => x.id === +id); return k && inCompany(k)}));
+  ok(touched === 0, 'seven game days with a full roster: no background hero ever duels a company member (' + touched + ')');
+  ok(bgDuels > 0, 'while the background still duels among itself (' + bgDuels + ' heroes)');
+  ok(nem.length === 0 && onCo.length === 0, 'no nemesis in or on a company');
+  ok(S.agents.filter(a => a.goal && inCompany(a) && (a.goal.type === 'rival' || a.goal.type === 'avengeHero')).every(a => a.goal.aside || a.goal.offered), 'no company hero is sworn against a hero')}
+}
+
 console.log('A world repeats');
 {const run = k => spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--child', k], {encoding: 'utf8', env: {...process.env, ELDMOOR_SIDES: ''}}).stdout.split(/\r?\n/).find(l => l.startsWith('SIG ')) || 'none';
  const a = run('seeded'), b = run('seeded'), c = run('lore'), d = run('lore');
