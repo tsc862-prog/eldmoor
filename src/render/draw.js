@@ -258,7 +258,6 @@ export function createRenderer(cv,screenEl){
     if(ghosts){ctx.globalAlpha=.6;ctx.fill();ctx.globalAlpha=1}
     // Pass 2: the sprites in y order, and what rides on each. A mirrored sprite sets the transform once instead of
     // save/translate/scale/restore.
-    const tf=ctx.getTransform();
     for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=EPY[i],pz=EPZ[i],live=e.state!=='dead';
       if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);continue} // critters, stalls and guards (townlife.js)
       if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
@@ -268,7 +267,7 @@ export function createRenderer(cv,screenEl){
       if(G){ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);if(pz&&pz.flash>0){ctx.globalAlpha=pz.flash;ctx.drawImage(sceneTint(G.img,pz.col),G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh)}}
       else{const o=worldSprite(s,live),ow=live?1/ART:0,x0=-Math.floor(s.width/2)*PROC_SCALE-ow; // living entities get the dark outline, one art pixel wide
         const fl=pz&&pz.flash>0?sceneTint(o,pz.col):null; // the hit flash
-        if((pz?pz.face:e.face)<0){ctx.setTransform(-tf.a,0,0,tf.d,tf.e+px*tf.a,tf.f);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,x0,py-sh-ow,o.width/ART,o.height/ART)}ctx.setTransform(tf)} // mirrored about px
+        if((pz?pz.face:e.face)<0){ctx.save();ctx.translate(px,0);ctx.scale(-1,1);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,x0,py-sh-ow,o.width/ART,o.height/ART)}ctx.restore()} // mirrored about px, on top of any tilt (a setTransform from the base dropped the stumble and fall of every foe facing left)
         else{ctx.drawImage(o,px+x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,px+x0,py-sh-ow,o.width/ART,o.height/ART)}}}
       if(tilt)ctx.restore();ctx.globalAlpha=1;
       const top=py-sh;
@@ -328,7 +327,7 @@ export function createRenderer(cv,screenEl){
     else{
       if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))lab(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14,7);
       const lh=14*cam.dpr/sc;
-      if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
+      if(cut)for(const r of bubbleBoxes(ctx,S,cam,onPatch?scenePose:null))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
         const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),ap=seen(a),y=ap.y*T-HEAD-condLift(a,cam);
@@ -354,7 +353,7 @@ export function createRenderer(cv,screenEl){
     flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;ph(5);
     const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
     if(whole)drawWholeMap(ctx,cam,blink);
-    if(close){drawBubbles(ctx,S,cam,drawText);
+    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)&&!(onPatch&&HIT_NUM.test(p.txt))){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
     if(mini)mini.draw(S);ph(6);
