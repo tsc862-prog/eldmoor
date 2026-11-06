@@ -130,3 +130,5 @@ export const PLAYER_TOOLS=[
   {name:'wait',act:false,desc:'Let game time pass (10-240 game minutes; 1 real second is 6 game minutes) while your command runs. Returns early when something urgent happens: an attack, a choice, low HP, a finished command. Use it between actions instead of polling. At the table no time passes: once you have answered, wait ends your turn and you are woken when the table settles.',args:{minutes:{type:'integer',desc:'Game minutes (10-240, default 60)',optional:true}}},
 ];
 export const TOOL_NAMES=PLAYER_TOOLS.map(t=>t.name);
+// The no-such-tool refusal names attempt first, then the wish line (#864, #829): a hero's way to try it now comes before the note for later.
+export const ATTEMPT_INVITE='If no tool does it, try it in words with attempt {what}.';
