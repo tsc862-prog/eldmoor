@@ -26,6 +26,7 @@ import {ollamaAdapter} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama, MOCK_BUSY} from './mock-ollama.mjs';
 import {sceneAnswers} from './behavior-report.mjs';
+import {claudeBrief, CLAUDE_TURN_ORDER} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fails = 0;
@@ -458,6 +459,11 @@ console.log('I. a wait at the table ends the turn at once, for any mind, and pac
   await pre({}); const c1 = await post({tool_response: '{"ok":true,"why":"time passed"}'}); await pre({}); const c2 = await post({tool_response: '{"ok":true,"turn_over":true}'});
   ok(c1.continue === undefined && c2.continue === false && seen.join() === 'true,false,true,false,over', 'an ordinary wait lets the turn go on; turn_over stops it, and the lease hears idle on and off: ' + seen.join());
   TABLE.liveMs = liveMs0; TABLE.wakeGapMs = gap0; setRunnerLinks(null); S.table = null;
+}
+{ // a Claude turn header says whether a scene waits, so no turn opens with a refused scene_act, and asks for one wait
+  const none = claudeBrief({state: 'town', table: false}), other = claudeBrief({state: 'town', table: true}), mine = claudeBrief({state: 'town', table: true, scene: {id: 's1', title: 'x', options: ['strike']}});
+  ok(/No Table scene waits on you: do not call scene_act/.test(none) && /nothing waits on you in it/.test(other) && !/do not call scene_act/.test(mine), 'the turn header says whether a scene waits on this member');
+  ok(/Wait once, after your last command/.test(CLAUDE_TURN_ORDER), 'the turn order asks for one wait');
 }
 closeOllama();
 for (const k of kids) try {k.kill()} catch {}

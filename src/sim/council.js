@@ -227,7 +227,8 @@ const waiting=(F,k)=>F&&F.wait&&F.wait[k]>S.gameMin;
 function setWait(F,k){(F.wait||(F.wait={}))[k]=S.gameMin+COUNCIL.WAIT_MIN}
 const endWait=F=>{delete F.wait.crypt;delete F.waitDun};
 // The faction whose raid muster is reserved for a company, or -1.
-export function raidReserve(){for(const C of companies())if(openProps(C).some(P=>P.kind==='raid')||waiting(C,'raid'))return C.fac;return -1}
+export function raidReserve(){const C=raidCompany();return C?C.fac:-1}
+export function raidCompany(){for(const C of companies())if(openProps(C).some(P=>P.kind==='raid')||waiting(C,'raid'))return C;return null}
 function cryptReady(L,C){L=L.filter(b=>!b.hire);return L.every(b=>['hunt','travel','town','return','follow'].includes(b.state))&&gathered(L,C)} // the whole company, in shouting range of each other (#182)
 function goCrypt(F,L,D){for(const b of L)if(b.player)b.cryptOk=true;
   if(isSolo(F)&&L[0].pq)L[0].pq=L[0].pq.filter(c=>c.kind!=='crypt'); // a solo's go_crypt order ends here

@@ -5,6 +5,7 @@
 //   POST /mcp            MCP over streamable HTTP (stateless, JSON responses): the tools of
 //                        src/data/player-tools.js. Any MCP client can connect here.
 //                        ?lazy=1 (issue #808): tools/list marks the tools to keep in the prompt (scripts/lazy-tools.mjs)
+//                        ?sides=lore (issue #1025): the tool text of a world with no sides
 //   WS   /play           the browser page connects here while any hero is agent-played
 //                        (src/ui/player-bridge.js); tool calls are forwarded to it and the
 //                        page answers through src/sim/player.js.
@@ -67,7 +68,7 @@ import {WebSocketServer} from 'ws';
 import {z} from 'zod';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {PLAYER_TOOLS, ATTEMPT_INVITE} from '../src/data/player-tools.js';
+import {PLAYER_TOOLS, ATTEMPT_INVITE, toolsFor} from '../src/data/player-tools.js';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
 import {lazyMeta} from './lazy-tools.mjs';
 
@@ -220,9 +221,9 @@ export function buildDmMcp(call) {
   return server;
 }
 // lazy (issue #808): the runner asked for lazy tools (?lazy=1): the tools to keep in the prompt say so, the rest are deferred by the CLI.
-export function buildMcp(call, {lazy = false} = {}) {
+export function buildMcp(call, {lazy = false, sides = null} = {}) {
   const server = new McpServer({name: 'eldmoor-player', version: '1.1.0'}, {instructions: INSTRUCTIONS});
-  for (const t of PLAYER_TOOLS) {
+  for (const t of toolsFor(sides)) {
     const meta = lazy ? lazyMeta(t.name) : undefined;
     server.registerTool(t.name, {description: t.desc, inputSchema: zodFor(t), annotations: {readOnlyHint: !t.act, destructiveHint: false, openWorldHint: false}, ...(meta ? {_meta: meta} : {})},
       async args => {const r = await call(t.name, args || {}); return {content: [{type: 'text', text: JSON.stringify(r)}], isError: !!(r && r.offline)}});
@@ -412,7 +413,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
       if (path === '/mcp') {
         if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
         const body = await readBody(req);
-        const mcp = buildMcp((tool, args) => call(hero, tool, args, rid), {lazy: q.get('lazy') === '1'}), transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
+        const mcp = buildMcp((tool, args) => call(hero, tool, args, rid), {lazy: q.get('lazy') === '1', sides: q.get('sides')}), transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
         res.on('close', () => {transport.close(); mcp.close()});
         await mcp.connect(transport);
         await transport.handleRequest(req, res, body);

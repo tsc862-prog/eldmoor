@@ -24,7 +24,7 @@
 //   S.talks {seq, call, cur:[conv], past:[short], day:{d, lines, offers, opened}, stats}
 //   conv {id, npc, name, heroes:[ids], lines:[{who:'member'|'npc', id, name, text, t}], ex, wait:{call, hero, line, gm, real, by}|null,
 //         offers:[{kind, ex, by, mark}], offerEx, state 'open'|'done', born, last, why}
-import {S,clockStr} from './state.js';
+import {S,clockStr,ownTown,sameSide} from './state.js';
 import {keep} from './kept.js';
 import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,zoneFor,dist} from '../world/map.js';
 import {cryptIf,cryptTitle} from './crypts.js';
@@ -294,7 +294,7 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
     for(const b of mem)remember(b,'talk',full(p)+' told us: '+lead+(where?' ('+where+')':''));
     noteOn(p,'Told the Fellowship: '+lead)}
   else if(kind==='job'){const tpl=String(args.tpl||ROLE_JOB[p.role]||'rescue');if(!ADVENTURES[tpl]||tpl==='fallen')return no('tpl must be one of '+Object.keys(ADVENTURES).filter(k=>k!=='fallen').join(', '));
-    const town=p.town&&CITY.some(x=>x.name===p.town&&x.fac===a.fac)?p.town:home.name;
+    const town=p.town&&CITY.some(x=>x.name===p.town&&ownTown(x,a))?p.town:home.name;
     const giver=['captain','innkeeper','smith','quartermaster','priest','bard'].includes(p.role)?p.role:undefined;
     const z=args.region!=null&&args.region!==''?regionIdx(args.region):null;
     const res=pull('post_hook',{town,tpl,...(giver?{giver}:{}),forHero:a.id,...(z!=null?{region:z}:{}),reward:['small','fair','generous'].includes(args.reward)?args.reward:'fair',src:'request'},{by,reason:'a job from '+full(p)+' in conversation'});
@@ -409,7 +409,7 @@ export function traderFor(a,name,range){const s=String(name==null?'':name).trim(
   const open=people().filter(p=>p.trade&&p.trade.until>S.gameMin&&(s?String(p.id)===s||String(p.name).toLowerCase()===s||full(p).toLowerCase()===s||p.role===s:true));
   if(!open.length)return s?{error:'Nobody called "'+name+'" has offered to trade with you. Talk to them first.'}:null;
   const p=open.sort((x,y)=>dist(a,x)-dist(a,y))[0];if(dist(a,p)>range)return {error:full(p)+' is too far away to trade ('+Math.round(dist(a,p))+' tiles).'};
-  if(!inSlots(a)||p.trade.fac!==a.fac)return {error:full(p)+' trades only with the Fellowship.'};
+  if(!inSlots(a)||!sameSide(p.trade,a))return {error:full(p)+' trades only with the Fellowship.'};
   return p}
 export function npcBuy(a,p,{slot,item,count}){const st=stockOf(p);
   if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>x.toLowerCase()===String(item).toLowerCase());

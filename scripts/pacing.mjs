@@ -435,9 +435,11 @@ export const newWorldLine = ch => `[world] a new world: ${ch.map(c => `#${c.id} 
 // Claude turns (issue #401): the same fresh state header the local turns get (briefText: state, HP, place, foe, news,
 // memories, what was said lately), without its generic last line, plus the turn order. A Claude turn used to open with
 // 2-4 reads and loop wait/look/party_read until the call cap (44% of turns). scene: a table turn, header only.
-export const CLAUDE_TURN_ORDER = 'Act: if the header asks what you are trying to do, say it with intent first; then give one command (or answer what is asked of you), then wait. When wait returns, act on its events if they need you, otherwise end your turn with one short sentence of narration; do not look again unless the events say the world changed.';
+export const CLAUDE_TURN_ORDER = 'Act: if the header asks what you are trying to do, say it with intent first; then give one command (or answer what is asked of you), then wait. Wait once, after your last command: when wait returns, act on its events if they need you, otherwise end your turn with one short sentence of narration. A second wait with nothing new only spends calls (a turn has about ten); the next turn starts by itself when something happens. Do not look again unless the events say the world changed.';
+// Whether a Table scene waits on this member now (b.scene is the member's own due scene). A turn that opens with scene_act when none does is refused.
+export const sceneNote = b => !b || b.scene ? '' : b.table ? '\nA Table scene is open but nothing waits on you in it (not your turn yet, or you have answered): do not call scene_act; say or do what you want elsewhere, then wait.' : '\nNo Table scene waits on you: do not call scene_act.';
 export function claudeBrief(b, {scene = false} = {}) {
   const t = briefText(b).replace(/\nAct through the tools[^\n]*$/, '');
   if (scene) return t;
-  return t + (t ? '\nThis turn: the header above is fresh from the game, so do not open with status, look or party_read unless you need ids or detail it lacks. ' : '\nThis turn: ') + CLAUDE_TURN_ORDER;
+  return t + sceneNote(b) + (t ? '\nThis turn: the header above is fresh from the game, so do not open with status, look or party_read unless you need ids or detail it lacks. ' : '\nThis turn: ') + CLAUDE_TURN_ORDER;
 }

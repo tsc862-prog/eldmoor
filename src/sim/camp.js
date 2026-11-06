@@ -48,7 +48,7 @@ import {USES} from '../data/items.js';
 import {campMeal,campLight} from './inv.js'; // rations and torches (sim/inv.js)
 import {homeOf} from '../data/races.js';
 import {CAMP_LINES,TOPICS,QUARREL_REPLY,NTH} from '../data/camp.js';
-import {S} from './state.js';
+import {S,foeOf} from './state.js';
 import {log} from './chronicle.js';
 import {dmlog} from './dmlog.js';
 import {maxHp,moveTo} from './heroes.js';
@@ -205,7 +205,7 @@ function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zo
 function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors++;
   const avg=Math.round(L.reduce((s,a)=>s+a.lvl,0)/L.length),spot=check(w,'perception',CAMP.SPOT_DC-(g.lit?USES['Pitch Torch'].watch:0)),victim=L[ri(0,L.length-1)];
   const pass=spot.pass&&!soloSleeps(g); // a solo asleep is caught unroused whatever its roll (the same roll is still made: no dice added)
-  const foeHero=nearHeroes(g.x,g.y,16,b=>b.fac!==w.fac&&b.state!=='dead'&&!b.hidden&&(b.state==='hunt'||b.state==='travel')&&Math.abs(b.lvl-w.lvl)<=3)[0];
+  const foeHero=nearHeroes(g.x,g.y,16,b=>foeOf(w,b)&&b.state!=='dead'&&!b.hidden&&(b.state==='hunt'||b.state==='travel')&&Math.abs(b.lvl-w.lvl)<=3)[0];
   const useHero=foeHero&&rnd()<.4;let m=null;
   if(!useHero){m=ambushMob(g,avg);if(!m)return}
   const foeName=useHero?foeHero.name:MOBS[m.type].name;

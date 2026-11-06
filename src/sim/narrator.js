@@ -19,7 +19,7 @@ import {hasLair} from './lair.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
 import * as N from '../data/narration.js';
-import {S} from './state.js';
+import {S,raidSide} from './state.js';
 import {log,fac} from './chronicle.js';
 import {pop} from './effects.js';
 import {agentDie,strike,maxHp} from './heroes.js';
@@ -115,8 +115,8 @@ export function eliteSight(m,dt){if(!m.elite||m.seen||!m.alive)return;ensure();
 
 // ---- scene: a raid pulls the boss ----
 export function bossPull(eng){ensure();if(S.nar.pulled||!eng.length||!canSpeak())return;S.nar.pulled=true;S.narStats.pulls++;
-  const f=eng[0].fac;let n=0;for(const a of S.agents)if(a.raid&&a.fac===f&&a.state==='raid')n++;
-  speak(...fill(pickA(N.BOSS_PULL),{boss:gd(S.boss.name),n:num(Math.max(n,eng.length)),fac:fac(f)}))}
+  const f=raidSide(eng[0]);let n=0;for(const a of S.agents)if(a.raid&&raidSide(a)===f&&a.state==='raid')n++;
+  speak(...fill(pickA(N.BOSS_PULL),{boss:gd(S.boss.name),n:num(Math.max(n,eng.length)),fac:S.raidName&&S.raidName[f]?gd(S.raidName[f]):fac(f)}))}
 
 // ---- dawn recap ----
 const isMob=c=>c.startsWith('slain by a '),isCrypt=c=>c.startsWith('lost in'),isBoss=c=>c.startsWith('incinerated');

@@ -15,7 +15,7 @@ import {CLS} from '../data/classes.js';
 import {worldFacts,worldPreview,worldTowns,worldStarts} from '../render/worldpreview.js';
 import {pickRow} from '../sim/prologue.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
-import {racesOf} from '../data/races.js';
+import {RACES,racesOf} from '../data/races.js';
 import {PROF,PROF_IDS,MAX_PROF} from '../data/professions.js';
 import {FAC} from '../data/factions.js';
 import {CFG} from '../sim/brain.js';
@@ -75,10 +75,12 @@ const labelOf=m=>{const o=modelOptions().find(x=>x[0]===joinMind(m));return o?o[
 function norm(s){if(s.mode==='apart')return s;const map=slotsOf(s);
   if(map){s.heroes=SLOT_KEYS.map(k=>s.heroes[map[k]]);return s}
   return applyPreset('classic',s)||s}
+// Every world made here has sides as lore (#1025): the page offers peoples and a hall, never a side.
 function initialSetup(){const last=readLast(),seed=newSeed();
-  if(last){last.seed=seed;last.world=last.world||WORLD_ID;return norm(last)}
-  return defaultSetup(seed,WORLD_ID,Math.random()<.5?0:1)}
+  if(last){last.seed=seed;last.world=last.world||WORLD_ID;last.sides='lore';return norm(last)}
+  return {...defaultSetup(seed,WORLD_ID,Math.random()<.5?0:1),sides:'lore'}}
 const together=()=>st.setup.mode!=='apart';
+const lore=()=>st.setup.sides==='lore';
 const keys=()=>together()?ROLE_ORDER.slice():st.setup.heroes.map((h,i)=>String(i));
 const idx=k=>together()?ROLE_ORDER.indexOf(k):+k;
 const heroAt=k=>st.setup.heroes[idx(k)];
@@ -117,7 +119,7 @@ function mindControls(who,m){const d=el('div','smind'),seg=el('span','mseg');
 // Apart: where a hero sets out (#454). 'home' = its people's home town; a town of its faction (the CITY rows, no names here);
 // or a region, seasoned to the low end of its band.
 const startValue=h=>{const st=h.start||{};return st.region?'region:'+st.region:st.town&&st.town!=='home'?'town:'+st.town:'home'};
-const startOptions=h=>{const w=worldStarts(st.setup.world,facOfHero(h));
+const startOptions=h=>{const w=worldStarts(st.setup.world,lore()?null:facOfHero(h));
   return [['home','Home town of their people']].concat(w.towns.map(n=>['town:'+n,'Town: '+n])).concat(w.regions.map(r=>['region:'+r.name,'Region: '+r.name+(r.low!=null?' (L'+r.low+'+)':'')]))};
 const groupOptions=n=>[['','Alone']].concat(Array.from({length:n},(x,i)=>[String(i+1),'Company '+(i+1)]));
 function slotCard(k){const p=heroAt(k),card=el('div','scard'),top=el('div','stop'),T=heroTitle(k);
@@ -126,10 +128,10 @@ function slotCard(k){const p=heroAt(k),card=el('div','scard'),top=el('div','stop
   top.append(select('cls:'+k,klass.map(c=>[c,c]),p.cls,'Class'));card.append(top);
   const nm=el('input','sinput');nm.type='text';nm.maxLength=24;nm.placeholder='name: any';nm.value=p.name||'';nm.dataset.f='name:'+k;nm.setAttribute('aria-label','Name for '+T);
   const row=el('div','snamerow');row.append(nm,btn('Reroll','nameroll',{slot:k},'sdice'));
-  const rs=racesOf(facOfHero(p));
+  const rs=lore()?RACES:racesOf(facOfHero(p));
   const people=select('race:'+k,[['','any people']].concat(rs.map(r=>[r.id,r.name])),p.race||'','People');
   if(!together()){
-    card.append(field('Faction',select('hfac:'+k,FAC.map((f,i)=>[String(i),f.name]),String(facOfHero(p)),'Faction of '+T)));
+    if(!lore())card.append(field('Faction',select('hfac:'+k,FAC.map((f,i)=>[String(i),f.name]),String(facOfHero(p)),'Faction of '+T)));
     card.append(field('Starts in',select('start:'+k,startOptions(p),startValue(p),'Where '+T+' sets out')));
     const n=st.setup.heroes.length;
     if(n>1)card.append(field('Group',select('group:'+k,groupOptions(n),p.group==null?'':String(p.group),'Heroes of one group ride as one company')));
@@ -179,7 +181,7 @@ function worldCard(id){const f=worldFacts(id),d=el('div','swcard'+(id===WORLD_ID
 function delveHint(s){if(prologueOf(s)!=='delve'||s.mode==='apart')return null;
   const row=s.hall?pickRow(s.hall,s.fac,new Set()):null;
   return el('div','dm sopen',row?'Opening: '+row.name+', a short delve near '+s.hall+' ('+row.boss+' keeps it), then home.':'Opening: a short delve near the hall, named once you pick a hall town.')}
-function render(){if(!root)return;const s=st.setup,page=el('div','spage'),halls=hallTowns(s.world,s.fac);if(s.hall&&!halls.includes(s.hall))delete s.hall; // another faction or map: back to the default
+function render(){if(!root)return;const s=st.setup,page=el('div','spage'),hallFac=lore()?null:s.fac,halls=hallTowns(s.world,hallFac);if(s.hall&&!halls.includes(s.hall))delete s.hall; // another faction or map: back to the default
   const head=el('div','shead');head.append(el('h2',null,'New World'),el('div','dm','Build the world, choose who plays whom, and the heroes are agent-played from the first minute. Nothing changes until you press Start.'));page.append(head);
 
   const sw=el('div','spresets sswitch');sw.setAttribute('role','group');sw.setAttribute('aria-label','How the heroes start');sw.append(el('span','slbl','Start'));
@@ -203,8 +205,8 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage'),halls=
   wsec.append(worldCard(s.world));
   const seed=el('input','sinput');seed.type='number';seed.min=0;seed.step=1;seed.value=String(s.seed);seed.dataset.f='seed';seed.setAttribute('aria-label','Seed');
   const sr=el('div','snamerow');sr.append(seed,btn('Reroll','seedroll',{},'sdice'));wrow.append(field('Seed',sr));
-  if(together()){wrow.append(field('Faction',select('fac',FAC.map((f,i)=>[String(i),f.name]),String(s.fac))));
-    if(halls.length>1)wrow.append(field('Hall',select('hall',[['',"The Tank's home town"]].concat(worldTowns(s.world,s.fac).map(t=>[t.name,t.label])),s.hall||'','The town where all five start, whatever their peoples: its region and its people')));
+  if(together()){if(!lore())wrow.append(field('Faction',select('fac',FAC.map((f,i)=>[String(i),f.name]),String(s.fac))));
+    if(halls.length>1)wrow.append(field('Hall',select('hall',[['',"The Tank's home town"]].concat(worldTowns(s.world,hallFac).map(t=>[t.name,t.label])),s.hall||'','The town where all five start, whatever their peoples: its region and its people')));
     const fn=el('input','sinput');fn.type='text';fn.maxLength=40;fn.placeholder='Fellowship name: chosen for you';fn.value=s.name||'';fn.dataset.f='fname';
     wrow.append(field('Fellowship name',fn))}
   wrow.append(field('Other heroes',select('others',[['full','The usual roster'],['none','None: the company and whoever the DM brings']],s.others==='none'?'none':'full','Whether the world has background heroes of its own')));
@@ -214,7 +216,7 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage'),halls=
 
   const fsec=el('section','ssec');
   if(together())fsec.append(el('h3',null,'The Fellowship'),el('div','dm','Five places, level 1, in their hall. Roles are fixed; each place takes the classes of its role.'));
-  else fsec.append(el('h3',null,'The heroes'),el('div','dm','Each hero sets out from its own start town: at level 1 in town, or seasoned to a region and out hunting there. Heroes of one group ride as one company; a hero with no group is alone. A company is of one faction.'));
+  else fsec.append(el('h3',null,'The heroes'),el('div','dm','Each hero sets out from its own start town: at level 1 in town, or seasoned to a region and out hunting there. Heroes of one group ride as one company; a hero with no group is alone.'+(lore()?'':' A company is of one faction.')));
   const cards=el('div','scards');for(const k of keys())cards.append(slotCard(k));fsec.append(cards);page.append(fsec);
 
   const dsec=el('section','ssec');dsec.append(el('h3',null,'The Dungeon Master'),mindControls('dm',s.dm),
@@ -262,7 +264,7 @@ function onChange(e){const t=e.target;if(!t||!t.dataset||!t.dataset.f)return;con
   else if(f.startsWith('group:')){const h=heroAt(f.slice(6));if(v)h.group=+v;else delete h.group}
   else if(f.startsWith('cls:'))heroAt(f.slice(4)).cls=v;
   else if(f.startsWith('arch:')){const h=heroAt(f.slice(5));if(v)h.archetype=v;else delete h.archetype}
-  else if(f.startsWith('race:')){const h=heroAt(f.slice(5));if(v)h.race=v;else delete h.race}
+  else if(f.startsWith('race:')){const h=heroAt(f.slice(5));if(v)h.race=v;else delete h.race;if(lore()){const r=RACES.find(x=>x.id===v);h.fac=r?r.fac:st.setup.fac}} // a people carries its lore tag
   else if(f.startsWith('mind:'))setModel(f.slice(5),v);
   else return;
   render()}

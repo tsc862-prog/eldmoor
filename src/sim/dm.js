@@ -42,7 +42,7 @@ import {MOBS} from '../data/mobs.js';
 import {homeOf} from '../data/races.js';
 import {tm} from '../data/traits.js';
 import * as D from '../data/adventures.js';
-import {S} from './state.js';
+import {S,loreSides,ownTown} from './state.js';
 import {log,gold} from './chronicle.js';
 import {pop} from './effects.js';
 import {maxHp,gainXp,moveTo,goHome,huntZone,xpNeed,getEpic} from './heroes.js';
@@ -187,7 +187,7 @@ function roadPoints(){const R=ZONES.map(()=>[]);
   return R}
 let ROADS=roadPoints();
 onWorld(()=>{ROADS=roadPoints()},()=>({dmRoads:ROADS})); // another map (#1013)
-const safeFor=(p,fac)=>!CITY.some(c=>c.fac!==fac&&dist(p,c.gate)<K.ENEMY_GATE);
+const safeFor=(p,fac)=>loreSides()||!CITY.some(c=>c.fac!==fac&&dist(p,c.gate)<K.ENEMY_GATE);
 // A point from a list: preferably 8-30 tiles from `near`, never near an enemy gate.
 function pickPt(list,near,fac){if(!list||!list.length)return null;let best=null;
   for(let i=0;i<30;i++){const p=pickA(list);if(!safeFor(p,fac))continue;const d=near?dist(p,near):15;if(d>=10&&d<=32)return{x:p.x,y:p.y};if(!best)best=p}
@@ -348,7 +348,7 @@ const partyZone=a=>a.party?a.party.zone:huntZone(a);
 function start(h,a,mem){const T=D.ADVENTURES[h.tpl],L=a,c=homeOf(L);
   const z=h.zone!=null?h.zone:partyZone(a),d=h.data;
   // where the deliveries go: another town of the faction, else the Crypt or a far waymark
-  if(T.scenes.some(s=>s.at==='dest')&&!d.dest){const towns=CITY.filter(t=>t.fac===L.fac&&t!==c);
+  if(T.scenes.some(s=>s.at==='dest')&&!d.dest){const towns=CITY.filter(t=>ownTown(t,L)&&t!==c);
     if(towns.length){const t=pickA(towns);d.dest={x:t.gate.x,y:t.gate.y};d.place=t.name}
     else{const p=pickPt(ROADS[z],c.gate,L.fac)||pickPt(ZPTS[z],c.gate,L.fac);if(p){d.dest=p;d.place='the '+ZONES[z]+' waymark'}}}
   if(T.scenes.some(s=>s.foe&&s.foe.named)||(T.scenes.some(s=>s.type==='choice'))){if(!d.beast){const types=Object.keys(MOBS).filter(k=>MOBS[k].z===z);const k=pickA(types.length?types:Object.keys(MOBS));
@@ -734,7 +734,7 @@ function serveStarved(fs){if(fs.length<2)return;
 // one posted job sized for a single hero, inside the lowest solo's level band and paid K.SOLO_PAY. Not posted at all with
 // no solo (the default together world and a world without a Fellowship draw no dice here and stay byte-identical). The
 // Fellowship's hall keeps its own ff job. Returns the hook or null.
-const soloHeroes=fac=>(S.companies||[]).filter(C=>isSolo(C)&&!C.slots&&C.fac===fac).map(C=>S.agents.find(a=>a.id===C.ids[0])).filter(a=>a&&a.player&&a.state!=='dead'&&a.lvl>=K.MIN_LVL);
+const soloHeroes=fac=>(S.companies||[]).filter(C=>isSolo(C)&&!C.slots&&(loreSides()||C.fac===fac)).map(C=>S.agents.find(a=>a.id===C.ids[0])).filter(a=>a&&a.player&&a.state!=='dead'&&a.lvl>=K.MIN_LVL);
 function soloHook(c,fo){const hs=soloHeroes(c.fac);if(!hs.length)return null;
   if(fo&&fo.town&&fo.town.name===c.name)return null;
   if(S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&h.solo))return null;

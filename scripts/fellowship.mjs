@@ -74,7 +74,7 @@ import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
 import {lazyOn, toolOptions, withLazyEnv, markLazy, lazyLine, searchCount, lazyRec} from './lazy-tools.mjs'; // AGENT_LAZY_TOOLS (issue #808)
-import {PLAYER_TOOLS} from '../src/data/player-tools.js';
+import {PLAYER_TOOLS, toolsFor} from '../src/data/player-tools.js';
 import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, tableHooks, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -90,7 +90,7 @@ export function fellowshipPrompt(st) {
     '- You already know your companions: do not introduce yourself again, and do not repeat a line or a question (each turn shows what was said lately). Talk to move the party forward: propose, vote, lead_to, or answer a question you were asked. The game refuses a line you already said.',
     '- Decisions that need everyone (take a job, go down into the Crypt, raid Kragmaw, split up) go through propose(kind, details) and vote(proposal_id, yes|no, reason). Vote on every open proposal (status.proposals, or an event) with a reason in your own voice.',
     '- The leader (status.party_leader) chooses where the party goes with lead_to; everyone else follows. If you are the leader, lead: pick hunting grounds and jobs that suit the weakest of you, from what the party has seen and been told. leave_party splits you off for a while and costs you the others\' trust; do it only for a reason your character would have.',
-    '- TABLE MODE: when status, look or wait show "table", the world is paused for a scene and every second counts. Act at once with scene_act(option, line), using one of the options listed, with a short line in your voice. Do not look around first. You may answer as soon as the scene opens; it happens on your turn. Then wait.',
+    '- TABLE MODE: when a scene waits on you (your tool results carry table_waits, or the header says a scene waits), the world is paused and every second counts. Act at once with scene_act(option, line), using one of the options listed, with a short line in your voice. Do not look around first. You may answer as soon as the scene opens; it happens on your turn. Then wait. Call scene_act ONLY then: a scene that has ended, one that is not at your turn yet, or one you already answered needs nothing from you (the refusal costs a call), and a wake line that begins "TABLE" or quotes a companion at the table is news about a scene, not a request to act in it.',
     '- Hardcore still holds: one life each. Protect each other.',
     '- A letter: pin a memory tagged "letter" (remember, then pin) and, if you fall, whoever takes your place in the Fellowship finds it. Only that one note outlives you.',
   ].join('\n');
@@ -102,7 +102,7 @@ export function companyPrompt(st, {name = '', size = 1} = {}) {
   const n = Math.max(0, (size || 1) - 1), who = name ? name : 'a company';
   if (!n) return ['', `COMPANY: you ride alone for now (${name ? name + ', ' : ''}a company of one). Others may ride with you later (invite, accept); until then your choices are yours.`,
     '- You already know who you are: do not introduce yourself again to someone you have met, and do not repeat a line. The game refuses a line you already said.',
-    '- TABLE MODE: when status, look or wait show "table", the world is paused for a scene. Act at once with scene_act(option, line), with a short line in your voice. Then wait.',
+    '- TABLE MODE: when a scene waits on you (table_waits in a tool result, or the header says so), the world is paused. Act at once with scene_act(option, line), with a short line in your voice. Then wait. Never call scene_act when no scene waits on you.',
     '- Hardcore still holds: one life.'].join('\n');
   return fellowshipPrompt(st).replace(/^FELLOWSHIP: .*$/m, `COMPANY: you ride with ${who}. ${n === 1 ? 'One companion shares' : n + ' companions share'} your road; who they are is in status.party, and how you see them in your persona and memories: play from them, in your own voice.`)
     .replace('whoever takes your place in the Fellowship finds it', 'whoever takes your place in the company finds it');
@@ -183,7 +183,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
     if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama, openai, huggingface or google); skipped`); await release(h.id); return}
-    sess.system = withSituationOrders(sess.system, rs.provider === 'ollama'); // the short variant for a local model (#531)
+    sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides); // the short variant for a local model (#531)
     if (rs.provider === 'ollama') {
       // a local member (issue #97 part 2): plays through scripts/local-agent.mjs, no key, cost 0
       if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
@@ -200,7 +200,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (o.note) out(st.name, o.note); compatAd = o.adapter;
     } else if (!env.ANTHROPIC_API_KEY) {skip(h, 'plays Claude but there is no ANTHROPIC_API_KEY in the environment or .env (use --env FILE, or --provider ollama); skipped'); await release(h.id); return}
     sess.runner = rs; saveSession(sess, {url: base});
-    const m = {id: h.id, name: st.name, world: h.world, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || isCompat(rs.provider), paid: isCompat(rs.provider), ad: isCompat(rs.provider) ? compatAd : null, turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
+    const m = {id: h.id, name: st.name, world: h.world, sides: st.sides, role: (st.fellowship || {}).role || h.role, sess, rs, local: rs.provider === 'ollama' || isCompat(rs.provider), paid: isCompat(rs.provider), ad: isCompat(rs.provider) ? compatAd : null, turns: 0, cost: 0, tools: 0, tin: 0, tout: 0, ended: null, scenes: 0,
       maxTurns: turnCap(turnsAsked, rs.provider, 6), fails: failTracker(pace.maxFails)};
     members.set(h.id, m); claim(h.id);
     out(m.name, `${m.role || 'member'}, level ${st.level} ${st.cls} | ${m.paid ? rs.model + ' (' + compatLabel(rs.provider) + ')' : m.local ? rs.model + ' (local, Ollama)' : rs.model + ' (effort ' + rs.effort + ')' + (followerModel ? ', ' + followerModel + ' between scenes when following' : '')} | ${m.local ? (sess.local && sess.local.history && sess.local.history.length ? 'resuming (' + sess.local.history.length + ' messages kept)' : 'new conversation') : sess.sessionId ? 'resuming ' + sess.sessionId : 'new session'} | ${capText(m.maxTurns)}`);
@@ -273,7 +273,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const ac = new AbortController(); aborts.add(ac); m.ac = ac; let rested = false;
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the turn resumes
     const grab = sceneGrab({due: () => m.due, abort: () => ac.abort(), onGrab: () => out(m.name, `[scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
-    const opened = !m.sess.sessionId, to = toolOptions(lazy, `${base}/mcp?hero=${m.id}&runner=${encodeURIComponent(runnerId)}`);
+    const opened = !m.sess.sessionId, to = toolOptions(lazy, `${base}/mcp?hero=${m.id}&runner=${encodeURIComponent(runnerId)}${m.sides === 'lore' ? '&sides=lore' : ''}`);
     const q = query({prompt, options: {
       abortController: ac,
       model, effort: m.rs.effort, systemPrompt: m.sess.system, resume: m.sess.sessionId || undefined,
@@ -358,7 +358,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (sc) {r = await sceneTurn({ask: chatAsk(chat, m.rs.model, {strict: m.paid}), call, sess: m.sess, scene: sc, on, strict: m.paid});
         if (!r.tools) out(m.name, `[scene: ${r.misses} answers were not one of ${sc.keys.join(', ')}; the free turn plays instead]`)}
       const answered = b0 && 'scene' in b0 && !sc; // in the scene but already acted: an ordinary turn
-      if (!r || !r.tools) {const r0 = r, free = !sc && !(scene && !answered); r = await localTurn({chat, call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w, Label) + (scene ? '' : resumeNote(m.turns === 0 || m.sess.rolled, m.sess.turns)) + briefText(b0), model: m.rs.model,
+      if (!r || !r.tools) {const r0 = r, free = !sc && !(scene && !answered); r = await localTurn({chat, tools: toolsFor(m.sides), call, sess: m.sess, prompt: memberPrompt(m.sess.turns, scene && !answered, w, Label) + (scene ? '' : resumeNote(m.turns === 0 || m.sess.rolled, m.sess.turns)) + briefText(b0), model: m.rs.model,
         toolTurns: scene ? Math.min(4, toolTurns) : toolTurns, on, interrupt: free && !m.due ? () => !!m.due : null}); // a free turn gives way to the member's own scene opening meanwhile (#515)
         if (r0) for (const k of ['modelCalls', 'in', 'out', 'cost', 'modelMs', 'ms']) r[k] += r0[k] || 0;
         // its scene opened mid-turn: the forced answer comes next, ahead of the other members' calls (issue #515)

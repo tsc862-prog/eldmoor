@@ -47,14 +47,14 @@ export function worldFacts(id){const sp=specOf(id);if(!sp)return null;
 
 // The towns of one faction in a world, for the Hall select: where each stands (its region) and whose it is.
 export function worldTowns(id,fac){const sp=specOf(id);if(!sp)return [];const m=model(id);
-  return (sp.towns||[]).filter(t=>t.fac===fac).map(t=>{
+  return (sp.towns||[]).filter(t=>fac==null||t.fac===fac).map(t=>{
     let region='';if(m){const c=m.CITY.find(x=>x.name===t.name),x=Math.floor(c?(c.x0+c.x1)/2:t.x0+t.w/2),y=Math.floor(c?(c.y0+c.y1)/2:t.y0+t.h/2),r=m.REGIONS[m.zone[y*m.w+x]];region=r?r.name:''}
     const people=raceName(t.race);
     return {name:t.name,region,people,label:[t.name,region,people].filter(Boolean).join(' · ')}})}
 
-// Where an apart hero may set out in a world: its towns of one faction and its regions with their low level, from the spec.
+// Where an apart hero may set out in a world: its towns of one faction (fac null: all of them, #1025) and its regions with their low level, from the spec.
 export function worldStarts(id,fac){const sp=specOf(id);if(!sp)return {towns:[],regions:[]};
-  return {towns:(sp.towns||[]).filter(t=>t.fac===fac).map(t=>t.name),regions:(sp.regions||[]).map(r=>({name:r.name,low:r.band?r.band[0]:null}))}}
+  return {towns:(sp.towns||[]).filter(t=>fac==null||t.fac===fac).map(t=>t.name),regions:(sp.regions||[]).map(r=>({name:r.name,low:r.band?r.band[0]:null}))}}
 
 // ---- the picture ----
 const imgC={}; // id -> {cv, s} painted once
