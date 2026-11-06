@@ -17,6 +17,7 @@ by `npm run art:packs` into `assets/packs/<set>/`, which is gitignored: only the
 | Universal LPC Spritesheet Character Generator (layers) | per layer, below | CC-BY-SA 3.0 (each layer also offered under the licences listed below) | https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator | the hero sheets (seven classes by six peoples) |
 | Ninja Adventure | pixel-boy | CC0 1.0 | https://pixel-boy.itch.io/ninja-adventure-asset-pack | not fetched (itch needs a browser click) |
 | Kenney Tiny Town, Tiny Dungeon, Roguelike/RPG pack | Kenney (kenney.nl) | CC0 1.0 | https://kenney.nl/assets | reviewed, not used (does not fit) |
+| [LPC] Terrains | bluecarrot16 (compiler), with Lanea Zimmerman (Sharm), Daniel Eddeland (Daneeklu), Richard Kettering (Jetrel), Zachariah Husiar (Zabin), Hyptosis, Casper Nilsson, Buko Studios, Nushio, ZaPaper, billknye, William Thompson, caeles, Redshrike, Bertram, Rayane Felix (RayaneFLX); see its CREDITS-terrain.txt | CC-BY-SA 3.0 or 4.0 (used under 3.0; the frozen lake is Buko Studios, CC-BY 3.0, adapted inside the share-alike set) | https://opengameart.org/content/lpc-terrains | fen grass, swamp water, mud, ash rock, snow, ice, and the borders between them |
 
 CC0 needs no credit; Kenney is listed anyway.
 
@@ -27,6 +28,14 @@ tiles `grass.png`, `dirt.png` and `water.png` by Leana Zimmerman (Sharm), CC-BY-
 the 2012 Liberated Pixel Cup base assets (https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles).
 The cut pieces are derivative works and stay under CC-BY-SA 3.0. The script is `scripts/art/packcut.mjs`.
 
+## LPC biome ground (#835)
+
+`tile:fen-grass`, `tile:swamp`, `tile:mud`, `tile:ash-rock`, `tile:snow`, `tile:ice` and every biome transition set (mud-fen, fen-swamp, snow-ice, ash-snow, fen-ash, ash-lava, the road sets, and the rest listed in `BIOME_PAIRS`) are cut from
+the atlas `terrain-v7.png` of "[LPC] Terrains" (https://opengameart.org/content/lpc-terrains, CC-BY-SA 3.0 and 4.0), by `scripts/art/packcut-biomes.mjs`;
+`tile:lava` and the lava and road edges also use the LPC base `lava.png` and `dirt.png` (Leana Zimmerman, above). The fen grass is the atlas Grass block
+with its hue and saturation shifted toward olive; no pixel is scaled. The pieces are derivative works and stay under CC-BY-SA 3.0. The pack's own credit
+file lists the authors of each underlying set: Sharm, Daneeklu, Jetrel, Zabin, Hyptosis, Casper Nilsson, Buko Studios (frozen lake, CC-BY 3.0), Nushio,
+ZaPaper, billknye, William Thompson, caeles, Redshrike, Bertram and RayaneFLX.
 ## LPC landmarks
 
 `landmark:crypt-mouth` is cut from the arch and brick course of `castlewalls.png` by Daniel Armstrong (HughSpectrum) and `landmark:lair` from
