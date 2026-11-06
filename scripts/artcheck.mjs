@@ -443,7 +443,7 @@ try{
       const re=await node('review.mjs',['--dir',join(tmp,'no-such-assets'),'--log',join(tmp,'none.log')]);ok(re.code===0&&/nothing waiting/.test(re.s),'art:review with no assets/incoming and no queue prints "nothing waiting"')}
     r=await node('accept.mjs',['--dir',dir,'--reject','tile:mud']);q=Q();ok(r.code===0&&q.rejected['tile:mud@32']===1&&!q.incoming['tile:mud@32'],'a rejected asset leaves the queue for a redraw');
     r=await node('accept.mjs',['--dir',dir,'tile:nope']);ok(r.code===2,'accepting an unknown id is refused');
-    const p5=P0();r=await daily(['--now','--date',days[d]]);q=Q();
+    const p5=P0();r=await daily(['--now','--date',days[d]],{ART_MAX_CALLS:'400'});q=Q();
     ok(S.posts.slice(p5).some(p=>p.seed===1775+7919),'the rejected asset is redrawn with a new seed');
     ok(Object.keys(q.incoming).length+checkIndex(man,dir).count===N,`--now finishes the manifest (${Object.keys(q.incoming).length} waiting + ${checkIndex(man,dir).count} accepted)`);
     // buildings and landmarks (#763) wait for an in-game look: refused without an art:preview record, taken with one

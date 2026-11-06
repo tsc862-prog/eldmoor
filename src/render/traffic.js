@@ -40,17 +40,24 @@ export function trafficEnts(S,inView,margin,out){const T=S.traffic;if(!T)return;
 
 export const isTraffic=e=>e.kind==='cart'||e.kind==='traveller'||e.kind==='guard';
 
-// Draw one at px,py (world units, feet). Returns nothing. shadow(x,y,w) is draw.js's.
-export function drawTrafficEnt(ctx,e,px,py,blink,shadow){
+// Add its shadow to draw.js's shadow path (#729): shadows lie under every sprite, or a walker's would fall across the boots
+// of a hero standing just behind it. A cart casts two, its own and the drover's.
+const oval=(ctx,x,y,w)=>{ctx.moveTo(x+w/2,y);ctx.ellipse(x,y,w/2,1.5,0,0,7)};
+export function trafficShadow(ctx,e,px,py){
+  if(e.kind==='cart'){const bw=cart(e.word||'salt',0).width/ART;oval(ctx,px,py,bw);oval(ctx,px+(e.face<0?-1:1)*bw*.5,py,figure('drover',0,0).width/ART);return}
+  oval(ctx,px,py,(e.kind==='guard'?figure('captain',townFac(e.town),0):figure(TRAVEL_ROLE[e.word]||'stranger',e.n%2,0)).width/ART)}
+
+// Draw one at px,py (world units, feet). Returns nothing.
+export function drawTrafficEnt(ctx,e,px,py,blink){
   const fr=e.moving?Math.floor(blink*(e.kind==='cart'?3:5)+(e.n||0))%2:0,flip=e.face<0;
   let o,bw;
   if(e.kind==='cart'){o=cart(e.word||'salt',fr);bw=o.width/ART;
-    shadow(px,py,bw);ctx.save();ctx.translate(px,0);if(flip)ctx.scale(-1,1);
+    ctx.save();ctx.translate(px,0);if(flip)ctx.scale(-1,1);
     ctx.drawImage(o,-bw*.45,py-o.height/ART,bw,o.height/ART);ctx.restore();
     // the drover walking at the cart's head
     const d=figure('drover',0,fr),dw=d.width/ART,dx=px+(flip?-1:1)*bw*.5;
-    shadow(dx,py,dw);ctx.save();ctx.translate(dx,0);if(flip)ctx.scale(-1,1);ctx.drawImage(d,-dw/2,py-d.height/ART,dw,d.height/ART);ctx.restore();return}
+    ctx.save();ctx.translate(dx,0);if(flip)ctx.scale(-1,1);ctx.drawImage(d,-dw/2,py-d.height/ART,dw,d.height/ART);ctx.restore();return}
   if(e.kind==='guard')o=figure('captain',townFac(e.town),fr);
   else o=figure(TRAVEL_ROLE[e.word]||'stranger',e.n%2,fr);
-  bw=o.width/ART;shadow(px,py,bw);ctx.save();ctx.translate(px,0);if(flip)ctx.scale(-1,1);
+  bw=o.width/ART;ctx.save();ctx.translate(px,0);if(flip)ctx.scale(-1,1);
   ctx.drawImage(o,-bw/2,py-o.height/ART,bw,o.height/ART);ctx.restore()}
