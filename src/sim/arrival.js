@@ -259,8 +259,8 @@ const DM_OPEN={
       '. What the table already shows: '+plain(sc.frame)+premise()+(sc.ctx.prologue&&PRO?PRO.about(companyById(sc.company)||slotted()):'')+' Write what they see and hear as they sit down (or set out): one or two short paragraphs. Hint at the premise through what can be seen; reveal none of your secrets; decide nothing for them.'})},
   onAll(){},
   live,
-  fill(sc,c){if(sc.ctx.prologue&&PRO){resolve(sc,c,{text:PRO.fillLine(companyById(sc.company)||slotted(),sc)+' '+plain(sc.frame),by:'scripted'});return}
-    resolve(sc,c,{text:pickH(sc.id,1,['The fire is low and the room smells of rain and old wood.','Outside, the gate bell marks the hour; inside, a bench scrapes as someone makes room.','Lamps along the road outside burn low, one already dark.'])+' '+plain(sc.frame),by:'scripted'})},
+  fill(sc,c){if(sc.ctx.prologue&&PRO){resolve(sc,c,{text:PRO.fillLine(companyById(sc.company)||slotted(),sc),by:'scripted'});return} // the frame is on the table already: the fill adds its own line only (#966)
+    resolve(sc,c,{text:pickH(sc.id,1,['The fire is low and the room smells of rain and old wood.','Outside, the gate bell marks the hour; inside, a bench scrapes as someone makes room.','Lamps along the road outside burn low, one already dark.']),by:'scripted'})},
   done(sc){sc.summaryDone=1},
 };
 const DM_ARRIVE={

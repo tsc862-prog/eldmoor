@@ -72,6 +72,7 @@ ok(pickRow(CITY[0].name, CITY[0].fac, new Set(PROLOGUES.filter(r => r.towns && r
   ok(S.places.some(p => p.id === s.place && p.kind === 'site'), 'it stands on the map');
   const L = SLT.slotHeroes(F); ok(L.every(a => Math.hypot(a.x - s.x, a.y - s.y) < 5), 'the company stands at the mouth');
   const sc = T.openScenes().find(x => x.kind === 'opening'), fr = JSON.stringify(sc.frame); ok(fr.includes('short walk from ' + hall) && sc.ctx.prologue, 'the frame is the scenario');
+  ok(until(() => (sc.calls || []).some(c => c.kind === 'frame' && c.done), 2000) && !/short walk from/.test(sc.calls.find(c => c.kind === 'frame').text), 'a scripted fill adds its own line, not the frame again (#966)');
   ok(!fr.includes(PROLOGUES.find(r => r.id === s.prologue).dm.slice(0, 30)), 'what lies behind it is the DM\'s alone');
   ok(until(() => kindOpen('crawl'), 20000), 'the crawl opens after the introductions, with no vote');
   ok(F.prologue.phase === 'below' && s.group && s.group.crawl, 'the company is below');
