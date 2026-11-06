@@ -14,7 +14,7 @@ export function companySpots(){const F=followed(),out=[];
   for(const C of companies()){const L=members(C).filter(a=>!a.hidden);if(!L.length)continue;
     let sx=0,sy=0;for(const a of L){sx+=a.x;sy+=a.y}const x=sx/L.length,y=sy/L.length;
     let r=0;for(const a of L)r=Math.max(r,Math.hypot(a.x-x,a.y-y));
-    out.push({C,x,y,r:Math.max(5,r+2.5),name:tagName(C,L),followed:C===F,fac:C.fac})}
+    out.push({C,x,y,r:Math.max(3,r+1.5),name:tagName(C,L),followed:C===F,fac:C.fac})}
   return out}
 
 export function drawWholeMap(ctx,cam,blink){
@@ -23,7 +23,7 @@ export function drawWholeMap(ctx,cam,blink){
   const put=[]; // tag boxes in world px, so two companies close together stack their tags
   spots.sort((a,b)=>(a.followed?1:0)-(b.followed?1:0)); // the followed one is drawn last, on top
   for(const s of spots){
-    const col=s.followed?MARK.sel:(FAC[s.fac]?FAC[s.fac].color:'#e8e8f0'),cx=s.x*T,cy=s.y*T,base=s.r*T;
+    const col=s.followed?MARK.sel:(FAC[s.fac]?FAC[s.fac].color:'#e8e8f0'),cx=s.x*T,cy=s.y*T,base=Math.min(Math.max(s.r*T,14*cam.dpr/cam.sc),44*cam.dpr/cam.sc); // a ring hugs the company: 14 to 44 screen px, never a town wide halo
     ctx.save();
     for(const k of [0,1]){ // two rings, one a beat behind
       const ph=(pulse+k*.5)%1,rr=base+ph*base*.35;ctx.globalAlpha=(s.followed?.95:.7)*(1-ph*.7);

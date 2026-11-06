@@ -10,8 +10,9 @@
 // Owned by world-builder (routines and reactions); names and sprites by
 // character-builder; lines by lore-keeper. Canon: docs/LORE.md, "Townsfolk".
 import {pickA} from '../core/rng.js';
+import {keep} from './kept.js';
 import {CITY,CRYPT,ZONES,dist} from '../world/map.js';
-import {solidAt} from '../world/passable.js';
+import {solidAt,standAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {RACES,racesOf,raceName} from '../data/races.js';
 import {ELITES} from '../data/mobs.js';
@@ -37,6 +38,7 @@ export const WALK=1.6,STROLL=1.1,GREET_R=2,BLESS_R=3,HEAR=7,COOL=30,URGENT=3,BUB
 // Private LCG: choosing lines, stroll points and pauses never perturbs the gameplay RNG.
 const SEED0=0x3c6ef372;let seed=SEED0;export const resetNpcSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('npcs',()=>seed,v=>{seed=v}); // saved with the world
 
 const fill=(s,p,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?p.name:k==='town'?p.town:ctx[k]!=null?String(ctx[k]):k)
   .replace(/\b([Aa]) (?=[AEIOUaeiou])/g,'$1n ');
@@ -71,7 +73,7 @@ export function ensureNpcs(){if(S.npcs)return;
   for(const c of CITY){
     const roles=(c.npcs||NPC_ROLES.map(x=>x.id)).map(npcRole).filter(Boolean);
     const race=RACES.find(x=>x.id===c.race)||racesOf(c.fac)[0]||RACES[0];
-    roles.forEach((R,i)=>{const post=c.spots[R.post]||c.spots.square||c.ah,home=homeAt(c,i,roles.length);
+    roles.forEach((R,i)=>{const post=c.spots[R.post]||c.spots.square||c.ah,home=standAt(...Object.values(homeAt(c,i,roles.length))); // never inside a building (a plan may stand pieces on the back-wall row)
       S.npcs.push({id:++S.uid,kind:'npc',role:R.id,title:R.title[c.fac]||R.title[0],name:raceName(race),race:race.id,fac:c.fac,town:c.name,
         skin:pickA(race.skin),hair:pickA(race.hair),x:home.x,y:home.y,home,post:{x:post.x,y:post.y},
         state:'home',shift:null,face:1,moving:false,chatCd:0,bubble:null,met:{},wait:0,stroll:null,errand:null,songCd:0,lastBark:''})})}}
