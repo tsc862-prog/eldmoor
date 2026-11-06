@@ -4,6 +4,7 @@
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
 // delegated click handler (initPanels) looks the hero up in S.agents and hands it
 // to the picker, which controls.js wires to select + follow.
+import {worldFill} from '../world/words.js';
 import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
@@ -215,7 +216,7 @@ function itemCard(it,cls){const d=el('div',cls||'itip');
   for(const f of it.affixes||[])d.append(el('div','ia',f));
   const z=zoneIdx(it.zone);if(z>=0)d.append(el('div','dm','Found in '+ZONES[z]));
   if(it.src)d.append(el('div','dm',it.src));
-  if(it.epic&&EPIC_ITEMS[it.name])d.append(el('div','if',EPIC_ITEMS[it.name].flavour));
+  if(it.epic&&EPIC_ITEMS[it.name])d.append(el('div','if',worldFill(EPIC_ITEMS[it.name].flavour)));
   if(it.over){const o=it.over,ds=itemDelta(it,o);
     d.append(el('div','dm','Replaced '+o.name+' (ilvl '+o.ilvl+')'+(ds.length?': '+ds.join(', '):'')))}
   return d}
@@ -223,10 +224,10 @@ function itemCard(it,cls){const d=el('div',cls||'itip');
 const invEntry=(a,i)=>a&&a.inv?a.inv.list[i]||null:null;
 function supplyCard(e,cls){const d=el('div',cls||'itip');
   if(e.kind==='use'&&USES[e.id]){const U=USES[e.id];d.append(el('div','in qf',e.id),el('div','dm',U.kind.charAt(0).toUpperCase()+U.kind.slice(1)+' · x'+e.n));
-    for(const [c,t] of useLines(e.id))d.append(el('div','is s-'+c,t));d.append(el('div','dm','Costs '+U.price+'g in town'),el('div','if',U.flavour))}
+    for(const [c,t] of useLines(e.id))d.append(el('div','is s-'+c,t));d.append(el('div','dm','Costs '+U.price+'g in town'),el('div','if',worldFill(U.flavour||'')))}
   else if(e.kind==='good'){d.append(el('div','in qp',e.id),el('div','dm',(MATERIALS[e.id]?'Material · ':'Trade good · ')+'x'+e.n));if(GOODS[e.id]||MATERIALS[e.id])d.append(el('div','is s-bn','Sells for about '+price(e.id)+'g each'))}
   else{const Q=QUEST_ITEMS[e.id];d.append(el('div','in gd',e.id),el('div','dm','Quest item'));
-    d.append(el('div','if',Q?Q.flavour:'Carried for a job; it is handed in when the job ends.'),el('div','dm','Cannot be sold, dropped or given.'))}
+    d.append(el('div','if',Q?worldFill(Q.flavour):'Carried for a job; it is handed in when the job ends.'),el('div','dm','Cannot be sold, dropped or given.'))}
   return d}
 const cardOf=(it,cls)=>isGear(it)?itemCard(it,cls):supplyCard(it,cls);
 const hoverItem=()=>{const a=cam.sel;if(!hov||!a||a.id!==hov.id)return null;return hov.inv!=null?invEntry(a,hov.inv):a.slots?a.slots[hov.slot]:null};

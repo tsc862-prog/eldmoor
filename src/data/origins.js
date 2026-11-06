@@ -14,6 +14,7 @@
 // Home hamlets per faction (index = faction). Concord villages sit in the hedged farmland
 // around Highgate; Warband camps and holds are strung along the ridges and gullies south of
 // Grimhold.
+import {WORDS} from '../world/words.js';
 export const HAMLETS=[
   ['Hollowmere','Wendell’s Ford','Thistledown','Larkhollow','Brackenby','Oldwick','Brinereach','Fallow Cross'],
   ['Skullrock','Red Gully','Gnashfang Hollow','Ironmaw','Bonepile','Scarhide Camp','Thornteeth','Grukk’s Ditch'],
@@ -68,15 +69,15 @@ export const GOAL_TEXT={
   avenge:'Slay {target}',
   avengeHero:'Avenge {victim} by slaying {target}',
   heirloom:'Recover the {target}',
-  heirloomCrypt:'Bring the {target} out of the Sunken Crypt',
+  heirloomCrypt:'Bring the {target} out of '+WORDS.crypt,
   heirloomBoss:'Tear the {target} from Kragmaw',
   pilgrimFar:'Walk the snows of {zone}',
-  pilgrimCrypt:'Stand at the mouth of the Sunken Crypt',
+  pilgrimCrypt:'Stand at the mouth of '+WORDS.crypt,
   ascend:'Reach level {need}',
   rival:'Out-level {target} of the {fac}',
   legend:'Slay Kragmaw the Cinder Wyrm',
   hoard:'Bank {need} gold',
-  delve:'Clear the Sunken Crypt',
+  delve:'Clear '+WORDS.crypt,
 };
 
 // Chronicle lines on completion per type (the coloured hero name comes first).
@@ -84,15 +85,15 @@ export const GOAL_DONE={
   avenge:' has kept the oath: {target} is dead.',
   avengeHero:'’s oath is kept: {target} lies dead and {victim} is avenged.',
   heirloom:' holds the {target} at last. The oath is kept.',
-  heirloomCrypt:' carries the {target} out of the Sunken Crypt. The oath is kept.',
+  heirloomCrypt:' carries the {target} out of '+WORDS.crypt+'. The oath is kept.',
   heirloomBoss:' tore the {target} from Kragmaw. The oath is kept.',
   pilgrimFar:' stands in the snows of {zone}, as sworn.',
-  pilgrimCrypt:' stands at the mouth of the Sunken Crypt, as sworn.',
+  pilgrimCrypt:' stands at the mouth of '+WORDS.crypt+', as sworn.',
   ascend:' reached level {need}, as sworn.',
   rival:' has out-levelled {target}. The oath is kept.',
   legend:' saw Kragmaw fall. The oath is kept, and a legend begins.',
   hoard:' has banked {need} gold, as sworn.',
-  delve:' walked out of the Sunken Crypt victorious, as sworn.',
+  delve:' walked out of '+WORDS.crypt+' victorious, as sworn.',
 };
 
 // An offered thread (#800): what an agent-played hero is given in place of a rolled oath, told as the past and never as a
@@ -102,13 +103,13 @@ export const THREAD_TEXT={
   avenge:'{name} has not forgotten {target}, and {target} is still out there.',
   avengeHero:'{name} carries a grudge: {victim} fell to {target}, and nobody has answered for it.',
   heirloom:'{name}’s family once held the {target}. It was lost, and they never stopped speaking of it.',
-  heirloomCrypt:'The {target} went down into the Sunken Crypt, and {name}’s people still speak of it.',
+  heirloomCrypt:'The {target} went down into '+WORDS.crypt+', and {name}’s people still speak of it.',
   heirloomBoss:'The {target} went into Kragmaw’s hoard, and {name}’s people still speak of it.',
   pilgrimFar:'{name} grew up on stories of the snows of {zone}.',
-  pilgrimCrypt:'{name} grew up on stories of the mouth of the Sunken Crypt.',
+  pilgrimCrypt:'{name} grew up on stories of the mouth of '+WORDS.crypt+'.',
   ascend:'{name} left home with something to prove.',
   rival:'{name} measures every day against {target} of the {fac}.',
   legend:'{name} was raised on tales of Kragmaw the Cinder Wyrm.',
   hoard:'{name} knows what it is to go without gold.',
-  delve:'{name} has heard what lies in the Sunken Crypt and cannot leave it alone.',
+  delve:'{name} has heard what lies in '+WORDS.crypt+' and cannot leave it alone.',
 };
