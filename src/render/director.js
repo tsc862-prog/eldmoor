@@ -6,9 +6,11 @@
 // What it does, a frame at a time:
 //   follow    the followed company, or the part of it riding with its leader. Position and zoom ease on a critically
 //             damped spring, so a move starts and stops softly and nothing overshoots.
-//   zoom      wide, so the world is the picture and people stand small in it. Scales sit on half steps: at 3440x1440 2 on the road
-//             (one screen pixel an art pixel), 2.5 at rest, 3.5 in a fight or a Table scene (draw.js hands over the cut). A fixed
-//             half step does not shimmer: the chunks scale rigidly and move by whole pixels; only a zoom in progress does.
+//   zoom      close: the view rests where a hero stands about a fifteenth of the window tall, on the road as in town, and goes
+//             closer for a fight or a Table scene (draw.js hands over the cut). It pulls out only for a beat: a few seconds as the
+//             company sets out, again every so often on a long road, then it eases back in. Scales sit on half steps: at
+//             3440x1440 4 at rest (two screen pixels an art pixel), 5 close, 3 on a beat. A fixed half step does not shimmer: the
+//             chunks scale rigidly and move by whole pixels; only a zoom in progress does.
 //   drift     after a few quiet seconds the view wanders slowly round the company; the amplitude eases in and out.
 //   sights    now and then, when the company is not busy, it cuts away to something worth seeing and back: a duel, a raid on
 //             the wyrm, a cart beset, a fight with an elite, another company's fight; failing those the wyrm in its lair, a
@@ -23,18 +25,20 @@ import {LANDMARKS,CITY} from '../world/map.js';
 import {followed,members,companies,leaderOf} from '../sim/company.js';
 
 export const DIR={
-  ROWS:45,                                 // tiles high on the road, rounded to a half step, never under scale 2 or the map's cover
-  REST:.5,CLOSE:1.5,                       // added to that scale at rest, and in a fight, a Table scene or on a sight
+  ROWS:22.5,                               // tiles high at rest, rounded to a half step, never under scale 2 or the map's cover
+  WIDE:1,CLOSE:1,                          // taken off that scale for a beat, added for a fight, a Table scene or a sight
+  BEAT_S:7,BEAT_GAP:50,                    // seconds of a pull-out on the road, and at least this long between two
   POS_S:1.3,FIGHT_POS_S:.9,ZOOM_S:1.9,     // spring times, in seconds
   MAX_PAN:26,                              // tiles a second at most: a longer way is a cut
   FAR:.8,                                  // a target more than this many view widths off is reached by a cut
   SIGHT_FAR:.35,                           // a sight (or the way back) this far off is a cut; nearer it eases over
   OUT_S:.38,IN_S:.6,ENTER_S:1.1,           // the dip to black and back, and the fade up on entering
-  CLUSTER:16,                              // tiles from the leader: further out rides apart from the shot
-  MARGIN_X:12,MARGIN_Y:9,                  // tiles round the people who must stay in frame
+  CLUSTER:16,NEAR:7,                       // tiles from the leader: further out rides apart from the shot; NEAR when they would not fit
+  MARGIN_X:10,MARGIN_Y:6,                  // tiles round the people who must stay in frame
   LEAD_S:1.4,LEAD_MAX:5,                   // how far ahead of a moving company the view looks (seconds of travel, tiles)
   DRIFT:2.6,DRIFT_AFTER:5,DRIFT_IN:9,      // tiles of wander, quiet seconds before it starts, seconds to reach it
   HOLD_MODE:2.5,                           // seconds a new pace must last before the zoom follows it (no pumping)
+  HOLD_IN:2,                               // seconds a closer framing must hold before the zoom goes in
   FIGHT_HOLD:4,                            // the view stays in this long after the last blow
   GAP:[60,120],FIRST:35,                   // seconds between sights, and before the first
   HOT_GAP:30,                              // a duel or a raid may come this soon after the last sight
@@ -50,8 +54,10 @@ const smooth=x=>x*x*(3-2*x);
 // Rest scales sit on half steps: 2 is one screen pixel an art pixel (ART 2). Below it the art would lose pixels; below the
 // cover the window would show past the map's edge.
 export const coverScale=(w,h)=>Math.max(w/(W*T),h/(H*T));
-export const roadScale=(w,h)=>Math.max(2,Math.round(h/(DIR.ROWS*T)*2)/2,Math.ceil(coverScale(w,h)*2-1e-6)/2);
-export const closeScale=(w,h)=>roadScale(w,h)+DIR.CLOSE;
+const floorScale=(w,h)=>Math.max(2,Math.ceil(coverScale(w,h)*2-1e-6)/2);
+export const restScale=(w,h)=>Math.max(floorScale(w,h),Math.round(h/(DIR.ROWS*T)*2)/2);
+export const wideScale=(w,h)=>Math.max(floorScale(w,h),restScale(w,h)-DIR.WIDE);
+export const closeScale=(w,h)=>restScale(w,h)+DIR.CLOSE;
 // One axis of the spring (critically damped, stable at any frame time).
 function damp(s,target,time,dt,maxV){const o=2/Math.max(.01,time),x=o*dt,e=1/(1+x+.48*x*x+.235*x*x*x);
   let c=s.p-target;if(maxV){const m=maxV*time;c=clamp(c,-m,m)}
@@ -62,22 +68,26 @@ function damp(s,target,time,dt,maxV){const o=2/Math.max(.01,time),x=o*dt,e=1/(1+
 export function createDirector(opts={}){
   const X={p:0,v:0},Y={p:0,v:0},Z={p:0,v:0}; // Z: the log of the scale, so a zoom reads even at any distance
   const d={t:0,seed:(opts.seed||0x9e3779b9)>>>0,fade:0,dip:null,sight:null,next:null,nextAt:DIR.FIRST,lastSight:-1e3,cool:new Map(),spot:null,sel:null,bias:0,
-    cx:null,cy:null,sx:0,sy:0,cvx:0,cvy:0,mode:'rest',modeWant:'rest',modeT:0,fightT:-1e3,quiet:0,driftA:0,fid:null,last:0,busy:false,scan:0};
+    cx:null,cy:null,sx:0,sy:0,cvx:0,cvy:0,beatTo:-1e3,beatAt:0,shotSc:0,shotT:0,mode:'rest',modeWant:'rest',modeT:0,fightT:-1e3,quiet:0,driftA:0,fid:null,last:0,busy:false,scan:0};
   const rnd=()=>{d.seed=(Math.imul(d.seed,1664525)+1013904223)>>>0;return d.seed/4294967296};
   const between=([a,b])=>a+(b-a)*rnd();
   const calm=()=>!!(opts.reduced&&opts.reduced());
   const still=()=>!!(opts.still&&opts.still());
 
   // ---- who the shot is about ----
-  function band(cam){const C=followed();d.fid=C?C.id:null;const all=C?members(C).filter(seen):[];
+  const fitOf=(L,w,h)=>{let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const a of L){x0=Math.min(x0,a.x);y0=Math.min(y0,a.y);x1=Math.max(x1,a.x);y1=Math.max(y1,a.y)}
+    return Math.min(w/((x1-x0+DIR.MARGIN_X)*T),h/((y1-y0+DIR.MARGIN_Y)*T))};
+  // Those the shot is about: the company with its leader; if they are too scattered to fit close, whoever is near the leader.
+  function band(cam,w,h){const C=followed();d.fid=C?C.id:null;const all=C?members(C).filter(seen):[];
     if(!all.length)return seen(cam.sel)?[cam.sel]:[];
-    const L=leaderOf(C),lead=seen(L)&&all.includes(L)?L:all[0];return all.filter(a=>Math.hypot(a.x-lead.x,a.y-lead.y)<=DIR.CLUSTER)}
+    const L=leaderOf(C),lead=seen(L)&&all.includes(L)?L:all[0],near=r=>all.filter(a=>Math.hypot(a.x-lead.x,a.y-lead.y)<=r),wide=near(DIR.CLUSTER);
+    return fitOf(wide,w,h)>=wideScale(w,h)?wide:near(DIR.NEAR)}
   // The shot on the company: {x, y, sc} in world units. Keeps the pace (road, rest, fight) with some hysteresis.
   function companyShot(w,h,dt,people){
     let n=0,x0=1e9,y0=1e9,x1=-1e9,y1=-1e9,fight=false,road=0,mx=0,my=0;
     const add=(x,y)=>{x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)};
     for(const a of people){n++;mx+=a.x;my+=a.y;add(a.x,a.y);
-      if(FIGHT[a.state]){fight=true;const t=a.target;if(t&&t.x!=null&&!t.hidden&&t.alive!==false&&Math.hypot(t.x-a.x,t.y-a.y)<14)add(t.x,t.y)}
+      if(FIGHT[a.state]){fight=true;const t=a.target;if(t&&t.x!=null&&!t.hidden&&t.alive!==false&&Math.hypot(t.x-a.x,t.y-a.y)<9)add(t.x,t.y)}
       if(ROAD[a.state]||a.moving)road++}
     if(n){const cx=mx/n,cy=my/n;if(dt>0&&d.cx!=null){const k=Math.min(1,dt*2);d.cvx+=((cx-d.cx)/dt-d.cvx)*k;d.cvy+=((cy-d.cy)/dt-d.cvy)*k}d.cx=cx;d.cy=cy;d.sx=(x0+x1)/2;d.sy=(y0+y1)/2}
     else{x0=x1=d.sx;y0=y1=d.sy;d.cvx=d.cvy=0}
@@ -86,10 +96,14 @@ export function createDirector(opts={}){
     if(want!==d.modeWant){d.modeWant=want;d.modeT=0}else d.modeT+=dt;
     if(want==='fight'||d.modeT>=DIR.HOLD_MODE)d.mode=want;
     d.busy=d.mode==='fight';d.quiet=d.mode==='rest'?d.quiet+dt:0;
-    const base=d.mode==='fight'?closeScale(w,h):roadScale(w,h)+(d.mode==='rest'?DIR.REST:0);
-    // everyone in frame: step down a half scale at a time, never past the cover
+    if(d.mode==='road'&&d.t>=d.beatAt&&!calm()){d.beatTo=d.t+DIR.BEAT_S;d.beatAt=d.t+DIR.BEAT_GAP} // a beat of the land, then back in
+    const base=d.mode==='fight'?closeScale(w,h):d.t<d.beatTo?wideScale(w,h):restScale(w,h);
+    // everyone in frame: step down a half scale at a time, never past the pull-out
     const need=Math.min(w/((x1-x0+DIR.MARGIN_X)*T),h/((y1-y0+DIR.MARGIN_Y)*T));
-    let sc=base;if(need<sc)sc=Math.max(coverScale(w,h),need>=2?Math.floor(need*2)/2:need);
+    let sc=base;if(need<sc)sc=Math.max(wideScale(w,h),Math.floor(need*2)/2);
+    // out at once so nobody leaves the frame, back in only once it has held: people milling in a fight must not pump the zoom
+    if(sc<d.shotSc||dt===0){d.shotSc=sc;d.shotT=0}else if(sc>d.shotSc&&(d.shotT+=dt)>=DIR.HOLD_IN){d.shotSc=sc;d.shotT=0}else if(sc===d.shotSc)d.shotT=0;
+    sc=d.shotSc;
     const a=calm()?0:clamp((d.quiet-DIR.DRIFT_AFTER)/DIR.DRIFT_IN,0,1);d.driftA+=(a-d.driftA)*Math.min(1,dt*.8);
     const lead=d.mode==='road'?DIR.LEAD_S:0,sp=Math.hypot(d.cvx,d.cvy),k=sp*lead>DIR.LEAD_MAX?DIR.LEAD_MAX/(sp*lead):1;
     return {x:(d.sx+d.cvx*lead*k+Math.sin(d.t*.134)*DIR.DRIFT*d.driftA)*T,y:(d.sy+d.cvy*lead*k+Math.sin(d.t*.103+1)*DIR.DRIFT*.6*d.driftA)*T,sc}}
@@ -110,7 +124,7 @@ export function createDirector(opts={}){
   function pickSight(hotOnly){const open=sights().filter(s=>(d.cool.get(s.key)||0)<=d.t&&(!hotOnly||s.hot));if(!open.length)return null;
     const top=Math.max(...open.map(s=>s.hot||0)),best=open.filter(s=>(s.hot||0)===top);return best[Math.floor(rnd()*best.length)]}
   function sightShot(w,h){const s=d.sight,p=s.at();if(p){s.x=p.x;s.y=p.y}else s.left=Math.min(s.left,1.2);
-    return {x:s.x*T,y:s.y*T,sc:s.wide?roadScale(w,h):closeScale(w,h)}}
+    return {x:s.x*T,y:s.y*T,sc:s.wide?wideScale(w,h):closeScale(w,h)}}
   const startSight=s=>{s.left=between(DIR.HOLD);const p=s.at();s.x=p?p.x:0;s.y=p?p.y:0;d.cool.set(s.key,d.t+DIR.COOL);d.lastSight=d.t;return s};
   function considerSights(dt,sceneOn){
     if(d.dip)return;
@@ -138,7 +152,7 @@ export function createDirector(opts={}){
     // the fade up on entering: the camera starts on its shot, in the dark
     enter(cam,w,h){d.sight=null;d.next=null;d.spot=null;d.sel=cam.sel;d.cvx=d.cvy=0;d.cx=d.cy=null;d.quiet=0;d.driftA=0;d.fade=1;d.bias=0;d.last=0;
       d.nextAt=d.t+DIR.FIRST;d.lastSight=d.t-DIR.HOT_GAP+DIR.FIRST*.5;d.dip={t:DIR.OUT_S,dark:true,into:DIR.ENTER_S};d.sx=(cam.camX||0)/T;d.sy=(cam.camY||0)/T;
-      d.mode=d.modeWant='rest';jump(keep(companyShot(w,h,0,band(cam)),w,h));write(cam,w,h)},
+      d.mode=d.modeWant='rest';d.beatTo=-1e3;d.beatAt=d.t+DIR.BEAT_GAP/2;jump(keep(companyShot(w,h,0,band(cam,w,h)),w,h));write(cam,w,h)},
     // the wheel: the viewer's nudge in or out, kept until the view is left
     nudge(n){d.bias=clamp(d.bias+n*.18,-.7,.7)},
     // a name over a head: the hovered hero, the selected hero and their company, the followed company
@@ -147,7 +161,7 @@ export function createDirector(opts={}){
       const dt=dtForced!=null?dtForced:d.last?Math.min(.1,Math.max(0,now-d.last)):1/60;d.last=now;d.t+=dt;
       if(cam.sel!==d.sel){d.sel=cam.sel;d.spot=seen(cam.sel)?{a:cam.sel,until:d.t+DIR.SPOT_S}:null} // the watcher picked someone
       if(d.spot&&d.t>d.spot.until)d.spot=null;
-      const people=band(cam);considerSights(dt,!!cut);
+      const people=band(cam,w,h);considerSights(dt,!!cut);
       if(d.next&&!d.dip){const n=d.next,was=d.sight;d.next=null;d.sight=n.sight;const t=keep(shotNow(w,h,0,cut,people),w,h);
         if(away(t,w)>DIR.SIGHT_FAR){d.sight=was;d.dip={t:0,go:n}}} // a far sight waits for the dark; a near one eases over
       let s=keep(shotNow(w,h,dt,cut,people),w,h);

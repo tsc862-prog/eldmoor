@@ -226,7 +226,7 @@ function riverside(c,tx,ty,t,d){const X=tx*U,Y=ty*U,h=hash(tx,ty,821),o=hash(tx,
     if(b==='tundra'){if(h<.4)pc(c,'floe',X+ox-2,Y+4+o*6)}
     else if(b==='ash'){if(h<.14){pc(c,'pebDarkS',X+ox-4,Y+2);rect(c,X+ox-3,Y+11,10,.5,'#e6f4f4')}}
     else if(b==='fen'){if(h<.3)pc(c,'lily',X+ox,Y+3+o*7);if(h<.1)pc(c,'lily',X+ox+6,Y+8)}
-    else if(h<.09)pc(c,'lily',X+ox,Y+3+o*7);else if(h<.14){pc(c,'pebGreyS',X+ox-4,Y+2);rect(c,X+ox-3,Y+11,10,.5,'#e6f4f4')}
+    else if(h<.09)pc(c,'lily',X+ox,Y+3+o*7);else if(h<.14){pc(c,'pebGreyS',X+ox-4,Y+2);rect(c,X+ox-3,Y+11,3,.5,'#c4e4ec');rect(c,X+ox+3,Y+11.5,2,.5,'#a4d4e4')}
     return}
   const nS=isW(tt(tx,ty+1)),nN=isW(tt(tx,ty-1));if(!(nS||nN)||(t!==G&&t!==FLOWER&&t!==SGRASS&&t!==MUD&&t!==SNOW&&t!==ROCK))return;
   const y=nS?Y+8:Y-2;

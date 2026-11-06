@@ -83,7 +83,7 @@ export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut,seen}=o,dk=G.
   cloudShadows(k,ox,oy,w,h,now);
   // the lights
   qn=0;
-  if(dk>0){let n=0;const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;glow(x,y,r,PERSON,a*night*.8,true)};
+  if(dk>0){let n=0;const low=Math.max(0,1-G.washA*4); /* no lantern yet while the low sun is up: on water pushed blue for the hour (sheen.js) it lit an electric patch round the company */ const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;glow(x,y,r,PERSON,a*night*.8*low,true)};
     for(const m of S.mobs){if(m.alive&&!m.hidden)lit(m,18,.3,6)}
     for(const a of S.agents){if(a.hidden||a.state==='dead')continue;if(a===sel||a.company!=null)lit(a,a===sel?56:48,.8,7);else lit(a,26,.42,7)}}
   for(const L of LIGHTS){const r=L.big?120:40;if(!inView(L.x*T,L.y*T,r))continue;const fl=flick(L.x*3.1+L.y,now);

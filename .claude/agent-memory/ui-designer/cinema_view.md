@@ -11,7 +11,7 @@ Cinema view (#979): `src/ui/cinema.js` (overlays, key C, enter/leave), `src/rend
 
 **How to apply:**
 - `.screen canvas{width:100%}` catches any canvas in an overlay: use a more specific rule.
-- Scale was first 4/6 and the coordinator judged it too close (chunky, heroes bigger than gates): 2 road, 2.5 rest, 3.5 fights at 3440. Half steps look clean by eye.
+- Scale history at 3440: 4/6 first, then 2/2.5/3.5 before #983 replanned the towns, then back close: 4 at rest, 5 close, 3 only for short beats (heroes about 100 px; the owner must see the close view first). Judge scale against the current towns. Half steps look clean by eye.
 - Eldmoor is 80 tiles wide, so at 3440 the cover floor is about 2.7 and the view nearly the whole map: a far company move there is a pan, not a cut. Test cuts at 1280x800 or with `DIR.SIGHT_FAR` low.
 - `DIR` is read live, so a browser test can try scales without a rebuild. Test the hall through the setup page (Opening: Straight to the hall): the default world scatters the company.
 - Browser checks that `import('/src/...')` from an eval: restart the spare vite after any edit, or the eval gets a second module instance (camera reads sc 1, the map centre). See [[scene-map-polish]].
