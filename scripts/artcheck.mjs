@@ -72,8 +72,8 @@ console.log('manifest and hooks');
   ok(!bad.length,`every id has a file per tier, e.g. ${man.assets[0].id} -> assets/${fileOf(man.assets[0].id,32)} and assets/${fileOf(man.assets[0].id,64)}`+(bad.length?': '+bad.map(a=>a.id):''));
   bad=man.assets.filter(a=>!TIERS.every(t=>sizeOf(a,t))||sizeOf(a,64)[0]!==2*sizeOf(a,32)[0]||sizeOf(a,64)[1]!==2*sizeOf(a,32)[1]);
   ok(!bad.length,`every asset has a size per tier, the 64 tier twice the 32 (${TIERS.join(', ')})`+(bad.length?': '+bad.map(a=>a.id):''));
-  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
-  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier`+(bad.length?': '+bad.map(a=>a.id):''));
+  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&!/^prop:canopy-/.test(a.id)&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
+  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier (a whole canopy tree, #834, is the exception)`+(bad.length?': '+bad.map(a=>a.id):''));
   const {ASSET_SPRITES}=await import('../src/render/sprites.js'),sp=man.assets.filter(a=>a.kind==='sprite');
   ok(sp.length&&sp.every(a=>ASSET_SPRITES[a.id]&&a.frames.cols===3&&a.frames.rows===4),`sprite sheets: 3 frames by 4 directions (${sp.length})`);
   const hero=sp.filter(a=>/^sprite:hero-/.test(a.id));ok(hero.length&&hero.every(a=>sizeOf(a,32)[0]/3===32&&sizeOf(a,32)[1]/4===48&&sizeOf(a,64)[0]/3===64&&sizeOf(a,64)[1]/4===96),`hero frames 32x48 at the 32 tier, 64x96 at 64 (${hero.length} classes)`);
@@ -462,8 +462,8 @@ try{
     ok(P0()-p6===3&&Object.keys(q.incoming).every(k=>/#alt1$/.test(k))&&S.posts.slice(p6).every(p=>p.seed>=2771),'complete manifest: alternates with new seeds (--max 3)');
     await previewAll(dir);const altKey=Object.keys(q.incoming)[0],before=checkIndex(man,dir);r=await node('accept.mjs',['--dir',dir,altKey]);
     {const ix=loadIndex(dir),id=altKey.split('#')[0];ok(r.code===0&&ix.assets[id].fromAlt===1&&before.count===N&&!checkIndex(man,dir).errs.length,'an accepted alternate replaces its asset')}
-    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
-    d++;const p7=P0();r=await daily(['--date','2026-12-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
+    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); d++;r=await daily(['--date','2027-01-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // a month's credits no longer cover two alternates of every asset (the manifest passed 100 assets, #834): the rest in the next month // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
+    d++;const p7=P0();r=await daily(['--date','2027-01-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all'+(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog())?'':' ('+(P0()-p7)+' calls; '+lastLog().slice(0,300)+')'));
     ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
     S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
 
@@ -924,4 +924,21 @@ async function townProbe(){
   {const L=LP.find(p=>p.id==='landmark:lair');if(L)ok(L.rot===({W:0,N:1,E:2,S:3}[L.L.opening]||0),`the lair's nest faces its mouth (${L.L.opening}, ${L.rot} quarter turns)`)}
   for(const id of mine)A.setAssetPixels(id,null);
   ok(same(render(),off),'fixtures removed: the procedural towns and landmarks are back, pixel for pixel');
+  // the buildings cut from the LPC kits (#833): every committed one fits the plans of this world, credits its set, and stands
+  // only over ground nobody walks; the renderer draws one only on the footprint and door it was cut for, and it may stand
+  // taller than its box (the rise is the image, and the chunk tests must follow it)
+  {const idx=JSON.parse(readFileSync(new URL('../assets/index.json',import.meta.url),'utf8')).assets,bad=[];let n=0;
+    for(const c of CITY)for(const b of c.buildings){const a=idx[`building:lpc-${D.townStyle(c)}-${b.piece}@${RT}`];if(!a){bad.push(`${c.name}: no cut ${b.piece}`);continue}n++;
+      if(a.source!=='lpc-base'||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
+      if(a.foot[0]!==b.box[2]||a.foot[1]!==b.box[3]||a.door[0]!==b.door[0]-b.box[0]||a.door[1]!==b.door[1]-b.box[1])bad.push(`${c.name}: ${a.id} cut for ${a.foot} door ${a.door}`);
+      if(a.w!==b.box[2]*RT)bad.push(`${a.id}: ${a.w} wide on a ${b.box[2]} tile footprint`);
+      const rise=Math.ceil(a.h/RT-b.box[3]);for(let j=1;j<=rise;j++)for(let i=0;i<b.box[2];i++){const tx=b.box[0]+i,ty=b.box[1]-j;
+        if(ty>c.y0&&!c.buildings.some(q=>tx>=q.box[0]&&tx<q.box[0]+q.box[2]&&ty>=q.box[1]&&ty<q.box[1]+q.box[3]))bad.push(`${c.name}: ${a.id} rises over walkable ${tx},${ty}`)}}
+    ok(n>0&&!bad.length,`${n} buildings of this world have an LPC cut that fits their footprint and door, credited, rising over nothing walkable`+(bad.length?': '+bad.slice(0,4).join('; '):''));
+    const c=CITY[0],b=c.buildings.find(q=>q.piece==='hall'),id=`building:lpc-${D.townStyle(c)}-hall`,w=b.box[2]*RT,h=(b.box[3]+1)*RT,hex=new Array(w*h).fill('#123456');
+    const lay=(foot,door)=>{A.setAssetPixels(id,{w,h,hex});Object.assign(A.assetEntry(id),{foot,door,spots:{flag:[w/2,4]}})};
+    lay([b.box[2],b.box[3]],[b.door[0]-b.box[0],b.door[1]-b.box[1]]);const cut=render(),top=(b.box[1]-1)*U,halls=CITY.filter(t=>D.townStyle(t)===D.townStyle(c)).map(t=>t.buildings.find(q=>q.piece==='hall').box),d3=diffs(cut,off,(x,y)=>halls.some(q=>x>=q[0]&&x<q[0]+q[2]&&y>=q[1]-1&&y<q[1]+q[3]));
+    ok(d3.n>0&&!d3.out&&Math.abs(TA.pieceSpot(c,b,'flag')[1]-(top+4*U/RT))<1e-6,`a cut hall stands on its footprint and rises one tile over the wall behind it (${d3.n} pixels), and says where its flag goes`);
+    lay([b.box[2]+1,b.box[3]],[0,0]);ok(same(render(),off)&&TA.pieceSpot(c,b,'flag')===null,'a cut made for another footprint is not stretched: the procedural form stays');
+    A.setAssetPixels(id,null);ok(same(render(),off),'and with no cut the procedural town is back, pixel for pixel')}
   ok(!Tr.terrainArt()&&mapHash()===m0,`${process.env.ELDMOOR_WORLD||'eldmoor'}: chunks back on the procedural grid, the map hash never moved`)}

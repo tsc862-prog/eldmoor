@@ -9,6 +9,7 @@ import {SPEED} from '../world/tiles.js';
 import {standAt} from '../world/passable.js';
 import {pathLeg,pathReached,pathStep,clearLine,HOLD,DONE} from './path.js'; // paths, not straight lines (#794)
 import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
+import {cryptOfHero} from './crypts.js';
 import {assignRace,homeOf} from '../data/races.js';
 import {FAC,genName} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -293,7 +294,7 @@ export function updAgent(a,dt){
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;if(d>r){moveTo(a,b.x,b.y,dt,2.8);break}a.moving=false;
     if(b.target&&b.target.kind==='hero')priestHeal(a,[b.target,a,...partyMates(a)]);
     {const mv=fightMoves(a,b,[a,...partyMates(a)],a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,b);a.cd=1.1}}break}
-  case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx,D=a.siteIn!=null&&a.siteAt||CRYPT; // a.siteAt: the mouth of a DM-made site a background party gathers at (sim/sites.js, #642)
+  case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx,D=a.siteIn!=null&&a.siteAt||cryptOfHero(a)||CRYPT; // a.siteAt: the mouth of a DM-made site a background party gathers at (sim/sites.js, #642)
     moveTo(a,D.x+(k%3-1)*.9,D.y+.6+Math.floor(k/3)*.7,dt,2.6);break}
   case 'raid':{if(!boss.alive){a.raid=false;goHome(a);break}
     if(a.hp<mh*RAID_FLEE&&rnd()<dt*2){a.raid=false;a.target=null;pop(a.x,a.y-.6,'RETREAT','#ffd070');log(a,' broke from the raid on ',{t:'Kragmaw',c:'gd'},' wounded and fled the lair.');goHome(a);break} // live to raid again
