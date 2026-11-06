@@ -5,7 +5,8 @@
 //   stalls           in the open ground of the plaza, awnings up and a keeper at them in market hours; shut (a covered
 //                    table) at night and in the rain.
 //   guards           two at the gate on the wall tiles either side and one walking the wall opposite it. Render only:
-//                    no patrol or gate logic here (slice 5, #796 owns the roads).
+//                    no patrol or gate logic here (slice 5, #796 owns the roads). Role `guard`: sheets by people when the index has them
+//                    (scripts/art/lpc-townsfolk.mjs; no sim role, nobody is staffed), else the pixel sprite below.
 //   doors            lamps lit at dusk, the forge glowing; the night pass gives them their light.
 //   flags            a pennant in the faction colour on the hall, waving with the wind.
 // Plus the critters (critters.js) and footprints (footprints.js). Everything keeps its own state, a handful of numbers
@@ -15,8 +16,9 @@ import {CITY} from '../world/map.js';
 import {solidAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {npcRole} from '../data/npcs.js';
+import {RACES,racesOf} from '../data/races.js';
 import {U as T,PROC_SCALE,ART} from './tile.js';
-import {npcSprite,worldSprite,sprite} from './sprites.js';
+import {npcSprite,worldSprite,sprite,sheetFrame} from './sprites.js';
 import {MARK} from './palette.js';
 import {hash} from '../core/rng.js';
 import {F,frame,inTiles,skyAt,WET,WIND,ramp,lamps} from './life.js';
@@ -31,6 +33,7 @@ const GOODS=[['#c8402a','#e8b038','#7a9a3a'],['#4a7ab0','#e8e0c8','#a04a8a'],['#
 const LAY=new Map();
 function layout(c,ci){let L=LAY.get(c);if(L)return L;
   L={c,ci,chim:[],doors:[],stalls:[],guards:[],flag:null};
+  const race=(RACES.find(x=>x.id===c.race)||racesOf(c.fac)[0]||RACES[0]).id; // the town's people, as sim/npcs.js staffs it
   const open=(x,y)=>x>c.x0&&x<c.x1&&y>c.y0&&y<c.y1&&!solidAt(x,y);
   const doorSet=c.buildings.map(b=>b.door);
   for(const b of c.buildings){const [dx,dy]=b.door,[bx,by]=b.draw||b.box;
@@ -50,26 +53,28 @@ function layout(c,ci){let L=LAY.get(c);if(L)return L;
   for(const q of cand){if(L.stalls.length>=2)break;if(L.stalls.every(s=>Math.abs(s.sx-q.x)>=3||Math.abs(s.sy-q.y)>=3)){
     const i=L.stalls.length,k=KEEPERS[Math.floor(hash(q.x,q.y,5)*KEEPERS.length)];
     L.stalls.push({sx:q.x,sy:q.y,x:q.x+1,y:q.y+.95,kind:'deco',cx:q.x+1,goods:GOODS[Math.floor(hash(q.x,q.y,9)*GOODS.length)],
-      kp:{role:k,fac:c.fac,id:ci*10+i},paint:paintStall,town:L,open:0})}}
+      kp:{kind:'npc',role:k,fac:c.fac,race,id:ci*10+i},paint:paintStall,town:L,open:0})}}
   // guards: a pair on the wall tiles flanking the gate, one walking the wall opposite
   const side=c.gateSide,along=side==='E'||side==='W',gxs=gate.map(g=>g[0]),gys=gate.map(g=>g[1]);
   const flank=along?[[gxs[0],Math.min(...gys)-1],[gxs[0],Math.max(...gys)+1]]:[[Math.min(...gxs)-1,gys[0]],[Math.max(...gxs)+1,gys[0]]];
-  flank.forEach(([x,y],i)=>L.guards.push({kind:'deco',x:x+.5,y:y+(along?.8:.85),post:true,face:along?(side==='E'?-1:1):(i?-1:1),fr:0,kp:{role:'captain',fac:c.fac,id:ci*10+3+i},paint:paintGuard,town:L,torch:true}));
+  flank.forEach(([x,y],i)=>L.guards.push({kind:'deco',x:x+.5,y:y+(along?.8:.85),post:true,face:along?(side==='E'?-1:1):(i?-1:1),dir:0,fr:0,kp:{kind:'npc',role:'guard',fac:c.fac,race,id:ci*10+3+i},paint:paintGuard,town:L,torch:true}));
   const opp=OPPOSITE[side],horiz=opp==='N'||opp==='S',len=(horiz?c.x1-c.x0:c.y1-c.y0)-2;
   L.walk={opp,horiz,len,x0:c.x0+1,y0:c.y0+1,x1:c.x1,y1:c.y1,off:hash(ci,3,8)*40};
-  L.walker={kind:'deco',x:0,y:0,face:1,fr:0,walk:true,kp:{role:'captain',fac:c.fac,id:ci*10+5},paint:paintGuard,town:L,torch:true};
+  L.walker={kind:'deco',x:0,y:0,face:1,dir:2,fr:0,col:0,walk:true,kp:{kind:'npc',role:'guard',fac:c.fac,race,id:ci*10+5},paint:paintGuard,town:L,torch:true};
   LAY.set(c,L);return L}
 
+const WALK=[1,0,2,0]; // sheet columns of a walk cycle
 // Where the wall-walker is at time t: back and forth along the wall, pausing at each end (a triangle with plateaus).
 function placeWalker(L,t){const w=L.walk,sp=.55,pause=3,leg=w.len/sp,cyc=2*(leg+pause),u=(t+w.off)%cyc;let s,dir;
   if(u<leg){s=u*sp;dir=1}else if(u<leg+pause){s=w.len;dir=0}else if(u<2*leg+pause){s=w.len-(u-leg-pause)*sp;dir=-1}else{s=0;dir=0}
   const g=L.walker;g.moving=dir!==0;if(dir)g.face=dir;
   // the wall tiles run from a corner; stand a little inside the middle of the wall tile, feet at its lower edge
   if(w.horiz){g.x=w.x0+.5+s;g.y=(w.opp==='N'?L.c.y0:L.c.y1)+.78}else{g.x=(w.opp==='W'?L.c.x0:L.c.x1)+.5;g.y=w.y0+s+.9;g.face=g.face||1}
-  g.fr=g.moving?Math.floor(F.now*5)&1:0}
+  g.fr=g.moving?Math.floor(F.now*5)&1:0;g.col=g.moving?WALK[Math.floor(F.now*5)&3]:0;g.dir=w.horiz?(g.face<0?1:2):dir<0?3:dir>0?0:g.dir}
 
 // ---- painting the pieces that stand on the ground (y-sorted with everyone) ----
-function person(ctx,px,py,kp,fr,face,alpha){const s=npcSprite(kp,fr),o=worldSprite(s),sw=s.width*PROC_SCALE,sh=s.height*PROC_SCALE,ow=1/ART;
+function person(ctx,px,py,kp,fr,face,alpha){const G=sheetFrame(kp,0,0);if(G){const w=G.fw/ART,h=G.fh/ART;ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-w/2,py-h,w,h);return}
+  const s=npcSprite(kp,fr),o=worldSprite(s),sw=s.width*PROC_SCALE,sh=s.height*PROC_SCALE,ow=1/ART;
   if(alpha<1)ctx.globalAlpha=alpha;
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,sw/2,1.5,0,0,7);ctx.fill();
   ctx.save();ctx.translate(px,0);if(face<0)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-ow,py-sh-ow,o.width/ART,o.height/ART);ctx.restore();ctx.globalAlpha=1}
@@ -77,7 +82,9 @@ function person(ctx,px,py,kp,fr,face,alpha){const s=npcSprite(kp,fr),o=worldSpri
 const GUARD=[['...SSS..T','..SSSSS.P','..SFFFS.P','..SFFFS.P','...FFF..P','.SBBBBBSP','.SBBABBSP','.SBBBBBSP','..BBBBB.P','..DDDDD.P','..DD.DD.P','..KK.KK..'],
   ['...SSS..T','..SSSSS.P','..SFFFS.P','..SFFFS.P','...FFF..P','.SBBBBBSP','.SBBABBSP','.SBBBBBSP','..BBBBB.P','..DDDDD.P','...DDD..P','...KKK...']];
 function guardSprite(fac,fr){const f=FAC[fac]||FAC[0];return sprite('guard'+fac+fr,GUARD[fr],{S:'#b8c0d0',F:f.skin[0],B:f.color,A:f.dark,D:'#3a3430',K:'#1a1614',P:'#7a5a3a',T:'#e8ecf4'})}
-function paintGuard(ctx,px,py,blink,e){const s=guardSprite(e.town.c.fac,e.fr||0),o=worldSprite(s),sh=s.height*PROC_SCALE,ow=1/ART;
+function paintGuard(ctx,px,py,blink,e){const G=sheetFrame(e.kp,e.dir,e.col||0);
+  if(G){const w=G.fw/ART,h=G.fh/ART;ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,8,1.5,0,0,7);ctx.fill();ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-w/2,py-h,w,h);return}
+  const s=guardSprite(e.town.c.fac,e.fr||0),o=worldSprite(s),sh=s.height*PROC_SCALE,ow=1/ART;
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,s.width*PROC_SCALE*.4,1.5,0,0,7);ctx.fill();
   ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-ow,py-sh-ow,o.width/ART,o.height/ART);ctx.restore()}
 // A stall: posts, a striped awning in the faction colour, a table with goods; closed it is a covered table.

@@ -1,5 +1,6 @@
 {
-  "about": "Deterministic layer choices for the LPC townsfolk sheets (#832): one sheet per townsfolk role of data/npcs.js (NPC_ROLES) and per people of data/races.js (the people's head, skin and hair come from lpc-heroes.json, so a Warband town's folk are as green as its heroes), composed by scripts/art/lpc-townsfolk.mjs with the #809 pipeline (scripts/art/lpc-heroes.mjs). Same layer syntax as lpc-heroes.json plus: `fac` (the layer only for that faction), and a `variant` given as {\"0\": a, \"1\": b} (one per faction). `tint` recolours the layer to the faction key ramp, as the heroes' tabard. Townsfolk carry no weapon but the tools of a trade, and wear the cloth of their work, so a role reads by its clothes at 1x and never as one more hero.",
+  "about": "Deterministic layer choices for the LPC townsfolk sheets (#832): one sheet per townsfolk role of data/npcs.js (NPC_ROLES) and per people of data/races.js (the people's head, skin and hair come from lpc-heroes.json, so a Warband town's folk are as green as its heroes), composed by scripts/art/lpc-townsfolk.mjs with the #809 pipeline (scripts/art/lpc-heroes.mjs). Same layer syntax as lpc-heroes.json plus: `fac` (the layer only for that faction), and a `variant` given as {\"0\": a, \"1\": b} (one per faction). `tint` recolours the layer to the faction key ramp, as the heroes' tabard. Townsfolk carry no weapon but the tools of a trade, and wear the cloth of their work, so a role reads by its clothes at 1x and never as one more hero. `renderOnly` roles are drawn by the renderer but staffed by nobody in the sim (the town guards of render/townlife.js), so data/npcs.js does not list them. `frame` {w, h, crop, stand} is a bigger frame than the 32x48 of a figure, for what reaches past it (the guard's spear); the feet stay on its bottom row. `stand` {sheet row: [LPC row, LPC column]} takes a row's stand pose from another LPC frame: the walk carries a spear level, the thrust's last frame holds it upright, so a guard at his post stands with it upright.",
+  "renderOnly": ["guard"],
   "roles": {
     "innkeeper":     {"body": "female", "layers": [
       {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "brown"}, {"def": "feet_boots", "variant": "brown"},
@@ -36,6 +37,11 @@
       {"def": "torso_clothes_corset", "variant": "red"}, {"def": "torso_clothes_blouse", "variant": "white"}, {"def": "hair_braid", "variant": "@hair"}, {"def": "hat_cap_feather", "variant": "red"}]},
     "stranger":      {"body": "male", "layers": [
       {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "black"}, {"def": "feet_boots", "variant": "black"},
-      {"def": "torso_jacket_trench", "variant": "dark gray"}, {"def": "hat_hood_cloth", "variant": "charcoal"}]}
+      {"def": "torso_jacket_trench", "variant": "dark gray"}, {"def": "hat_hood_cloth", "variant": "charcoal"}]},
+    "guard":         {"body": "male", "frame": {"w": 64, "h": 64, "crop": [0, 0], "stand": {"0": [6, 3], "3": [4, 3]}}, "layers": [
+      {"def": "body"}, {"def": "@head"}, {"def": "legs_pants", "variant": "charcoal"}, {"def": "feet_boots", "variant": "black"},
+      {"def": "torso_chainmail", "variant": "gray"}, {"def": "torso_jacket_tabard", "variant": "red", "tint": true},
+      {"def": "hat_helmet_norman", "variant": "steel", "fac": 0}, {"def": "hat_helmet_barbarian", "variant": "steel", "fac": 1},
+      {"def": "weapon_polearm_spear", "variant": "steel"}]}
   }
 }

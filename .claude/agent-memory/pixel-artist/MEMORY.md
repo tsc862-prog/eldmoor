@@ -23,3 +23,4 @@
 - [Townsfolk sheets](townsfolk.md) — #832 npc role x people LPC sheets, npcSheetId lookup, staging shots, python3 stub trap
 - [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
+- [LPC guards and critters](lpcguards.md) — #830 guard role, spear pose, which LPC animals licence refuses, stand-ins, staging traps

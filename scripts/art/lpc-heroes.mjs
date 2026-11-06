@@ -41,7 +41,9 @@ function csv(text){const rows=[];let row=[],f='',q=false;
 let creditRows=null;
 function creditsFor(file){
   if(!creditRows){const r=csv(fs.readFileSync(path.join(REPO,'CREDITS.csv'),'utf8')),h=r[0];
-    creditRows=r.slice(1).filter(x=>x[0]).map(x=>({file:x[0],notes:x[1],authors:x[2],licenses:x[3],urls:x.slice(4,19).filter(Boolean)}))}
+    creditRows=r.slice(1).filter(x=>x[0]).map(x=>{ // a few rows have notes with unquoted commas: the licences are the first column from the fourth on that names one, the authors the one before
+      const l=Math.max(3,x.findIndex((c,i)=>i>=3&&/^\s*(CC0|CC-BY|OGA-BY|GPL)/.test(c)));
+      return {file:x[0],notes:x.slice(1,l-1).map(s=>s.trim()).join(', '),authors:x[l-1],licenses:x[l],urls:x.slice(l+1,l+16).filter(Boolean)}})}
   // the longest row whose filename is the layer file or one of its folders
   let best=null;for(const c of creditRows){if(file===c.file||file.startsWith(c.file+'/')||file.startsWith(c.file+'.'))if(!best||c.file.length>best.file.length)best=c}
   return best}
@@ -105,9 +107,9 @@ function frame(layers,r,c){const d=new Uint8Array(FS*FS*4);
 
 // The 96x192 sheet of a class.
 export function sheetOf(built,cfgAll){
-  const F=cfgAll.frames,[cx,cy]=F.crop,W=32*F.cols.length,H=48*F.rows.length,d=new Uint8Array(W*H*4);
-  F.rows.forEach((r,ri)=>F.cols.forEach((c,ci)=>{const fr=frame(built.layers,r,c);
-    for(let y=0;y<48;y++)for(let x=0;x<32;x++){const o=((cy+y)*FS+cx+x)*4;if(fr[o+3]<128)continue;const q=((ri*48+y)*W+ci*32+x)*4;d[q]=fr[o];d[q+1]=fr[o+1];d[q+2]=fr[o+2];d[q+3]=255}}));
+  const F=cfgAll.frames,[cx,cy]=F.crop,FW=F.w||32,FH=F.h||48,W=FW*F.cols.length,H=FH*F.rows.length,d=new Uint8Array(W*H*4); // F.w, F.h: a frame bigger than a figure (a guard's spear)
+  F.rows.forEach((r,ri)=>F.cols.forEach((c,ci)=>{const st=!ci&&F.stand&&F.stand[ri],fr=st?frame(built.layers,st[0],st[1]):frame(built.layers,r,c); // F.stand: another LPC frame [row, col] as a row's stand pose
+    for(let y=0;y<FH;y++)for(let x=0;x<FW;x++){const o=((cy+y)*FS+cx+x)*4;if(fr[o+3]<128)continue;const q=((ri*FH+y)*W+ci*FW+x)*4;d[q]=fr[o];d[q+1]=fr[o+1];d[q+2]=fr[o+2];d[q+3]=255}}));
   return {w:W,h:H,data:d}}
 
 // Opaque bounding box over every frame used of a composed class (to set the crop).

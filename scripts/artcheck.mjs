@@ -394,7 +394,17 @@ try{
       ok(SPR.npcSheetId('smith','ashfolk')==='sprite:npc-smith-ashfolk'&&SPR.npcSheetId('smith','tarrow')==='sprite:npc-smith'&&SPR.npcSheetId('bard','ashfolk')===null,'a townsperson picks the role sheet of the people, then of the role, else nothing');
       AS.setAssetPixels('sprite:npc-smith',null);AS.setAssetPixels('sprite:npc-smith-ashfolk',null);
       {const {NPC_ROLES,WANDER_ROLES}=await import('../src/data/npcs.js'),cfg=JSON.parse(readFileSync('scripts/art/lpc-townsfolk.json','utf8'));
-        ok([...NPC_ROLES,...WANDER_ROLES].every(R=>cfg.roles[R.id])&&Object.keys(cfg.roles).length===NPC_ROLES.length+WANDER_ROLES.length,'lpc-townsfolk.json has a look for every role of data/npcs.js and no other');}}}
+        ok([...NPC_ROLES,...WANDER_ROLES].every(R=>cfg.roles[R.id])&&Object.keys(cfg.roles).length===NPC_ROLES.length+WANDER_ROLES.length+cfg.renderOnly.length&&cfg.renderOnly.every(id=>cfg.roles[id]&&![...NPC_ROLES,...WANDER_ROLES].some(R=>R.id===id)),'lpc-townsfolk.json has a look for every role of data/npcs.js, and otherwise only for its render-only roles');}
+      // the town guards (#830): a render-only role, no sim row; a frame bigger than a figure comes out of the sheet whole, and no sheet means the pixel sprite
+      {const gd=AS.pixelsOf(192,256,new Uint8Array(192*256*4));ok(SPR.npcSheetId('guard','ashfolk')===null,'a guard with no sheet is the procedural figure');
+        AS.setAssetPixels('sprite:npc-guard-ashfolk',gd);ok(SPR.npcSheetId('guard','ashfolk')==='sprite:npc-guard-ashfolk','a guard takes the sheet of its people');AS.setAssetPixels('sprite:npc-guard-ashfolk',null)}
+      // critters (#830): each sheet the config makes is cut from a set under an allowed licence, and every palette variant of critters.js has one; a bird also its flight
+      {const C=await import('./art/lpc-critters.mjs'),CR=await import('../src/render/critters.js'),cfg=JSON.parse(readFileSync('scripts/art/lpc-critters.json','utf8')),idx=JSON.parse(readFileSync('assets/index.json','utf8')).assets;
+        ok(Object.values(cfg.sets).every(s=>['CC-BY-SA 3.0','OGA-BY 3.0','CC0'].includes(s.licence)&&licenceOk(s.offered)&&s.url&&s.authors),'every critter set is used under CC-BY-SA 3.0, OGA-BY 3.0 or CC0, is offered so, and names its authors and page');
+        ok(C.jobsOf(cfg).every(j=>idx['sprite:'+j.name+'@32']?.license===j.set.licence&&idx['sprite:'+j.name+'@32']?.source===j.K.set),'every critter sheet is in the index with its source and licence');
+        ok(Object.entries(CR.CRITTER_KINDS).every(([k,v])=>!cfg.kinds[k]||v.pal.length===cfg.kinds[k].variants.length),'a kind with sheets has one for each of its palettes');
+        ok(SPR.idFrame('sprite:critter-none-0',0,0)===null,'a critter with no sheet draws the pixel sprite');
+        const g=C.decodeGif(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64'));ok(g.w===1&&g.h===1&&g.data[3]===0,'a GIF is read as pixels, its transparent colour clear');}}}
 
   // --- daily.mjs: quota-driven, resumable, into incoming/<date>/ for review
   {const dir=join(tmp,'assets'),logP=join(tmp,'art.log'),days=['2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07','2026-11-08','2026-11-09','2026-11-10'];let d=0;

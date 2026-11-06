@@ -14,6 +14,9 @@ by `npm run art:packs` into `assets/packs/<set>/`, which is gitignored: only the
 | Ninja Adventure | pixel-boy | CC0 1.0 | https://pixel-boy.itch.io/ninja-adventure-asset-pack | not fetched (itch needs a browser click) |
 | Kenney Tiny Town, Tiny Dungeon, Roguelike/RPG pack | Kenney (kenney.nl) | CC0 1.0 | https://kenney.nl/assets | reviewed, not used (does not fit) |
 
+| LPC-compatible animals (cats, dogs, rabbit, birds, ram, chicken, deer) | per set, below | CC-BY-SA 3.0, OGA-BY 3.0 or CC0 | below | critter sheets |
+| LPC style farm animals, LPC Chicken Rework, [LPC] Goat, [LPC] bears, deer, lions and more | Daniel Eddeland (daneeklu), AntumDeluge, bluecarrot16, tapatilorenzo | CC-BY or GPL only | https://opengameart.org/content/lpc-style-farm-animals | reviewed, not used (offered under neither CC-BY-SA, OGA-BY nor CC0) |
+
 CC0 needs no credit; Kenney is listed anyway.
 
 ## LPC base terrain
@@ -86,8 +89,10 @@ that licence (attribution), not under CC-BY-SA; the same goes for any other laye
 - `hat/formal/bowler`: bluecarrot16. Offered under CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-gentleman https://opengameart.org/content/expanded-ulpc-head-accessories-facial-assets-hats-helmets
 - `hat/headband/thick`: JaidynReiman. Offered under OGA-BY 3.0+, CC-BY 3.0+, GPL 3.0; used under OGA-BY 3.0. https://opengameart.org/content/lpc-relm-hairstyle-pieces-xlong-ponytail-bangs-and-braids-headband https://opengameart.org/content/expanded-ulpc-head-accessories-facial-assets-hats-helmets
 - `hat/headband/tied`: Nila122. Offered under OGA-BY 3.0, CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-lizard-headgear https://opengameart.org/content/expanded-ulpc-head-accessories-facial-assets-hats-helmets
+- `hat/helmet/barbarian`: bluecarrot16. Offered under CC-BY 3.0, CC-BY 4.0, OGA-BY 3.0, GPL 2.0, GPL 3.0; used under OGA-BY 3.0. https://opengameart.org/content/lpc-helmets https://opengameart.org/content/expanded-ulpc-head-accessories-facial-assets-hats-helmets
 - `hat/helmet/legion`: bluecarrot16, Nila122, JaidynReiman, Matthew Krohn (makrohn), Johannes Sjölund (wulax). Offered under OGA-BY 3.0, CC-BY-SA 3.0, GPL 2.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-roman-armor https://opengameart.org/content/expanded-ulpc-head-accessories-facial-assets-hats-helmets
 - `hat/helmet/nasal`: bluecarrot16. Offered under CC-BY 3.0, CC-BY 4.0, OGA-BY 3.0, GPL 2.0, GPL 3.0; used under OGA-BY 3.0. https://opengameart.org/content/lpc-helmets https://opengameart.org/content/expanded-ulpc-head-accessories-facial-assets-hats-helmets
+- `hat/helmet/norman`: ElizaWy, Sander Frenken (castelonia). Offered under OGA-BY 3.0, CC-BY-SA 4.0, CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-realistic-helmet-pack https://opengameart.org/content/expanded-ulpc-head-accessories-facial-assets-hats-helmets
 - `head/heads/human/female`: bluecarrot16, Benjamin K. Smith (BenCreating), Stephen Challener (Redshrike). Offered under OGA-BY 3.0, CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/ https://opengameart.org/content/lpc-character-bases (original head by Redshrike, tweaks by BenCreating, modular version by bluecarrot16)
 - `head/heads/human/male`: bluecarrot16, Benjamin K. Smith (BenCreating), Stephen Challener (Redshrike). Offered under OGA-BY 3.0, CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-character-bases (original head by Redshrike, tweaks by BenCreating, modular version by bluecarrot16)
 - `head/heads/orc/female`: bluecarrot16, Matthew Krohn (makrohn), Marcel van de Steeg (MadMarcel), Stephen Challener (Redshrike). Offered under CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles https://opengameart.org/content/lpc-female-orcogregoblintroll-base-walkcycle https://opengameart.org/content/lpc-ladies https://opengameart.org/content/lpc-character-bases (human head adapted to orc by madmarcel, hurt/cast animations made by makrohn, headless version and tweaks by bluecarrot16)
@@ -111,5 +116,21 @@ that licence (attribution), not under CC-BY-SA; the same goes for any other laye
 - `torso/jacket/tabard`: bluecarrot16, Johannes Sjölund (wulax). Offered under OGA-BY 3.0, CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-medieval-fantasy-character-sprites http://opengameart.org/content/lpc-clothing-updates (original by wulax, edited to v3 base by bluecarrot16)
 - `torso/jacket/trench`: bluecarrot16. Offered under CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-gentleman
 - `weapon/magic/gnarled`: bluecarrot16. Offered under OGA-BY 3.0+, GPL 3.0, CC-BY 4.0; used under OGA-BY 3.0. https://opengameart.org/content/lpc-more-weapons
+- `weapon/polearm/spear`: Pierre Vigier (pvigier), Johannes Sjölund (wulax), Inboxninja. Offered under CC-BY-SA 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-medieval-fantasy-character-sprites https://opengameart.org/content/lpc-spear-and-shovel-reworked OK (original by wulax, walk animations redone by pvigier, split into layers and tweaked for v3 character bases by bluecarrot16)
 - `weapon/sword/saber`: Daniel Eddeland (daneeklu), Johannes Sjölund (wulax), gr3yh47, bluecarrot16. Offered under CC-BY-SA 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-medieval-fantasy-character-sprites https://opengameart.org/content/lpc-extended-weapon-animations
 <!-- lpc-townsfolk:end -->
+
+The town guards `sprite:npc-guard-<people>` are composed the same way (no role of `src/data/npcs.js`: only the renderer draws them); their layers are in the list above.
+
+## Critter sheets
+
+`sprite:critter-<kind>-<variant>` and a bird's `sprite:critter-<kind>-<variant>-fly` are cut by `scripts/art/lpc-critters.mjs` (choices in `scripts/art/lpc-critters.json`) from the sets below, at each set's own pixels; some variants are recoloured (a brown hare and ram from the white ones; the white and brown hens from the black one, with an outline added). The goat is the ram. Each sheet stays under the licence of its set, named on its `assets/index.json` entry.
+
+<!-- lpc-critters:begin -->
+- [LPC] Cats and Dogs (set `lpc-cats-dogs`): bluecarrot16. Offered under CC-BY 3.0, CC-BY-SA 3.0, GPL 2.0, GPL 3.0, OGA-BY 3.0; used under OGA-BY 3.0. https://opengameart.org/content/lpc-cats-and-dogs
+- Reorganised LPC rabbit (set `lpc-rabbit`): Stephen Challener (Redshrike), commissioned by tebruno99; reorganised by Evert. Offered under CC-BY 3.0, CC-BY-SA 3.0, OGA-BY 3.0; used under OGA-BY 3.0. https://opengameart.org/content/reorganised-lpc-rabbit
+- [LPC] Birds (set `lpc-birds`): bluecarrot16. Offered under CC-BY 3.0, CC-BY 4.0, CC-BY-SA 3.0, CC-BY-SA 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0; used under OGA-BY 3.0. https://opengameart.org/content/lpc-birds
+- LPC style ram (male sheep) (set `lpc-ram`): Evert. Offered under CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-style-ram-male-sheep
+- Chicken Sprites (set `chicken-sprites`): Shepardskin. Offered under CC0; used under CC0. https://opengameart.org/content/chicken-sprites
+- Animated Wild Animals (Deer) (set `wild-deer`): ScratchIO. Offered under CC0; used under CC0. https://opengameart.org/content/animated-wild-animals
+<!-- lpc-critters:end -->
