@@ -39,3 +39,4 @@
 - [Showcase light](showcaselight.md) — #979 grade, cast shadows, multiply light map, air, sheen, effects switch; staging at full window
 - [Scenery](scenery.md) — #940 Vale art pass: scenery.js, spec note, smoothed river and roads, felled trees, staging
 - [Vale stack](valestack.md) — #980 ten PRs as one branch: merge order, shadow-pass trap, stacked PRs after landing
+- [Vale at scale](valescale.md) — #979 great kit, notch outlines, ground shapes, wyrm sheet, the onAssets repaint race

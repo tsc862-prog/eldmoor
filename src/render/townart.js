@@ -95,8 +95,8 @@ function townShadow(c){let R=shadowC.get(c);if(R)return R;
     for(let d=1;d<=n;d++)for(let y=Y+d;y<Y+h+d;y++)if(y>=0&&y<H)for(let x=X+d;x<X+w+d;x++)if(x>=0&&x<W)m[y*W+x]=1};
   for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++)if(townRing(c,x,y)&&!gate.has(x+','+y))sweep([x,y,1,1],SWEEP.wall);
   for(const p of townPosts(c))sweep(p.box,SWEEP.post);
-  for(const b of c.buildings||[]){const [x,y,w,h]=b.box,k=b.kit||'',top=b.piece==='well'?1:k==='chapel-great'?3:k==='chapel-hill'?2:0; // a spire and a well's basin leave the back of their box clear
-    sweep([x,y+top,w,h-top],b.piece==='board'||b.piece==='well'?SWEEP.low:SWEEP.building)}
+  for(const b of c.buildings||[]){if(b.piece==='well')continue;const [x,y,w,h]=b.box,k=b.kit||'',top=k==='chapel-great'?3:k==='chapel-hill'?2:0; // a spire leaves the back of its box clear; a round basin throws none of this square shadow
+    sweep([x,y+top,w,h-top],b.piece==='board'?SWEEP.low:SWEEP.building)}
   R=[];const k=U/TILE;for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!m[y*W+x])continue;let e=x;while(e<W&&m[y*W+e])e++;R.push([x0*U+x*k,y0*U+y*k,(e-x)*k,k]);x=e}
   shadowC.set(c,R);return R}
 // A stone sill across the gate where the road meets the paving, on the wall's outer edge and its inner one.

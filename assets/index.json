@@ -5022,6 +5022,22 @@
       "url": "https://opengameart.org/content/lpc-terrains",
       "accepted": "2026-11-05"
     },
+    "sprite:boss-kragmaw@32": {
+      "id": "sprite:boss-kragmaw",
+      "kind": "sprite",
+      "file": "sprite/32/boss-kragmaw.png",
+      "w": 528,
+      "h": 608,
+      "sha256": "5a56a167fa209d646c6fa325d1491442f16a1911e81b79bde915f4af8fde28e3",
+      "tier": 32,
+      "source": "code",
+      "license": "CC0",
+      "authors": [
+        "Eldmoor"
+      ],
+      "url": "scripts/art/draw-wyrm.mjs",
+      "accepted": "2026-11-06"
+    },
     "sprite:critter-cat-0@32": {
       "id": "sprite:critter-cat-0",
       "kind": "sprite",

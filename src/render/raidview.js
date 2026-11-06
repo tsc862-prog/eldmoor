@@ -23,9 +23,10 @@ import {MOBS} from '../data/mobs.js';
 import {FAC} from '../data/factions.js';
 import {maxHp} from '../sim/heroes.js';
 import {interiorTexture} from './interior.js';
-import {sprite,outlined,sceneFigure,sceneCreature,drawFigure,SPR} from './sprites.js';
+import {sprite,outlined,sceneFigure,sceneCreature,drawFigure,sheetFrame,SPR} from './sprites.js';
 import {BOSS_PAL,RAID,MARK,TEXT,UI} from './palette.js';
 import {classColor} from '../core/colors.js';
+const WYRM={kind:'boss'};
 import {drawConditions} from './conditions.js';
 
 export const isArena=s=>!!s&&s.kind==='lair';
@@ -169,7 +170,8 @@ export function drawArena(ctx,box,m,st,now,dpr=1){
   for(const o of ORDER){
     if(o===b){const s=outlined(sprite('boss'+fr,SPR.boss[fr],BOSS_PAL)),k=A.k,w=s.width*k,h=s.height*k,x=Math.round(b.x*T),y=Math.round(b.y*T);
       ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y-2,w*.36,5,0,0,7);ctx.fill();
-      ctx.save();ctx.translate(x,0);if((b.e.face||-1)>0)ctx.scale(-1,1);ctx.drawImage(s,-w/2,y-h,w,h);ctx.restore();hit('boss',x-w/2,y-h,w,h);
+      const G=sheetFrame(WYRM,1,Math.floor(now*2.2)%3),gw=w*1.25,gh=G?gw*G.fh/G.fw:h; // the wyrm's sheet (scripts/art/draw-wyrm.mjs), else the procedural sprite
+      ctx.save();ctx.translate(x,0);if((b.e.face||-1)>0)ctx.scale(-1,1);if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,-gw/2,y-gh,gw,gh);else ctx.drawImage(s,-w/2,y-h,w,h);ctx.restore();hit('boss',x-w/2,y-h,w,h);
       if(b.e.eff)drawConditions(ctx,null,PS,b.e,x,y,y-h,now);continue}
     if(o.a){const a=o.a,s=sceneFigure(a,b&&b.x<o.x?-1:1,a.moving?1+(Math.floor(now*6+a.id)&1):0),x=Math.round(o.x*T),y=Math.round(o.y*T),cc=classColor(a.cls);
       ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y-1,5,1.5,0,0,7);ctx.fill();

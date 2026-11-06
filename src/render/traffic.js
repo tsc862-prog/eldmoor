@@ -1,28 +1,16 @@
 // Road traffic on the map (#856, sim/traffic.js #796): carts, travellers and road and bridge guards, drawn in the y-sorted
 // entity list of draw.js. Render only: reads S.traffic, writes nothing to it. Style: the travellers and guards are the town
-// NPC sprites (npcSprite, the same roles and faction colours as the townsfolk) and the cart is a procedural pixel-string
-// sprite in the same outlined, PROC_SCALE look. When generated townsfolk sheets exist for these roles they can replace the
+// NPC sprites (npcSprite, the same roles and faction colours as the townsfolk) and the cart is drawn here at the art's
+// resolution, a figure's scale. When generated townsfolk sheets exist for these roles they can replace the
 // figures here (sheetFigure below, #896). Skipped at far zoom by draw.js (`close`). No per-frame allocation:
 // entities are the sim's own objects, every canvas is cached by [role][faction][frame] or [load][frame].
 import {CITY} from '../world/map.js';
-import {sprite,npcSprite,worldSprite,sheetFrame} from './sprites.js';
+import {npcSprite,worldSprite,sheetFrame} from './sprites.js';
 import {racesOf} from '../data/races.js';
 import {U,ART} from './tile.js';
 
 const TRAVEL_ROLE={pedlar:'peddler',pilgrim:'hermit',tinker:'peddler',drover:'drover','road courier':'sellsword','wandering minstrel':'minstrel'};
 const LOAD={salt:'#e8e4da',grain:'#d8b050',ale:'#8a5a30',timber:'#a07848',wool:'#ece4d0',hide:'#7a5030',pelt:'#8a8a96',silk:'#a060c8',moss:'#5a8a48'};
-const CART=[ // 15x10, facing right. L load, B bed, D bed shade, K wheel rim, W wheel, S spoke, P draught pole
-  "...LLLLLLLL....",
-  "..LLLLLLLLLL...",
-  ".LLLLLLLLLLLL..",
-  ".BBBBBBBBBBBBPP",
-  ".BDDDDDDDDDDBPP",
-  "..KKK....KKK...",
-  ".KWSWK..KWSWK..",
-  ".KSWSK..KSWSK..",
-  ".KWSWK..KWSWK..",
-  "..KKK....KKK...",
-];
 const STEP=[1,0,2,0],sp={kind:'npc',role:'',fac:0,race:''}; // STEP: sheet columns of a walk cycle (as draw.js)
 const figs=new Map(),carts=new Map(),facOf=new Map(),probe={role:'',fac:0};
 
@@ -30,10 +18,25 @@ function townFac(name){let f=facOf.get(name);if(f===undefined){f=0;for(const c o
 function figure(role,fac,fr){let per=figs.get(role);if(!per)figs.set(role,per=[]);
   let a=per[fac];if(!a)a=per[fac]=[null,null];
   if(!a[fr]){probe.role=role;probe.fac=fac;a[fr]=worldSprite(npcSprite(probe,fr))}return a[fr]}
-function cart(word,fr){let a=carts.get(word);if(!a)carts.set(word,a=[null,null]);
-  if(!a[fr]){const rows=fr?CART.map((r,i)=>i>=6&&i<=8?r.replace(/S/g,'x').replace(/W/g,'S').replace(/x/g,'W'):r):CART;
-    a[fr]=worldSprite(sprite('cart.'+word+fr,rows,{L:LOAD[word]||'#b89050',B:'#8a5a30',D:'#5a3a22',K:'#241c18',W:'#6a6a74',S:'#a8a8b4',P:'#6a4a2a'}))}
-  return a[fr]}
+// A cart at the art's own resolution (a figure's scale, facing right): a sheeted load, a plank bed on two spoked wheels, the draught pole. Drawn once per load and wheel turn.
+const CW=62,CH_=44,RIM='#241c18',hexRgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+function drawCart(word,fr){const px=new Array(CW*CH_).fill(null),put=(x,y,c)=>{x|=0;y|=0;if(x>=0&&y>=0&&x<CW&&y<CH_)px[y*CW+x]=c},L=hexRgb(LOAD[word]||'#b89050'),tone=k=>'rgb('+L.map(v=>Math.max(0,Math.min(255,Math.round(v*k)))).join(',')+')';
+  // the load: three heaped sacks or bales under a rope, lit from the top left
+  for(const [cx,cy,rx,ry] of [[17,12,12,9],[43,12,12,9],[30,9,14,8]])for(let y=-ry;y<=ry;y++)for(let x=-rx;x<=rx;x++){const d=Math.hypot(x/rx,y/ry);if(d>1)continue;put(cx+x,cy+y,tone(1.12-(x/rx+y/ry)*.22-(d>.86?.2:0)))}
+  for(let x=6;x<56;x++)put(x,14+((x>>3)&1),tone(.55));for(const x of [14,30,46])for(let y=4;y<22;y++)put(x+((y>>2)&1),y,tone(.6));
+  // the bed: planks, a dark underside, stakes at the corners
+  for(let y=19;y<31;y++)for(let x=3;x<57;x++)put(x,y,y===19?'#c09058':(y-19)%4===3?'#5a3a22':x>50?'#70482a':(((x*7+((y-19)>>2)*13)%29)<2?'#6e4828':'#94643a'));
+  for(let x=3;x<57;x++){put(x,31,'#3a2616');put(x,32,'#3a2616')}
+  for(const x of [5,29,53])for(let y=15;y<31;y++){put(x,y,'#7a5230');put(x+1,y,'#5a3a22')}
+  for(let x=56;x<CW;x++){put(x,24,'#8a6036');put(x,25,'#5a3a22')}
+  // the wheels, turned a little between frames
+  for(const cx of [15,44]){const cy=33,R=10;for(let y=-R;y<=R;y++)for(let x=-R;x<=R;x++){const d=Math.hypot(x,y);if(d>R+.2)continue;if(d>8.6)put(cx+x,cy+y,x+y<0?'#9a7a52':'#6e5236');else if(d<2.2)put(cx+x,cy+y,d<1.1?'#2a2018':'#9a7a52')}
+    for(let k=0;k<6;k++){const a=k*Math.PI/3+fr*Math.PI/6;for(let r=2;r<9;r+=.5)put(cx+Math.cos(a)*r,cy+Math.sin(a)*r,'#8a6a46')}}
+  const cv=document.createElement('canvas');cv.width=CW+2;cv.height=CH_+2;const x=cv.getContext('2d');
+  for(let j=0;j<CH_;j++)for(let i=0;i<CW;i++){if(!px[j*CW+i])continue;x.fillStyle=RIM;x.fillRect(i,j+1,3,1);x.fillRect(i+1,j,1,3)}
+  for(let j=0;j<CH_;j++)for(let i=0;i<CW;i++){const c=px[j*CW+i];if(!c)continue;x.fillStyle=c;x.fillRect(i+1,j+1,1,1)}
+  return cv}
+function cart(word,fr){let a=carts.get(word);if(!a)carts.set(word,a=[null,null]);if(!a[fr])a[fr]=drawCart(word,fr);return a[fr]}
 
 // The townsfolk sheet of a role (LPC, #854) when the index has one for this people, drawn like draw.js draws a townsperson:
 // returns true when it drew. A walker has no people of its own, so it takes one of its faction's by its number (or its town's faction).
