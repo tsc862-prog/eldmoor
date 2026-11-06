@@ -47,6 +47,8 @@ ok(a && a.origin && a.goal, 'with the usual origin and oath');
   const shown = S.chronicle.slice(0, 5).flatMap(e => e.parts.map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '')).join(' ') + JSON.stringify(mem.map(m => [m.playEv, m.chat]));
   ok(!shown.includes('a rival to test them'), 'no hero and no chronicle line carries the why')}
 ok(dmAct('dm_status').summoned.alive === '1/' + SUMMON.ALIVE && /summon_hero/.test(dmAct('dm_status').others), 'dm_status counts them and says this world has no others');
+{const st = dmAct('dm_status'), {dmTurnPrompt} = await import('./dm-agent.mjs'); ok(/roads are empty/.test(st.others) && /rival/.test(st.others) && /company alone/.test(st.others) && st.others.length < 400, 'dm_status.others says the roads stay empty, why to summon and that none is fair (' + st.others.length + ' chars)');
+  ok(/no other heroes/.test(dmTurnPrompt(0, st)) && !/no other heroes/.test(dmTurnPrompt(0, {...st, others: undefined})), 'the first turn prompt names an empty world, and only then')}
 
 // the default level: the nearest company's average
 r = dmAct('summon_hero', {fac: FN[0], cls: 'Priest', near: 'fellowship', why: 'a wandering healer'});

@@ -329,7 +329,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},...speakTo(),spoke_for_today:day.spoke||0, // lines cut because they put words in a member's mouth (#750)
     ...(focuses().length?{map_names:{near_the_companies:mapNames(),note:NAMES_NOTE}}:{}), // what is really on the map (#1017): a name from your notes is not, until you mark it
     ...(downCallSummary()?{downed:downCallSummary()}:{}), // a hero down: voice it through table_call (#655)
-    ...(noOthers()?{others:'none: no background heroes ride here, only the companies and whoever you bring (summon_hero)'}:{}), // the world setting (#780)
+    ...(noOthers()?{others:'none: the roads are empty, and stay so unless you summon_hero (2 a game day, 8 alive, at most 2 levels above the average of the nearest company, open ground or a town a company stands in). Why: a rival, someone met on the road, a healer or trader to meet. A world for the company alone is a fair choice: bring only what their story wants.'}:{}), // the world setting (#780)
     ...(loreSides()?{sides:'lore: every town takes in every company and no hero attacks one unasked. An antagonist is yours to bring: summon_hero of the other fac from the company\'s own is its foe, of its own fac a friend; or stage_scene'}:{}), // #1025
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
