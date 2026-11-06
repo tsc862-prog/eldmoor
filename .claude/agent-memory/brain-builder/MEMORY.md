@@ -91,3 +91,4 @@
 - [sessioncheck scene flake](sessioncheck-scene-flake.md) — #898 fresh-line/roll flake = real Table scene holds the roll; play-headless --watch fix
 - [Nightly mock scenes](nightly-mock-scenes.md) — #822 reflex-scenes cause: mock-tools never answered scenes; mock-table, near-copy lines, 60 calls/min cap
 - [Long company run](long-company-run.md) — #926 longrun.mjs harness, scene dedupe key + wake spam + --warm fixes, what mock minds do and do not prove
+- [Tool fuzz](tool-fuzz.md) — toolfuzz.mjs: 16 states a world, hostile args, argfix door, what it found, own-key lookup class
