@@ -10,7 +10,8 @@
 import {rnd,ri,pickA} from '../core/rng.js';
 import {check,bestFor} from './abilities.js';
 import {W,H,ROAD} from '../world/tiles.js';
-import {tiles,zone,I,ZONES,CITY,LAIR,zoneFor,zoneAt,dist} from '../world/map.js';
+import {tiles,zone,I,ZONES,CITY,zoneFor,zoneAt,dist} from '../world/map.js';
+import {nearLair} from './lair.js';
 import {homeOf} from '../data/races.js';
 import {S} from './state.js';
 import {log,gold} from './chronicle.js';
@@ -47,7 +48,7 @@ const pickKind=()=>{let tot=0;for(const k of KINDS)tot+=ENC[k].w;let r=rnd()*tot
 // Road tiles far enough from every gate (and clear of the lair ring) where encounters may appear.
 function roadSpots(){const out=[];
   for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){if(tiles[I(x,y)]!==ROAD)continue;
-    const p={x:x+.5,y:y+.5};if(CITY.some(c=>dist(p,c.gate)<GATE_CLEAR)||(LAIR&&dist(p,LAIR)<7))continue;out.push(p)}
+    const p={x:x+.5,y:y+.5};if(CITY.some(c=>dist(p,c.gate)<GATE_CLEAR)||nearLair(p,7))continue;out.push(p)}
   return out}
 // Zone level for XP and loot: the lowest level the ladder sends to that zone, plus two.
 const zoneLevels=()=>ZONES.map((_,z)=>{for(let l=1;l<=40;l++)if(zoneFor(l)===z)return l+2;return 1});

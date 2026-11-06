@@ -15,6 +15,6 @@ setWorld swaps the live map in one process. Rules added and why (#1013 slice 1b)
 
 **Why:** the first-map hash must not move, and a real second map (Hollin, the Vale chapters) must not inherit a stale table.
 
-**How to apply:** slice 2 packs by `MAP_KEYS`; `S.levers.day` (the DM's daily counts) must not be frozen with the map although `levers` is listed there. A map with no lair or dungeon still crashes in play (`camp.js safe` reads `dist(p,LAIR)`; 31 `CRYPT.`/`LAIR.` reads in sim and data): needed before slice 7a, TESTLINK init works, step does not. Risk 1 count: 0 direct, 40 suspect derefs of `S.agents.find` results by a regex heuristic, mostly `byId` wrappers.
+**How to apply:** slice 2 packs by `MAP_KEYS`; `S.levers.day` (the DM's daily counts) must not be frozen with the map although `levers` is listed there. A map with no lair or dungeon plays since [[no_lair]]. Risk 1 count: 0 direct, 40 suspect derefs of `S.agents.find` results by a regex heuristic, mostly `byId` wrappers.
 
 Related: [[multi_dungeon]], [[init_reset]], [[seeded_import_dice]].

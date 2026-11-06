@@ -26,7 +26,8 @@
 import {S} from './state.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // sworn oaths, and the thread on offer (#800)
 import {MOBS} from '../data/mobs.js';
-import {ZONES,CRYPT,dist} from '../world/map.js';
+import {ZONES,dist} from '../world/map.js';
+import {cryptTitle} from './crypts.js';
 import {homeOf} from '../data/races.js';
 import * as D from '../data/adventures.js';
 import {K as DMK,holdAdventure,resumeAdventure} from './dm.js';
@@ -87,7 +88,7 @@ function jobQ(a,h,status,focus){const T=D.ADVENTURES[h.tpl]||{},on=h.phase==='ac
 function supplyQ(a,j,status,focus){return mk({id:supplyId(j),kind:j.by==='dm-agent'||j.ff?'dm':'board',title:supplyText(j),giver:j.giver?j.giver.name:null,where:j.town,
   objective:wantText(j)+(j.hint?'. '+j.hint:''),progress:{have:Math.min(supplyHave(a,j.want),j.want.n),need:j.want.n},reward:rewardText(j),status,focus,
   started:j.phase==='taken'?j.takenAt:j.born,ends:j.until,from:j.by==='dm-agent'?'DM agent':j.ff?'scripted DM':'town board'})}
-function oathQ(a,g,status,focus){const where=g.type==='pilgrimCrypt'&&CRYPT?CRYPT.name:g.zone!=null&&typeof g.zone==='number'?ZONES[g.zone]||null:null;
+function oathQ(a,g,status,focus){const where=g.type==='pilgrimCrypt'&&cryptTitle()?cryptTitle():g.zone!=null&&typeof g.zone==='number'?ZONES[g.zone]||null:null;
   return mk({id:oathId(g),kind:'oath',title:g.text,giver:null,where,objective:g.text+(g.target?' ('+g.target+')':''),
     progress:g.need>1?{have:Math.min(g.progress||0,g.need),need:g.need}:null,reward:null,status,focus,started:g.at,ends:null,from:'oath'})}
 // An offered thread: not an oath, not held; it waits under offered until the hero swears it (#800).

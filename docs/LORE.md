@@ -525,6 +525,7 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
+`TESTBARE` in the same file is three 56x36 fixtures on one ground for the checks of a map with no lair or no dungeon (#1013); never in the game or in `WORLDS`. Reserved: the maps **Barefield**, **Cellarfield** and **Denfield**, the regions **Bare Mead** and **Bare Fell**, the towns **Barewick** and **Farwick**, **The Bare Cellar** with **The Bare Reeve**, and **The Bare Den**.
 `TESTLINK` in the same file is a pair of 32x24 fixtures for the linked-map checks (#1013), two tiny maps joined by one road each way; they never appear in the game or in `WORLDS`. Reserved: the maps **Linka** and **Linkb** (regions **Linka Mead**, **Linkb Mead**, 1-5), the towns **Hearthlink** and **Mooring**, and the exits **the east road** and **the west road**.
 
 ## Creatures

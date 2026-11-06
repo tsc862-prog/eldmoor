@@ -1,5 +1,5 @@
 {
-  "_doc": "Allowlist for scripts/rulescheck.mjs. literals: file -> faction, zone or town names quoted outside src/data and src/world, with the reason in why. tables: table id -> row keys whose move or rename is a coordinated change in the same PR. layering: 'file -> imported file'. ciExempt: npm script names that need no ci.yml step (hashcheck runs as the hash-guard job).",
+  "_doc": "Allowlist for scripts/rulescheck.mjs. literals: file -> faction, zone or town names quoted outside src/data and src/world, with the reason in why. tables: table id -> row keys whose move or rename is a coordinated change in the same PR. layering: 'file -> imported file'. ciExempt: npm script names that need no ci.yml step (hashcheck runs as the hash-guard job). mapCaptures: 'file#name' -> reason. bareReads: file -> {n, why}, the reads of CRYPT or LAIR that stand behind a guard of their own (#1013).",
   "layering": [],
   "literals": {
     "src/sim/dmsight.js": ["concord", "warband"],
@@ -26,6 +26,17 @@
     "src/sim/company.js#lastState": "each member's last state word, by hero id",
     "src/sim/dm.js#boardLever": "the lever behind the hook being posted, for that one post",
     "src/sim/dmlog.js#pend": "the DM log entry being written, for that one call"
+  },
+  "bareReads": {
+    "src/sim/save.js": {"n": 4, "why": "the first dungeon's group and cooldown in the save, behind a test of CRYPT at both ends"},
+    "src/sim/search.js": {"n": 1, "why": "LANDMARKS.includes(CRYPT) behind CRYPT&&: a test, not a read"},
+    "src/world/words.js": {"n": 2, "why": "the world's words are built from the map itself, behind if(LAIR)"},
+    "src/render/draw.js": {"n": 8, "why": "the lair's embers and label, drawn only while S.boss.alive, which a map with no lair never is"},
+    "src/render/memorials.js": {"n": 10, "why": "the cooled lair, behind the lair landmark being found on this map"},
+    "src/ui/panels.js": {"n": 4, "why": "the View the raid button, behind if(LAIR)"},
+    "src/ui/probe.js": {"n": 4, "why": "a dev probe that writes the dungeon's group, behind if(!CRYPT) return"},
+    "src/ui/table.js": {"n": 1, "why": "the Table banner's way to the raid arena, behind &&LAIR"},
+    "src/ui/timeline.js": {"n": 2, "why": "the timeline's Inside link, behind &&LAIR and &&CRYPT"}
   },
   "ciExempt": ["hashcheck"]
 }

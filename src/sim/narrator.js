@@ -15,6 +15,7 @@
 import {rnd,ri,pickA} from '../core/rng.js';
 import {bestFor,skillMod} from './abilities.js';
 import {ZONES,zoneAt,dist} from '../world/map.js';
+import {hasLair} from './lair.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
 import * as N from '../data/narration.js';
@@ -138,8 +139,8 @@ function dawnRecap(){const n=S.nar,day=Math.floor(S.gameMin/1440)+1,D=n.deaths,p
   const kills=S.facStats.map((f,i)=>f.bosses-n.bosses[i]);n.bosses=S.facStats.map(f=>f.bosses);
   let boss;if(kills[0]||kills[1])boss=[gd('Kragmaw'),' fell to ',fac(kills[0]>=kills[1]?0:1),'.'];
   else if(n.raids)boss=[Num(n.raids)+' raid'+(n.raids>1?'s':'')+' broke on ',gd('Kragmaw'),'; it holds at '+Math.round(S.boss.hp/S.boss.maxhp*100)+'%.'];
-  else boss=S.boss.alive?[gd('Kragmaw'),' sleeps untouched.']:[gd('Kragmaw'),'’s lair lies empty.'];
-  parts.push(' ',...(crypt?[crypt+'; ',...boss.map((p,i)=>i===0&&typeof p==='string'?p.toLowerCase():p)]:boss));
+  else boss=!hasLair()?[]:S.boss.alive?[gd('Kragmaw'),' sleeps untouched.']:[gd('Kragmaw'),'’s lair lies empty.'];
+  parts.push(' ',...(crypt?[crypt+(boss.length?'; ':'.'),...boss.map((p,i)=>i===0&&typeof p==='string'?p.toLowerCase():p)]:boss));
   speak(...parts);S.narStats.recaps++;n.deaths=[];n.elites=[];n.raids=0}
 
 // Once per step after the sim tick: the real-time clock for the cap, zone-entry scenes,
