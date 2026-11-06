@@ -8,7 +8,7 @@
 import {hash,vnoise} from '../core/rng.js';
 import {TILE,U,ART} from './tile.js';
 import {W,H,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
-import {tiles,zone,I,WORLD_ID} from '../world/map.js';
+import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
@@ -269,8 +269,7 @@ export function autotileAt(vx,vy,asset=true){
 // is today's tree and no rock.
 const VARIANTS=3,PROP_BIOMES=['meadow','fen','ash','tundra','highland'];
 // The highland has its own cut rocks and canopies (Hawkwold, the Vale); a world whose highland has none of its own keeps borrowing the meadow's.
-const OWN_HIGHLAND=WORLD_ID==='vale';
-const propBiome=b=>b==='highland'?(OWN_HIGHLAND?'highland':'meadow'):!PROP_BIOMES.includes(b)?'meadow':b;
+const propBiome=b=>b==='highland'?'highland':!PROP_BIOMES.includes(b)?'meadow':b;
 const GROUND={meadow:G,fen:SGRASS,ash:ROCK,tundra:SNOW,highland:G};
 export const ASSET_PROPS={};
 for(const b of PROP_BIOMES)for(let i=1;i<=VARIANTS;i++){if(b!=='highland')ASSET_PROPS[`prop:tree-${b}-${i}`]=TREE;ASSET_PROPS[`prop:rock-${b}-${i}`]=GROUND[b]}
