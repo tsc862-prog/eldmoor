@@ -17,11 +17,18 @@
 // path (mid-path), scene (a Table scene open), crawl (a Crypt crawl room), downed, dead, solo (a hero riding alone), and,
 // on `others: none`, fresh, town and field. Every state but fresh is restored from a JSON save before each tool, so every
 // one also proves the save round trip. The DM seat is open except in `fresh-noseat`.
+// Situations (scripts/toolfuzz-cases.mjs): a live fight, an invitation, an auction listing, a hire (before and after), an honour-duel challenge, a downed
+// companion, a downed enemy, a meeting plan, an open vote, a camp, a raid muster, gathering and crafting, a hurt company, a courier's distance, a lone hero at
+// the board, the chapel, an oath, a staged scene at the table, a ruling waiting, a companion waiting for its voice, the DM's people. A situation runs the
+// acting tools (or the list it names) with its own live recipes first, so each tool's success path runs from the untouched state; it costs about 1.5 s a world.
+// Coverage: the last lines of a world say how many tools went through with valid arguments at least once and which never did; more than --max-never N
+// (default 8, TOOLFUZZ_MAX_NEVER) is a failure. Known never: choose (needs a pick mid-adventure), dm:nudge_relation (a registered stub, "not available yet").
+// After each call that went through, every hero's numbers are checked, not only the caller's.
 // Seeded: the world, the arguments and the tool order come from one seed; a failure prints the command that replays it.
 //
-// Usage: npm run toolfuzz                       all worlds, all states (about a minute)
+// Usage: npm run toolfuzz                       all worlds in WORLDS, all states (about 80 s; the worlds run side by side)
 //        node scripts/toolfuzz.mjs --world stepping --state downed --tool post_hook --seed 7
-//        flags: --seed N (TOOLFUZZ_SEED), --world ID, --state NAME, --tool NAME, --only hero|dm, --sets N (argument sets a tool, default 9), --list
+//        flags: --seed N (TOOLFUZZ_SEED), --world ID, --state NAME, --tool NAME, --only hero|dm, --sets N (argument sets a tool, default 9), --max-never N, --show [chars], --list
 import './seed-first.mjs';
 import {spawnSync, spawn} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -59,10 +66,13 @@ const T = await import('../src/sim/table.js');
 const D = await import('../src/sim/dungeon.js');
 const INV = await import('../src/sim/inv.js');
 const PROF = await import('../src/sim/professions.js');
-const {MATERIALS} = await import('../src/data/materials.js').catch(() => ({}));
+const {MATERIALS} = await import('../src/data/items.js');
 const {goDown} = await import('../src/sim/downed.js');
 const {slay} = await import('../src/sim/heroes.js');
 const {resetPrep} = await import('../src/sim/prep.js');
+const RL = await import('../src/sim/runlink.js');
+const SP = await import('../src/sim/spatial.js'); // the sight index is rebuilt by the first tick after a load; a tool called at once needs it
+const DR = await import('../src/sim/dmreflex.js');
 const MAP = await import('../src/world/map.js');
 const {seedRng} = await import('../src/core/rng.js');
 const {PLAYER_TOOLS} = await import('../src/data/player-tools.js');
@@ -74,6 +84,9 @@ const RESETS = [(await import('../src/sim/chat.js')).resetChatSeed, (await impor
 
 const lcg = n => {let s = (n ^ 0x9e3779b9) >>> 0; return () => {s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296}};
 const hash = str => {let h = 2166136261; for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619); return h >>> 0};
+// goDown needs a killer: with none it returns false and nobody is downed
+const fell = x => {x.hp = 0; const k = S.mobs.find(m => m.alive && !m.gone) || {kind: 'mob', id: 0, name: 'a wolf', type: 'wolf', lvl: 1}; const ok = goDown(x, k); if (!ok || x.state !== 'downed') throw new Error('fuzz setup: ' + x.name + ' was not downed (' + x.state + ')'); return x};
+const safe = v => {try {return JSON.stringify(v)} catch {return String(v && v.name || v)}}; // a log line may hold a live hero (circular): the text of it is what is read
 const run = frames => {for (let i = 0; i < frames; i++) step(1 / 60)};
 const secs = s => run(Math.round(s * 60));
 
@@ -81,7 +94,7 @@ const secs = s => run(Math.round(s * 60));
 function reseedAll(n) {seedRng(n); for (const f of RESETS) f()}
 function mark(h) {markPlayer(h, true)}
 function build(o = {}) { // a fresh world, its Fellowship agent-played, the DM seat open
-  resetPrep(); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+  resetPrep(); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; RL.setRunnerLinks(null); DR.setDmAlive(null); // no host, no DM runner, unless a situation asks
   init(o.init || {}); if (o.seat !== false) setDmSeat(true);
   const co = SLT.slotted(), M = co ? SLT.slotHeroes(co) : [];
   for (const a of M) mark(a);
@@ -116,13 +129,16 @@ const STATES = [
   {name: 'crawl', make: () => {const h = build(); secs(10); const M = SLT.slotHeroes(SLT.slotted()); S.mobs.length = 0;
     for (const a of M) {a.lvl = 9; a.hp = maxHp(a); a.state = 'hunt'; a.hidden = false; a.target = null; a.dest = null; a.x = MAP.CRYPT.x + (Math.random() - .5); a.y = MAP.CRYPT.y + 1}
     D.musterCrypt(M, M[0].fac, null, SLT.slotted().name); for (let i = 0; i < 400 && !(S.table && S.table.kind === 'crawl'); i++) step(1 / 60); return h}},
-  {name: 'downed', make: () => {const h = build(); secs(10); h.hp = 0; goDown(h, null); return h}},
+  {name: 'downed', make: () => {const h = build(); secs(10); fell(h); return h}},
   {name: 'dead', make: () => {const h = build(); secs(10); slay(h, S.mobs.find(m => m.alive) || {kind: 'mob', name: 'a wolf', lvl: 1}, {}); return h}},
   {name: 'solo', make: () => {const h = build(); secs(20); const o = S.agents.find(a => a.kind === 'hero' && !a.player && a.state !== 'dead'); mark(o); return o}},
 ];
+// Situations (scripts/toolfuzz-cases.mjs): a fight, an offer, a listing, a hire, a duel challenge, a downed companion, a meeting plan, a vote, a raid muster, ...
+const CASES = await (await import('./toolfuzz-cases.mjs')).makeCases({RL, DR, fell, SIM, SLT, INV, PROF, MAP, T, mark, build, secs, run, placeInField, NONE, goDown, MATERIALS});
+STATES.push(...CASES.states.map(x => ({...x, lite: true}))); // situations: the acting tools only (the reads are fuzzed in every plain state), fewer hostile sets
 
 // ---- arguments
-const REGIONS = () => (MAP.ZONES || []).map(z => z.name).filter(Boolean).slice(0, 4);
+const REGIONS = () => (MAP.ZONES || []).map(z => typeof z === 'string' ? z : z && z.name).filter(Boolean).slice(0, 4); // ZONES is a list of names
 // What the world shows in this state: values read from the read-only tools' answers become the "valid" arguments of the others
 // (pack indexes, listing ids, quest ids, node ids, names), so a valid call reaches the code behind the argument check.
 function harvest(res, pool, key = '', depth = 0) {
@@ -222,18 +238,18 @@ const RECIPES = c => {
     watch: [{trigger: 'enter_region', on: {region}, note: 'fuzz'}, {trigger: 'night_falls'}],
     unwhen: [{id: 1}], unwatch: [{id: 1}], log_intent: [{text: 'Fuzz: watching the road.'}], prep_done: [{summary: 'ready'}]};
 };
-function argSets(tool, c, r, dm) {
-  const A = Object.entries(tool.args || {}), sets = [{label: 'empty', args: {}}, {label: 'null', args: null}];
+function argSets(tool, c, r, dm, nSets = SETS) {
+  const A = Object.entries(tool.args || {}), sets = [{label: A.every(([, s]) => s.optional) ? 'valid-empty' : 'empty', args: {}}, {label: 'null', args: null}];
   const valid = all => Object.fromEntries(A.filter(([, s]) => all || !s.optional).map(([k, s]) => [k, validValue(k, s, tool, c, r, dm)]));
   sets.push({label: 'valid', args: valid(false)}, {label: 'valid-all', args: valid(true)}, {label: 'valid2', args: valid(true)}, {label: 'valid3', args: valid(true)});
-  while (sets.length < SETS) {
+  while (sets.length < nSets) {
     const v = valid(true), ks = Object.keys(v); // hostile: some arguments replaced, or every one
     if (!ks.length) {sets.push({label: 'junk', args: {junk: hostileValue({type: 'string'}, r), n: hostileValue({type: 'integer'}, r)}}); continue}
     const all = r() < .4; for (const k of ks) if (all || r() < .5) v[k] = hostileValue(tool.args[k], r);
     sets.push({label: all ? 'hostile-all' : 'hostile', args: v});
   }
   if (dm) for (const a of (RECIPES(c)[tool.name] || [])) sets.push({label: 'valid-recipe', args: a});
-  return sets.slice(0, Math.max(SETS, 6)).concat(sets.slice(Math.max(SETS, 6)).filter(x => x.label === 'valid-recipe'));
+  return sets.slice(0, Math.max(nSets, 6)).concat(sets.slice(Math.max(nSets, 6)).filter(x => x.label === 'valid-recipe'));
 }
 
 // ---- checks
@@ -251,6 +267,10 @@ function stateNumbers(h, out) {
   const bad = (o, p, d = 0) => {if (d > 3 || out.length > 5 || !o || typeof o !== 'object') return; for (const k of Object.keys(o)) {const v = o[k]; if (typeof v === 'number' && !Number.isFinite(v)) out.push({kind: 'bad-number', at: p + '.' + k, v: String(v)}); else if (v && typeof v === 'object' && !Array.isArray(v) && k !== 'chat' && k !== 'history') bad(v, p + '.' + k, d + 1)}};
   bad(h, 'hero'); if (!Number.isFinite(S.gameMin)) out.push({kind: 'bad-number', at: 'S.gameMin', v: String(S.gameMin)});
   for (const m of S.mobs) if (!Number.isFinite(m.x) || !Number.isFinite(m.y) || !Number.isFinite(m.hp)) {out.push({kind: 'bad-number', at: 'mob#' + m.id, v: m.x + ',' + m.y + ',' + m.hp}); break}
+}
+// Every hero, not only the caller: a tool that reaches another hero (a hire, a give, a heal, an invitation, a duel) can leave a NaN on theirs
+function allHeroNumbers(out) {
+  for (const a of S.agents) {if (a.kind !== 'hero') continue; const n = out.length; stateNumbers(a, out); for (let i = n; i < out.length; i++) out[i].at = '#' + a.id + ' ' + a.name + ' ' + out[i].at; if (out.length > 5) break}
 }
 const finding = (kind, o) => Object.assign({kind}, o);
 function check(res, h, isDm, tool) {
@@ -301,12 +321,13 @@ for (const st of states) {
   const base = hash(WORLD + st.name);
   reseedAll(SEED ^ base);
   let snap = null, h = null;
-  const restoreState = () => {if (st.direct) {h = st.make()} else {resetPrep(); restore(JSON.parse(snap)); h = S.agents.find(a => a.id === h.id) || h} if (st.after) st.after()};
+  const restoreState = () => {if (st.direct) {h = st.make()} else {resetPrep(); restore(JSON.parse(snap)); SP.rebuild(); h = S.agents.find(a => a.id === h.id) || h} if (st.after) st.after()};
   try {h = st.make(); snap = st.direct ? null : JSON.stringify(snapshot())} catch (e) {
     console.error('  FAIL ' + WORLD + '/' + st.name + ' setup threw: ' + (e && e.stack || e).toString().split('\n').slice(0, 4).join(' | ')); fails.push({st: st.name, tool: '(setup)', kind: 'threw'}); continue}
   let poolOf = {}; // read the state once with the read-only tools
   try {restoreState(); const hh = S.agents.find(a => a.id === h.id) || h; for (const t of tools) if (!t.act) harvest(t.dm ? dmAct(t.name, {}) : playerAct(hh.id, t.name, {}), poolOf); for (const l of ctxOf(hh).levers) (poolOf.lever = poolOf.lever || []).push(l)} catch (e) {console.error('  note: harvest threw in ' + st.name + ': ' + (e && e.message))}
-  for (const tool of tools) {
+  const LITE_SETS = Math.min(SETS, 6), toolsHere = !st.lite ? tools : st.only ? tools.filter(t => st.only.includes(t.name)) : tools.filter(t => t.act || (st.also || []).includes(t.name));
+  for (const tool of toolsHere) {
     const r = lcg(SEED ^ base ^ hash(tool.name));
     reseedAll(SEED ^ hash(tool.name));
     try { // each tool starts from the same state: restored from the JSON save, or built again (fresh)
@@ -315,15 +336,28 @@ for (const st of states) {
     if (!tool.dm && !tool.name) continue;
     trip.delete(tool.name);
     const c = ctxOf(h); c.pool = poolOf;
-    for (const set of argSets(tool, c, r, tool.dm)) {
+    const sets = [];
+    try { // live recipes from the situation (scripts/toolfuzz-cases.mjs): arguments read from the state at this moment
+      const R = (tool.dm ? CASES.dm(c) : CASES.hero(c))[tool.name];
+      for (const it of (R ? R() : [])) sets.push(it && (it.pre || typeof it.args === 'function' || it.args) ? {label: 'valid-recipe', pre: it.pre, args: it.args} : {label: 'valid-recipe', args: it});
+    } catch (e) {fails.push({st: st.name, tool: tool.name, set: 'recipe', kind: 'threw', v: 'recipe: ' + String(e && e.message || e).slice(0, 160)}); console.error('  FAIL ' + WORLD + '/' + st.name + '/' + tool.name + ' recipe threw: ' + (e && e.stack || e).toString().split(String.fromCharCode(10)).slice(0, 3).join(' | '))}
+    sets.push(...argSets(tool, c, r, tool.dm, st.lite ? LITE_SETS : SETS)); // the situation's own calls first, so the success path runs from the untouched state
+    for (const set of sets) {
       let res, threwDirect = null; calls++; const logAt = S.dmLogSeq || 0;
-      try {res = tool.dm ? dmAct(tool.name, set.args) : playerAct(h.id, tool.name, set.args)} catch (e) {threwDirect = e}
+      try {
+        if (set.pre) { // calls that make the situation for this one (a note to forget, a person to retire): the DM's are "dm:name"
+          const pr = set.pre.map(([t, a]) => t === 'step' ? (secs(a), null) : t.startsWith('dm:') ? dmAct(t.slice(3), a) : playerAct(h.id, t, a)); // ['step', seconds] lets the world run
+          set.args = typeof set.args === 'function' ? set.args(pr) : set.args; set.pre = null;
+        }
+        h.playRate = []; // the 12-actions-an-hour gate sits in front of the tools: it must not hide them from the fuzzer
+        res = tool.dm ? dmAct(tool.name, set.args) : playerAct(h.id, tool.name, set.args);
+      } catch (e) {threwDirect = e}
       const fs0 = [];
       if (!threwDirect) for (const e of S.dmLog || []) { // a lever that threw is logged by the DM log, not answered
-        if (e.id <= logAt) break; const t = JSON.stringify(e.summary || '');
+        if (e.id <= logAt) break; const t = safe(e.summary || '');
         if (JS_ERR.test(t)) { fs0.push(finding('threw', {v: 'DM log: ' + t.slice(0, 200)})); break }
       }
-      if (flag('show')) console.log('  ' + st.name + '/' + tool.name + ' [' + set.label + '] ' + JSON.stringify(set.args) + ' -> ' + JSON.stringify(res).slice(0, 220));
+      if (flag('show')) console.log('  ' + st.name + '/' + tool.name + ' [' + set.label + '] ' + safe(set.args) + ' -> ' + String(safe(res)).slice(0, Number(flag('show')) || 220));
       if (!threwDirect && res && res.ok !== false && tool.act && !st.noTrip && /valid/.test(set.label) && !trip.has(tool.name)) { // the first tool of its kind that went through: is the save still whole?
         trip.add(tool.name); let m = null; const keep = JSON.stringify(snapshot());
         try {m = roundTrip()} catch (e) {m = 'save or restore threw: ' + String(e && e.stack || e).split('\n').slice(0, 3).join(' | ')}
@@ -334,8 +368,9 @@ for (const st of states) {
       if (res && res.ok !== false && /valid/.test(set.label)) okBy.set(tool.name, (okBy.get(tool.name) || 0) + 1);
       const fs = fs0.concat(threwDirect ? [finding('threw', {v: 'escaped: ' + String(threwDirect && threwDirect.stack || threwDirect).split('\n').slice(0, 3).join(' | ')})] : check(res, h, tool.dm, tool.name));
       if (!threwDirect && fs.length === 0 && res && res.ok !== false && /valid/.test(set.label)) { // the world keeps running after a tool that went through
+        const s1 = []; allHeroNumbers(s1); fs.push(...s1);
         try {run(6)} catch (e) {fs.push(finding('step-threw', {v: String(e && e.stack || e).split('\n').slice(0, 3).join(' | ')}))}
-        const s2 = []; stateNumbers(h, s2); fs.push(...s2);
+        const s2 = []; stateNumbers(h, s2); allHeroNumbers(s2); fs.push(...s2);
       } else if (fs.some(x => x.kind === 'threw') || fs.length === 0) {/* a throw leaves the state as it is */}
       for (const x of fs) {
         const key = tool.name + '|' + x.kind + '|' + String(x.v).slice(0, 60);
@@ -344,10 +379,14 @@ for (const st of states) {
         console.error('  FAIL ' + WORLD + '/' + st.name + '/' + (tool.dm ? 'dm:' : '') + tool.name + ' [' + set.label + '] ' + x.kind + (x.at ? ' at ' + x.at : '') + ': ' + String(x.v).slice(0, 200) +
           '\n       args ' + JSON.stringify(set.args, (k, v) => typeof v === 'string' && v.length > 60 ? v.slice(0, 40) + '...(' + v.length + ')' : v === undefined ? '__undefined' : v) + '\n       replay ' + replay(st.name, tool.name));
       }
+      if (set.label === 'valid-recipe' && res && res.ok !== false && !threwDirect) { // a call that went through used up the situation: the next recipe starts from it again
+        try {restoreState()} catch (e) {fails.push({st: st.name, tool: tool.name, kind: 'threw', v: 'state restore: ' + String(e && e.message || e).slice(0, 160)})}
+      }
     }
   }
   console.log('  ' + WORLD + '/' + st.name + ' done, ' + calls + ' calls so far, ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s');
 }
-if (only !== 'x') {const none = tools.filter(t => !okBy.get(t.name)).map(t => (t.dm ? 'dm:' : '') + t.name); console.log('  coverage: ' + (tools.length - none.length) + '/' + tools.length + ' tools went through with valid arguments at least once' + (none.length ? '; never: ' + none.join(' ') : ''))}
-console.log((fails.length ? 'FAIL ' : 'ok   ') + WORLD + ': ' + calls + ' calls, ' + fails.length + ' findings, ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s');
-process.exit(fails.length ? 1 : 0);
+let tooFew = false;
+if (only !== 'x') {const none = tools.filter(t => !okBy.get(t.name)).map(t => (t.dm ? 'dm:' : '') + t.name); const MAXN = Number(flag('max-never', process.env.TOOLFUZZ_MAX_NEVER)) || 8; tooFew = tools.length > 100 && flag('state') === null && none.length > MAXN; if (tooFew) console.error('  FAIL ' + WORLD + ' coverage: ' + none.length + ' tools never went through, more than ' + MAXN + ' (a state that made a success path possible has stopped making it): ' + none.join(' ')); console.log('  coverage: ' + (tools.length - none.length) + '/' + tools.length + ' tools went through with valid arguments at least once' + (none.length ? '; never: ' + none.join(' ') : ''))}
+console.log((fails.length || tooFew ? 'FAIL ' : 'ok   ') + WORLD + ': ' + calls + ' calls, ' + fails.length + ' findings, ' + ((Date.now() - t0) / 1000).toFixed(1) + ' s');
+process.exit(fails.length || tooFew ? 1 : 0);
