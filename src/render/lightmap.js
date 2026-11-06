@@ -71,7 +71,7 @@ function cloudShadows(k,ox,oy,w,h,now){if(!FX.full)return;const a=Math.min(1,G.s
   const s=k*3.4,dx=now*5.5*k,dy=now*1.6*k;lx.globalAlpha=a;lx.setTransform(s,0,0,s,ox+dx,oy+dy);lx.fillStyle=skyPat;lx.fillRect((-ox-dx)/s-1,(-oy-dy)/s-1,w/s+2,h/s+2);lx.globalAlpha=1;lx.setTransform(1,0,0,1,0,0)}
 
 // Light the frame. o: {S, sel, sc, inView, cut}. The caller's ctx is in the world transform and is left there.
-export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut}=o,dk=G.dk,w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR),now=performance.now()/1000;
+export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut,seen}=o,dk=G.dk,w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR),now=performance.now()/1000;
   if(lm.width!==w||lm.height!==h){lm.width=w;lm.height=h}
   if(!shade||shadeGen!==chunkGen)buildShade();
   const k=sc/NR,ox=cam.offX/NR,oy=cam.offY/NR,A=G.amb,night=Math.min(1,dk/.4);
@@ -90,7 +90,7 @@ export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut}=o,dk=G.dk,w=
     glow(L.x*T,L.y*T,r*(.96+.04*fl),LIGHT.torch,L.big?Math.max(dk*1.3,.2)*fl:dk*1.2*fl)}
   for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,48))glow(x,y,36,LIGHT.crypt,dk*(.7+.15*Math.sin(now*1.3)))}
   if(dk>0){drawCampLight(glow,S,dk,inView,now);if(!cut)lifeLight(null,glow,dk,LIGHT);
-    if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-HEAD/2,22*PROC_SCALE*.85,SCENE,dk*1.1,true)}
+    if(cut)for(const e of cut.members.concat(cut.foes)){const p=seen?seen(e):e;glow(p.x*T,p.y*T-HEAD/2,22*PROC_SCALE*.85,SCENE,dk*1.1,true)}}
   lx.globalCompositeOperation='lighter';
   const lava=lavaGlow(!S.boss.alive),pulse=.9+.1*Math.sin(now*.9);
   if(lava){lx.setTransform(k,0,0,k,ox,oy);lx.globalAlpha=Math.min(1,.25+dk*1.5)*pulse;lx.drawImage(lava,0,0,W,H,0,0,W*T,H*T);lx.setTransform(1,0,0,1,0,0)}
