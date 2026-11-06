@@ -394,10 +394,10 @@ export function sceneAct(a,opt,line,move,swear){const sc=sceneOf(a);if(!sc||!sc.
   sc.acts[a.id]={k:o.k,line:said,by:'agent',...(sw?{swear:sw}:{}),...moved()};return sc.acts[a.id]}
 
 // ---- turns ----
-function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc,use=sc.ru;delete sc.rr;delete sc.rc;delete sc.ru; // a strike's roll as data (#285), a parley's check (#296)
+function take(sc,a,act){delete sc.rr;delete sc.rc;delete sc.ru;const o=optionsFor(sc,a).find(x=>x.k===act.k)||{k:act.k,text:act.k},res=apply(sc,a,act),roll=sc.rr,chk=sc.rc,use=sc.ru,at=sc.rt,hits=sc.rb;delete sc.rt;delete sc.rb;delete sc.rr;delete sc.rc;delete sc.ru; // a strike's roll as data (#285), a parley's check (#296)
   const F=sceneCompany(sc);if(F&&F.tableStats)F.tableStats[act.by==='agent'?'agent':'reflex']++;
   const spot=kindOf(sc)&&kindOf(sc).spotOf?kindOf(sc).spotOf(sc,a):null; // where they stand as they act (#744)
-  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(spot?{spot}:{}),...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{})}); // an item used (#360): {item, on, ok, effect, healed?}
+  sc.beats.push({id:a.id,name:a.name,k:act.k,text:o.text,res,by:act.by,line:act.line||null,...(spot?{spot}:{}),...(roll?{roll}:{}),...(chk?{check:chk}:{}),...(use?{use}:{}),...(at!=null&&at>=0?{at}:{}),...(hits&&hits.length?{hits}:{})}); // `at`: the crawl foe aimed at (an index into the room's foes), `hits`: the foes a blast took (#813) // an item used (#360): {item, on, ok, effect, healed?}
   const first=!(sc.rd>1);sc.beats[sc.beats.length-1].rd=sc.rd||1;
   {const H=dmOf(sc),K=kindOf(sc);if(H&&H.onBeat&&!together(sc)&&(first||(K&&K.everyBeat)))H.onBeat(sc,sc.beats[sc.beats.length-1])} // the DM's per-act call in the first round only (later rounds are dice) // everyone at once: one combined DM call after all (STG.onAll)
   const ok=act.k==='a'||act.k==='b'?clean(o.text,40):act.k; // the act a line goes with, for the watcher's Chat (#734)
