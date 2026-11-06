@@ -22,6 +22,7 @@ export const isLoopbackUrl = u => {try {const x = new URL(u); return /^https?:$/
 export const ttsOff = env => /^(0|false|no|off)$/i.test((env && env.RELAY_TTS) || '');
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const HINT = 'Narrator voice: no local speech engine at {url}. Start one (Kokoro-FastAPI, see CLAUDE.md "Narrator voice") or set TTS_URL; the game stays silent until then.';
+export const clampSpeed = s => {const n = Number(s); return Number.isFinite(n) && n > 0 ? Math.round(Math.min(1.5, Math.max(0.7, n)) * 100) / 100 : 1}; // the speaking rate a page may ask for (#1015)
 const clip = t => String(t || '').replace(/\s+/g, ' ').trim().slice(0, TTS_MAX_CHARS);
 
 export function ttsEngine({url = TTS_URL, model = 'kokoro', format = 'mp3', defaultVoice = null, dir = join(ROOT, 'logs', 'tts'), fetchImpl = globalThis.fetch, timeoutMs = 15000, enabled = true} = {}) {
@@ -45,7 +46,7 @@ export function ttsEngine({url = TTS_URL, model = 'kokoro', format = 'mp3', defa
       return {enabled: true, ok: false, engine: null, url, voices: [], format, error: lastErr, hint: HINT.replace('{url}', url)};
     } finally {a.done()}
   }
-  const idOf = (voice, text) => createHash('sha256').update([model, format, voice, text].join('\u0000')).digest('hex').slice(0, 24);
+  const idOf = (voice, text, speed = 1) => createHash('sha256').update([model, format, voice, text, ...(speed !== 1 ? [speed] : [])].join('\u0000')).digest('hex').slice(0, 24);
   const fileOf = id => join(dir, id + '.' + format);
   const validId = id => /^[0-9a-f]{24}$/.test(String(id || ''));
   function prune() {
@@ -53,7 +54,8 @@ export function ttsEngine({url = TTS_URL, model = 'kokoro', format = 'mp3', defa
       for (const f of fs.slice(KEEP)) try {unlinkSync(join(dir, f.n))} catch {}} catch {}
   }
   // One clip at a time (a local engine is one GPU or CPU): calls queue behind each other.
-  function speak(text, voice) {
+  function speak(text, voice, rate) {
+    const speed = clampSpeed(rate); // 1 sends and caches exactly as before
     const run = async () => {
       if (!enabled) throw new Error('narrator voice is off');
       if (!local) throw new Error('TTS_URL is not on this machine');
@@ -61,11 +63,11 @@ export function ttsEngine({url = TTS_URL, model = 'kokoro', format = 'mp3', defa
       if (lastOk === null && lastErr === null) await status(); // learn the engine's voices once
       let v = String(voice || defaultVoice || '').slice(0, 40);
       if (voices.length && !voices.includes(v)) v = defaultVoice && voices.includes(defaultVoice) ? defaultVoice : voices[0];
-      const id = idOf(v, t), f = fileOf(id), t0 = Date.now();
+      const id = idOf(v, t, speed), f = fileOf(id), t0 = Date.now();
       if (existsSync(f)) return {id, cached: true, ms: 0};
       const a = aborting(timeoutMs);
       try {
-        const r = await fetchImpl(url + '/v1/audio/speech', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({model, input: t, voice: v || undefined, response_format: format}), signal: a.signal});
+        const r = await fetchImpl(url + '/v1/audio/speech', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({model, input: t, voice: v || undefined, response_format: format, ...(speed !== 1 ? {speed} : {})}), signal: a.signal});
         if (!r.ok) throw new Error('engine answered HTTP ' + r.status);
         const buf = Buffer.from(await r.arrayBuffer()); if (buf.length < 16) throw new Error('engine sent no audio');
         mkdirSync(dir, {recursive: true}); writeFileSync(f, buf); lastOk = Date.now(); lastErr = null;
@@ -93,7 +95,7 @@ export function ttsEngine({url = TTS_URL, model = 'kokoro', format = 'mp3', defa
         if (size > 4000) return;
         let b; try {b = JSON.parse(Buffer.concat(ch).toString('utf8'))} catch {return send(400, {error: 'bad json'})}
         if (!b || typeof b.text !== 'string' || !b.text.trim()) return send(400, {error: 'text required'});
-        speak(b.text, typeof b.voice === 'string' ? b.voice : null).then(o => send(200, o), e => send(503, {error: e.message, hint: HINT.replace('{url}', url)}));
+        speak(b.text, typeof b.voice === 'string' ? b.voice : null, b.speed).then(o => send(200, o), e => send(503, {error: e.message, hint: HINT.replace('{url}', url)}));
       });
       return true;
     }
