@@ -16,6 +16,13 @@ export function drawHouse(R,x,y,roof,wall,sign){
   for(const wx of [x+7,x+35]){R(wx-1,wx===x+7?y+17:y+17,8,8,'#2a1c10');R(wx,y+18,6,6,'#9ad0ff');R(wx+3,y+18,1,6,'#2a1c10');R(wx,y+21,6,1,'#2a1c10');R(wx-1,y+24,8,1,'#d8d0c0')}
   if(sign){R(x+17,y+3,14,7,'#3a2414');R(x+18,y+4,12,5,sign);R(x+20,y+6,8,1,'#8a6a1a')}}
 
+// A house of any box (w x h units, the door dx units in): the fallback of a plan's kit rows, a house or a long hall with no cut image.
+export function plainHouse(R,x,y,w,h,dx,c){const rf=Math.round(h*.44);
+  R(x,y,w,rf,c.roof[1]);R(x,y,w,2,c.roof[0]);R(x+w-Math.ceil(w/4),y+2,Math.ceil(w/4),rf-2,c.roof[2]);for(let r=4;r<rf;r+=3)R(x,y+r,w,1,'#0003');R(x,y+rf-1,w,1,c.line);
+  R(x+1,y+rf,w-2,h-rf,c.wall[0]);R(x+1,y+h-2,w-2,2,'#0006');R(x+1,y+rf,w-2,1,c.wall[1]);
+  const dh=Math.min(13,h-rf-2);R(x+dx+3,y+h-dh,10,dh,c.line);R(x+dx+4,y+h-dh+1,8,dh-1,c.door);
+  for(let t=0;t<w;t+=16)if(t!==dx){R(x+t+4,y+rf+3,8,7,c.line);R(x+t+5,y+rf+4,6,5,c.wall[1])}}
+
 // The procedural crypt arch over its 48 x 48 rock patch (mouth tiles): a squat arch, a green glow, two skulls at its feet.
 export function drawCryptMouth(R,x,y){
   R(x+6,y+2,36,30,'#4a4652');R(x+6,y+2,36,4,'#78748a');R(x+6,y+2,4,30,'#78748a');R(x+38,y+2,4,30,'#78748a');

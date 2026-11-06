@@ -13,7 +13,7 @@ import {pickA} from '../core/rng.js';
 import {keep} from './kept.js';
 import {CITY,ZONES,dist} from '../world/map.js';
 import {gatheringFor} from './crypts.js';
-import {solidAt} from '../world/passable.js';
+import {solidAt,standAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {RACES,racesOf,raceName} from '../data/races.js';
 import {ELITES} from '../data/mobs.js';
@@ -52,6 +52,7 @@ export const townNpc=(c,role)=>(S.npcs||[]).find(p=>p.town===c.name&&p.role===ro
 
 // Homes: a row along the back wall (opposite the gate), spread over the interior.
 function homeAt(c,i,n){const f=(i+.5)/n,g=c.gateSide;
+  if(c.homes){const [[ax,ay],[bx,by]]=c.homes;return{x:c.x0+ax+(bx-ax)*f,y:c.y0+ay+(by-ay)*f}} // a town whose back wall is all roofs says which lane they live on
   if(g==='E')return{x:c.x0+1.5,y:c.y0+1.5+f*(c.h-3)};
   if(g==='W')return{x:c.x1-1.5,y:c.y0+1.5+f*(c.h-3)};
   if(g==='S')return{x:c.x0+1.5+f*(c.w-3),y:c.y0+1.5};
@@ -74,7 +75,7 @@ export function ensureNpcs(){if(S.npcs)return;
   for(const c of CITY){
     const roles=(c.npcs||NPC_ROLES.map(x=>x.id)).map(npcRole).filter(Boolean);
     const race=RACES.find(x=>x.id===c.race)||racesOf(c.fac)[0]||RACES[0];
-    roles.forEach((R,i)=>{const post=c.spots[R.post]||c.spots.square||c.ah,home=homeAt(c,i,roles.length);
+    roles.forEach((R,i)=>{const post=c.spots[R.post]||c.spots.square||c.ah,home=standAt(...Object.values(homeAt(c,i,roles.length))); // never inside a building (a plan may stand pieces on the back-wall row)
       S.npcs.push({id:++S.uid,kind:'npc',role:R.id,title:R.title[c.fac]||R.title[0],name:raceName(race),race:race.id,fac:c.fac,town:c.name,
         skin:pickA(race.skin),hair:pickA(race.hair),x:home.x,y:home.y,home,post:{x:post.x,y:post.y},
         state:'home',shift:null,face:1,moving:false,chatCd:0,bubble:null,met:{},wait:0,stroll:null,errand:null,songCd:0,lastBark:''})})}}
