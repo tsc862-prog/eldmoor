@@ -6423,6 +6423,2103 @@
       ],
       "url": "https://opengameart.org/content/lpc-terrains",
       "accepted": "2026-11-05"
+    },
+    "sprite:npc-bard-ashfolk@32": {
+      "id": "sprite:npc-bard-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "bard",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-bard-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "d335804cc63c011795ddbc8ff7d37a0ebce622daf57e0cd2ebcffcb70943498e",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/cloth/feather_cap",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/clothes/vest_open"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-bard-hallowan@32": {
+      "id": "sprite:npc-bard-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "bard",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-bard-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "891211b8d69878d3ff80f69a69d9ebe3359582e0a8fb133eafbcfd5cea4eb11c",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/cloth/feather_cap",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/clothes/vest_open"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-bard-mirekin@32": {
+      "id": "sprite:npc-bard-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "bard",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-bard-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "230959808c1e58398d1c5b9855f766ff04eaafb1b83284ade95c6eb7be27054f",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/cloth/feather_cap",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/clothes/vest_open"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-bard-skerrin@32": {
+      "id": "sprite:npc-bard-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "bard",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-bard-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "a85072ce1334cd8e5dfa1f03a30d9701450a841e43ac225d2359560cab831188",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/cloth/feather_cap",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/clothes/vest_open"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-bard-tarrow@32": {
+      "id": "sprite:npc-bard-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "bard",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-bard-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "588e58dcc83c8db62f0e0745544a4d5ffc55201e95976ce54e18236fed81a4ee",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/cloth/feather_cap",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/clothes/vest_open"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-bard-thornhide@32": {
+      "id": "sprite:npc-bard-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "bard",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-bard-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "427bea6ea5fce239847a5cc4772e240deccce89e5bcfb2fdf74d47d6e71bf0fe",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/cloth/feather_cap",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/clothes/vest_open"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-captain-ashfolk@32": {
+      "id": "sprite:npc-captain-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "captain",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-captain-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "118f47dd997a7b331819426378804907590cbe8ce53a93453778a23adc27c48d",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/accessory/plumage_legion",
+        "hat/helmet/legion",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/chainmail",
+        "torso/jacket/tabard"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-captain-hallowan@32": {
+      "id": "sprite:npc-captain-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "captain",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-captain-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "f20ef3b2760ce48b9320fe0ebd8bd482eb4ec19ca40ad83260a6fbe41025307c",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/accessory/plumage_legion",
+        "hat/helmet/legion",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/chainmail",
+        "torso/jacket/tabard"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-captain-mirekin@32": {
+      "id": "sprite:npc-captain-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "captain",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-captain-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "187a8360bf45e9babfba1243f6fe513acb6c6a9b752f1a2c27866baab621d9b5",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/accessory/plumage_legion",
+        "hat/helmet/legion",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/chainmail",
+        "torso/jacket/tabard"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-captain-skerrin@32": {
+      "id": "sprite:npc-captain-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "captain",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-captain-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "f20ef3b2760ce48b9320fe0ebd8bd482eb4ec19ca40ad83260a6fbe41025307c",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/accessory/plumage_legion",
+        "hat/helmet/legion",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/chainmail",
+        "torso/jacket/tabard"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-captain-tarrow@32": {
+      "id": "sprite:npc-captain-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "captain",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-captain-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "0862fcad966b346de970d0526794bc2ec7f8b197dd2a120c414af0e3f9c62393",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/accessory/plumage_legion",
+        "hat/helmet/legion",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/chainmail",
+        "torso/jacket/tabard"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-captain-thornhide@32": {
+      "id": "sprite:npc-captain-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "captain",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-captain-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "c1d6c13881c815af0bbe3b38c72d2be8356adef63162c4135af84cc5eabd8d3a",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/accessory/plumage_legion",
+        "hat/helmet/legion",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/chainmail",
+        "torso/jacket/tabard"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-drover-ashfolk@32": {
+      "id": "sprite:npc-drover-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "drover",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-drover-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "20300a90f6ed61e4289a0e6b34f802c1543c3a1fe468f2170b7234607dfbca61",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/headband/thick",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/aprons/suspenders",
+        "torso/clothes/shortsleeve/shortsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-drover-hallowan@32": {
+      "id": "sprite:npc-drover-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "drover",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-drover-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "0f451e5144adc49a467b07d0c8281e33db3bfec18b7f84845aaf751611205479",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/headband/thick",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/suspenders",
+        "torso/clothes/shortsleeve/shortsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-drover-mirekin@32": {
+      "id": "sprite:npc-drover-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "drover",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-drover-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "752459ab86435c20e980f9ce2f92d7c44ce86249b08b46e7c5b2d772576d6fc7",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/headband/thick",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/suspenders",
+        "torso/clothes/shortsleeve/shortsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-drover-skerrin@32": {
+      "id": "sprite:npc-drover-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "drover",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-drover-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "822c546ce673d0d01bc0467ccc2d0d7f59206e0061afabff168f6a7aa50a3bbe",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/headband/thick",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/suspenders",
+        "torso/clothes/shortsleeve/shortsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-drover-tarrow@32": {
+      "id": "sprite:npc-drover-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "drover",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-drover-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "4e9a70bfcd02ccf42fcf07c65210edfaed3b090e86ed9ede2090425019ef040a",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/headband/thick",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/suspenders",
+        "torso/clothes/shortsleeve/shortsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-drover-thornhide@32": {
+      "id": "sprite:npc-drover-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "drover",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-drover-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "d84d8c9ace9991c6a0c0b0eec00731b94ea43ac22061ea1e540a54427ccea104",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hair/plain",
+        "hat/headband/thick",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/suspenders",
+        "torso/clothes/shortsleeve/shortsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-hermit-ashfolk@32": {
+      "id": "sprite:npc-hermit-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "hermit",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-hermit-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "c50e9b358ba26192d3b915e12902798e18e30fbcb510ac2d55489abeb53e07ed",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-hermit-hallowan@32": {
+      "id": "sprite:npc-hermit-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "hermit",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-hermit-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "4987507636288d66b0047b45f873044ee928dbd0d17654f97e9b65cd8f06a0ec",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-hermit-mirekin@32": {
+      "id": "sprite:npc-hermit-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "hermit",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-hermit-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "9f1c4bcde89fcd1f678da8ae601506bec2a95a9db047c6ea32d1f22afa681980",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-hermit-skerrin@32": {
+      "id": "sprite:npc-hermit-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "hermit",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-hermit-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "4987507636288d66b0047b45f873044ee928dbd0d17654f97e9b65cd8f06a0ec",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-hermit-tarrow@32": {
+      "id": "sprite:npc-hermit-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "hermit",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-hermit-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "8560c082be606c6679d4d26ce9fb4da4f88e80ae5a12901661f96b7c8b83d8f5",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-hermit-thornhide@32": {
+      "id": "sprite:npc-hermit-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "hermit",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-hermit-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "de5d2d3a871d7395bc9da087e7fd1e18c52d393243ca3049ada23db96cfae53d",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "weapon/magic/gnarled"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-innkeeper-ashfolk@32": {
+      "id": "sprite:npc-innkeeper-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "innkeeper",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-innkeeper-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "3922f90ceccd238c9857ddcc07719b83d834e1e0d3c50b0753afe8d0d7dbfe27",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/orc/female",
+        "legs/pants/thin",
+        "torso/aprons/apron_full",
+        "torso/clothes/blouse_longsleeve"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-innkeeper-hallowan@32": {
+      "id": "sprite:npc-innkeeper-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "innkeeper",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-innkeeper-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "b2526006949b3c971ad1984a8d3340838f1aa2b57cb0f3c96a2e73e1f3f7c513",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/aprons/apron_full",
+        "torso/clothes/blouse_longsleeve"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-innkeeper-mirekin@32": {
+      "id": "sprite:npc-innkeeper-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "innkeeper",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-innkeeper-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "141a25479f41ffbd3d01991fa4025a10dcc73b39bb41713ce90728c39847f0d1",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/aprons/apron_full",
+        "torso/clothes/blouse_longsleeve"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-innkeeper-skerrin@32": {
+      "id": "sprite:npc-innkeeper-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "innkeeper",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-innkeeper-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "c089a065a9a9c389fbadbc692800b4c2ea5e5159dd8e2e4eedc272f4fb1bf30d",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/aprons/apron_full",
+        "torso/clothes/blouse_longsleeve"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-innkeeper-tarrow@32": {
+      "id": "sprite:npc-innkeeper-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "innkeeper",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-innkeeper-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "93c14a71d78b62f2f847ce48b9e76cd73c59765f3963651b5c8b3522863e2925",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/aprons/apron_full",
+        "torso/clothes/blouse_longsleeve"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-innkeeper-thornhide@32": {
+      "id": "sprite:npc-innkeeper-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "innkeeper",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-innkeeper-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "ac0cc5edb9df40d52f22ccb98fd850c9f519040886e6f8af86eef5ad400e7b27",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/ponytail",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/aprons/apron_full",
+        "torso/clothes/blouse_longsleeve"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-minstrel-ashfolk@32": {
+      "id": "sprite:npc-minstrel-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "minstrel",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-minstrel-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "1bf75adc69aa773b4d74337682a2f6307b9cb69ac97a5e10db47ff8473cb8b82",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "hat/cloth/feather_cap",
+        "head/heads/orc/female",
+        "legs/pants/thin",
+        "torso/clothes/blouse",
+        "torso/clothes/corset"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-minstrel-hallowan@32": {
+      "id": "sprite:npc-minstrel-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "minstrel",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-minstrel-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "b33cab02240c14ef2bf4b0cecc67b49b34f55ac13636f6a390f2a4301ebb35da",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "hat/cloth/feather_cap",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/blouse",
+        "torso/clothes/corset"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-minstrel-mirekin@32": {
+      "id": "sprite:npc-minstrel-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "minstrel",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-minstrel-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "e070a77e22a791b7269e5fd3d4b83e5d88eb0a9800bd3089eed5cbb3f25d8535",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "hat/cloth/feather_cap",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/blouse",
+        "torso/clothes/corset"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-minstrel-skerrin@32": {
+      "id": "sprite:npc-minstrel-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "minstrel",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-minstrel-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "9b31fbd60cff5d67687c84a462ff758f80f0e62f1b78c839270b7f20e93eebf0",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "hat/cloth/feather_cap",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/blouse",
+        "torso/clothes/corset"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-minstrel-tarrow@32": {
+      "id": "sprite:npc-minstrel-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "minstrel",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-minstrel-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "1c003fb2ccd414178ce3ad4319040492cdc4d9fd258b915967197c772444484a",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "hat/cloth/feather_cap",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/blouse",
+        "torso/clothes/corset"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-minstrel-thornhide@32": {
+      "id": "sprite:npc-minstrel-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "minstrel",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-minstrel-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "4b96556d481dfcb8c69cb34c2e731610e4d184196737658d933f31ce79281dae",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/braid",
+        "hat/cloth/feather_cap",
+        "head/heads/human/female",
+        "legs/pants/thin",
+        "torso/clothes/blouse",
+        "torso/clothes/corset"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-peddler-ashfolk@32": {
+      "id": "sprite:npc-peddler-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "peddler",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-peddler-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "82a8d59206855b8c6be3d56cc84345371f9ff94ad3d213e30d5f1ccef7315929",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/bandana2",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/longsleeve/longsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-peddler-hallowan@32": {
+      "id": "sprite:npc-peddler-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "peddler",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-peddler-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "b860163317d5f15e0a1db426dc92a2a9db9ea3e78af8b3c7b6a924ee9f558b89",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/bandana2",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/longsleeve/longsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-peddler-mirekin@32": {
+      "id": "sprite:npc-peddler-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "peddler",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-peddler-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "5ce295f76b53e2c5ec94f54a2c441b17388be0f178280677b28b16356d7d464e",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/bandana2",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/longsleeve/longsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-peddler-skerrin@32": {
+      "id": "sprite:npc-peddler-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "peddler",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-peddler-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "b860163317d5f15e0a1db426dc92a2a9db9ea3e78af8b3c7b6a924ee9f558b89",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/bandana2",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/longsleeve/longsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-peddler-tarrow@32": {
+      "id": "sprite:npc-peddler-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "peddler",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-peddler-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "186a4bcf0bb7b9fa79b41e4ecbfc174aafc8aba5560e75bcbe76a9a034845712",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/bandana2",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/longsleeve/longsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-peddler-thornhide@32": {
+      "id": "sprite:npc-peddler-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "peddler",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-peddler-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "c4b3cf1eff60d654ac89eaa1e508dfb0499ef80ae2cb9fe8e96fd0609ea78642",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/bandana2",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/longsleeve/longsleeve/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-priest-ashfolk@32": {
+      "id": "sprite:npc-priest-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "priest",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-priest-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "1c64b5b77d8176b862d9f6fef8820faaac143f26694c9a76a7e3b0decdf68c8e",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "hat/accessory/horns_short",
+        "head/heads/orc/female",
+        "torso/clothes/robe"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-priest-hallowan@32": {
+      "id": "sprite:npc-priest-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "priest",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-priest-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "2adadad4a5216568bfd613773032af13a2537bb92a94f9856bf6d4800cead2f8",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-priest-mirekin@32": {
+      "id": "sprite:npc-priest-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "priest",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-priest-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "0693f762f57cc17ba5b9c08082a88be5f286f4e766df6f2fc0664fc6d2e0964a",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "hat/accessory/horns_short",
+        "head/heads/human/female",
+        "torso/clothes/robe"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-priest-skerrin@32": {
+      "id": "sprite:npc-priest-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "priest",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-priest-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "350d84c0be3f88280f053ccb6754a6f3dd3484160531f6ae5b2f39877dfc88e0",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-priest-tarrow@32": {
+      "id": "sprite:npc-priest-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "priest",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-priest-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "dbd905e0a50c5445124f0559b44d08c09e64aeb8eef3f058b6a1db66c112625e",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "head/heads/human/female",
+        "torso/clothes/robe"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-priest-thornhide@32": {
+      "id": "sprite:npc-priest-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "priest",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-priest-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "87bba54325e86316f704c0a040594c69799b52da4d68239c4c1a1c868554cbbf",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/female",
+        "feet/boots/female",
+        "hair/long",
+        "hat/accessory/horns_short",
+        "head/heads/human/female",
+        "torso/clothes/robe"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-quartermaster-ashfolk@32": {
+      "id": "sprite:npc-quartermaster-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "quartermaster",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-quartermaster-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "876c55dc6f51664c15bff9e247d3d7d143fbd9c5e190cf2870208af8dc9221ec",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/formal/bowler",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/jacket/frock"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-quartermaster-hallowan@32": {
+      "id": "sprite:npc-quartermaster-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "quartermaster",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-quartermaster-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "8d3eb72a2a8a6a1a9ffc5220bb07223bce3e1fc865605fe6fc70ec239d3db885",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/formal/bowler",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/jacket/frock"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-quartermaster-mirekin@32": {
+      "id": "sprite:npc-quartermaster-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "quartermaster",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-quartermaster-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "52ced8c8987a8f6a251db2efc0b67835a9c05ff9902f307f2c7ea9a85a505eb0",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/formal/bowler",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/jacket/frock"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-quartermaster-skerrin@32": {
+      "id": "sprite:npc-quartermaster-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "quartermaster",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-quartermaster-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "8d3eb72a2a8a6a1a9ffc5220bb07223bce3e1fc865605fe6fc70ec239d3db885",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/formal/bowler",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/jacket/frock"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-quartermaster-tarrow@32": {
+      "id": "sprite:npc-quartermaster-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "quartermaster",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-quartermaster-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "911ed9d055db14f2e68b3d38fb47b3116668420acee2e490072a177b5655da0e",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/formal/bowler",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/jacket/frock"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-quartermaster-thornhide@32": {
+      "id": "sprite:npc-quartermaster-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "quartermaster",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-quartermaster-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "74f698d8ab1b37c0a5052f82b94526a1a17b3d0f38d23d6ea172e3b693d8fc6d",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/formal/bowler",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/clothes/longsleeve/longsleeve/male",
+        "torso/jacket/frock"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-sellsword-ashfolk@32": {
+      "id": "sprite:npc-sellsword-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "sellsword",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-sellsword-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "8cf088adcbfb9268bba3ceae9cd0e6eaa083a5a976cb7ff3e16007886c719970",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/nasal",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/armour/leather",
+        "weapon/sword/saber"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-sellsword-hallowan@32": {
+      "id": "sprite:npc-sellsword-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "sellsword",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-sellsword-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "f3bc0569c0d63fb25d99a6be5737b1a2523bf6d506c13e284009395c85152394",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/nasal",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/armour/leather",
+        "weapon/sword/saber"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-sellsword-mirekin@32": {
+      "id": "sprite:npc-sellsword-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "sellsword",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-sellsword-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "083f9220409a7e20322147a9bab1b4d386cd0f38d6090a0899cda231bda884f1",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/nasal",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/armour/leather",
+        "weapon/sword/saber"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-sellsword-skerrin@32": {
+      "id": "sprite:npc-sellsword-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "sellsword",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-sellsword-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "f3bc0569c0d63fb25d99a6be5737b1a2523bf6d506c13e284009395c85152394",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/nasal",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/armour/leather",
+        "weapon/sword/saber"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-sellsword-tarrow@32": {
+      "id": "sprite:npc-sellsword-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "sellsword",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-sellsword-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "8ab43617a860b63e50d99ac258ad0a31463084bdec9f6f267afae6485599d631",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/nasal",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/armour/leather",
+        "weapon/sword/saber"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-sellsword-thornhide@32": {
+      "id": "sprite:npc-sellsword-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "sellsword",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-sellsword-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "797b84e99314c6542cbc8d0348f3c329634436da1a431b2c4648b27787ca94f5",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/helmet/nasal",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/armour/leather",
+        "weapon/sword/saber"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-smith-ashfolk@32": {
+      "id": "sprite:npc-smith-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "smith",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-smith-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "49402f745dab398860d5907bae813f200e2afc37bf079d16f6606652ca3cfda4",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/headband/tied",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/sleeveless/sleeveless/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-smith-hallowan@32": {
+      "id": "sprite:npc-smith-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "smith",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-smith-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "d9a4928795902d373ecd8a0fd6d7ebc5ac8cf9fa071e359e92c04eb2e64070da",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/headband/tied",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/sleeveless/sleeveless/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-smith-mirekin@32": {
+      "id": "sprite:npc-smith-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "smith",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-smith-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "8d87bc3808a81f418b61f3f53d71b3d35847b9630c8c748958952b8cfb9d19cd",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/headband/tied",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/sleeveless/sleeveless/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-smith-skerrin@32": {
+      "id": "sprite:npc-smith-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "smith",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-smith-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "d9a4928795902d373ecd8a0fd6d7ebc5ac8cf9fa071e359e92c04eb2e64070da",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/headband/tied",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/sleeveless/sleeveless/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-smith-tarrow@32": {
+      "id": "sprite:npc-smith-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "smith",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-smith-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "cb99fb9745df249c3189d28948e5f33683f8908ed7ce82846fa0a5678b2fa62d",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/headband/tied",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/sleeveless/sleeveless/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-smith-thornhide@32": {
+      "id": "sprite:npc-smith-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "smith",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-smith-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "e48c97b14ba09e38cc25f397194a0495c8eabb436bc31d7da1a1fa05ab298b92",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/headband/tied",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/aprons/apron",
+        "torso/clothes/sleeveless/sleeveless/male"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-stranger-ashfolk@32": {
+      "id": "sprite:npc-stranger-ashfolk",
+      "kind": "sprite",
+      "people": "ashfolk",
+      "role": "stranger",
+      "look": {
+        "head": "orc",
+        "skin": "pale_green",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-stranger-ashfolk.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "dd52700f672c1c618c010707013d2ddc059068e9af8b25de5ed32a60d2fa8467",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/orc/male",
+        "legs/pants/male",
+        "torso/jacket/trench"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-stranger-hallowan@32": {
+      "id": "sprite:npc-stranger-hallowan",
+      "kind": "sprite",
+      "people": "hallowan",
+      "role": "stranger",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "light brown"
+      },
+      "file": "sprite/32/npc-stranger-hallowan.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "91d54bfe068274d3cb0746b43dc84d673bf9d27d48d53c2e27f33b732b698588",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/jacket/trench"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-stranger-mirekin@32": {
+      "id": "sprite:npc-stranger-mirekin",
+      "kind": "sprite",
+      "people": "mirekin",
+      "role": "stranger",
+      "look": {
+        "head": "human",
+        "skin": "zombie_green",
+        "hair": "raven"
+      },
+      "file": "sprite/32/npc-stranger-mirekin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "13e7904df23dab0d4ddf7560eccce7cafbabcb3f20638b8ef863062b20bd1239",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/jacket/trench"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-stranger-skerrin@32": {
+      "id": "sprite:npc-stranger-skerrin",
+      "kind": "sprite",
+      "people": "skerrin",
+      "role": "stranger",
+      "look": {
+        "head": "human",
+        "skin": "light",
+        "hair": "black"
+      },
+      "file": "sprite/32/npc-stranger-skerrin.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "91d54bfe068274d3cb0746b43dc84d673bf9d27d48d53c2e27f33b732b698588",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/jacket/trench"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-stranger-tarrow@32": {
+      "id": "sprite:npc-stranger-tarrow",
+      "kind": "sprite",
+      "people": "tarrow",
+      "role": "stranger",
+      "look": {
+        "head": "human",
+        "skin": "amber",
+        "hair": "chestnut"
+      },
+      "file": "sprite/32/npc-stranger-tarrow.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "7345f55cb1f3abd1dbd3079baf94487b4f89468923e19b0113f321d6c5a47af3",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/jacket/trench"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "sprite:npc-stranger-thornhide@32": {
+      "id": "sprite:npc-stranger-thornhide",
+      "kind": "sprite",
+      "people": "thornhide",
+      "role": "stranger",
+      "look": {
+        "head": "human",
+        "skin": "olive",
+        "hair": "dark brown"
+      },
+      "file": "sprite/32/npc-stranger-thornhide.png",
+      "w": 96,
+      "h": 192,
+      "sha256": "c53978ccdb84d3ee19162077a929b737f1c47b98fdaff1a0a3c82cbb9f6a7412",
+      "tier": 32,
+      "source": "lpc-generator",
+      "license": "CC-BY-SA 3.0",
+      "credits": "docs/CREDITS.md#lpc-townsfolk-sheets",
+      "layers": [
+        "body/bodies/male",
+        "feet/boots",
+        "hat/cloth/hood",
+        "head/heads/human/male",
+        "legs/pants/male",
+        "torso/jacket/trench"
+      ],
+      "accepted": "2026-11-04"
     }
   }
 }

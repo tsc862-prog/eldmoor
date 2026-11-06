@@ -22,7 +22,7 @@ import {sha256,fileOf} from './lib.mjs';
 import {RACES} from '../../src/data/races.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','..');
-const REPO=path.join(ROOT,'assets','packs','lpc-generator','repo');
+const REPO=path.join(process.env.ELDMOOR_PACKS||path.join(ROOT,'assets','packs'),'lpc-generator','repo'); // ELDMOOR_PACKS: a packs folder elsewhere (a worktree has none)
 const SHEETS=path.join(REPO,'spritesheets'),DEFS=path.join(REPO,'sheet_definitions');
 export const CONFIG=path.join(ROOT,'scripts','art','lpc-heroes.json');
 const LICENCE='CC-BY-SA 3.0';
