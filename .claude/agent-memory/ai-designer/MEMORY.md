@@ -1,3 +1,5 @@
+- [First delve Stepping #932](first_delve_stepping.md) — mouth in gate region + clear line, FAR 30, stepping child, crawl lore, browser check
+- [First delve #922](first_delve.md) — prologue.js flow, default in one line, stored only when it differs, hook seams kept off crawl.js/table.js, tuning
 - [Party rules](party_rules.md) — why followers have their own state, duelers stay, regroup exists, zone = weakest member, 50% outnumbered flee
 - [Companies initiate #826](companies_initiate.md) — inMuster keyed on hasLinks, solo go_crypt/join_raid, raid vote lapse, askCompany seam for call_to
 - [Own oaths #800](own_oaths.md) — goal is an offered thread until sworn; swornOf is the one reader; dice stay in goals.js; keep_oath for words
@@ -70,6 +72,7 @@
 - [Interrogation and camp scene #431 s3](interrogation_camp_scene.md) — interrogate.js kind, yield queue gated on hasLinks, kindHooks/stageDone bridge, ctx.camp cut
 - [Talk setting #431](talk_setting.md) — talk scenes open on tavern/chapel/smithy/gate by where the person stands; field keeps the cut
 - [Gambits #617](gambits.md) — per-hero rules run by autopilot/fight reflex; presets = old policy rule for rule; hashcheck autopilot row guards it
+- [DM sites #69/#642](dm_sites.md) — create_site/enter_site, raid flag+lockout, background parties, scripted raiseSite, siteRoom injection, private LCG
 - [Vision scene #639](vision_scene.md) — stage_scene vision: rest/place trigger, vision.js registered from index (cycle), summary hides reveal
 - [DM sites #69](dm_sites.md) — create_site/enter_site, crawl by g.site, alvl gap scaling, round cap, wireSites cycle, private LCG
 - [Gambit hold #630](gambit_hold.md) — hold action stops the clock until the agent acts; release paths, limits, cautious preset only
@@ -88,8 +91,11 @@
 - [Others none #780](others_none.md) — no-roster world, summon_hero lever, guild skip, GOODS floor, heir rule, fixture traps
 - [Log outcome tags #785](log_outcome_tags.md) — OUTCOME regex in history.js leaves src off outcome lines; add new outcome openings there
 - [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap
+- [Crawl geometry #745](crawl_geometry.md) — geometry.js rules, reach fine at rounds:2, GUARD_CUT not monotonic, deaths noise needs 60+ sims
 - [Wait is not progress #790](wait_not_progress.md) — wait cap 240, level condition -> hunt, 12 h town-idle guard, refusals list the board
 - [Errands inside #790](errand_wait.md) — #732 + #802: an errand is a capped wait, stale unless run, guard outranks it and ARRIVE_HOLD
 - [Paths #794](paths_794.md) — path.js rules: near lines skip A*, mob limit, clearLine, reachable goal swap, road shoulders, fixture traps
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
 - [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
+- [Seeded import dice #888](seeded_import_dice.md) — GOODS stock rolled at import, before seedRng; seeded checks import scripts/seed-first.mjs first
+- [Save drift #324](save_drift.md) — v7/v6 flake = solo id reuse in the fixture; boss, dice, timers now saved (kept.js); play-on check

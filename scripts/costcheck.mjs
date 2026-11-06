@@ -3,6 +3,7 @@
 // (#787) and tokensCached (#778), older lines, game hours from digests and clocks, DM voices and their world, the DM's share,
 // budgets, --world/--all/--hours, history replacing a day's line, the behavior report's section, the launcher's line, and that
 // no chat, narration or key-shaped text reaches a report.
+import {mkTmp} from './tmp.mjs';
 import {mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
@@ -81,7 +82,7 @@ const many = costData(Array.from({length: COST.SEATS + 3}, (_, i) => turn(i, 'he
 ok(/3 more seats: 3 turns/.test(mm), 'a long seat list ends in one line');
 
 console.log('Fixture logs:');
-const base = mkdtempSync(join(tmpdir(), 'eldmoor-cost-')), root = join(base, 'behavior'), out = join(base, 'cost');
+const base = mkTmp('eldmoor-cost-'), root = join(base, 'behavior'), out = join(base, 'cost');
 const jl = rows => rows.map(r => JSON.stringify(r)).join('\n') + '\n';
 for (const w of ['alpha', 'beta']) mkdirSync(join(root, w), {recursive: true});
 mkdirSync(join(base, 'runners'));
