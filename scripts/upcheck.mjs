@@ -334,6 +334,7 @@ $l.Start(); Write-Output 'fake voice: listening'; Start-Sleep -Seconds 600
   const marks = () => existsSync(mark) ? readFileSync(mark, 'utf8').split(/\r?\n/).filter(Boolean).length : 0;
   const url = p => 'http://127.0.0.1:' + p;
   let L = null;
+  const dog = setTimeout(() => {console.error('  FAIL the voice section did not finish in 4 minutes (a launcher or child never settled)'); if (L) console.error(String(L.out).slice(-2500)); try {spawnSync('taskkill', ['/T', '/F', '/PID', String(L.proc.pid)], {windowsHide: true})} catch {} try {L.proc.kill()} catch {} process.exit(1)}, 240000);
   try {
     // A: KOKORO_START from the environment, a .mjs script, on a spare port; the launcher does not wait for it
     let VPORT = await freePort();
@@ -358,12 +359,12 @@ $l.Start(); Write-Output 'fake voice: listening'; Start-Sleep -Seconds 600
     }
 
     // C: something already answers on the port: left alone, no second engine, never killed
-    VPORT = await freePort(); const held = net.createServer(); await new Promise(r => held.listen(VPORT, '127.0.0.1', r)); const n1 = marks();
+    VPORT = await freePort(); const heldSockets = new Set(), held = net.createServer(c => {heldSockets.add(c); c.on('close', () => heldSockets.delete(c)); c.on('error', () => {})}); await new Promise(r => held.listen(VPORT, '127.0.0.1', r)); const n1 = marks();
     L = await launch1({env: {KOKORO_START: fakeMjs, TTS_URL: url(VPORT)}});
     ok(await L.seen(/voice: something already answers on port \d+; not starting another/), 'an engine already on the port is not started twice');
     L.send('s'); ok(await L.seen(/voice: already running elsewhere \(left alone\)/, 15000) && marks() === n1 && !/voice engine started/.test(L.out), 's says so and the script never ran');
     ok(await L.quit() && await listening(VPORT), 'q leaves what it did not start running');
-    await new Promise(r => held.close(r));
+    for (const c of heldSockets) c.destroy(); await Promise.race([new Promise(r => held.close(r)), sleep(5000)]); // close() waits for every open socket: never let that hang the check
 
     // D: a script that is not there: one line, the game carries on
     L = await launch1({env: {KOKORO_START: join(tmp, 'nope.ps1'), TTS_URL: url(await freePort())}});
@@ -404,7 +405,7 @@ $l.Start(); Write-Output 'fake voice: listening'; Start-Sleep -Seconds 600
     console.error('  FAIL voice check threw: ' + (e && e.stack || e)); fail++;
     if (L) {console.error('--- launcher output ---\n' + L.out.slice(-2500)); try {spawnSync('taskkill', ['/T', '/F', '/PID', String(L.proc.pid)], {windowsHide: true})} catch {}}
   } finally {
-    await sleep(300); try {rmSync(tmp, {recursive: true, force: true})} catch {}
+    clearTimeout(dog); await sleep(300); try {rmSync(tmp, {recursive: true, force: true})} catch {}
   }
 }
 
