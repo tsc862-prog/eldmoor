@@ -196,10 +196,10 @@ const heal=(b,amt)=>{const h=Math.min(maxHp(b)-b.hp,Math.round(amt));b.hp+=h;ret
 function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=act.k,f=liveFoes(cr)[0];actMove(sc,g,a,act);
   const F=field(g,a);
   switch(k){
-  case 'strike':{if(!f)return 'the room is quiet';let foe=f,mod=0;
+  case 'strike':{if(!f)return 'the room is quiet';let foe=f,mod=0;sc.rt=cr.foes.indexOf(f); // the foe aimed at, for the view (a beat's `at`)
     if(F){const T=targetOf(F,a.id,shoots(a.cls));cr.stats.strikes=(cr.stats.strikes||0)+1;
       if(!T.reach.ok){cr.stats.walks=(cr.stats.walks||0)+1;return 'out of reach: walked toward '+T.foe.name+', the strike must wait for next round'}
-      foe=foeAt(cr,T.foe.key);mod=T.flank.bonus+T.reach.pen;if(T.flank.bonus)cr.stats.flanks=(cr.stats.flanks||0)+1}
+      foe=foeAt(cr,T.foe.key);sc.rt=cr.foes.indexOf(foe);mod=T.flank.bonus+T.reach.pen;if(T.flank.bonus)cr.stats.flanks=(cr.stats.flanks||0)+1}
     const d=ri(1,20),dc=CRAWL.DC+Math.floor(foe.lvl/2),t=d+skill(a,cr,foe)+mod;cr.stats.blows++;
     if(d===1){cr.open=(cr.open||[]);cr.open.push(a.id);return 'missed badly and left an opening'}
     if(t<dc&&d<20)return 'missed';
@@ -208,7 +208,7 @@ function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=ac
   case 'hold':cr.shield++;cr.guard.push(a.id);return 'held the line';
   case 'ward':{if(F){const L=wardOf(F,a.id),ids=L.map(b=>b.id);let n=0;for(const b of standing(g))if(ids.includes(b.id))n+=heal(b,maxHp(b)*.08);(cr.warded||(cr.warded=[])).push(...ids);return (n?'mended ':'steadied ')+(L.length>1?L.length+' within reach':'only themselves')}
     let n=0;for(const b of standing(g))n+=heal(b,maxHp(b)*.08);cr.edge+=1;return n?'mended the group':'steadied the group'}
-  case 'scout':case 'read':{if(F&&k==='read'&&blaster(a))return blast(g,F,a);if(F&&k==='scout'&&inCover(F,a.id)&&F.G.coverWord==='reeds')(cr.hid||(cr.hid=[])).push(a.id); // the reeds hide a scout from the round's first blow
+  case 'scout':case 'read':{if(F&&k==='read'&&blaster(a))return blast(sc,g,F,a);if(F&&k==='scout'&&inCover(F,a.id)&&F.G.coverWord==='reeds')(cr.hid||(cr.hid=[])).push(a.id); // the reeds hide a scout from the round's first blow
     cr.edge+=2;return k==='scout'?'found a gap':'turned the wards'}
   case 'heal':{const lo=lowest(g);if(!lo)return 'nobody to heal';if(F&&!within(cr.pos[a.id],cr.pos[lo.id],DOWN.HEAL_RANGE)){if(isDown(lo))cr.stats.tendWalks=(cr.stats.tendWalks||0)+1;return lo.name+' is out of range: walked toward them'}
     const h=heal(lo,maxHp(lo)*.25+reviveBonus(lo));tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
@@ -219,10 +219,10 @@ function apply(sc,a,act){const g=grp(sc);if(!g)return null;const cr=g.crawl,k=ac
   return null}
 
 // A Mage's blast (#745): one strike's dice against the hardest foe in the square; every foe inside takes it, a friend inside half a foe's blow.
-function blast(g,F,a){const cr=g.crawl,room=roomsOf(g)[cr.i],aim=cr.aim&&cr.aim[a.id],c=aim||bestBlast(F,a.id);if(!c)return 'no foe in reach of a blast: held it';
+function blast(sc,g,F,a){const cr=g.crawl,room=roomsOf(g)[cr.i],aim=cr.aim&&cr.aim[a.id],c=aim||bestBlast(F,a.id);if(!c)return 'no foe in reach of a blast: held it';
   const B=blastAt(F,c);if(!B.foes.length)return 'the blast caught no foe';const L=B.foes.map(x=>foeAt(cr,x.key)),f=L.reduce((m,x)=>x.lvl>m.lvl?x:m,L[0]),d=ri(1,20),t=d+skill(a,cr,f),dc=CRAWL.DC+Math.floor(f.lvl/2);cr.stats.blows++;cr.stats.blasts=(cr.stats.blasts||0)+1;
   let res;if(d===1){(cr.open||(cr.open=[])).push(a.id);res='the blast went wide and left an opening'}else if(t<dc&&d<20)res='the blast went wide';
-  else{const n=d===20?2:1;for(const x of L)x.hp-=n;res='the blast hit '+L.length+(L.length===1?' foe':' foes')}
+  else{const n=d===20?2:1;for(const x of L)x.hp-=n;sc.rb=L.map(x=>cr.foes.indexOf(x));res='the blast hit '+L.length+(L.length===1?' foe':' foes')}
   const burnt=[];for(const m of B.friends){const b=byId(m.id);if(!b||isDown(b))continue;b.hp-=Math.max(1,Math.round(maxHp(b)*hitOf(room,f,cr)*GEO.FRIENDLY));burnt.push(b.name);if(b.hp<=0)settle(g,room,cr,{t:b,down:true},{name:a.name+"'s blast"},[],[])}
   return res+(burnt.length?', and caught '+burnt.join(' and '):'')}
 // The foes' turn, and what the round settles. Returns the sentence the scene ends on.
