@@ -136,6 +136,10 @@ const staged=sc=>!!(STG&&sc&&sc.ctx&&sc.ctx.staged!=null);
 // The DM's at-the-table calls of a scene: a kind that brings its own (setSceneKind(k, {..., dm:{onFrame, onAll, live, fill,
 // done}}): the arrival and the opening, sim/arrival.js, #452/#437), else the staged scene's (sim/staged.js), else none.
 const dmOf=sc=>sc&&EXTRA[sc.kind]&&EXTRA[sc.kind].dm?EXTRA[sc.kind].dm:staged(sc)?STG:null;
+// Every other scene (#1017, sim/sceneframe.js): one DM frame as it opens while the table voice listens (sc.gf). Registered, not imported.
+let FRM=null;export function setFrameHook(h){FRM=h}
+export const callKey=(sc,c)=>sc.company+':'+sc.id+':'+c.id; // call ids start over in every scene: this one does not (#1017)
+export const sceneFoeNames=sc=>foesOf(sc).map(foeName);
 // A kind may bring more (#571, the fireside): next(sc) -> true to play another round (acts cleared, the same order); liveMs, the
 // real wait for a live agent instead of TABLE.liveMs (a member that ran it out once is not waited for again in that scene);
 // lineMax, the length of a member's line; view(sc, a), more fields for tableView; everyBeat, its DM's onBeat call in every
@@ -521,7 +525,7 @@ function runAll(sc,dt,instant){
   return !!(sc.calls&&callWait(sc,dt,instant))}
 // A staged scene's DM calls, oldest first: the DM agent's answer, or a wait of up to TABLE.dmMs at 1x, or
 // the scripted DM's fill (at once at 3x/8x, when the seat is empty or the DM keeps missing). True = waiting.
-function callWait(sc,dt,instant){const H=dmOf(sc);if(!H)return false;
+function callWait(sc,dt,instant){const H=sc.gf&&FRM?FRM:dmOf(sc);if(!H)return false;
   for(const c of sc.calls){if(c.done)continue;
     if(!instant&&sc.pause&&(H.live(sc)||callPicked(c))){c.t+=dt;if(c.t<callEnd(c))return true;sc.dmMiss=(sc.dmMiss||0)+1}
     H.fill(sc,c);dt=0}
@@ -535,7 +539,9 @@ export const callLeft=c=>Math.max(0,Math.round((callEnd(c)-(c.t||0))*10)/10);
 // runner is busy answering (not polling), unless the runner went away since (dmreflex gone()).
 export function callSeen(c){if(c&&c.seen==null){c.seen=c.t||0;c.ep=goneEpoch()}}
 const callPicked=c=>c.seen!=null&&c.ep===goneEpoch();
-const frameCalls=sc=>{const H=dmOf(sc);if(H&&H.onFrame&&!sc.framed){sc.framed=true;H.onFrame(sc);for(const c of sc.calls||[])c.op=1}}; // op: the opening calls the members wait for (#682)
+const frameCalls=sc=>{if(sc.framed)return;const H=dmOf(sc);if(H&&H.onFrame){sc.framed=true;H.onFrame(sc)}
+  if(FRM&&!(sc.calls&&sc.calls.length)&&FRM.want(sc)){const L=sc.ids.map(byId).filter(living);if(L.some(a=>a.player)){sc.framed=true;sc.gf=1;FRM.onFrame(sc,L[0],L.map(a=>a.name),COMBAT[sc.kind]?FRM.foes(sc):[])}} // the DM's frame of any other scene (#1017)
+  for(const c of sc.calls||[])c.op=1}; // op: the opening calls the members wait for (#682)
 
 // ---- the outcome ----
 function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.filter(b=>b.k===k).map(b=>b.name);let tail='';
