@@ -956,6 +956,18 @@ The owner's rule: the DM and the players talk only inside the game. How it holds
   line reaches members in range (and the table) and not one far away, npc_say reaches earshot, party
   chat reaches every member, and the relay keeps the seats apart.
 
+## Narrator voice (issue #554)
+
+The DM's narration (`narrate`, `npc_say`, Table frames and banner narration) can be read aloud by a local text-to-speech engine
+behind the page's Sound switch. The relay (`scripts/providers/tts.mjs`) talks to any local server with the OpenAI `/v1/audio/speech`
+shape (first choice: Kokoro-FastAPI with Kokoro-82M, default `TTS_URL=http://127.0.0.1:8880`); the URL must be loopback, so no text
+leaves the PC, and nothing is paid. Routes (page origin only): `GET /tts/status`, `POST /tts/say {text, voice}` -> `{id}`, `GET /tts?id=`;
+clips cached by hash under `logs/tts/`; `/health` has `providers.tts`; `RELAY_TTS=0` turns it off; `TTS_MODEL`, `TTS_FORMAT`, `TTS_VOICE`.
+Voices are data (`src/data/voices.js`, hash-picked, no RNG). The page side is `src/ui/sound.js` (queue: Table, npc_say, narrate, hero lines;
+never overlapping; a line older than 20 s is dropped; 3x/8x plays Table only; volume slider and "Heroes speak" in Settings, default off).
+With no engine the game is silent and Settings shows one hint line. Audio is for the watcher only (channelcheck unaffected). `npm run ttscheck`.
+Owner steps: see the PR body of #554 (install Kokoro-FastAPI, start it, restart the relay).
+
 ## Behavior logs (for review)
 
 Issue #129: structured, append-only JSONL for the watcher and the `playtest-reviewer` agent, never read
