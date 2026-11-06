@@ -17,6 +17,7 @@ import {heroSprite,outlined} from '../render/sprites.js';
 import {saveSummary,exportStored,importFile,takeSkipTitle,hasPending,afterReset} from './save.js';
 import {openSetup,pollRelay,watchRelay,relayState,pulledModels} from './setup.js';
 import {notesFrom,noteLabel} from './patchnotes.js';
+import {cinemaWish,setCinemaWish} from './cinema.js'; // open the world in the cinema view (#979)
 
 const HELP_URL='https://github.com/tsc862-prog/eldmoor#readme';
 const DEFAULT_FIVE=['Warrior','Priest','Mage','Hunter','Rogue'];
@@ -104,6 +105,7 @@ function render(){const page=el('div','tpage'),sum=st.sum;
   else menu.append(btn('New world','new',sum?'':'primary'));
   menu.append(btn('Load from file','load'));
   if(!sum)menu.append(btn('Watch the default world','default'));
+  const cin=btn('Cinema view: '+(cinemaWish()?'on':'off')+' · C','cinema');cin.setAttribute('aria-pressed',String(cinemaWish()));cin.setAttribute('aria-keyshortcuts','c');cin.title='Open the world as a full-window film: a director camera and thin overlays. C enters and leaves it in play';menu.append(cin);
   page.append(menu);
   const news=newsBlock();if(news)page.append(news);
   if(st.msg)page.append(el('div','tmsg',st.msg));
@@ -124,6 +126,7 @@ function newWorld(confirmed){markNotesRead();hide();openSetup({back:()=>show(),c
 
 function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a]'):null;if(!t||!root||!root.contains(t))return;const a=t.dataset.a;
   if(a==='continue')return play('continue');
+  if(a==='cinema'){setCinemaWish(!cinemaWish());render();focus('cinema');return}
   if(a==='notesread'){markNotesRead();st.notesOpen=false;render();focus(st.sum?'continue':'new');return}
   if(a==='notesmore'){st.notesOpen=!st.notesOpen;render();focus('notesmore');return}
   if(a==='default')return afterReset(()=>play('default')); // a world reset stops the runners first (#691)
@@ -137,6 +140,7 @@ function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a
 
 function onKey(e){if(!root||root.hidden)return;
   if(e.key==='Escape'&&st.ask){st.ask=false;render();focus('new');return}
+  if((e.key==='c'||e.key==='C')&&!e.repeat&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!st.ask){setCinemaWish(!cinemaWish());render();focus('cinema');return}
   if(e.key!=='Enter')return;const tag=e.target&&e.target.tagName;if(tag==='BUTTON'||tag==='A'||tag==='INPUT'||tag==='SELECT')return; // the focused control acts itself
   if(e.preventDefault)e.preventDefault();if(st.ask)return;if(st.sum)play('continue');else newWorld(false)}
 
