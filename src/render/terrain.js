@@ -8,7 +8,7 @@
 import {hash,vnoise} from '../core/rng.js';
 import {TILE,U,ART} from './tile.js';
 import {W,H,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
-import {tiles,zone,I} from '../world/map.js';
+import {tiles,zone,I,WORLD_ID} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
@@ -267,11 +267,13 @@ export function autotileAt(vx,vy,asset=true){
 // A tree replaces the procedural tree of a TREE tile, standing on that biome's ground texel; a rock sits on about one
 // ground tile in 28 of its biome's own ground type. A missing variant gives way to the next one there is; none at all
 // is today's tree and no rock.
-const VARIANTS=3,PROP_BIOMES=['meadow','fen','ash','tundra'];
-const propBiome=b=>b==='highland'||!PROP_BIOMES.includes(b)?'meadow':b;
-const GROUND={meadow:G,fen:SGRASS,ash:ROCK,tundra:SNOW};
+const VARIANTS=3,PROP_BIOMES=['meadow','fen','ash','tundra','highland'];
+// The highland has its own cut rocks and canopies (Hawkwold, the Vale); a world whose highland has none of its own keeps borrowing the meadow's.
+const OWN_HIGHLAND=WORLD_ID==='vale';
+const propBiome=b=>b==='highland'?(OWN_HIGHLAND?'highland':'meadow'):!PROP_BIOMES.includes(b)?'meadow':b;
+const GROUND={meadow:G,fen:SGRASS,ash:ROCK,tundra:SNOW,highland:G};
 export const ASSET_PROPS={};
-for(const b of PROP_BIOMES)for(let i=1;i<=VARIANTS;i++){ASSET_PROPS[`prop:tree-${b}-${i}`]=TREE;ASSET_PROPS[`prop:rock-${b}-${i}`]=GROUND[b]}
+for(const b of PROP_BIOMES)for(let i=1;i<=VARIANTS;i++){if(b!=='highland')ASSET_PROPS[`prop:tree-${b}-${i}`]=TREE;ASSET_PROPS[`prop:rock-${b}-${i}`]=GROUND[b]}
 // Whole trees (#834): LPC crowns are 3 tiles wide and 2.5 tall, so a tree is bigger than a one-tile prop. prop:canopy-<biome>-1..3
 // (96x120 art px at the 32 tier: crown, trunk and its ground shadow, root on row CANOPY_ROOT) stand on about every other TREE tile
 // (a checkerboard of the map's own tiles, nothing the sim sees) and are drawn over the chunk's ground in tile-row order. A TREE tile of
@@ -298,7 +300,7 @@ export const drawTree=(c,a)=>c.drawImage(a.im,a.ax,a.ay,a.w,a.h);
 export function treesNear(x,y,out,stamp){if(!canopyOn)return;const cx=Math.floor(x),cy=Math.floor(y);
   for(let ty=cy;ty<=cy+5;ty++)for(let tx=cx-3;tx<=cx+3;tx++){const a=anchorAt(tx,ty);if(a&&a.y>y&&a.stamp!==stamp){a.stamp=stamp;out.push(a)}}}
 let canopyOn=false;
-const ROCK_ODDS=.036;
+const ROCK_ODDS=.036,ROCK_ODDS_BY={highland:.06}; // a rockier upland
 function pickVariant(kind,b,h,asset){const n=Math.floor(h*VARIANTS)%VARIANTS;
   for(let k=0;k<VARIANTS;k++){const id=`prop:${kind}-${b}-${1+(n+k)%VARIANTS}`;if(!asset)return {id};const A=assetPixels(id);if(A)return {id,A}}
   return null}
@@ -307,7 +309,7 @@ export function propAt(tx,ty,asset=true){const t=tileOr(tx,ty);if(t<0)return nul
   const b=propBiome(biomeOfZone(zone[I(tx,ty)]));
   if(t===TREE&&asset&&canopyImg(b,0))return {id:'canopy',A:EMPTY,kind:'tree',ground:GROUND[b]}; // the tree is a whole canopy tree over this tile's ground (paintCanopy)
   if(t===TREE){const v=pickVariant('tree',b,hash(tx,ty,611),asset);return v&&{...v,kind:'tree',ground:GROUND[b]}}
-  if(t===GROUND[b]&&hash(tx,ty,617)<ROCK_ODDS){const v=pickVariant('rock',b,hash(tx,ty,619),asset);return v&&{...v,kind:'rock',ground:t}}
+  if(t===GROUND[b]&&hash(tx,ty,617)<(ROCK_ODDS_BY[b]||ROCK_ODDS)){const v=pickVariant('rock',b,hash(tx,ty,619),asset);return v&&{...v,kind:'rock',ground:t}}
   return null}
 
 // Per-tile plan, worked out once for the tile being painted: its four corner pieces and its prop.
