@@ -73,6 +73,8 @@ import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
+import {lazyOn, toolOptions, withLazyEnv, markLazy, lazyLine, searchCount, lazyRec} from './lazy-tools.mjs'; // AGENT_LAZY_TOOLS (issue #808)
+import {PLAYER_TOOLS} from '../src/data/player-tools.js';
 import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, tableHooks, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -147,8 +149,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!env.ANTHROPIC_API_KEY) out(null, 'No ANTHROPIC_API_KEY in the environment or .env (use --env FILE): only members with a local runner (provider ollama) will play.');
   const moved = migrateLegacy(); if (moved) out(null, moved);
 
-  const runnerId = `${hostname()}:${process.pid}:${cid != null ? 'company' : 'fellowship'}`; RUNNER = runnerId; const rollAt = rollPoint('hero', null, env); const childEnv = withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-fellowship/1.0'}, rollAt, env); // the roll and the compaction net (#787)
-  delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
+  const runnerId = `${hostname()}:${process.pid}:${cid != null ? 'company' : 'fellowship'}`; RUNNER = runnerId; const rollAt = rollPoint('hero', null, env), lazy = lazyOn(env); if (lazy) console.log('[fellowship] ' + lazyLine(PLAYER_TOOLS.length)); const childEnv = withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-fellowship/1.0'}, rollAt, env); // the roll and the compaction net (#787)
+  withLazyEnv(childEnv, lazy); delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   const members = new Map(); // heroId -> {id, name, sess, rs, turns, cost, ended, scene}
   let spent = 0, netSaid = false, stopping = null, inScene = new Set(), leadId = null;
   // the claim names the member's runner model once it is known, so the game can tag it (#97)
@@ -221,7 +223,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     try {
       const b = !scene && m.pacer ? await m.pacer.brief() : null, refl = reflectNow(b, w) ? b.reflect : null;
       // between turns only, and never with the member's scene open or due or on a reflection (#787); a local or OpenAI mind only when asked
-      const rd = rollDue(m.sess, m.local ? 0 : rollAt, {busy: !!(scene || m.due || refl || (b && (b.scene || b.table)))});
+      const rd = rollDue(m.sess, m.local ? 0 : rollAt, {lazy: m.local ? undefined : lazy, busy: !!(scene || m.due || refl || (b && (b.scene || b.table)))});
       if (rd) {rollSession(m.sess, setAside); saveSession(m.sess, {url: base}); m.rolls = (m.rolls || 0) + 1; m.rolledNow = true; out(m.name, rd.line)}
       if (m.local) return await (refl ? localReflect(m, b, w) : localMemberTurn(m, scene, w));
       await slot(scene || m.due);
@@ -271,18 +273,19 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const ac = new AbortController(); aborts.add(ac); m.ac = ac; let rested = false;
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the turn resumes
     const grab = sceneGrab({due: () => m.due, abort: () => ac.abort(), onGrab: () => out(m.name, `[scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
+    const opened = !m.sess.sessionId, to = toolOptions(lazy, `${base}/mcp?hero=${m.id}&runner=${encodeURIComponent(runnerId)}`);
     const q = query({prompt, options: {
       abortController: ac,
       model, effort: m.rs.effort, systemPrompt: m.sess.system, resume: m.sess.sessionId || undefined,
-      mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${m.id}&runner=${encodeURIComponent(runnerId)}`, headers: {'X-Eldmoor-Hero': String(m.id), 'X-Eldmoor-Runner': runnerId}, timeout: 90000}},
-      tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
+      mcpServers: {eldmoor: {type: 'http', url: to.url, headers: {'X-Eldmoor-Hero': String(m.id), 'X-Eldmoor-Runner': runnerId}, timeout: 90000}},
+      tools: to.tools, allowedTools: to.allowedTools, permissionMode: 'dontAsk', settingSources: [],
       settings: {autoCompactEnabled: true}, maxTurns: scene || refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv, hooks: tableHooks({idle: on => {if (m.lease) m.lease.idle(on)}, onOver: () => {rested = true; out(m.name, '[table: nothing to wait for here; the turn ends and pacing wakes it]')}}), // #868
     }});
     const sceneS = [], gs = grabSpend(); // #747: what an aborted query reports before the cut
     try {for await (const msg of q) {
       if (msg.type === 'assistant') gs.add(msg);
-      if (msg.type === 'system' && msg.subtype === 'init') {m.sess.sessionId = msg.session_id; if (!refl && !scene) delete m.sess.rolled; saveSession(m.sess, {url: base}); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => out(m.name, s))}}
+      if (msg.type === 'system' && msg.subtype === 'init') {m.sess.sessionId = msg.session_id; if (opened) markLazy(m.sess, lazy); if (!refl && !scene) delete m.sess.rolled; saveSession(m.sess, {url: base}); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => out(m.name, s))}}
       else if (msg.type === 'system' && msg.subtype === 'compact_boundary') {m.compacts = (m.compacts || 0) + 1; m.sess.compacts = (m.sess.compacts || 0) + 1; out(m.name, `[compacted: ${msg.compact_metadata.pre_tokens} -> ${msg.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (msg.type === 'assistant' && !msg.parent_tool_use_id) {
         m.sess.ctx = ctxOf(msg.message.usage) ?? m.sess.ctx; // the last call's prompt: what the price line is measured on (#787)
@@ -309,7 +312,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const ud = usageDelta(m.sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)
       const tot = result.total_cost_usd || 0, cost = tot >= m.sess.lastTotal ? tot - m.sess.lastTotal : tot; m.sess.lastTotal = tot;
       spent += cost; m.cost += cost; m.sess.costUsd += cost; turnCost = cost;
-      out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${model} | ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s | tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(m.sess.ctx)} | turn ${money(cost)} | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`);
+      out(m.name, `[turn ${m.turns}${scene ? ', scene' : ''}] ${model} | ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s | tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(m.sess.ctx)}${lazy ? ` | tool search ${searchCount(tc.tools)}` : ''} | turn ${money(cost)} | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`);
     }
     // Claude keeps tool use at the table; a scene turn that ended without scene_act gets the forced answer once (issue #163)
     // (issue #515: also when the scene opened while the turn was in flight, not only when it started at the table)
@@ -320,8 +323,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         if (forced) {turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; m.tools += forced.tools; if (forced.sceneS) sceneS.push(...forced.sceneS)}}}
     let wrote = 0; if (refl) {wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; m.notes = (m.notes || 0) + wrote; m.reflections = (m.reflections || 0) + 1;
       await closeReflection(base, m.id, runnerId, refl.id, wrote); out(m.name, `[reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
-    reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(m.sess.ctx != null ? {ctx: m.sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+    reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(m.sess.ctx != null ? {ctx: m.sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}), ...lazyRec(lazy, tc.tools),
+      flags: [...(lazy ? ['lazy-tools'] : []), ...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     m.rolledNow = false; saveSession(m.sess, {url: base});
     if (grab.grabbed() && !again && !stopping && !m.ended && !failed) {out(m.name, '[scene answered; resuming the turn]'); return (await claudeTurn(m, null, w, null, true)) || tools > 0}
     return !failed && (tools > 0 || !!refl);

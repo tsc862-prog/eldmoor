@@ -106,6 +106,7 @@ export function pullTouches(name,p,z,f=focus()){if(!f)return false;p=p&&typeof p
   if(z!=null&&f.zones.has(z))return true;
   if(p.hero!=null&&f.ids.has(Number(p.hero)))return true;
   if(p.for!=null&&f.ids.has(Number(p.for)))return true;
+  if(p.company!=null&&Number(p.company)===f.cid)return true; // call_to names its company (#826)
   if(p.town&&f.town&&p.town===f.town.name)return true;
   const sp=p.spec&&typeof p.spec==='object'?p.spec:null;
   if(sp&&(sp.for!=null&&f.ids.has(Number(sp.for))||sp.zone!=null&&f.zones.has(sp.zone)))return true;
