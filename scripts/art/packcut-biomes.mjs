@@ -49,10 +49,13 @@ export const BIOME_TILES={'tile:fen-grass':'fen','tile:swamp':'swamp','tile:mud'
 // [id, A (the plain underneath), B (its island and hole drawn over it)]. ids are terrain.js PAIRS.
 export const BIOME_PAIRS=[
   ['mud-fen','mud','fen'],['fen-swamp','fen','swamp'],['mud-swamp','mud','swamp'],['snow-ice','snowIce','snow'],
-  ['ash-snow','snow','rock'],['fen-ash','fen','rock'],['meadow-ash','grass','rock'],['mud-ash','mud','rock'],['ash-lava','rock','lava'],
-  ['meadow-snow','grass','snow'],['fen-snow','fen','snow'],['swamp-snow','swamp','snow'],['mud-snow','mud','snow'],['ice-ash','snowIce','rock'],
+  ['ash-snow','snow','rock'],['fen-ash','rock','fen'],['meadow-ash','rock','grass'],['mud-ash','rock','mud'],['ash-lava','rock','lava'],
+  ['meadow-snow','grass','snow'],['fen-snow','fen','snow'],['swamp-snow','snow','swamp'],['mud-snow','mud','snow'],['ice-ash','snowIce','rock'],
   ['fen-river','fen','water'],['snow-river','snow','water'],['meadow-fen','grass','fen'],
-  ['road-fen','fen','dirt'],['road-mud','mud','dirt'],['road-ash','rock','dirt'],['road-snow','snow','dirt'],['road-swamp','swamp','dirt']];
+  ['road-fen','fen','dirt'],['road-mud','mud','dirt'],['road-ash','rock','dirt'],['road-snow','snow','dirt'],['road-swamp','swamp','dirt'],
+  ['ice-fen','snowIce','fen'],['lava-snow','snow','lava'],['ash-swamp','rock','swamp'],['mud-river','mud','water'],['swamp-river','swamp','water'],['meadow-swamp','grass','swamp'],['meadow-mud','mud','grass'],['road-ice','snowIce','dirt']];
+// fen-ash, meadow-ash, mud-ash and swamp-snow lay the softer ground over the other (#895): grass blades and banks make a finer edge than the
+// ragged cobbles of the rock island or the star of the snow one.
 // Grounds whose hole piece is a star (snow, ice): its edge is all points, no use as an inner corner, so the inner piece is made
 // from the edge piece: each pixel takes the horizontal boundary (the edge) or the vertical one (the edge turned), whichever is nearer.
 const STAR_HOLE=new Set(['snow','snowIce']);

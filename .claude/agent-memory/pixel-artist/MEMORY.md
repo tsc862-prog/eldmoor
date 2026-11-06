@@ -24,6 +24,7 @@
 - [LPC creatures](lpccreatures.md) — #831 OGA LPC creature cut, what fit and what did not, staging a creature shot
 - [LPC landmarks](lpclandmarks.md) — #836 crypt mouth and lair from LPC castlewalls/lavarock, landmark shot staging, C: full gotcha
 - [Whole-map marks](entitylod.md) — #729 lod.js: threshold, pawns plus 1:1 creature sprites, sheet warm-up, probe in a junction worktree
+- [Mountains](peaks.md) — #895 LPC cliffs: sheet is a dual grid, atlases, tiers, cut peaks, softer ground over rock for borders
 - [LPC trees and rocks](lpctrees.md) — #834 whole canopy trees painted in chunk, redrawn over entities; cutter needs ELDMOOR_PACKS; C: disk full gotcha
 - [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps

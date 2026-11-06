@@ -69,6 +69,13 @@ that set in its index entry. The palisade, `tile:lpc-palisade-plaza`, `tile:lpc-
 `building:lpc-palisade-tower`, `-pier` and `-pier-tall`, is laid up by `scripts/art/packcut-walls.mjs` from the deck boards of
 `bridges.png` (Sharm), stood on end and sharpened in code; the blockhouses' roofs are the [LPC] Roofs wood shakes and name that set.
 All of these are derivative works under CC-BY-SA 3.0.
+
+## LPC mountains (#895)
+
+The mountains (`autotile:peak-stone`, `autotile:peak-ash`, `autotile:peak-snow`) are cut by `scripts/art/packcut-peaks.mjs` from `tiles/mountains.png` of the LPC
+base assets (Lanea Zimmerman (Sharm), CC-BY-SA 3.0, above) and recoloured; the snow on them is the Snow block of "[LPC] Terrains" (above). The standing peaks are
+reshaped from the sheet's cliff face. Being adapted from CC-BY-SA art, they are offered under CC-BY-SA 3.0.
+
 ## LPC rocks and trees
 
 `prop:rock-<biome>-1..3` are cut from `rock.png` and `prop:canopy-<biome>-1..3` (whole trees: crown over trunk and ground shadow) from `treetop.png`

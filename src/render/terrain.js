@@ -12,6 +12,7 @@ import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
+import {ASSET_PEAKS,peakArt,peakPixel} from './peaks.js';
 
 // Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
 // procedural texel. A tile asset repeats every w x h art pixels (a TILE x TILE patch per tile at its tier); a missing
@@ -246,16 +247,16 @@ const PAIRS=[
   {id:'grass-road',a:[G,FLOWER],b:[ROAD]},
   {id:'bank-water',a:[G,FLOWER],b:[RIVER]},
   {id:'meadow-fen',a:[G,FLOWER],b:[SGRASS]},
-  {id:'meadow-ash',a:[G,FLOWER],b:[ROCK]},
+  {id:'meadow-ash',a:[ROCK],b:[G,FLOWER]},
   {id:'mud-fen',a:[MUD],b:[SGRASS]},
   {id:'fen-swamp',a:[SGRASS],b:[SWAMP]},
   {id:'mud-swamp',a:[MUD],b:[SWAMP]},
-  {id:'mud-ash',a:[MUD],b:[ROCK]},
-  {id:'fen-ash',a:[SGRASS],b:[ROCK]},
+  {id:'mud-ash',a:[ROCK],b:[MUD]},
+  {id:'fen-ash',a:[ROCK],b:[SGRASS]},
   {id:'ash-snow',a:[SNOW],b:[ROCK]},
   {id:'meadow-snow',a:[G,FLOWER],b:[SNOW]},
   {id:'fen-snow',a:[SGRASS],b:[SNOW]},
-  {id:'swamp-snow',a:[SWAMP],b:[SNOW]},
+  {id:'swamp-snow',a:[SNOW],b:[SWAMP]},
   {id:'mud-snow',a:[MUD],b:[SNOW]},
   {id:'ice-ash',a:[ICE],b:[ROCK]},
   {id:'ash-lava',a:[ROCK],b:[LAVA]},
@@ -266,7 +267,15 @@ const PAIRS=[
   {id:'road-mud',a:[MUD],b:[ROAD]},
   {id:'road-ash',a:[ROCK],b:[ROAD]},
   {id:'road-snow',a:[SNOW],b:[ROAD]},
-  {id:'road-swamp',a:[SWAMP],b:[ROAD]}];
+  {id:'road-swamp',a:[SWAMP],b:[ROAD]},
+  {id:'ice-fen',a:[ICE],b:[SGRASS]},
+  {id:'lava-snow',a:[SNOW],b:[LAVA]},
+  {id:'ash-swamp',a:[ROCK],b:[SWAMP]},
+  {id:'mud-river',a:[MUD],b:[RIVER]},
+  {id:'swamp-river',a:[SWAMP],b:[RIVER]},
+  {id:'meadow-swamp',a:[G,FLOWER],b:[SWAMP]},
+  {id:'meadow-mud',a:[MUD],b:[G,FLOWER]},
+  {id:'road-ice',a:[ICE],b:[ROAD]}];
 const PIECE={edge:'',corner:'-corner',inner:'-inner'};
 export const ASSET_EDGES={};
 for(const p of PAIRS)for(const k of Object.values(PIECE))ASSET_EDGES['autotile:'+p.id+k]=[p.a[0],p.b[0]];
@@ -370,10 +379,11 @@ function planFor(tx,ty){const k=ty*W+tx;if(k===planKey)return plan;planKey=k;
 // Final colour of art pixel (ax,ay) (0..TILE-1) of tile (tx,ty) of type t, before the shade: prop, transition piece,
 // then the blend and the texel (the base tile, road and water assets, else the procedural texel scaled up).
 const HALF=TILE>>1;
-export function pixel(t,tx,ty,ax,ay){const P=planFor(tx,ty),pr=P.prop;
+export function pixel(t,tx,ty,ax,ay){const P=planFor(tx,ty),pr=P.prop,mt=peakArt(); // mt: mountains are cliffs (peaks.js) over the biome's ground
+  if(mt){const c=peakPixel(tx,ty,ax,ay);if(c)return c}
   if(pr){const c=pr.A.hex[(ay%pr.A.h)*pr.A.w+ax%pr.A.w];if(c)return c;if(pr.kind==='tree')return artTexel(pr.ground,tx,ty,ax,ay)}
   let g=t;
-  if((t===TREE||t===PEAK)&&groundArt()){const c=texel(t,tx,ty,(ax/ART)|0,(ay/ART)|0,true);if(c)return c;g=baseOf(tx,ty)} // canopy and rock stay; the ground round them is the biome's
+  if((t===TREE||t===PEAK)&&groundArt()){const c=mt&&t===PEAK?null:texel(t,tx,ty,(ax/ART)|0,(ay/ART)|0,true);if(c)return c;g=baseOf(tx,ty)} // canopy and rock stay; the ground round them is the biome's
   const q=P.q[(ax>=HALF?1:0)+(ay>=HALF?2:0)];
   if(q){const c=sampleXf(q.A,q.xf,(ax+HALF)%TILE,(ay+HALF)%TILE);if(c)return c}
   return blendPixel(g,tx,ty,(ax/ART)|0,(ay/ART)|0,ax,ay)}
@@ -383,8 +393,9 @@ export const procPixel=(t,tx,ty,px,py)=>blendPixel(t,tx,ty,px,py,0,0,false);
 // Light from the top left: ground just below or right of a mountain lies in its shadow, and
 // the foot of a massif darkens where it meets the ground. (px,py) on the procedural grid.
 export function shade(t,tx,ty,px,py){
-  if(t===PEAK)return isPeak(tx,ty+1)||py<14?1:.82;
+  if(t===PEAK)return isPeak(tx,ty+1)||py<14||peakArt()?1:.82;
   if(t===WALL||t===FLOOR)return 1;
+  if(peakArt())return 1; // the cliffs have their own dark foot
   let k=1;if(py<3&&isPeak(tx,ty-1))k=.72+py*.08;if(px<2&&isPeak(tx-1,ty))k=Math.min(k,.8+px*.08);return k}
 
 // ---- chunks ----
@@ -400,7 +411,7 @@ const chunks=new Map();
 export let chunkGen=0;
 // Whether any terrain asset is loaded (then chunks are painted at TILE, else at U). Refreshed when assets change.
 let artOn=null;
-const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_CANOPY,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
+const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_PEAKS,ASSET_CANOPY,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
 export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
 // A tile asset arrived (or the index changed): repaint on the next request. A sprite sheet is none of the terrain's business:
 // each one used to throw every chunk away, a stall on whatever camera was up when the sheets came in (#729).
