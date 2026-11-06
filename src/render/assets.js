@@ -50,11 +50,18 @@ export function asset(id){
   img.onerror=()=>{s.dead=true;console.warn(`[assets] ${a.file} failed to load; drawing ${id} procedurally`)};
   img.src=url;return null}
 
+// Every image of the world asked for at once, and a promise for when they have all answered or `ms` have passed (the first paint waits for it). The art
+// used to arrive piecemeal after the first frame, and each terrain piece threw the painted chunks away: several multi-second frames in a world's first seconds.
+// Faces are left out: they are many and only panels want them, one at a time.
+export function worldArt(ms=2500){const ids=Object.keys(INDEX).filter(id=>!/^(portrait|backdrop)/.test(id));for(const id of ids)asset(id);
+  const all=()=>ids.every(id=>{const s=imgs.get(id);return !s||s.ok||s.dead}),t0=Date.now();
+  return new Promise(res=>{const look=()=>all()||Date.now()-t0>=ms?res():setTimeout(look,20);look()})}
+
 // The asset as pixels for per-texel renderers: {w, h, hex: Array of '#rrggbb' or null (transparent)}, or null.
 export function assetPixels(id){
   if(pix.has(id))return pix.get(id);
   const img=asset(id);if(!img||typeof document==='undefined')return null;
-  let p=null;try{const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d');x.drawImage(img,0,0);
+  let p=null;try{const c=document.createElement('canvas');c.width=img.naturalWidth;c.height=img.naturalHeight;const x=c.getContext('2d',{willReadFrequently:true});x.drawImage(img,0,0);
     p=pixelsOf(c.width,c.height,x.getImageData(0,0,c.width,c.height).data)}catch(e){console.warn('[assets]',id,e)}
   pix.set(id,p);return p}
 
