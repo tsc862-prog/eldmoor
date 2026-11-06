@@ -59,7 +59,8 @@
 // the crawl's positions and rules: reach, flank, guard, cover, free blows, slow ground. Without an agent it plays exactly as before.
 import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
 import {keep} from './kept.js';
-import {CRYPT,ZONES,zoneAt,dist} from '../world/map.js';
+import {CRYPTS,ZONES,zoneAt,dist} from '../world/map.js';
+import {cryptOfCtx,cryptCtx} from './crypts.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
 import {tm} from '../data/traits.js';
@@ -193,8 +194,8 @@ const scMem=sc=>memOf(sceneCompany(sc));
 // its reflex-only scenes (its seeded hashes and record count on them).
 const atTable=C=>!!C&&(C===slotted()||agentsDecide(memOf(C)));
 export const companyAtTable=atTable; // sim/sites.js (#69): a site's crawl runs at the table only for a company with the say
-// Who is down in the dungeon a crawl scene belongs to: a DM-made site's group (ctx.site, #69) or the Crypt's.
-const dunMem=ctx=>{const id=ctx&&ctx.site;if(id!=null){const D=((S.sites&&S.sites.list)||[]).find(x=>x.id===id);return D&&D.group?D.group.mem:[]}return CRYPT.group?CRYPT.group.mem:[]};
+// Who is down in the dungeon a crawl scene belongs to: a DM-made site's group (ctx.site, #69) or a spec dungeon's (ctx.dun, #891).
+const dunMem=ctx=>{const id=ctx&&ctx.site;if(id!=null){const D=((S.sites&&S.sites.list)||[]).find(x=>x.id===id);return D&&D.group?D.group.mem:[]}const G=cryptOfCtx(ctx).group;return G?G.mem:[]};
 // Why a company may not put something to a vote at the table: a solo has no one to ask. null = it may.
 export function voteRefusal(C){return C&&!C.slots&&isSolo(C)?SOLO_VOTE:null}
 setSpeedSource(()=>TABLE.speed);
@@ -447,7 +448,7 @@ function applyAct(sc,a,act,f,mod){const k=act.k;
   case 'parley':if(!rounds(sc)||!canParley(f))return 'no one there will listen';return parley(sc,a,foesOf(sc),fighters(sc)); // a say-check against the foe's temper (#296)
   case 'retreat':if(rounds(sc)&&condOn(a,'root'))return 'rooted: cannot fall back';if(rounds(sc))(sc.out||(sc.out=[])).push(a.id);if(a.raid){a.raid=false}if(f&&f.target===a)f.target=null;if(a.state==='duel'&&f&&f.target===a&&f.kind==='hero'){f.state='hunt';f.target=null}
     if(a.state!=='dungeon'){goHome(a);if(a.player)a.pq=[]}return 'fell back';
-  case 'hold':case 'ward':case 'scout':case 'read':case 'press':case 'careful':{const g=CRYPT.group;if(!g)return null;g.bonus=Math.round(((g.bonus||0)+SITE_BONUS[k])*100)/100;
+  case 'hold':case 'ward':case 'scout':case 'read':case 'press':case 'careful':{const g=cryptOfCtx(sc.ctx).group;if(!g)return null;g.bonus=Math.round(((g.bonus||0)+SITE_BONUS[k])*100)/100;
     if(k==='ward')for(const b of g.mem)b.hp=Math.min(maxHp(b),b.hp+maxHp(b)*.1);return '+'+SITE_BONUS[k]}
   case 'aid':{const lo=lowest(sc);if(!lo)return null;const h=Math.round(maxHp(lo)*.15);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
   default:if(MOVES[k]){const M=MOVES[k],t=M.target==='foe'?f:M.target==='ally'?lowest(sc):null;
@@ -546,7 +547,7 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
   else if(COMBAT[sc.kind]){if(rounds(sc)){fightStats(F,sc);flushRolls(sc)}const f=foeOf(sc),fl=by('retreat'),fell=(sc.fell||[]).map(byId).filter(Boolean).map(b=>b.name);
     tail=(sc.end==='yield'&&f?foeName(f)+' yields and breaks off'+(sc.talk?' at '+sc.talk+'\'s words':''):sc.end==='fled'&&f?foeName(f)+' breaks away and runs'+(sc.talk?' at '+sc.talk+'\'s words':''):f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?hurtWord(f.hp/(f.maxhp||maxHp(f))):'still stands'):sc.ctx&&sc.ctx.down&&sc.ctx.mob==null?'No foe stands over them':'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')+
       (fell.length?' '+fell.join(' and ')+' fell.':'')+downTail(sc)+(sc.capped?' The fight grinds on, out in the world.':'')+(sc.rd>1?' ('+sc.rd+' rounds.)':'')}
-  else if(sc.kind==='site'||sc.kind==='room'){const g=CRYPT.group;tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
+  else if(sc.kind==='site'||sc.kind==='room'){const g=cryptOfCtx(sc.ctx).group;tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
   else if(sc.kind==='check')tail='The road goes on.';
   else if(EXTRA[sc.kind])tail=EXTRA[sc.kind].outcome(sc)||'';
   const foeB=L.filter(b=>b.by==='foe'&&b.k==='attack'),mine=L.filter(b=>b.by!=='foe'&&b.by!=='cond');
@@ -633,10 +634,10 @@ function due(C,L){
   // elite or named foe
   for(const a of L){const m=a.target;if(a.state!=='fight'||!m||m.kind!=='mob'||!(m.elite||m.named)||!m.alive)continue;if(seen(C,'elite:'+m.id,COOL.elite))continue;
     return {kind:'elite',title:mobName(m),frame:[a,' meets ',gd(mobName(m)+(m.title?', '+m.title:'')),' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+'.'],ctx:{mob:m.id},key:'elite:'+m.id}}
-  // the Crypt: going in, and the inner chamber
-  const g=CRYPT.group;if(g&&g.phase==='inside'&&g.mem.some(a=>C===slotted()?inSlots(a):C.ids.includes(a.id))){
-    if(!g.tSite){g.tSite=1;return {kind:'site',title:CRYPT.name,frame:['The stair goes down into ',gd(CRYPT.name),'. Water drips; something below has heard the door.'],ctx:{}}}
-    if(!g.tRoom&&g.t<12&&!g.crawl){g.tRoom=1;return {kind:'room',title:'The inner chamber',frame:['The last door of ',gd(CRYPT.name),'. Beyond it waits ',gd(CRYPT.boss),'.'],ctx:{}}}}
+  // a dungeon: going in, and the inner chamber
+  for(const Dn of CRYPTS){const g=Dn.group;if(g&&g.phase==='inside'&&g.mem.some(a=>C===slotted()?inSlots(a):C.ids.includes(a.id))){
+    if(!g.tSite){g.tSite=1;return {kind:'site',title:Dn.name,frame:['The stair goes down into ',gd(Dn.name),'. Water drips; something below has heard the door.'],ctx:cryptCtx(Dn)}}
+    if(!g.tRoom&&g.t<12&&!g.crawl){g.tRoom=1;return {kind:'room',title:'The inner chamber',frame:['The last door of ',gd(Dn.name),'. Beyond it waits ',gd(Dn.boss),'.'],ctx:cryptCtx(Dn)}}}}
   // a DM check on one of their adventures
   const D=S.dmLog||[];if(C.tableDm==null)C.tableDm=S.dmLogSeq||0;
   if(D.length&&D[0].id>C.tableDm){let hit=null;for(const e of D){if(e.id<=C.tableDm)break;if(e.kind==='roll'&&e.detail&&e.detail.sceneType!=='fight'&&(e.heroes||[]).some(id=>C.ids.includes(id)))hit=e}
@@ -650,7 +651,7 @@ function stale(C,q){if(S.gameMin-q.at>TABLE.queueMin)return true;const c=q.ctx||
   if(c.mob!=null){const m=S.mobs.find(x=>x.id===c.mob);if(!m||!m.alive||m.gone)return true}
   if(c.foe!=null&&!living(byId(c.foe)))return true;
   if(q.kind==='boss'&&!(S.boss&&S.boss.alive))return true;
-  if((q.kind==='site'||q.kind==='room')&&!(CRYPT.group&&CRYPT.group.phase==='inside'))return true;
+  if(q.kind==='site'||q.kind==='room'){const g=cryptOfCtx(c).group;if(!(g&&g.phase==='inside'))return true}
   return false}
 // Once per step (after the council). Companies in id order: a queued moment first when the table is free, then each
 // company's due moment; only one scene opens a step, a later company's moment waits in its queue for a later step.
