@@ -50,6 +50,9 @@ import {G,gradeAt,CLOUD} from './grade.js'; // the hour's light (#979)
 import {drawCast,castFigure,castBlob} from './shadows.js';
 import {lightPass} from './lightmap.js';
 import {drawAir} from './atmos.js';
+import {drawWater} from './water.js';
+import {drawSway,swayTree,drawGrass,drawWheat} from './sway.js';
+import {drawMotes} from './motes.js';
 import {drawSheen} from './sheen.js';
 import {FX} from './quality.js';
 import {skyAt} from './life.js';
@@ -196,7 +199,7 @@ export function createRenderer(cv,screenEl){
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
     drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite,outlined,dispoRing}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
     drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
-    let lt=performance.now();if(!cut){lifeBegin(S,cam,lt/1000);lifeGround(ctx)} // the ambient life of the map (#795): render only
+    let lt=performance.now();if(!cut){lifeBegin(S,cam,lt/1000);lifeGround(ctx);if(FX.full){drawWater(ctx);drawGrass(ctx);drawWheat(ctx);drawSway(ctx,ctx.getTransform())}} // the ambient life of the map (#795), and the water and wind (#979): render only
     lifeStats.acc=performance.now()-lt;
     if(!cut&&!cin)drawPurposeGround(ctx,S,cam,{drawText,blink}); // the followed or hovered hero's road, tether or wait line, under the entities
     if(cut)drawSceneRings(ctx,cam,cut); // who is in the scene: a ring at their feet (#431)
@@ -271,7 +274,7 @@ export function createRenderer(cv,screenEl){
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     };
     for(let i=0;i<nE;i++){const e=ENTS[i];
-      if(e.tree){drawTree(ctx,e); // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
+      if(e.tree){drawTree(ctx,e);if(FX.full)swayTree(ctx,tf,e); // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
         for(let j=0;j<i;j++){const o=ENTS[j];if(o.tree||Math.abs(o.x-e.x)>2.4||o.y>=e.y||o.y<e.y-5||!(o===sel||(o.kind==='hero'&&inSlots(o))))continue;ghostA=.45;ctx.globalAlpha=.45;drawEnt(j);ghostA=1;ctx.globalAlpha=1}
         continue}
       drawEnt(i)}
@@ -283,9 +286,9 @@ export function createRenderer(cv,screenEl){
       if(p.type==='ring'){if(!inView(p.x*T,p.y*T,96))continue;ctx.strokeStyle='rgba(255,140,40,'+p.life+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x*T,p.y*T,(1-p.life/.6)*72+8,0,7);ctx.stroke()}}
     // weather sits on the ground, so it goes under the night: fog no longer brightens midnight
     lt=performance.now();if(!cut)lifeAir(ctx,blink);lifeStats.acc+=performance.now()-lt;
-    drawWeather(ctx,S,cam,blink);drawAir(ctx,cv,cam,sc,performance.now()/1000);ph(3);
+    if(!cut&&FX.full)drawMotes(ctx,0);drawWeather(ctx,S,cam,blink);drawAir(ctx,cv,cam,sc,performance.now()/1000);ph(3);
     // the light: the hour's ambient, soft dark, flames and lava, in one multiply and a thin add (lightmap.js, #979)
-    const dk=G.dk;lt=performance.now();lightPass(ctx,cv,cam,{S,sel,sc,inView,cut});lifeStats.acc+=performance.now()-lt;
+    const dk=G.dk;lt=performance.now();lightPass(ctx,cv,cam,{S,sel,sc,inView,cut});if(!cut&&FX.full)drawMotes(ctx,1);lifeStats.acc+=performance.now()-lt;
     ph(4);if(far){drawMarks(ctx,cam.dpr,dk);ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ph(2)} // the marks, timed with the entities
     drawSpells(ctx,1,close,inView,fxNow);ph(4); // spell effects in the air, over the night wash: they carry their own light (#374)
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
