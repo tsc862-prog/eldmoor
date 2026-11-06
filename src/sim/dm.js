@@ -205,12 +205,12 @@ function place(adv,at,prev,L){const z=adv.z,fac=adv.fac,d=adv.data,home=homeOf(L
 function giverOf(town,roles){const ps=(S.npcs||[]).filter(p=>p.town===town.name&&roles.includes(p.role));
   const p=ps.length?pickA(ps):null;return p?{name:p.title+' '+p.name,role:p.role}:{name:'the gate captain',role:'captain'}}
 // The board itself (the post_hook lever in sim/levers.js calls this; nothing else should).
-export function postHook(c,tpl,src,o={}){const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
+export function postHook(c,tpl,src,o={}){ensure();const T=D.ADVENTURES[tpl],g=o.giver||giverOf(c,o.roles||T.givers);
   const h={id:++S.uid,phase:'open',town:c.name,fac:c.fac,tpl,src,giver:g,zone:o.zone==null?null:o.zone,for:o.for==null?null:o.for,
     data:{thing:o.thing||(T.things?pickA(T.things):null),...(o.data||{})},born:S.gameMin,until:S.gameMin+ri(...K.HOOK_LIFE)*(o.zone==null?1:.5)}; // news tied to one place goes stale sooner
   if(o.by&&o.by!=='scripted')h.by=o.by;if(o.ff)h.ff=1;if(o.ff&&o.cid!=null)h.cid=o.cid;if(o.solo)h.solo=1; // who made it, for the quest log (sim/questlog.js): the DM agent, or the scripted DM's Fellowship-first job
   S.adventures.push(h);bump(stats().hooks,src);bump(stats().offered,tpl);return h}
-export function withdrawHook(id){const i=S.adventures.findIndex(h=>h.id===id&&h.phase==='open');if(i<0)return null;return S.adventures.splice(i,1)[0]}
+export function withdrawHook(id){ensure();const i=S.adventures.findIndex(h=>h.id===id&&h.phase==='open');if(i<0)return null;return S.adventures.splice(i,1)[0]}
 // The scripted DM posts every hook through the post_hook lever. On the board refresh the lever's
 // log entry is folded into the board's own entry (boardLever) instead of standing alone.
 let boardLever=null;
