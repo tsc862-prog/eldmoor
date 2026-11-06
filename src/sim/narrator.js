@@ -150,7 +150,8 @@ export function narratorTick(dt){ensure();const n=S.nar;n.t+=dt;
     if(a.state==='follow'){a.narScene=true;continue}
     if(a.state!=='hunt'||a.narScene)continue;a.narScene=true;
     if(!a.party||a.party.leader===a)sceneEnter(a)}
-  for(const f of S.fallen){if(f===n.lastFallen)break;n.deaths.push(f)}n.lastFallen=S.fallen[0]||null;
+  const last=n.lastFallen; // by name and hour, not identity: a restored world holds a copy of this entry
+  for(const f of S.fallen){if(last&&f.name===last.name&&f.t===last.t)break;n.deaths.push(f)}n.lastFallen=S.fallen[0]||null;
   for(const m of S.mobs)if(m.elite&&!m.alive&&!m.narDead){m.narDead=true;n.elites.push(m.name)}
   for(let f=0;f<S.raidOn.length;f++){if(S.raidOn[f]&&!n.raidOn[f])n.raids++;n.raidOn[f]=S.raidOn[f]}
   if(n.pulled&&!S.agents.some(a=>a.state==='raid'))n.pulled=false;

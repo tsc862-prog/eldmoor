@@ -25,6 +25,7 @@
 //   conv {id, npc, name, heroes:[ids], lines:[{who:'member'|'npc', id, name, text, t}], ex, wait:{call, hero, line, gm, real, by}|null,
 //         offers:[{kind, ex, by, mark}], offerEx, state 'open'|'done', born, last, why}
 import {S,clockStr} from './state.js';
+import {keep} from './kept.js';
 import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,zoneFor,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
 import {USES,SLOTS} from '../data/items.js';
@@ -87,6 +88,7 @@ const DAY=1440;
 // Private LCG (like sim/npcs.js): the scripted lines never touch the gameplay RNG.
 const SEED0=0x5bd1e995;let seed=SEED0;export const resetTalkSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('talk',()=>seed,v=>{seed=v}); // saved with the world
 const pick=L=>L[Math.floor(r()*L.length)];
 
 // ---- helpers ----
