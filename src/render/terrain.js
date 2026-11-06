@@ -414,7 +414,7 @@ export function shade(t,tx,ty,px,py){
 // tier (32 tiles at 32 px, 16 at 64), so a tier change keeps the canvases the same size.
 export const CH=Math.max(8,Math.round(1024/TILE));
 export const CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
-const chunks=new Map();
+const chunks=new Map(),jobs=new Map(); // jobs: chunks half made in idle moments (getChunk)
 // Bumped whenever cached chunks are thrown away, so a renderer holding a copy of them (draw.js's still-camera terrain
 // cache, #716) knows to redraw it.
 export let chunkGen=0;
@@ -426,30 +426,53 @@ export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPi
 // each one used to throw every chunk away, a stall on whatever camera was up when the sheets came in (#729).
 // A cut town piece has no hook table of its own (townart.js asks for them by name), nor is the scenery sheet in the tables above, so they count by name: fields, bridges and walls and towers that arrived after the last
 // listed asset used to stay missing until something else repainted.
-const repaint=()=>{chunks.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;gArt=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))};
+const repaint=()=>{chunks.clear();jobs.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;gArt=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))};
 let cutWait=null; // the cut pieces come in a burst: one repaint for the lot
 onAssets(id=>{if(id!=null&&/^(building|tile):lpc-|^prop:scenery$/.test(id)&&!terrainIds().includes(id)){if(cutWait===null)cutWait=setTimeout(()=>{cutWait=null;repaint()},150);return}
   if(id!=null&&!terrainIds().includes(id))return;repaint()});
 
 // Cached canvas for chunk (cx,cy): min(CH,W-cx*CH) by min(CH,H-cy*CH) tiles at k pixels a tile (TILE, or U with no
 // terrain asset). c.uw and c.uh give its size in world units (tiles * U), which is what the renderer scales it to.
-export function getChunk(cx,cy){const k=cy*CHUNKS_X+cx;let c=chunks.get(k);if(!c){c=paintChunk(cx,cy);chunks.set(k,c)}return c}
+// A chunk's pixels take a few hundred ms of plain script, too long for one frame, so they are made a row of tiles at a time in the
+// browser's idle moments, nearest the camera first (warmChunks): the camera finds them done, on the road and after a cut. A chunk asked
+// for before that is simply finished on the spot, from the row it had reached; the result is the same either way.
+export function getChunk(cx,cy){const k=cy*CHUNKS_X+cx;let c=chunks.get(k);if(!c){const j=jobs.get(k)||startChunk(cx,cy);paintRows(j,Infinity);c=finishChunk(j);chunks.set(k,c);jobs.delete(k)}return c}
 
-function paintChunk(cx,cy){
-  const art=terrainArt(),k=art?TILE:U,tx0=cx*CH,ty0=cy*CH,cw=Math.min(CH,W-tx0),ch=Math.min(CH,H-ty0),stride=cw*k;
+function startChunk(cx,cy){
+  const art=terrainArt(),k=art?TILE:U,tx0=cx*CH,ty0=cy*CH,cw=Math.min(CH,W-tx0),ch=Math.min(CH,H-ty0);
   const cv=document.createElement('canvas');cv.width=cw*k;cv.height=ch*k;cv.uw=cw*U;cv.uh=ch*U;
-  const c=cv.getContext('2d');
-  const img=c.createImageData(cw*k,ch*k),d=img.data;
-  for(let j=0;j<ch;j++)for(let i=0;i<cw;i++){const tx=tx0+i,ty=ty0+j,t=tiles[I(tx,ty)];
+  const c=cv.getContext('2d'),img=c.createImageData(cw*k,ch*k);
+  return {art,k,tx0,ty0,cw,ch,cv,c,img,row:0}}
+// The chunk's pixels from the row it reached, until the clock passes `until`. True when they are all done.
+function paintRows(J,until){const {art,k,tx0,ty0,cw,ch}=J,stride=cw*k,d=J.img.data;
+  for(;J.row<ch;J.row++){const j=J.row;if(until!==Infinity&&performance.now()>=until)return false;
+    for(let i=0;i<cw;i++){const tx=tx0+i,ty=ty0+j,t=tiles[I(tx,ty)];
     for(let py=0;py<k;py++)for(let px=0;px<k;px++){
       const col=rgb(art?(sceneryOn?scenePixel(t,tx,ty,px,py):pixel(t,tx,ty,px,py)):procPixel(t,tx,ty,px,py)),o=((j*k+py)*stride+i*k+px)*4,sh=art?shade(t,tx,ty,(px/ART)|0,(py/ART)|0):shade(t,tx,ty,px,py);
-      d[o]=col[0]*sh;d[o+1]=col[1]*sh;d[o+2]=col[2]*sh;d[o+3]=255}}
-  c.putImageData(img,0,0);if(art&&sceneryOn){c.save();c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);paintScenery(c,tx0,ty0,tx0+cw,ty0+ch);c.restore()}
+      d[o]=col[0]*sh;d[o+1]=col[1]*sh;d[o+2]=col[2]*sh;d[o+3]=255}}}
+  return true}
+function finishChunk(J){const {art,k,tx0,ty0,cw,ch,cv,c}=J;
+  c.putImageData(J.img,0,0);J.img=null;if(art&&sceneryOn){c.save();c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);paintScenery(c,tx0,ty0,tx0+cw,ty0+ch);c.restore()}
   // decorations are painted in world units; the scaled, translated context clips them to this chunk
   c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);
   if(art)paintCanopy(c,tx0,ty0,tx0+cw,ty0+ch);
   decorate(c,tx0,ty0,tx0+cw,ty0+ch);
   return cv}
+
+// The idle painter. draw.js says where the camera is, every frame; while any chunk is missing one idle callback at a time does a slice
+// of the nearest. WARM.SLICE caps a slice, so it fits the gap a frame leaves; a chunk's last step (its scenery, canopy and places) is one
+// short piece of its own. Nothing is scheduled once every chunk is done, or after a repaint until the next frame asks.
+export const WARM={SLICE:7,WAIT:300};
+let warmX=0,warmY=0,warmDue=false;
+function nextChunk(){let best=-1,bd=Infinity;for(let cy=0;cy<CHUNKS_Y;cy++)for(let cx=0;cx<CHUNKS_X;cx++){const k=cy*CHUNKS_X+cx;if(chunks.has(k))continue;
+    const dx=(cx+.5)*CH-warmX,dy=(cy+.5)*CH-warmY,d=dx*dx+dy*dy-(jobs.has(k)?CH*CH:0);if(d<bd){bd=d;best=k}}return best}
+function warmSlice(dl){warmDue=false;const k=nextChunk();if(k<0)return;let J=jobs.get(k);if(!J){J=startChunk(k%CHUNKS_X,Math.floor(k/CHUNKS_X));jobs.set(k,J)}
+  const room=dl&&dl.timeRemaining?Math.min(WARM.SLICE,dl.timeRemaining()):WARM.SLICE;
+  if(J.row>=J.ch){chunks.set(k,finishChunk(J));jobs.delete(k)}else paintRows(J,performance.now()+Math.max(1,room));
+  if(chunks.size<CHUNKS_X*CHUNKS_Y)askIdle()}
+function askIdle(){if(warmDue)return;warmDue=true;if(typeof requestIdleCallback==='function')requestIdleCallback(warmSlice,{timeout:WARM.WAIT});else setTimeout(warmSlice,16)}
+// tx,ty: the camera's centre in tiles. One comparison a frame once the map is done.
+export function warmChunks(tx,ty){warmX=tx;warmY=ty;if(chunks.size<CHUNKS_X*CHUNKS_Y)askIdle()}
 
 // Paint every chunk into one W*U by H*U canvas (world units). Compatibility helper for tools and
 // previews; the renderer never calls it.

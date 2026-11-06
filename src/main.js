@@ -4,7 +4,7 @@
 // module map and who owns what.
 import {init,step,S,provideCampaigns,campaignIdOf} from './sim/index.js';
 import {createRenderer} from './render/draw.js';
-import {provideAssets} from './render/assets.js';
+import {provideAssets,worldArt} from './render/assets.js';
 import {select,ctl,setView,startHero} from './ui/controls.js';
 import {boot,autoSaveTick,bootKind} from './ui/save.js';
 import {initSetup,openSetup,afterBoot} from './ui/setup.js'; // the New World setup page (#133)
@@ -66,4 +66,6 @@ if(typeof document!=='undefined')document.addEventListener('visibilitychange',()
 setWhere(()=>viewWhere(document.getElementById('cv')));installProbe();
 every(250,()=>{if(!renderer||typeof document==='undefined'||!document.hidden)return;
   const now=performance.now(),real=Math.min(.5,(now-last)/1000);last=now;advance(real)});
-if(titleWanted())showTitle(start);else start('direct');
+// The world's art starts loading now, under the title screen, and the first paint waits for it; the short pause lets the cut pieces' one repaint pass (terrain.js, 150 ms) before any chunk is made.
+const artIn=worldArt().then(()=>new Promise(r=>setTimeout(r,170))),begin=kind=>artIn.then(()=>start(kind));
+if(titleWanted())showTitle(begin);else begin('direct');
