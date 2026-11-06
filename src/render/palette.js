@@ -27,6 +27,8 @@ export const TEXT={
 };
 
 // Marks drawn by the renderer.
+// Whole-map marks (#729, render/lod.js): the colours that are not a faction's. lit: each faction's lit shoulder; night: how much of the dark dims the marks.
+export const LOD={person:TEXT.person,grave:TEXT.dead,ghost:'#d8ecff',skin:'#f0d8b0',lit:['#a8c4ff','#ffa89c'],night:.5};
 export const MARK={
   sel:UI.gold,selHi:'#fff2b0',  // the selection chevron blinks between these
   hpHero:'#3fbf4a',hpFoe:'#e0483e',hpBack:'#000',
