@@ -16,7 +16,7 @@
 import {TILE} from './tile.js';
 
 let INDEX={},URLS={};
-const imgs=new Map(),pix=new Map(),subs=new Set();
+const imgs=new Map(),pix=new Map(),subs=new Set(),portC=new Map(); // portC: portraitAssets lists, cleared when the index changes
 
 export const LEGACY_TIER=32;
 // The tier of an index entry (key 'tile:grass@32' or the entry's own tier; none: LEGACY_TIER).
@@ -28,7 +28,7 @@ export function entriesFor(assets,tier=TILE){const out={};
 
 // index: the parsed assets/index.json ({assets: {key: {id, tier, file, w, h, ...}}}) or null; urls: {file: url}.
 export function provideAssets(index,urls,tier=TILE){
-  INDEX=entriesFor(index&&index.assets,tier);URLS=urls||{};imgs.clear();pix.clear();
+  INDEX=entriesFor(index&&index.assets,tier);URLS=urls||{};imgs.clear();pix.clear();portC.clear();
   for(const f of subs)f(null)}
 // The tier the loaded index was filtered to, and an asset's index entry (null when absent at that tier).
 export const assetTier=()=>TILE;
@@ -63,4 +63,18 @@ export function pixelsOf(w,h,data){const hex=new Array(w*h);
   return {w,h,hex}}
 
 // For tools and checks without a DOM: install decoded pixels for id directly (null removes them).
-export function setAssetPixels(id,p){if(p){pix.set(id,p);INDEX[id]=INDEX[id]||{file:'(memory)'};imgs.set(id,{ok:false,dead:true})}else{pix.delete(id);imgs.delete(id);delete INDEX[id]}fire(id)}
+export function setAssetPixels(id,p){portC.clear();if(p){pix.set(id,p);INDEX[id]=INDEX[id]||{file:'(memory)'};imgs.set(id,{ok:false,dead:true})}else{pix.delete(id);imgs.delete(id);delete INDEX[id]}fire(id)}
+
+// The portrait library (#710, epic #177): faces made offline, ids portrait:<race>-<cls>-<sex>-<nn> for heroes (class as its
+// lower-case slug, sex one letter) and portrait:townsfolk-<role>-<nn> for townsfolk. The library may be partial; nothing
+// here picks a face (render/portrait.js does). parsePortraitId(id) -> {race, cls, sex, nn} or null.
+export function parsePortraitId(id){const m=/^portrait:([a-z0-9]+)-([a-z0-9-]+?)-(\d+)$/i.exec(id||'');if(!m)return null;
+  const mid=m[2].toLowerCase().split('-');let sex='';if(mid.length>1&&/^[a-z]$/.test(mid[mid.length-1]))sex=mid.pop();
+  return {race:m[1].toLowerCase(),cls:mid.join('-'),sex,nn:Number(m[3])}}
+const slugOf=s=>String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+// The portrait ids in the loaded index for one people and class (cls omitted: every class of that people), sorted so the
+// pick never depends on the index order. portraitAssets('townsfolk', role) lists the townsfolk faces of a role.
+export function portraitAssets(race,cls){const r=slugOf(race),c=cls==null||cls===''?null:slugOf(cls),k=r+'|'+(c==null?'*':c);
+  let l=portC.get(k);if(l)return l;
+  l=Object.keys(INDEX).filter(id=>{const p=parsePortraitId(id);return p&&p.race===r&&(c==null||p.cls===c)}).sort();
+  portC.set(k,l);return l}

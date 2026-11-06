@@ -94,6 +94,7 @@ export const DM_TOOLS=[
     args:{theme:{type:'string',enum:['barrow','fortress','temple','mine','den','ruin'],desc:'What kind of place'},region:{type:'string',desc:'The region it lies in (may be left out when near is given)',optional:true},
       band:{type:'integer',desc:'The level it is for (clamped to the region’s band; default the band’s low end + 1)',optional:true},rooms:{type:'integer',desc:'Chambers, 3-8 (default 4-6)',optional:true},
       near:{type:'string',desc:'"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region: placed 4-10 tiles off it',optional:true},name:{type:'string',desc:'Its name (max 40; default one in the region’s words)',optional:true},
+      raid:{type:'string',desc:'"yes" makes it a raid site: 5 or more heroes (or two companies) go down, its boss fights in phases, and it lies quiet 2 game days after each kill (3 kills lay it to rest); default no',optional:true},
       reason:{type:'string',desc:'Why, in one sentence (shown in the DM log)'}}},
   // The DM's voice in the game (issue #123): the only way the DM speaks to the heroes. Heard by the heroes in range
   // (their Chat tab, their agents' chat_read and events, the Table banner while a scene is open); never a message to an agent.

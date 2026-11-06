@@ -15,7 +15,8 @@
 //            open|accepted|declined|unanswered, prop?, until? (a solo's question lapses then)}}
 // DOM-free, no RNG (the scripted line is picked by a hash of ids). Owned by brain-builder.
 import {S,dayNo,clockStr} from './state.js';
-import {CITY,CRYPT,dist} from '../world/map.js';
+import {CITY,CRYPT,CRYPTS,dist} from '../world/map.js';
+import {cryptFor,cryptOfHero} from './crypts.js'; // which dungeon a call, a hero or a group is about (#891)
 import {FAC} from '../data/factions.js';
 import {CALL_LINES} from '../data/renown-lines.js';
 import {register,LEVERS} from './levers.js';
@@ -48,7 +49,8 @@ const living=a=>a&&a.kind==='hero'&&a.state!=='dead';
 const people=()=>{ensureNpcs();return [...(S.npcs||[]),...(S.wanderers||[])]};
 const personBy=id=>people().find(x=>x.id===id)||null;
 const label=C=>C.slots?'the Fellowship':isSolo(C)?(members(C)[0]||{}).name||'the hero':C.name||'the company';
-const placeWord=k=>k==='crypt'?CRYPT.name:'Kragmaw';
+const dunOf=C=>{const L=leaderOfC(C);return L?cryptFor(L):CRYPT}; // the dungeon a call to this company is about: the one its leader would go to
+const placeWord=(k,dun)=>k==='crypt'?dun||CRYPT.name:'Kragmaw';
 const inTown=a=>CITY.some(c=>a.x>=c.x0-1&&a.x<=c.x1+1&&a.y>=c.y0-1&&a.y<=c.y1+1);
 const hoursLeft=m=>Math.max(1,Math.ceil(m/60));
 
@@ -58,7 +60,7 @@ function townVoice(C,lead){if(!inTown(lead))return null;
   const L=people().filter(p=>Number.isFinite(p.x)&&dist(p,lead)<=CALL.EAR&&(p.fac==null||p.fac<0||p.fac===C.fac));
   return L.sort((x,y)=>(y.role==='captain'?1:0)-(x.role==='captain'?1:0)||dist(x,lead)-dist(y,lead)||x.id-y.id)[0]||null}
 
-function logAnswer(C,L,how){const n=label(C),w=placeWord(L.kind),again=' Not asked again for '+CALL.AGAIN_DAYS+' game days.';
+function logAnswer(C,L,how){const n=label(C),w=placeWord(L.kind,L.dun),again=' Not asked again for '+CALL.AGAIN_DAYS+' game days.';
   const line=L.answer==='accepted'?n+' answered the call to '+w+(how?' ('+how+')':'')+'.':L.answer==='declined'?n+' declined the call to '+w+(how?' ('+how+')':'')+'.'+again:n+' never answered the call to '+w+'.'+again;
   dmlog('agent',null,[line],{by:'scripted',lever:'call_to',company:C.id,kind:L.kind,answer:L.answer},{heroes:[]})}
 // A solo's silence past the wait counts as no. Settled when anyone next reads the call (no tick, no cost to a world without calls).
@@ -75,11 +77,11 @@ export function callRefusal(C,kind){const n=label(C),r=settle(C),M=members(C);
   if(r&&r.no!=null&&S.gameMin-r.no<CALL.AGAIN_DAYS*DAY)return 'limit: '+n+' declined your last call; not asked again for '+hoursLeft(r.no+CALL.AGAIN_DAYS*DAY-S.gameMin)+' game hours';
   if(r&&r.last&&r.last.answer==='open')return n+' has not answered your last call yet';
   const O=openProps(C).find(P=>P.kind==='crypt'||P.kind==='raid');if(O)return 'a '+O.kind+' vote is open among '+n+': it is theirs to settle';
-  if(C.wait&&(C.wait.crypt||C.wait.raid))return n+' is already set on '+(C.wait.crypt?CRYPT.name:'Kragmaw');
+  if(C.wait&&(C.wait.crypt||C.wait.raid))return n+' is already set on '+(C.wait.crypt?dunOf(C).name:'Kragmaw');
   if(sceneFor(C))return 'a scene of '+n+' is open: let it play';
-  const g=CRYPT.group&&CRYPT.group.mem.find(a=>M.includes(a));if(g)return g.name+' is in '+CRYPT.name;
-  const b=M.find(a=>BUSY.includes(a.state)||a.raid);if(b)return b.name+' of '+n+(b.state==='raid'||b.raid?' is in a raid':b.state==='dungeon'?' is in '+CRYPT.name:b.state==='downed'?' is down':' is in a fight');
-  if(isSolo(C)){const a=M[0];if((a.pq||[]).some(c=>c.kind==='crypt'))return a.name+' is already on the way to '+CRYPT.name;
+  const g=M.find(a=>cryptOfHero(a));if(g)return g.name+' is in '+cryptOfHero(g).name;
+  const b=M.find(a=>BUSY.includes(a.state)||a.raid);if(b)return b.name+' of '+n+(b.state==='raid'||b.raid?' is in a raid':b.state==='dungeon'?' is in '+(cryptOfHero(b)||CRYPT).name:b.state==='downed'?' is down':' is in a fight');
+  if(isSolo(C)){const a=M[0];if((a.pq||[]).some(c=>c.kind==='crypt'))return a.name+' is already on the way to '+dunOf(C).name;
     if(kind==='raid'&&!S.raidOn[a.fac])return a.name+' rides alone and can only fall in with a muster that is out, and none of the '+FAC[a.fac].name+' is'}
   return null}
 
@@ -91,20 +93,20 @@ const CALL_LEVER={name:'call_to',about:'Put the Crypt or a raid to a company, in
     if(p.text!=null&&notEnglish(p.text))return 'text must be in English';
     if(p.by!=null){const q=personBy(p.by),L=leaderOfC(C);if(!q)return 'no such person (by)';if(!L||!Number.isFinite(q.x)||dist(q,L)>CALL.EAR)return (q.name||'they')+' is not within '+CALL.EAR+' tiles of '+(L?L.name:'the leader')+' (earshot)'}
     return null},
-  apply(p){const C=companyById(p.company),L=leaderOfC(C),solo=isSolo(C),q=p.by!=null?personBy(p.by):townVoice(C,L),who=q?full(q):'The narrator';
-    const T=CALL_LINES[p.kind][solo?'solo':'company'],line=clean(p.text,CALL.TEXT_MAX)||T[hashN(C.id+':'+dayNo())%T.length].replace('{crypt}',CRYPT.name).replace('{fac}',FAC[C.fac].name);
+  apply(p){const C=companyById(p.company),L=leaderOfC(C),solo=isSolo(C),D=dunOf(C),q=p.by!=null?personBy(p.by):townVoice(C,L),who=q?full(q):'The narrator';
+    const T=CALL_LINES[p.kind][solo?'solo':'company'],line=clean(p.text,CALL.TEXT_MAX)||T[hashN(C.id+':'+dayNo())%T.length].replace('{crypt}',D.name).replace('{fac}',FAC[C.fac].name);
     // spoken: to those in earshot of the person (or of the leader, for the narrator) and the leader, as bestow says a name
     const e={t:clockStr(),d:dayNo(),from:q?{kind:'npc',id:q.id,name:q.name,fac:q.fac}:NARRATOR,text:line,trigger:q?'npc':'dm',dm:true};
     const at=q||L,hs=S.agents.filter(b=>living(b)&&!b.hidden&&(b===L||dist(b,at)<=HEAR));
     for(const b of hs){(b.chat||(b.chat=[])).push(e);if(b.chat.length>CHAT_CAP)b.chat.shift();hear(b,line,who)}
     if(q){q.bubble={text:line,life:BUBBLE};q.chatCd=Math.max(q.chatCd||0,10)}
     const r=C.calls||(C.calls={d:-1,n:0});if(r.d!==dayNo()){r.d=dayNo();r.n=0}r.n++;
-    r.last={kind:p.kind,by:who,line,gm:Math.round(S.gameMin),day:dayNo(),answer:'open'};
+    r.last={kind:p.kind,by:who,line,gm:Math.round(S.gameMin),day:dayNo(),answer:'open'};if(p.kind==='crypt'&&D!==CRYPT)r.last.dun=D.name; // only a dungeon past the first is named, so a one-dungeon world keeps its saves
     const eff={company:label(C),kind:p.kind,by:who,line,heard_by:hs.length};
-    if(solo){r.last.until=Math.round(S.gameMin+CALL.ANSWER_MIN);if(p.kind==='crypt')heardOf(L,{kind:'landmark',name:CRYPT.name},who);
+    if(solo){r.last.until=Math.round(S.gameMin+CALL.ANSWER_MIN);if(p.kind==='crypt')heardOf(L,{kind:'landmark',name:D.name},who);
       notify(L,who+' asks you: "'+line+'" Answer aloud: answer_call {answer: accept|decline, line}.',3);
       return {ok:true,effect:{...eff,question:'open for '+Math.round(CALL.ANSWER_MIN/60)+' game hours'}}}
-    const P=askCompany(C,p.kind,{src:'dm',caller:who,details:line});
+    const P=askCompany(C,p.kind,{src:'dm',caller:who,details:line,...(p.kind==='crypt'&&D!==CRYPT?{dun:D.name}:{})});
     if(typeof P==='string'){delete r.last;r.n--;return {ok:false,effect:P}}
     r.last.prop=P.id;return {ok:true,effect:{...eff,proposal:P.id,status:P.status}}},
   describe:p=>'the '+p.kind+' put to company #'+p.company};
@@ -127,7 +129,8 @@ export function lastCall(C){const r=settle(C),L=r&&r.last;if(!L)return null;cons
   return {kind:L.kind,by:L.by,day:L.day,hours_ago:Math.round((S.gameMin-L.gm)/60),answer:L.answer,...(wait>0?{not_again_for_hours:hoursLeft(wait)}:{})}}
 // What the DM knows of the Crypt and the muster for this company: a line, or null. Never a hero's prompt; passing it on is the DM's choice.
 const YOURS=' Yours to know, not theirs: they learn of it only if you pass it on (call_to, a rumour, a person).';
-export function musterWord(C,quiet){const g=CRYPT.group,M=members(C);if(C.wait&&(C.wait.crypt||C.wait.raid))return null;if(g&&g.mem.some(a=>M.includes(a)))return null;
+export function musterWord(C,quiet){const M=members(C);if(C.wait&&(C.wait.crypt||C.wait.raid))return null;if(M.some(a=>cryptOfHero(a)))return null;
   if(S.boss.alive&&S.raidOn[C.fac]&&!M.some(a=>a.raid))return 'The '+FAC[C.fac].name+' muster is out against Kragmaw.'+YOURS;
-  if(g&&g.phase==='gather'&&g.fac===C.fac)return 'A background group of the '+FAC[C.fac].name+' gathers at '+CRYPT.name+'.'+YOURS;
-  return quiet&&!g?CRYPT.name+' stands free.'+YOURS:null}
+  const G=CRYPTS.find(D=>D.group&&D.group.phase==='gather'&&D.group.fac===C.fac);
+  if(G)return 'A background group of the '+FAC[C.fac].name+' gathers at '+G.name+'.'+YOURS;
+  const D=dunOf(C);return quiet&&!D.group?D.name+' stands free.'+YOURS:null}

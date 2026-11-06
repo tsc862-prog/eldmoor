@@ -23,6 +23,7 @@
 //            fallen member leaves (and nothing else of theirs), the Markdown mirror, snapshot -> restore, and
 //            the DM's tools never showing a hero's notes
 // No model, no network beyond 127.0.0.1. Usage: npm run channelcheck (CHANNELCHECK_SEED to vary).
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {mkdtempSync, rmSync, existsSync, readdirSync, readFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -30,7 +31,7 @@ import {join} from 'node:path';
 
 let seed = 0x5eed1230 ^ (Number(process.env.CHANNELCHECK_SEED) || 123);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
-const LOGS = mkdtempSync(join(tmpdir(), 'eldmoor-channel-')); process.env.AGENT_LOGS = LOGS; // session files go here, never into logs/
+const LOGS = mkTmp('eldmoor-channel-'); process.env.AGENT_LOGS = LOGS; // session files go here, never into logs/
 
 const SIM = await import('../src/sim/index.js');
 const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
@@ -515,7 +516,7 @@ act(C1, 'forget', {id: id1});
   // another world's folder, a stray file and a folder outside the root must survive
   mkdirSync(join(LOGS, 'other', '7-keep', 'memory'), {recursive: true}); writeFileSync(join(LOGS, 'other', '7-keep', 'memory', 'MEMORY.md'), 'x');
   writeFileSync(join(MR, 'notes.txt'), 'keep'); mkdirSync(join(MR, 'sessions'));
-  const outside = mk(join(tmpdir(), 'eldmoor-outside-')); writeFileSync(join(outside, 'precious.txt'), 'keep');
+  const outside = mkTmp('eldmoor-outside-'); writeFileSync(join(outside, 'precious.txt'), 'keep');
   let linked = false; try {symlinkSync(outside, join(MR, '9-link'), 'junction'); linked = true} catch {}
   const logged = []; const m3 = MM.memoryMirror({root: LOGS, world: 'check', log: l => logged.push(l)}); m3.setWorld('check', 'wNEW' + wid);
   ok(!existsSync(dirOf(B)) && !existsSync(join(MR, 'dm')), 'a new instance id purges the old hero folders and dm/');

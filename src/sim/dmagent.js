@@ -51,7 +51,7 @@ import {rulingCall,rulingAnswer,rulingSummary} from './ruling.js'; // free actio
 import {gone as dmGone} from './dmreflex.js'; // the DM's reflexes (#561)
 import {downCall,downAnswer,downCallSummary} from './downcall.js'; // a hero down: the DM voices it (#655)
 import {isDown} from './downed.js';
-import {sceneCall,sceneAnswer,ourScene,openingDue,openingWait} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
+import {sceneCall,sceneAnswer,ourScene,openingDue,openingWait,prologueStatus} from './arrival.js'; // session zero and a newcomer's arrival ask for the DM's voice too (#437, #452)
 import {prepCall,prepView,endPrep,prepActive} from './prep.js'; // the bounded prep before the table opens (#437)
 import {npcCall,dmAnswer,offer as npcOfferApply,convWith,convById,convSummary,recordView,dmHeard,warm,legalOffers,CONV} from './talk.js'; // NPC conversations (#170)
 import {compCall,compSay,compSummary} from './compvoice.js'; // scripted companions of an agent company, voiced by the DM (#764)
@@ -300,8 +300,9 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     fellowship_first:F?'The Fellowship comes first: read fellowship_needs, act for them, and only then shape the wider world (and only when nothing is pending for them).':null,
     fellowship_needs:fellowshipNeeds(),fellowship_change:companiesSig(),
     ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
+    ...(prologueStatus()?{first_delve:prologueStatus()}:{}), // #922: the place, its rooms and what is behind it, for this seat alone
     prep:{...prepView(),...(openingDue()?{opening_due:true}:{}),...(openingWait()?{opening_waits_for:openingWait().names}:{})}, // #437: while it runs the world is held for you; end it with prep_done
-    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
+    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
     staged:stagedView(),
@@ -492,7 +493,7 @@ const FLAT_USAGE={
   give_item:'give_item takes: hero (a hero by name or id), item (a quest item or token, a consumable, or a gear slot head|chest|hands|feet|main|off|trinket), by? (a person in earshot, by name or id), ilvl? (gear only, never above the hero’s level), reason',
   take_item:'take_item takes: hero (a hero by name or id), item (a quest item or token), by? (a person in earshot, by name or id), reason',
   mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reveal? (a secret a search uncovers), cache? (gold or an item hidden there), reason',
-  create_site:'create_site takes: theme (barrow|fortress|temple|mine|den|ruin), region (a region: '+ZONES.join('|')+'; or left out with near), band? (the level wanted, clamped to the region), rooms? (3-8), near? ('+NEAR_FORMS+'; the site is placed on open ground off the roads near it), name?, reason'};
+  create_site:'create_site takes: theme (barrow|fortress|temple|mine|den|ruin), region (a region: '+ZONES.join('|')+'; or left out with near), band? (the level wanted, clamped to the region), rooms? (3-8), near? ('+NEAR_FORMS+'; the site is placed on open ground off the roads near it), name?, raid? (yes: a raid site for 5 or more), reason'};
 // A walkable spot between min and max tiles of c (rings outward, no dice), clear of towns, landmarks and, by gap, other places.
 function openSpot(c,min,max,gap){const R=q=>Math.round(q*10)/10,okAt=q=>!spotErr(q)&&!(gap&&(S.places||[]).some(p=>dist(p,q)<gap));
   if(min<=0&&okAt({x:R(c.x),y:R(c.y)}))return {x:R(c.x),y:R(c.y)};
@@ -537,7 +538,7 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};if(MORE_FLAT[tool])retu
     params={hero:h.id,item:str(a.item,40),...opt('by',by),...(tool==='give_item'?opt('ilvl',int(a.ilvl)):{})}}
   else if(tool==='create_site'){let at;if(a.near!=null&&a.near!==''){const W=nearSpot(a.near,{min:4,max:10});if(W.err||!W.at)return no((W.err||'no open ground near '+clean(a.near,40))+'; '+nearTakes());at=W.at}
     const rg=a.region!=null&&a.region!==''?str(a.region,40):at?ZONES[zoneAt(at.x,at.y)]:undefined;
-    params={theme:str(a.theme,16),...opt('region',rg),...opt('band',int(a.band)),...opt('rooms',int(a.rooms)),...opt('name',str(a.name,40)),...opt('at',at)}}
+    params={theme:str(a.theme,16),...opt('region',rg),...opt('band',int(a.band)),...opt('rooms',int(a.rooms)),...opt('name',str(a.name,40)),...opt('at',at),...(a.raid==null||a.raid===''?{}:{raid:a.raid===true||/^(yes|true|1)$/i.test(String(a.raid))})}}
   else if(tool==='place_person'){const W=nearSpot(a.near,{min:2,max:5});if(W.err)return no(W.err+' (create_npc needs town for a town home, or at: a point {x,y} for a camp); '+nearTakes());
     const base={role:str(a.role,20),...opt('name',str(a.name,24)),...opt('faction',str(a.faction,12)),...opt('attitude',str(a.attitude,12)),...opt('hours',int(a.hours))};
     params=W.town?{...base,home:'town',town:W.town,...opt('spot',str(a.spot,16))}:{...base,home:'camp',at:W.at}}

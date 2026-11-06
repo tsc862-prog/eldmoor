@@ -29,7 +29,8 @@
 import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
-import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
+import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,CRYPTS,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
+import {cryptOfHero,cryptOfCtx,cryptCtx,cryptByWord,cryptInWords,cryptNearest} from './crypts.js';
 import {homeOf,raceOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -90,7 +91,8 @@ import {MOVES} from '../data/moves.js';
 import {searchAct,examineView,SR} from './search.js'; // search and examine marked places, signs and landmarks (#525)
 import {enterSiteTool} from './sites.js'; // DM-made dungeon sites (#69)
 import {noticeHeroes,sighted} from './sighthero.js'; // heroes coming into sight (#570)
-import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,aimState,intentView,waitish,levelCond} from './intent.js'; // the hero's stated aim (#535)
+import {INTENT,setIntent,endIntent,attachOrder,intentWatch,aimHeld,aimState,intentView,waitish,levelCond,errandOf,errandTool,waitFrom} from './intent.js'; // the hero's stated aim (#535)
+import {localsNear} from './locals.js'; // who is about in town, for "you are already here" (#727)
 import {pay as payGold} from './pay.js'; // pay (#628)
 import {finishTool,spareTool} from './mercy.js'; // finish or spare a downed enemy (#657)
 import {bequeath as writeWill,willView} from './will.js'; // a will (#631)
@@ -182,7 +184,8 @@ function since(list,k){if(!list||!list.length)return [];if(!k)return list.slice(
 // #487: with the scripted heroes' caution. A hurt hero walks home to heal (it rests out here only when no creature is
 // close), a storm sends it home, and every hunt autopilot starts is wary (field(), fight()): it keeps to one ground,
 // takes only prey it sizes up as an even match or less, and breaks off at PK.WARY_FLEE.
-function autopilot(a){const field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
+function autopilot(a){if((a.state==='hunt'||a.state==='travel')&&cityAt(a)){a.state='town';a.dest=null} // an orderless hero left in the hunt state at a town's edge is in town: neither branch took it, so it stood there for good
+  const field=(a.state==='hunt'||a.state==='travel')&&!cityAt(a);
   if(!field&&a.state!=='town')return null;
   return idlePick(a,{town:a.state==='town',field}); // the hero's gambits (#617): its class preset is the policy above, rule for rule
 }
@@ -204,7 +207,19 @@ function waryPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y)),gz=cmd.ground;let
 // loot, buy a potion or two, then walk out to its last hunting ground (or a known region that fits its level) and hunt.
 // A follower waits for its leader (it follows them out, town()) and only goes hunting near town on its own after TP.WAIT
 // more game minutes with the leader still in town. Agent-played heroes only: the scripted world never comes here.
-const TP={HUNT:5,POTIONS:2,LOOT:4,WAIT:240,FIT_UP:1,DANGER:5,DARE_MIN:720,IDLE_TOWN:720};
+const TP={HUNT:5,POTIONS:2,LOOT:4,WAIT:240,FIT_UP:1,DANGER:5,DARE_MIN:720,IDLE_TOWN:720,ARRIVE_HOLD:120};
+// #727: after the hero arrives in a town on its agent's own order (a move_to, or the aim's walk), autopilot does not walk it back
+// out (to its ground, or an aim's hunt) for TP.ARRIVE_HOLD game minutes: the agent came for something. Rest, sell and buy still run.
+// The town-idle guard (#790) outranks the hold: an arrival inside town must not keep a hero who has earned nothing there for 12 hours.
+const leaveHeld=a=>a.state==='town'&&a.playArrive!=null&&S.gameMin-a.playArrive<TP.ARRIVE_HOLD&&!townIdleOver(a);
+const stayCmd=a=>{const c=cityAt(a),m=Math.round(S.gameMin-a.playArrive);return {kind:'rest',until:a.playArrive+TP.ARRIVE_HOLD,hold:true,auto:'staying in '+(c?c.name:'town')+' a while (you arrived '+m+' min ago)',label:'rest'}};
+// The town the hero stands in (inside its walls), and the answer when it asks to go there (#727): who is about, and the tools.
+const townHere=a=>a.state==='town'?cityAt(a):null;
+const namesTown=(text,c)=>new RegExp('(^|[^a-z])'+reEsc(c.name.toLowerCase())+'($|[^a-z])').test(String(text||'').toLowerCase());
+const placeIs=(t,c)=>String(t||'').toLowerCase().replace(/\([^)]*\)/g,' ').replace(/[^a-z' ]/g,' ').replace(/\b(?:to|the|town|city|of|back|into|in|return)\b/g,' ').replace(/\s+/g,' ').trim()===c.name.toLowerCase();
+function alreadyHere(a,c){const P=localsNear(a);
+  return {here:'You are already in '+c.name+'.',people:P.length?P.map(p=>p.name+' ('+p.role+', '+p.dist+' tiles)'):undefined,
+    next:(P.length?'talk {target: "'+P[0].name+'"} (within '+PK.TALK+' tiles; move_to "'+P[0].role+'" to come closer)':'move_to "inn" or "square" to find people, then talk {target}')+', list_jobs for the board, earshot for who hears you.'}}
 const bandOf=z=>REGIONS[z]&&REGIONS[z].band||null;
 // A region this hero can hunt: its lowest level within TP.FIT_UP of the hero's.
 const fits=(a,z)=>{const b=bandOf(z);return !!(b&&b[0]<=a.lvl+TP.FIT_UP)};
@@ -230,6 +245,8 @@ function boardFits(a,mem){const c=homeOf(a),lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x
   for(const h of (S.adventures||[]))if(h.phase==='open'&&h.town===c.name&&!jobFit(a,h,mem)){const zn=h.zone!=null?ZONES[h.zone]:null;out.push('job:'+h.id+' '+jobText(h)+(zn?' ('+zn+')':''))}
   for(const b of bountiesAt(c))if(MOBS[b.type]&&fits(lo,b.z))out.push('bounty: kill '+b.need+' '+MOBS[b.type].pl+' in '+ZONES[b.z]);
   return out.slice(0,4)}
+// How long one step of a wait rests: an hour, stopping at the aim's end, the wait cap and the guard, each of which ends the wait.
+const waitStep=(a,I)=>{const T=a.state==='town'?a.townIdle:null;return Math.max(S.gameMin+1,Math.min(S.gameMin+60,I.untilAt??1e12,waitFrom(I)+INTENT.WAIT_MAX,T?T.at+TP.IDLE_TOWN:1e12))};
 function townGuard(a){const now=S.gameMin;if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk||a.state==='raid'&&a.raid&&!a.raidOk)return; // a draft it steps out of below is no time away from town
   if(a.state!=='town'||a.hidden){if(a.townIdle)a.townIdle=null;return}
   const C=companyOf(a),sig=[a.lvl,Math.round(a.xp||0),a.kills||0,Math.round(a.gold||0),a.adv||0,a.quest?a.quest.have||0:-1,heldCount(a),a.conv==null?'':a.conv,invOf(a).list.length].join(',');
@@ -240,14 +257,16 @@ function townGuard(a){const now=S.gameMin;if(a.state==='dungeon'&&!a.hidden&&!a.
   ev(a,hrs+' game hours in '+homeOf(a).name+' with nothing earned: waiting earns no levels. '+(bd.length?'The board has, for you now: '+bd.join('; ')+'. ':'')+(z!=null?'Autopilot hunts '+ZONES[z]+' (it fits '+lo.name+') unless you decide otherwise: take a job, or hunt {where} yourself.':'Hunt out in the world to grow.'),2)}
 function intentPilot(a){if(!aimHeld(a))return null;const I=a.intent,o=I.order;if(!o)return null;const why=' (your aim: '+clean(I.goal,60)+')';
   const sg=o.kind==='move'?sighted(a):null;if(sg)return {kind:'rest',until:S.gameMin+30,auto:'holding where you are: you saw '+sg.name+' (your aim: '+clean(I.goal,60)+')',label:'rest'}; // stopped on sight (#570): the agent decides next
-  if(o.kind==='wait'){if(townIdleOver(a)||followerFree(a))return null; // waiting earns nothing (#790): 12 idle hours in town, or a stale wait behind a leader who has gone, lets autopilot hunt
-    return {kind:'rest',until:S.gameMin+60,auto:'waiting where you are'+why,label:'rest'}}
+  if(o.kind==='wait'){if(townIdleOver(a)||followerFree(a)||(o.town&&!townHere(a)))return null; // waiting earns nothing (#790): 12 idle hours in town, or a stale wait behind a leader who has gone, lets autopilot hunt; an errand ends at the gate (#727)
+    const ct=o.town?townHere(a):null; // a town errand waits in that town (#727); a hold rest does not end at full health, so it stops at each limit itself
+    return {kind:'rest',until:waitStep(a,I),hold:true,auto:(ct?'waiting in '+ct.name:'waiting where you are')+why,label:'rest'}}
   if(o.kind==='move'){if(o.to&&dist(a,o.to)<=INTENT.NEAR)return null;let p=o.target?plan(a,o.target):null;
     if((!p||p.error)&&o.to&&o.last!=='town')p=toFieldOf(a,o.to,o.label);if(!p||p.error)return null;
-    return {kind:'move',legs:p.legs,last:p.last,label:p.label,auto:'carrying on to '+p.label+why}}
+    return {kind:'move',legs:p.legs,last:p.last,label:p.label,aim:true,auto:'carrying on to '+p.label+why}} // aim: the agent's own walk (an arrival wakes it, #727)
   if(o.kind==='hunt'){const z=o.ground!=null?ZONES.indexOf(o.ground):zoneAt(a.x,a.y);if(z<0||!fits(a,z))return null;
     const h={kind:'hunt',n:o.n||TP.HUNT,flee:o.flee,prey:o.prey,wary:true,ground:z,auto:'hunting in '+ZONES[z]+why,label:'hunt'};
     if(zoneAt(a.x,a.y)===z&&!cityAt(a)&&!inTown(a)){h.k0=a.kills;return h}
+    if(leaveHeld(a))return stayCmd(a); // just arrived: not back out yet (#727)
     const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
     return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'heading to '+ZONES[z]+why},h]}
   return null}
@@ -325,7 +344,8 @@ defineGambits({
     hunt_here:(a,t,ctx)=>{if(!ctx.field)return null;const z=zoneAt(a.x,a.y),b=bandOf(z),g=groundFor(a),holds=b&&a.lvl>=b[0]&&(b[1]==null||a.lvl<=b[1]);
       return fits(a,z)&&(g==null||g===z||holds)?{kind:'hunt',n:TP.HUNT,k0:a.kills,wary:true,ground:z,auto:'hunting in '+ZONES[z]+' (it suits your strength)',label:'hunt'}:null},
     hunt_region:(a,t,ctx)=>{const gz=gZone(a,t.region);if(gz===-1)return null;
-      if(ctx.town){const z=gz!=null?gz:groundFor(a);if(z==null)return null;const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
+      if(ctx.town){if(leaveHeld(a))return stayCmd(a); // just arrived on the agent's own order: not back out yet (#727)
+        const z=gz!=null?gz:groundFor(a);if(z==null)return null;const p=planOne(a,ZONES[z].toLowerCase());if(!p||p.error)return null;
         const L=gLeader(a),o=a.playOrder&&a.playOrder.kind==='hunt'?a.playOrder:null,n=o?o.n:TP.HUNT;
         const why=o?'your last order: hunt '+o.n:L?L.name+' is still in town; hunting nearby':'it suits your strength';
         return [{kind:'move',legs:p.legs,last:'hunt',label:p.label,auto:'heading out to '+ZONES[z]+' to hunt ('+why+')'},{kind:'hunt',n,flee:o?o.flee:undefined,prey:o?o.prey:undefined,wary:true,ground:z,auto:'hunting in '+ZONES[z]+' ('+why+')'}]}
@@ -371,7 +391,7 @@ export const turnHeld=a=>!!(a&&a.player&&a.playTurn!=null&&S.gameMin-a.playTurn<
 const clockAt=gm=>{const m=Math.floor(gm)%1440;return 'Day '+(Math.floor(gm/1440)+1)+' '+String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
 const fighting=a=>(a.state==='fight'||a.state==='duel'||a.state==='assist')&&a.target&&alive(a.target)?a.target:null;
 const whereOf=a=>{const c=cityAt(a);return c?c.name:ZONES[zoneAt(a.x,a.y)]||'the wilds'};
-const stateWord=s=>({town:'in town',hunt:'out in the field',travel:'on the road',return:'heading home',fight:'fighting',duel:'in a duel',assist:'helping in a fight',follow:'following the party',dungeon:'in '+CRYPT.name,raid:'on a raid',ghost:'a ghost'})[s]||s;
+const stateWord=(s,a)=>({town:'in town',hunt:'out in the field',travel:'on the road',return:'heading home',fight:'fighting',duel:'in a duel',assist:'helping in a fight',follow:'following the party',dungeon:'in '+(a?(cryptOfHero(a)||CRYPT).name:'a dungeon'),raid:'on a raid',ghost:'a ghost'})[s]||s;
 // What the agent saw: game time, place, state, foe, what it was doing (look, status, the turn's state header).
 export function lookSnap(a){if(!a||!a.player)return;const f=fighting(a);
   a.playLook={gm:S.gameMin,x:a.x,y:a.y,state:a.state,where:whereOf(a),doing:a.playDoing||null,foe:f?{id:f.id,name:foeName(a,f)}:null,ev:a.playEvN||0,kills:a.kills}}
@@ -380,7 +400,7 @@ function sinceLook(a,args){const L=a.playLook;if(!L)return null;const out=[],f=f
   if(L.foe&&(!f||f.id!==L.foe.id)){const t=findTarget(L.foe.id);out.push('the fight with '+L.foe.name+' is over'+(t&&!alive(t)?' ('+(t.kind==='mob'?'it is dead':L.foe.name+' has fallen')+')':''))}
   if(a.kills>L.kills)out.push((a.kills-L.kills)+' kill'+(a.kills-L.kills>1?'s':'')+' made');
   const w=whereOf(a);if(w!==L.where)out.push('you were in '+L.where+', now you are in '+w);else if(dist(a,L)>3)out.push('you moved '+Math.round(dist(a,L))+' tiles');
-  if(a.state!==L.state)out.push('you were '+stateWord(L.state)+', now you are '+stateWord(a.state));
+  if(a.state!==L.state)out.push('you were '+stateWord(L.state)+', now you are '+stateWord(a.state,a));
   if(a.playIdle&&a.playDoing)out.push(a.playDoing);
   if(!out.length)return null; // nothing moved on: the refusal stands as it is
   const tid=args&&args.target_id!=null?Number(args.target_id):null;
@@ -410,7 +430,7 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
   if(inSlots(a)&&reflexMay(a)){a.playIdle=false;a.playDoing='reflexes (no runner)';return false}
   // A guard: a hero in a group it never chose steps back out (#826: with a host the musters leave agent heroes out; a no-host world still reaches this).
-  if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Stepped back from a group for '+CRYPT.name+' (you go only where you choose).')}
+  if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Stepped back from a group for '+(cryptOfHero(a)||CRYPT).name+' (you go only where you choose).')}
   if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Stepped back from a raid on Kragmaw (you go only where you choose).')}
   if(a.party&&!a.partyOk&&!partySlotted(a.party)){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')} // the Fellowship's own party is always theirs
   const adv=advOf(a);
@@ -474,7 +494,7 @@ function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*d
   if(!cmd&&a.party&&partySlotted(a.party)&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil&&!turnHeld(a)){const c=homeOf(a);
     cmd={kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'town'}],last:'hunt',label:'the gate, following '+a.party.leader.name};a.pq=[cmd];ev(a,'The party is out with '+a.party.leader.name+'; you follow them out of '+c.name+'.')}
   if(cmd&&cmd.kind==='move')return travel(a,dt,cmd);
-  if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||(!cmd.search&&a.hp>=mh))done(a,cmd.search?'You finish searching.':'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
+  if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||(!cmd.search&&!cmd.hold&&a.hp>=mh))done(a,cmd.hold?null:cmd.search?'You finish searching.':'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
   if(cmd&&cmd.kind==='sell'){const r=sellLoot(a);a.gold+=r.gold;done(a,r.n?'Sold '+r.n+' thing'+(r.n>1?'s':'')+' for '+r.gold+'g (gold '+a.gold+').':null,false);a.moving=false;return true} // autopilot (#466)
   if(cmd&&cmd.kind==='buy'){const U=USES[cmd.item];let got=0;while(U&&got<cmd.n&&a.gold>=U.price&&addUse(a,cmd.item,1)){a.gold-=U.price;got++}
     done(a,got?'Bought '+cmd.item+' x'+got+' (gold '+a.gold+').':null,false);a.moving=false;return true}
@@ -490,14 +510,16 @@ function travel(a,dt,cmd){a.cd-=dt;const leg=cmd.legs&&cmd.legs[0];
   if(moveTo(a,leg.x,leg.y,dt,leg.st==='town'?2.2:2.4)){cmd.legs.shift();if(!cmd.legs.length)finishMove(a,cmd)}
   return true}
 function finishMove(a,cmd){a.moving=false;const last=cmd.last||'hunt';a.state=last;a.zone=zoneAt(a.x,a.y);
-  done(a,cmd.flee?'Made it back to '+homeOf(a).name+'.':'Arrived: '+cmd.label+'.')}
+  // #727: an arrival in a town (or at its inn) on the agent's own order wakes the agent now, and holds autopilot in town a while
+  const own=!cmd.flee&&(!cmd.auto||cmd.aim)&&last==='town'&&!!cityAt(a);if(own)a.playArrive=S.gameMin;
+  done(a,cmd.flee?'Made it back to '+homeOf(a).name+'.':'Arrived: '+cmd.label+'.',own?2:true)}
 // No command and heading home (fled, a party turning back, an adventure ended): walk to the gate.
 function homeward(a,dt){const c=homeOf(a);if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.moving=false;ev(a,'Back in '+c.name+'.')}return true}
 
 // Out in the world, not walking: hunt, rest, or stand and keep watch.
 function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
   if(a.state!=='hunt')a.state='hunt';
-  if(cmd&&cmd.kind==='rest'){a.moving=false;a.hp=Math.min(mh,a.hp+mh*PK.REST_REGEN*dt);if(S.gameMin>=cmd.until||(!cmd.search&&a.hp>=mh))done(a,cmd.search?'You finish searching.':'Rested. HP '+pct(a.hp,mh)+'%.');return true}
+  if(cmd&&cmd.kind==='rest'){a.moving=false;a.hp=Math.min(mh,a.hp+mh*PK.REST_REGEN*dt);if(S.gameMin>=cmd.until||(!cmd.search&&!cmd.hold&&a.hp>=mh))done(a,cmd.hold?null:cmd.search?'You finish searching.':'Rested. HP '+pct(a.hp,mh)+'%.');return true}
   a.hp=Math.min(mh,a.hp+mh*.025*dt);
   if(cmd&&cmd.kind==='fight'){const t=findTarget(cmd.id);
     if(!t||!alive(t)){done(a,t&&t.kind==='mob'&&!t.alive?'Slew '+(t.elite?t.name:'the '+mobName(t))+'.':'Your target is gone.');return true}
@@ -515,7 +537,7 @@ function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
     // a wary hunt that walked PK.ROAM legs without finding prey it can take ranges across its whole ground for the next one
     if(!a.dest||cmd.wary&&gz!==a.zone&&zoneAt(a.dest.x,a.dest.y)!==gz){const far=cmd.wary&&(cmd.dry||0)>=PK.ROAM;a.dest=zonePoint(gz,far?null:a);if(far)cmd.dry=0}
     if(moveTo(a,a.dest.x,a.dest.y,dt,1.8)){a.dest=null;if(cmd.wary)cmd.dry=(cmd.dry||0)+1}return true}
-  if(cmd&&cmd.kind==='crypt'){if(dist(a,CRYPT)>=2.2){moveTo(a,CRYPT.x,CRYPT.y+.6,dt,2.4);return true}a.moving=false;const t=soloCrypt(a,cmd);if(t)done(a,t);return true} // a solo's go_crypt at the mouth (#826)
+  if(cmd&&cmd.kind==='crypt'){const D=cryptOfCtx(cmd);if(dist(a,D)>=2.2){moveTo(a,D.x,D.y+.6,dt,2.4);return true}a.moving=false;const t=soloCrypt(a,cmd);if(t)done(a,t);return true} // a solo's go_crypt at the mouth (#826)
   if(cmd&&cmd.kind==='gather'){const t=gatherCmd(a,dt,cmd,moveTo);if(t)done(a,t);return true} // walk to the node, work it, try (sim/gather.js, #257)
   if(cmd){done(a,'Cannot '+cmd.kind+' here.');return true}
   // idle reflex: a full bag goes home to be sold
@@ -570,7 +592,7 @@ function doingText(a,adv,cmd){
   if(cmd){if(cmd.kind==='move')return (cmd.flee?'Fleeing to ':'Walking to ')+cmd.label;
     if(cmd.kind==='hunt')return 'Hunting in '+ZONES[zoneAt(a.x,a.y)]+' ('+Math.max(0,cmd.n-(cmd.k0==null?0:a.kills-cmd.k0))+' to go)';
     if(cmd.kind==='rest')return 'Resting';
-    if(cmd.kind==='crypt')return 'At the mouth of '+CRYPT.name;
+    if(cmd.kind==='crypt')return 'At the mouth of '+cryptOfCtx(cmd).name;
     if(cmd.kind==='gather')return 'Gathering at a '+String(cmd.label||'node').toLowerCase();
     if(cmd.kind==='fight')return 'Closing on a foe';
     if(cmd.kind==='follow'){const f=followLine(a);return f?f[0].toUpperCase()+f.slice(1):'Following '+cmd.name}}
@@ -654,7 +676,7 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   if(z>=0){if(!knowsPlace(a,ZONES[z]))return unknown(ZONES[z]);let p=zonePoint(z,null,c.gate);for(let i=0;i<8&&enemyNear(a,p);i++)p=zonePoint(z,null,c.gate); // a region around both towns (#411): pick again, away from the enemy wall
     if(enemyNear(a,p))return {error:'That part of '+ZONES[z]+' is under an enemy town wall.'};
     const r=toField(p,ZONES[z]);const w=placeMemory(a,ZONES[z]);if(w)r.warn=w;return r}
-  if(t==='crypt'||t===CRYPT.name.toLowerCase()||t==='the crypt'){if(!knowsPlace(a,CRYPT.name))return unknown(CRYPT.name);const r=toField({x:CRYPT.x,y:CRYPT.y+1.4},CRYPT.name+' (the entrance)');const w=placeMemory(a,CRYPT.name);if(w)r.warn=w;return r}
+  {const D=t==='crypt'||t==='the crypt'?CRYPT:CRYPTS.find(x=>x.name.toLowerCase()===t);if(D){if(!knowsPlace(a,D.name))return unknown(D.name);const r=toField({x:D.x,y:D.y+1.4},D.name+' (the entrance)');const w=placeMemory(a,D.name);if(w)r.warn=w;return r}}
   const op=OUTPOSTS.find(o=>o.name.toLowerCase()===t);
   if(op){if(!knowsPlace(a,ZONES[op.z])&&dist(a,op)>30)return unknown(op.name);return toField({x:op.x,y:op.y},op.name)}
   const lm=LANDMARKS.find(l=>l.name.toLowerCase()===t||l.kind===t);
@@ -725,6 +747,11 @@ function apartNote(a,p){const L=a.party&&a.party.leader!==a&&a.party.leader.stat
   return 'This takes you away from '+nameList(mates)+': '+L.name+' leads and will not follow, and past about '+REACH.SHOUT+' tiles they cannot hear you. Out there, every fight is yours alone.'}
 const DIRS={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0],northeast:[1,-1],northwest:[-1,-1],southeast:[1,1],southwest:[-1,1]};
 // A place name the agent used that the world has but the hero has not heard of (so the refusal does not confirm others).
+// Which dungeon a hero means (#891): the one it named, else one named in its words, else the nearest it knows. A name that is no dungeon, or one it never heard of, is refused.
+function pickCrypt(a,word,text){const w=clean(word,60).trim(),D=w?cryptByWord(w):cryptInWords(text),known=CRYPTS.filter(x=>knowsPlace(a,x.name));
+  if(w&&!D)throw new Rule('There is no dungeon called "'+w+'" that you know of.'+(known.length?' You know of '+known.map(x=>x.name).join(', ')+'.':''));
+  if(w&&CRYPTS.length>1&&!known.includes(D))throw new Rule('You have never been to '+D.name+' nor heard of it. Ask around, or explore that way.');
+  return D||cryptNearest(a,known)}
 const placeNameIn=t=>{const n=[...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).find(x=>x.toLowerCase()===t);return n||null};
 
 // ---- places (#414): the places this hero knows, nearest first, with direction, distance and what it learned there ----
@@ -1009,6 +1036,7 @@ const T={
   unmark(a,{name}){const r=unmarkPlace(a,{name});need(!r.error,r.error);return r},
   move_to(a,{target,force}){need(a.state!=='camp',campBlock(a)||'The Fellowship is camped.');need(legal.includes(a.state),'You cannot walk away right now ('+a.state+').');
     need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
+    {const ct=townHere(a);if(ct&&placeIs(target,ct))return {ok:true,going:ct.name,distance:0,already_here:true,...alreadyHere(a,ct)}} // no walk to where you stand (#727)
     const p0=plan(a,target);if(p0.error)throw new Rule(p0.error);
     const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // a region far above the hero: stop at its edge first (#465)
     if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
@@ -1289,18 +1317,18 @@ const T={
   inspect:(a,x)=>inspectView(a,x||{}), // #425: one person, creature or item, as the hero perceives it
   enter_site:(a,x)=>enterSiteTool(a,x||{}), // #69: a DM-made dungeon site (sim/sites.js)
   // #826: a solo has nobody to vote with, so the Crypt and a raid are direct orders; a company of two or more votes (propose)
-  go_crypt(a,{join,force}){soloOrder(a,'crypt');const p0=plan(a,CRYPT.name);if(p0.error)throw new Rule(p0.error);
+  go_crypt(a,{join,force,dungeon}){soloOrder(a,'crypt');const D=pickCrypt(a,dungeon);const p0=plan(a,D.name);if(p0.error)throw new Rule(p0.error);
     const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // the danger edge holds as for any walk (#465)
-    if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label}];if(!g.stopped)a.pq.push({kind:'crypt',join:forceYes(join),label:CRYPT.name});if(a.state==='follow')a.state='hunt';a.dest=null;
+    if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label}];if(!g.stopped)a.pq.push({kind:'crypt',join:forceYes(join),label:D.name,...cryptCtx(D)});if(a.state==='follow')a.state='hunt';a.dest=null;
     const r={ok:true,going:p.label,note:g.stopped?'You stop short of the mouth.':'You walk to the mouth and go down'+(forceYes(join)?', with the group gathering there if one has room':'')+'. Every chamber is a scene at the table, and you are alone in them.'};
-    const w=greenWarn(companyOf(a),'crypt');if(w)r.warning=w.trim();if(p.warn)r.warning=(r.warning?r.warning+' ':'')+p.warn;if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;callTaken(a,'crypt');return r},
+    const w=greenWarn(companyOf(a),'crypt',D);if(w)r.warning=w.trim();if(p.warn)r.warning=(r.warning?r.warning+' ':'')+p.warn;if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;callTaken(a,'crypt');return r},
   join_raid(a){soloOrder(a,'raid');need(S.boss.alive,'Kragmaw is not in its lair now.');need(S.raidOn[a.fac],'Nobody of your people is raiding Kragmaw now. You can only fall in with a muster that is out; the town criers tell of them (read_chronicle).');
     const w=greenWarn(companyOf(a),'raid');joinRaid(a);callTaken(a,'raid');return {ok:true,joined:'the raid on Kragmaw',note:'You ride for the lair with the muster. You break off when badly hurt; until then the raid is your whole order.',...(w?{warning:w.trim()}:{})}},
   // #826: someone in the world asked a solo; the answer is said aloud, and a yes is the order itself
   answer_call(a,{answer,line}){const L=callFor(a),v=String(answer||'').trim().toLowerCase();need(L,'Nobody is waiting on an answer from you. A company answers with vote.');
     need(v==='accept'||v==='decline','answer is accept or decline.');need(String(line||'').trim(),'Say it aloud: line is what you answer, in your own words.');const kind=L.kind;T.say(a,{text:line});
     if(v==='decline'){callAnswered(a,false,'said no aloud');return {ok:true,answered:'declined',note:'You turned it down. Nothing is owed.'}}
-    const r=kind==='crypt'?T.go_crypt(a,{force:'yes'}):T.join_raid(a);callAnswered(a,true,'said yes aloud');return {...r,answered:'accepted'}},
+    const r=kind==='crypt'?T.go_crypt(a,{force:'yes',...(L.dun?{dungeon:L.dun}:{})}):T.join_raid(a);callAnswered(a,true,'said yes aloud');return {...r,answered:'accepted'}},
   examine:(a,x)=>examineView(a,x||{},sightOf(a)), // #525: a closer look at a marked place, landmark or sign; read only
   search(a,x){need(['hunt','town','travel','follow','camp'].includes(a.state),'You cannot search now ('+a.state+'). Not in a fight, a dungeon or on the road home.');
     const r=searchAct(a,x||{},sightOf(a));if(r.ok===false)return r;
@@ -1326,10 +1354,10 @@ const T={
   party_read(a,{n}){return {ok:true,lines:partyRead(a,Math.round(Number(n)||10))}},
   earshot(a){return earshot(a)}, // read-only (#395): the same hearer sets say and party_say use
   chat_read(a,{n}){const k=Math.min(20,Math.max(1,Math.round(Number(n)||10)));return {ok:true,lines:(a.chat||[]).slice(-k).map(e=>e.t+' '+(e.from===a||e.from&&e.from.kind!=='npc'&&e.from.id===a.id?'(you) '+(e.whisper?'(whispered to '+e.toName+') ':e.emote&&!e.veil?'*':'')+e.text+(e.emote&&!e.veil?'*':''):heardText(e)))}},
-  propose(a,{kind,details,job_id,meet_at,meet_in_hours,hero_id,company}){need(companyOf(a),'Only a member of a company can put something to the party.');const k=String(kind||'').toLowerCase();
+  propose(a,{kind,details,job_id,meet_at,meet_in_hours,hero_id,company,dungeon}){need(companyOf(a),'Only a member of a company can put something to the party.');const k=String(kind||'').toLowerCase();
     // a second break_camp while one is open is a yes on it (#400): the agent wants exactly what is already asked
     if(k==='break_camp'){const O=openProps(companyOf(a)).find(P=>P.kind==='break_camp');if(O)return secondBreak(a,O,details)}
-    const P=propose(a,k,details,{job:job_id,where:meet_at,hours:meet_in_hours,hero:hero_id,company});
+    const P=propose(a,k,details,{job:job_id,where:meet_at,hours:meet_in_hours,hero:hero_id,company,...(k==='crypt'?{dun:pickCrypt(a,dungeon,details).name}:{})});
     if(typeof P==='string')throw new Rule(P);return {ok:true,proposal:propText(P),status:P.status,note:P.status==='open'?'The others vote; the leader settles it when all have voted or in '+Math.round(P.until-S.gameMin)+' game minutes.'+(P.absent&&P.absent.length?' Out of shouting range, so not asked: '+nameList(S.agents.filter(x=>P.absent.includes(x.id)))+'.':''):P.result}},
   vote(a,{proposal_id,vote,reason}){const C=companyOf(a);need(C&&C.ids.length>1,C?'You ride alone: there is nothing to vote on.':'Only members of a company vote.');const P=propById(proposal_id,C);need(P,noProposal(proposal_id,C));
     const sc=tableView(a);if(sc&&sc.kind==='decision'&&!sc.acted&&sceneOf(a)&&sceneOf(a).ctx.prop===P.id){const x=sceneAct(a,vote,reason);if(typeof x==='string')throw new Rule(x);return {ok:true,voted:x.k,note:'Counted at the table on your turn.'}}
@@ -1412,16 +1440,23 @@ const T={
   carry(a,{who,hero_id,to}={}){const t=String(to==null||to===''?'town':to).toLowerCase().trim();
     need(['town','camp','leader'].includes(t),'carry to town, camp or leader (default town).');return aidTool(a,who,hero_id,{stab:true,carry:t},'carry')},
   wish(a,x){const hp=pct(a.hp,maxHp(a)),pl=ZONES[zoneAt(a.x,a.y)]||null;return fileWish(a,{seat:'hero:'+a.id,name:a.name,place:pl,summary:a.name+', level '+a.lvl+' '+(a.cls||'')+', '+a.state+(pl?' in '+pl:'')+', '+hp+'% HP'+(a.playDoing?', '+clean(a.playDoing,80):'')},x)}, // a note for the builders (#663, sim/wish.js)
-  intent(a,{goal,why,until,done}={}){const g=goal!=null?String(goal).trim():'';
+  intent(a,{goal,why,until,done,forced}={}){const g=goal!=null?String(goal).trim():'';
     if(/^(yes|true|done|kept|abandon(ed)?|drop(ped)?)$/i.test(String(done==null?'':done))||/^(done|none|nothing)$/i.test(g))return endIntent(a,why);
     if(!g)return intentView(a,leaderFor(a));
     need(!notEnglish(g+' '+(why||'')),'Not set: say it in English, as everyone in Eldmoor speaks.');
-    const c=a.pq&&a.pq[0],order=orderOf(a,c&&!c.auto?(c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c):null)||goalOrder(a,g);
-    const lc=levelCond(until)||(waitish(g)?levelCond(g):null);let ord=order,extra=null;
+    // #727: in town, a goal that names this town or runs an errand here (ask, buy, rest, ...) is not a walk: the errand holds
+    // the hero in town (a wait-kind order until its until), and the answer names who is about and the tools for it
+    const c=a.pq&&a.pq[0],ct=townHere(a),er=ct?errandOf(g):null;let order=orderOf(a,c&&!c.auto?(c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c):null),here=false;
+    if(!order){const go=goalOrder(a,g),toHere=!!(ct&&go&&go.kind==='move'&&go.target===ct.name);here=!!(ct&&namesTown(g,ct)&&(!go||toHere));
+      const topic=!!(go&&go.kind==='move'&&go.target&&new RegExp('\\b(?:about|of|for|regarding|concerning|on)\\s+(?:the\\s+)?'+reEsc(String(go.target).replace(/^the\s+/i,'').toLowerCase())+'(?:$|[^a-z])','i').test(g)); // a place named as the topic of the asking is not where to walk (#725)
+      order=er&&(!go||toHere||topic||go.kind==='wait')?{kind:'wait',errand:er.k,town:ct.name}:toHere?null:go}
+    // #790: a level condition is never a wait, an errand's included: it maps to a hunt on the fitting ground
+    const lc=levelCond(until)||(waitish(g)?levelCond(g):null);let ord=order,level=null;
     if(lc&&(!ord||ord.kind==='wait')){const mem=lc.all?[a,...partyMates(a)]:[a],lo=mem.reduce((x,b)=>b.lvl<x.lvl?b:x,a);
       if(lo.lvl>=lc.level)ord=null;else{const z=groundFor(lo),bd=boardFits(a,mem);ord=z!=null?{kind:'hunt',k0:a.kills,ground:ZONES[z],lvl:lc.level}:null;
-        extra={level:'Levels come from kills, not from waiting in town. '+(z!=null?'Autopilot hunts '+ZONES[z]+' for them':'No ground you know fits '+lo.name+': hunt {where}')+(bd.length?'; the board has: '+bd.join('; '):'')+'.'}}}
-    const r=setIntent(a,{goal:g,why,until},ord,extra);if(r.ok===false)throw new Rule(r.error);
+        level='Levels come from kills, not from waiting in town. '+(z!=null?'Autopilot hunts '+ZONES[z]+' for them':'No ground you know fits '+lo.name+': hunt {where}')+(bd.length?'; the board has: '+bd.join('; '):'')+'.'}}
+    const r=setIntent(a,{goal:g,why,until},ord,{forced:/^(yes|true|1)$/i.test(String(forced||'')),level});if(r.ok===false)throw new Rule(r.error);if(r.dropped)return r;
+    if(here||ord&&ord.errand){Object.assign(r,alreadyHere(a,ct));if(!here)delete r.here}
     const sh=shoutAim(a);if(sh){r.shouted=sh.heard_by.length?'heard by '+sh.heard_by.join(', '):'no one was near enough to hear';if(sh.too_far)r.too_far=sh.too_far}
     return r},
 };
@@ -1532,6 +1567,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   const q0=a.pq&&a.pq[0];let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
+  if(r&&r.ok!==false)errandTool(a,tool); // running a town errand is progress toward the aim (#727)
   if(meta.act&&r&&r.ok!==false&&r.act!==false){holdAnswered(a);a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
     if((tool==='move_to'||tool==='hunt'||tool==='follow'||tool==='rest')&&a.intent&&!a.intent.done&&!a.intent.order){const c=a.pq&&a.pq[0];attachOrder(a,orderOf(a,c&&c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c,tool==='move_to'?args&&args.target:null))} // a command under an aim with none becomes its order (#535)
     if(tool==='follow'){const f=a.pq[0];a.playOrder={kind:'follow',id:f.id,until:f.until,h:f.h}}else if(a.playOrder&&a.playOrder.kind==='follow'&&(a.pq&&a.pq[0])!==q0)a.playOrder=null} // a new order ends a standing follow (#445) // the agent's last action that went through (autopilot, #126)
