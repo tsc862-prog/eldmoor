@@ -444,7 +444,7 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
   - **The Reed Sump**: a flooded stair-foot choked with dead reeds; Tomb Skitters under the water-mat.
   - **The Salt-Bone Hall**: shelves crusted white with fen salt; a Crypt Shambler and a Bone Archer.
   - **The Mere-Warden's Seat**: a round pool with a stone chair in it; the boss room. **Mere-Warden Hask** (a Grave Warden, pitched for the 4-9 band though the species starts at level 7; deliberate, he is a named exception) keeps the watch while the fen rises, with a Tomb Skitter at his feet.
-- **The Hollow Cairn** (level 8-13, Cairnwold): the second dungeon of the Stepping Lands, a barrow cut into the Cairnwold hills (#717). Four chambers, as data on the landmark; creatures are the Crypt species. The rooms are written, but a group can only go down the world's first dungeon until the engine learns a second (see the issue).
+- **The Hollow Cairn** (level 8-13, Cairnwold): the second dungeon of the Stepping Lands, a barrow cut into the Cairnwold hills (#717); groups go down it since #891, tried blades of level 10 and up among the background. Four chambers, as data on the landmark; creatures are the Crypt species. The rooms are written, but a group can only go down the world's first dungeon until the engine learns a second (see the issue).
   - **The Cold Throat**: a low passage of fitted stones that breathes out cold; Tomb Skitters on the walls.
   - **The Ring of Heaped Stones**: a round hall of man-high burial heaps; two Crypt Shamblers and a Bone Archer.
   - **The Hall of Unlit Lamps**: rows of dead stone lamps; two Bone Archers and a Grave Warden behind the last row.
