@@ -33,6 +33,8 @@ import {slotKeyOf} from '../sim/company.js'; // the slotted company (#588)
 import {portraitAssets,assetPixels,onAssets} from './assets.js';
 
 export const PORTRAIT_W=15,PORTRAIT_H=18;
+// Library faces the manifest makes (scripts/art/manifest.json hook table, #710/#722): every one has the code face as its fallback.
+export const ASSET_PORTRAITS={};for(const id of ['ashfolk-warrior-m','hallowan-warrior-m','mirekin-warrior-m','mirekin-warrior-f','skerrin-warrior-f','skerrin-warrior-m','tarrow-warrior-m','thornhide-warrior-m'])ASSET_PORTRAITS[`portrait:${id}-01`]='code face';
 const W=PORTRAIT_W,H=PORTRAIT_H;
 
 // ---- colour helpers ----
