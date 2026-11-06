@@ -12,7 +12,7 @@ import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
-import {sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery} from './scenery.js';
+import {sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery,soilAt,soilEdge} from './scenery.js';
 import {ASSET_PEAKS,peakArt,peakPixel} from './peaks.js';
 
 // Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
@@ -382,11 +382,17 @@ function planFor(tx,ty){const k=ty*W+tx;if(k===planKey)return plan;planKey=k;
 // Final colour of art pixel (ax,ay) (0..TILE-1) of tile (tx,ty) of type t, before the shade: prop, transition piece,
 // then the blend and the texel (the base tile, road and water assets, else the procedural texel scaled up).
 const HALF=TILE>>1;
+// A massif's foot follows the tile grid, so with a scenery note the cliffs are read a few pixels off, slowly wandering: their outline bends and the steps of the tiles go.
+function warpedPeak(tx,ty,ax,ay){const X=tx*TILE+ax,Y=ty*TILE+ay,u=X+Math.round((vnoise(X/44,Y/44,271)-.5)*22),v=Y+Math.round((vnoise(X/44,Y/44,273)-.5)*22),ux=Math.max(0,Math.min(W*TILE-1,u)),vy=Math.max(0,Math.min(H*TILE-1,v));
+  return peakPixel((ux/TILE)|0,(vy/TILE)|0,ux%TILE,vy%TILE)}
+let soilKind=-1; // the kind of ground pixel() last drew by shape, or -1
 export function pixel(t,tx,ty,ax,ay){const P=planFor(tx,ty),pr=P.prop,mt=peakArt(); // mt: mountains are cliffs (peaks.js) over the biome's ground
-  if(mt){const c=peakPixel(tx,ty,ax,ay);if(c)return c}
-  if(pr){const c=pr.A.hex[(ay%pr.A.h)*pr.A.w+ax%pr.A.w];if(c)return c;if(pr.kind==='tree')return artTexel(pr.ground,tx,ty,ax,ay)}
+  if(mt){const c=sceneryOn?warpedPeak(tx,ty,ax,ay):peakPixel(tx,ty,ax,ay);if(c)return c}
+  if(pr){const c=pr.A.hex[(ay%pr.A.h)*pr.A.w+ax%pr.A.w];if(c)return c}
+  soilKind=-1;if(sceneryOn&&(t!==TREE||!(pr&&pr.kind!=='tree'))&&t!==FLOOR&&t!==WALL){const s=soilAt(tx,ty,ax,ay);if(s>=0&&(t!==PEAK||mt)){soilKind=s;return soilEdge(artTexel(s,tx,ty,ax,ay),s,tx,ty,ax,ay)}} // the ground as shapes: no tile edge near a border
+  if(pr&&pr.kind==='tree')return artTexel(pr.ground,tx,ty,ax,ay);
   let g=t;
-  if((t===TREE||t===PEAK)&&groundArt()){const c=mt&&t===PEAK?null:texel(t,tx,ty,(ax/ART)|0,(ay/ART)|0,true);if(c)return c;g=baseOf(tx,ty)} // canopy and rock stay; the ground round them is the biome's
+  if((t===TREE||t===PEAK)&&groundArt()){const c=mt&&t===PEAK?null:texel(t,tx,ty,(ax/ART)|0,(ay/ART)|0,true);if(c)return c;g=baseOf(tx,ty);soilKind=g} // canopy and rock stay; the ground round them is the biome's
   const q=P.q[(ax>=HALF?1:0)+(ay>=HALF?2:0)];
   if(q){const c=sampleXf(q.A,q.xf,(ax+HALF)%TILE,(ay+HALF)%TILE);if(c)return c}
   return blendPixel(g,tx,ty,(ax/ART)|0,(ay/ART)|0,ax,ay)}
@@ -418,9 +424,12 @@ const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_PEAKS
 export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
 // A tile asset arrived (or the index changed): repaint on the next request. A sprite sheet is none of the terrain's business:
 // each one used to throw every chunk away, a stall on whatever camera was up when the sheets came in (#729).
-// A cut town piece has no hook table of its own (townart.js asks for them by name), so it counts by its kind: walls and towers that arrived after the last
+// A cut town piece has no hook table of its own (townart.js asks for them by name), nor is the scenery sheet in the tables above, so they count by name: fields, bridges and walls and towers that arrived after the last
 // listed asset used to stay missing until something else repainted.
-onAssets(id=>{if(id!=null&&!/^(building|tile):lpc-/.test(id)&&!terrainIds().includes(id))return;chunks.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;gArt=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))});
+const repaint=()=>{chunks.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;gArt=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))};
+let cutWait=null; // the cut pieces come in a burst: one repaint for the lot
+onAssets(id=>{if(id!=null&&/^(building|tile):lpc-|^prop:scenery$/.test(id)&&!terrainIds().includes(id)){if(cutWait===null)cutWait=setTimeout(()=>{cutWait=null;repaint()},150);return}
+  if(id!=null&&!terrainIds().includes(id))return;repaint()});
 
 // Cached canvas for chunk (cx,cy): min(CH,W-cx*CH) by min(CH,H-cy*CH) tiles at k pixels a tile (TILE, or U with no
 // terrain asset). c.uw and c.uh give its size in world units (tiles * U), which is what the renderer scales it to.
@@ -453,7 +462,7 @@ export function buildTerrain(){
 // A world with a scenery note (render/scenery.js): the river as one smooth water, its land edges as plain ground with no tile-shaped
 // bank piece, the meadow flowers as drifts rather than flower tiles, and the region's ground tone over it all.
 function scenePixel(t,tx,ty,ax,ay){const w=riverPixel(tx,ty,ax,ay)||roadPixel(tx,ty,ax,ay);if(w)return w;
-  const g=sceneGround(t,tx,ty);return tonePixel(pixel(g,tx,ty,ax,ay),g,tx,ty,ax,ay)}
+  const g=sceneGround(t,tx,ty);soilKind=-1;const c=pixel(g,tx,ty,ax,ay);return tonePixel(c,soilKind>=0?soilKind:g,tx,ty,ax,ay)}
 
 // Towns and landmarks (walls, gate, buildings, banners, graves, crypt mouths, the lair): render/townart.js draws them in
 // world units onto the chunk context, from their generated assets or procedurally (#177 slice 3).
