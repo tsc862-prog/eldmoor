@@ -317,8 +317,10 @@ export const TOWN_KIT={auction:{foot:[3,2],door:[1,1],rise:1},smithy:{foot:[1,2]
   'house-croft':{piece:'house',foot:[2,2],door:[1,1],rise:0},   // the same footprint under wood shakes, door on the right
   'house-gable':{piece:'house',foot:[2,3],door:[0,2],rise:0},   // gable end to the street: three tiles deep, so a door of full height
   'house-row':{piece:'house',foot:[3,2],door:[1,1],rise:1},     // against the north wall, as tall as the halls beside it
+  'house-lane':{piece:'house',foot:[2,2],door:[0,0],rise:0},    // a cottage south of a lane or alley: door on its north side, steps cut through the roof
   'inn-harbour':{piece:'inn',foot:[4,3],door:[2,2],rise:0},     // two storeys, its door on the south side
-  'hall-long':{piece:'hall',foot:[5,2],door:[2,1],rise:1}};
+  'hall-long':{piece:'hall',foot:[5,2],door:[2,1],rise:1},
+  'inn-deck':{piece:'inn',foot:[3,2],door:[1,0],rise:0}};       // the inn on a plank town's deck: its steps are timber
 const TOWN_SERVES={auction:'quartermaster',smithy:'smith',hall:'gate',chapel:'chapel',board:'gate',inn:'inn'};
 // [kit, dx, dy] from the town's top-left corner -> the plan's buildings (hall first among 'gate' servers is not needed: the list order decides the gate captain's door).
 function townPlan(x0,y0,list){return list.map(([kit,dx,dy])=>{const k=TOWN_KIT[kit],piece=k.piece||kit;
@@ -357,24 +359,24 @@ export const VALE={
     // Concord, north bank
     // Aldermere: a market green at the river mouth; the forge and the halls front a paved lane, the inn on the green's west edge.
     {name:'Aldermere',fac:0,x0:4,y0:4,w:11,h:9,gate:'E',race:'hallowan',spots:{square:[5.5,6.1]},
-      buildings:townPlan(4,4,[['auction',3,1],['smithy',1,1],['hall',7,1],['chapel',6,1],['board',9,3],['inn',2,5]]),
+      buildings:townPlan(4,4,[['auction',3,1],['smithy',1,1],['hall',7,1],['chapel',6,1],['board',9,3],['inn',2,5],['house-lane',6,6]]),
       ground:[[1,3,9,1],[5,4,5,2]]},
     // Gullstrand: a harbour. The gate faces the river; a street runs up from it to a lane under the halls, and a quay and jetty reach out south.
     {name:'Gullstrand',fac:0,x0:6,y0:17,w:13,h:9,gate:'S',race:'skerrin',spots:{square:[6.5,4.1]},
       buildings:townPlan(6,17,[['auction',8,1],['smithy',11,1],['hall',2,1],['chapel',1,1],['board',8,7],['inn-harbour',1,4],['house-row',5,1],['house-gable',8,4],['house-cottage',10,4]]),
       ground:[[1,3,11,1],[6,3,2,5],[6,9,2,3],[5,12,4,1]]},
-    // Hawkstead: a ridge town on terraces: the chapel stands on the hall's shoulder, a stair climbs the middle.
+    // Hawkstead: a ridge town on terraces: the chapel stands on the hall's shoulder, a stair climbs the middle, the notice board at its head; cottages under the second terrace, an alley behind the inn.
     {name:'Hawkstead',fac:0,x0:52,y0:10,w:11,h:11,gate:'E',race:'tarrow',spots:{square:[5.5,5.1]},
-      buildings:townPlan(52,10,[['smithy',1,1],['auction',3,1],['hall',7,1],['chapel',9,3],['inn',2,6],['board',6,8]]),
+      buildings:townPlan(52,10,[['smithy',1,1],['auction',3,1],['hall',7,1],['chapel',9,3],['inn',2,6],['board',6,4],['house-gable',6,6],['house-lane',1,8],['house-croft',3,8],['house-cottage',8,8]]),
       ground:[[1,3,8,1],[1,5,9,1],[5,3,1,6]]},
     // Warband, south bank
-    // Brandhold: a forge town. The gate is in the north wall and a straight street runs to the yard before the inn.
+    // Brandhold: a forge town. The gate is in the north wall and a straight street runs to the yard; the inn fronts the cross lane, a cottage and a croft stand behind it.
     {name:'Brandhold',fac:1,x0:6,y0:42,w:11,h:9,gate:'N',race:'ashfolk',spots:{square:[5.5,4.1]},
-      buildings:townPlan(6,42,[['smithy',1,1],['hall',2,1],['auction',7,1],['chapel',9,3],['board',7,3],['inn',2,5]]),
+      buildings:townPlan(6,42,[['smithy',1,1],['hall',2,1],['auction',7,1],['chapel',9,3],['board',7,3],['inn',2,4],['house-lane',1,6],['house-croft',3,6]]),
       ground:[[5,1,2,7],[1,3,9,1],[4,5,5,2]]},
     // Stiltmere: wide and loose, a fen town of planked lanes inside a palisade; a long hall on the north wall, the houses off a spine.
     {name:'Stiltmere',fac:1,x0:44,y0:40,w:13,h:9,gate:'E',race:'mirekin',spots:{square:[8.5,4.1]},wall:'palisade',
-      buildings:townPlan(44,40,[['auction',1,1],['smithy',4,1],['hall-long',6,1],['chapel',11,1],['inn',3,5],['board',6,4],['house-gable',1,4],['house-croft',8,6]]),
+      buildings:townPlan(44,40,[['auction',1,1],['smithy',4,1],['hall-long',6,1],['chapel',11,1],['inn-deck',3,5],['board',6,4],['house-gable',1,4],['house-croft',8,6]]),
       ground:[[1,3,11,1],[7,3,1,5],[10,4,2,2]]},
     // Hornridge: a hold on a long slope, the gate at the top and two terraces down to the inn.
     {name:'Hornridge',fac:1,x0:58,y0:45,w:11,h:13,gate:'N',race:'thornhide',spots:{square:[5.5,6.1]},
