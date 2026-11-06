@@ -37,6 +37,7 @@ import {notify} from './notify.js';
 import './company.js'; // load order: keep the module graph as before (an import cycle runs through table.js and staged.js)
 import {companyOf,companyById,companies,members,isSolo,campaign as clog,slotted} from './company.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
+import {entryOf,cryptNamed,cryptFor,cryptCtx,cryptOfCtx} from './crypts.js';
 import {reflexMay,ownerHeld,hasLinks} from './runlink.js';
 import {record} from './history.js';
 import {wounded} from './wounds.js';
@@ -115,7 +116,7 @@ export function setCampHook(f){campHook=f} // sim/camp.js: break the camp when a
 // How a member votes by reflex: its runner is gone (and the owner said go on), or its agent let HOLD_MIN pass.
 export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
   switch(P.kind){
-  case 'crypt':return a.lvl>=7&&!hurt&&!wounded(a)?'yes':'no'; // a reflex says no with a wound on it (#656)
+  case 'crypt':return a.lvl>=entryOf(cryptOfCtx(P))&&!hurt&&!wounded(a)?'yes':'no'; // a reflex says no with a wound on it (#656)
   case 'raid':return a.lvl>=14&&!hurt?'yes':'no';
   case 'split':return 'no';
   case 'site':return siteHook?siteHook.vote(a,P):'no';
@@ -126,11 +127,12 @@ export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
 
 // No level gate (#449): a green company is never refused the Crypt or Kragmaw, it is warned (the #448 sign's words) in the proposal everyone hears.
 const GREEN_WARN='Those who went below were tried blades; you are not.';
-export function greenWarn(F,kind){if(kind!=='crypt'&&kind!=='raid')return '';const at=kind==='crypt'?CRYPT:LAIR,R=at&&REGIONS[zoneAt(at.x,at.y)],b=R&&R.band;
+export function greenWarn(F,kind,D=CRYPT){if(kind!=='crypt'&&kind!=='raid')return '';const at=kind==='crypt'?D:LAIR,R=at&&REGIONS[zoneAt(at.x,at.y)],b=R&&R.band;
   return b&&members(F).some(m=>m.lvl<b[0])?' '+(kind==='crypt'?GREEN_WARN:'Those who went to the lair were tried blades; you are not.'):''}
 export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return 'Only a member of a company can put something to the party.';
   if(!PROP_KINDS.includes(kind))return 'Kind must be one of: '+PROP_KINDS.join(', ')+'.';
   if(isSolo(F)&&kind!=='break_camp')return SOLO;
+  const D=kind==='crypt'?(o.dun&&cryptNamed(o.dun))||cryptFor(a):CRYPT,what=kind==='crypt'?'go down into '+D.name+' together':KIND_TEXT[kind]; // which dungeon (#891): the one named, else the one that fits
   if(kind==='site'&&o.site==null)return 'Put a site to the party with enter_site {site}: it names the place.';
   if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break: the '+word(F)+' is not camped. Go on with move_to'+(leaderOfC(F)===a&&!isSolo(F)?' or lead_to':'')+'.';
   let ex=null;if(kind==='expel'||kind==='merge'){if(!groupHook)return 'Not available here.'+(a&&a.player?wishInvite(a):'');ex=groupHook.prepare(a,F,kind,o);if(ex.error)return ex.error}
@@ -138,21 +140,22 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   const d=ex?ex.details:clean(details,200);if(!d&&kind==='other')return 'Say what you propose.';
   // presence (#182): only members within shouting range hear a proposal and vote; the absent hear of it on rejoining
   const away=members(F).filter(b=>b!==a&&!inRange(a,b));
-  if(away.length&&NEED_ALL.includes(kind)&&o.src!=='call'&&!o.caller)return 'To '+KIND_TEXT[kind]+' takes the whole '+word(F)+'; '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear. Gather first, or send a courier.';
-  const base=d||KIND_TEXT[kind],gw=greenWarn(F,kind);
+  if(away.length&&NEED_ALL.includes(kind)&&o.src!=='call'&&!o.caller)return 'To '+what+' takes the whole '+word(F)+'; '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear. Gather first, or send a courier.';
+  const base=d||what,gw=greenWarn(F,kind,D);
   const P={id:nextPropId(F),kind,details:base+(gw&&!/[.!?]$/.test(base)?'.':'')+gw,by:a.id,byName:a.name,at:Math.round(S.gameMin),until:S.gameMin+COUNCIL.PROP_MIN,votes:{},status:'open',result:null,src:o.src||'member'};
   if(o.caller)P.caller=clean(o.caller,60); // asked by someone in the world (askCompany): they are named, not the leader
   if(away.length)P.absent=away.map(b=>b.id);
   if(kind==='split'&&o.where)P.meet={where:clean(o.where,60),hours:o.hours}; // the plan to meet again, recorded if the split passes
   if(o.job!=null)P.job=Number(o.job);
   if(o.site!=null)P.site=o.site;
+  if(kind==='crypt')Object.assign(P,cryptCtx(D));
   if(ex)Object.assign(P,ex.fields);
   (F.props||(F.props=[])).unshift(P);if(F.props.length>COUNCIL.PROPS_MAX)F.props.pop();
   if(kind==='merge')pairMerge(P,F,ex.other,a);
-  if(kind==='crypt')yieldCrypt(F); // reserve on proposal: a background group still gathering steps aside
-  clog(F,'council',...(P.caller?[P.caller+' asks the '+word(F)+' to ']:[a,' proposes to ']),(ex?d:KIND_TEXT[kind]+(d&&d!==KIND_TEXT[kind]?': '+d:''))+'.'+(away.length?' '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear.':''));
+  if(kind==='crypt')yieldCrypt(F,D); // reserve on proposal: a background group still gathering steps aside
+  clog(F,'council',...(P.caller?[P.caller+' asks the '+word(F)+' to ']:[a,' proposes to ']),(ex?d:what+(d&&d!==what?': '+d:''))+'.'+(away.length?' '+nameList(away)+(away.length>1?' are':' is')+' too far away to hear.':''));
   if(P.target){const t=S.agents.find(x=>x.id===P.target);if(t)notify(t,a.name+' proposes to put you out of the company. You may speak for yourself (party_say), but you do not vote.',3)}
-  for(const b of voters(P))if(b!==a||P.caller)notify(b,(P.caller?P.caller+' asks you to ':a.name+' proposes to ')+(ex?d:KIND_TEXT[kind]+(d?': '+d:''))+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
+  for(const b of voters(P))if(b!==a||P.caller)notify(b,(P.caller?P.caller+' asks you to ':a.name+' proposes to ')+(ex?d:what+(d?': '+d:''))+'. The party waits for your vote: vote('+P.id+', yes|no, reason).',3); // 3: pacing starts the runner's turn at once (#148)
   if(o.vote!==false)castVote(a,P.id,o.vote||'yes',o.reason||'','agent');
   if(!(proposeHook&&proposeHook(P)))reflexFill(P); // a Table decision scene for the proposer's company (#440)
   if(P.pair){const Q=propById(P.pair);if(Q&&!(proposeHook&&proposeHook(Q)))reflexFill(Q)} // the paired merge proposal gets its own company's scene (#500)
@@ -205,42 +208,43 @@ function failPair(P){const Q=propById(P.pair);if(!Q||Q.merged||Q.status==='faile
 // passed-and-waiting (C.wait[kind] = game minute until which the vote stands) keeps background groups from forming.
 // Across companies (#439): any company's open crypt vote reserves the Crypt; the first company (id order) with an open or
 // waiting raid vote reserves its faction's muster.
-export const cryptReserved=()=>openProps().some(P=>P.kind==='crypt');
+export const cryptReserved=(D=CRYPT)=>openProps().some(P=>P.kind==='crypt'&&cryptOfCtx(P)===D);
 const waiting=(F,k)=>F&&F.wait&&F.wait[k]>S.gameMin;
 function setWait(F,k){(F.wait||(F.wait={}))[k]=S.gameMin+COUNCIL.WAIT_MIN}
+const endWait=F=>{delete F.wait.crypt;delete F.waitDun};
 // The faction whose raid muster is reserved for a company, or -1.
 export function raidReserve(){for(const C of companies())if(openProps(C).some(P=>P.kind==='raid')||waiting(C,'raid'))return C.fac;return -1}
 function cryptReady(L,C){L=L.filter(b=>!b.hire);return L.every(b=>['hunt','travel','town','return','follow'].includes(b.state))&&gathered(L,C)} // the whole company, in shouting range of each other (#182)
-function goCrypt(F,L){for(const b of L)if(b.player)b.cryptOk=true;
+function goCrypt(F,L,D){for(const b of L)if(b.player)b.cryptOk=true;
   if(isSolo(F)&&L[0].pq)L[0].pq=L[0].pq.filter(c=>c.kind!=='crypt'); // a solo's go_crypt order ends here
-  musterCrypt(L,F.fac,null,F.name);clog(F,'council',gd(F.name),' sets out for ',gd(CRYPT.name),' together.')}
+  musterCrypt(L,F.fac,null,F.name,D);clog(F,'council',gd(F.name),' sets out for ',gd(D.name),' together.')}
 // Called by dungeonCheck while no group holds the Crypt. True: the Crypt is the Fellowship's (reserved or just launched); the
 // background must not form a group. A waiting Fellowship goes the moment the Crypt is free and everyone can, the cooldown waived.
-export function cryptHold(){
-  for(const F of companies())if(F.wait&&F.wait.crypt){if(!waiting(F,'crypt')){delete F.wait.crypt;clog(F,'council',gd(F.name),' gives up waiting at ',gd(CRYPT.name),'.');return false}
-    const L=members(F);if(L.length&&cryptReady(L,F)){delete F.wait.crypt;goCrypt(F,L);log(gd(F.name),' go down into ',gd(CRYPT.name),' as the way clears.');return true}return true}
-  return cryptReserved()}
+export function cryptHold(D=CRYPT){
+  for(const F of companies())if(F.wait&&F.wait.crypt&&cryptOfCtx({dun:F.waitDun})===D){if(!waiting(F,'crypt')){endWait(F);clog(F,'council',gd(F.name),' gives up waiting at ',gd(D.name),'.');return false}
+    const L=members(F);if(L.length&&cryptReady(L,F)){endWait(F);goCrypt(F,L,D);log(gd(F.name),' go down into ',gd(D.name),' as the way clears.');return true}return true}
+  return cryptReserved(D)}
 // A company settled on the Crypt (its vote passed, or a solo at the mouth): the group that is only gathering steps aside, then
 // it goes down, or waits with the Crypt held for it. Returns a note for the result, '' when it went.
-function cryptGo(F,L){const mine=CRYPT.group&&CRYPT.group.mem.some(a=>F.ids.includes(a.id));if(mine)return '; we are already on our way';
-  yieldCrypt(F);
-  if(CRYPT.group||!cryptReady(L,F)){setWait(F,'crypt');const inside=!!CRYPT.group,solo=isSolo(F),name=F.name||L[0].name;
-    clog(F,'council',gd(name),inside?' wait for the group inside ':' ready themselves for ',gd(CRYPT.name),'.');
-    if(inside)log(gd(name),' wait at the mouth of ',gd(CRYPT.name),' for the group inside to come out.');
-    for(const b of L)notify(b,inside?'Another group is inside '+CRYPT.name+'. '+(solo?'You stay at the mouth and':'The vote stands:')+' you go the moment they come out.':'The vote stands: you go to '+CRYPT.name+' as soon as everyone can.',true);
+function cryptGo(F,L,D=CRYPT){const mine=D.group&&D.group.mem.some(a=>F.ids.includes(a.id));if(mine)return '; we are already on our way';
+  yieldCrypt(F,D);
+  if(D.group||!cryptReady(L,F)){setWait(F,'crypt');if(D!==CRYPT)F.waitDun=D.name;else delete F.waitDun;const inside=!!D.group,solo=isSolo(F),name=F.name||L[0].name;
+    clog(F,'council',gd(name),inside?' wait for the group inside ':' ready themselves for ',gd(D.name),'.');
+    if(inside)log(gd(name),' wait at the mouth of ',gd(D.name),' for the group inside to come out.');
+    for(const b of L)notify(b,inside?'Another group is inside '+D.name+'. '+(solo?'You stay at the mouth and':'The vote stands:')+' you go the moment they come out.':'The vote stands: you go to '+D.name+' as soon as everyone can.',true);
     return inside?'; another group is inside, we go when they come out':'; not everyone can go yet, we go as soon as we can'}
-  goCrypt(F,L);return ''}
+  goCrypt(F,L,D);return ''}
 // A solo at the mouth with its go_crypt order (player.js field). Returns the line that ends the order, or null while it waits.
-export function soloCrypt(a,cmd){const F=companyOf(a),g=CRYPT.group;if(!F)return 'You ride with no company now; the order lapses.';
+export function soloCrypt(a,cmd){const F=companyOf(a),D=cryptOfCtx(cmd),g=D.group;if(!F)return 'You ride with no company now; the order lapses.';
   if(g&&g.mem.includes(a))return null;
   if(cmd.join&&g&&g.phase==='gather'&&g.fac===a.fac&&g.mem.length<5&&!g.mem.some(companyOf)){ // by its own choice, with the group gathering here
-    a.cryptOk=true;a.state='dungeon';a.dgIdx=g.mem.length;a.target=null;a.dest=null;g.mem.push(a);record(a,'Joined a group for ',gd(CRYPT.name),'.');
-    log(a,' falls in with the group at the mouth of ',gd(CRYPT.name),'.');return 'You fall in with the group at the mouth of '+CRYPT.name+'.'}
+    a.cryptOk=true;a.state='dungeon';a.dgIdx=g.mem.length;a.target=null;a.dest=null;g.mem.push(a);record(a,'Joined a group for ',gd(D.name),'.');
+    log(a,' falls in with the group at the mouth of ',gd(D.name),'.');return 'You fall in with the group at the mouth of '+D.name+'.'}
   if(F.wait&&F.wait.crypt)return null; // at the mouth, the Crypt held for it: cryptHold takes it down the moment it is free
-  if(cmd.waited)return 'You give up waiting at '+CRYPT.name+'.';
-  cmd.waited=!!cryptGo(F,[a]);return null}
+  if(cmd.waited)return 'You give up waiting at '+D.name+'.';
+  cmd.waited=!!cryptGo(F,[a],D);return null}
 function carryOut(P){const F=propCompany(P),L=members(F);if(!F)return;
-  if(P.kind==='crypt')P.result+=cryptGo(F,L);
+  if(P.kind==='crypt')P.result+=cryptGo(F,L,cryptOfCtx(P));
   else if(P.kind==='raid'){setWait(F,'raid');(F.accept||(F.accept={})).raid=S.gameMin+COUNCIL.ACCEPT_MIN;for(const b of L)if(b.player)b.raidOk=true}
   else if(P.kind==='break_camp'){if(campHook&&campHook('called',F))P.result+='; camp is broken'}
   else if(P.kind==='split'){const pr=P.meet&&L.find(b=>b.id===P.by),pl=pr?makeMeeting(pr,P.meet.where,P.meet.hours):null;
@@ -278,15 +282,15 @@ export function inMuster(a,kind){if(!hasLinks())return true;const C=companyOf(a)
 // The one door for a Crypt or raid question a company did not raise itself. src says who opened it ('call' the reflex draft,
 // 'dm' the DM's call_to), caller who asks in the world, in words (P.caller; the vote and the scene name them). The leader's
 // vote is its own to cast; a leader with no agent says its reflex at once. Returns the proposal, or a refusal in words.
-export function askCompany(C,kind,{src='call',caller,details}={}){if(kind!=='crypt'&&kind!=='raid')return 'Only the Crypt or a raid can be asked of a company.';
+export function askCompany(C,kind,{src='call',caller,details,dun}={}){if(kind!=='crypt'&&kind!=='raid')return 'Only the Crypt or a raid can be asked of a company.';
   const lead=leaderOfC(C);if(!lead)return 'That company has nobody to ask.';
-  return propose(lead,kind,details,{src,caller,vote:lead.player?false:reflexVote(lead,{kind})})}
+  return propose(lead,kind,details,{src,caller,dun,vote:lead.player?false:reflexVote(lead,{kind,dun})})}
 // list: candidates in preference order; pool: everyone eligible (refills); n: group size.
 // The unit is the company (the Fellowship, or any of two or more) of the first such member among the first n; without
 // one this is exactly list.slice(0,n). Members of other companies are never drafted piecemeal.
 // With a host (#826) the only company in these lists is one whose own vote passed (inMuster): it goes, or it stays silent
 // until its members can; the asking below is the reflex draft of a world with no minds to initiate.
-export function unitDraft(list,pool,n,kind){const top=list.slice(0,n),hit=top.find(inUnit),F=hit?companyOf(hit):null;if(!F)return top;
+export function unitDraft(list,pool,n,kind,D=CRYPT){const top=list.slice(0,n),hit=top.find(inUnit),F=hit?companyOf(hit):null;if(!F)return top;
   // a member following the leader counts as free to answer (the pools only list hunt/travel/town/return)
   const free=a=>pool.includes(a)||(a.state==='follow'&&!a.raid);
   const L=members(F),core=L.filter(b=>!b.hire),ready=core.length>0&&core.every(free)&&gathered(core,F),agents=L.filter(a=>a.player); // a hire comes along and never holds the call (#634)
@@ -294,12 +298,12 @@ export function unitDraft(list,pool,n,kind){const top=list.slice(0,n),hit=top.fi
   if(ready&&accepted){for(const a of agents){if(kind==='crypt')a.cryptOk=true;else a.raidOk=true}
     if(F.accept)delete F.accept[kind];if(F.wait)delete F.wait[kind];
     const out=L.slice();for(const a of top.concat(pool))if(out.length<n&&!inUnit(a)&&!out.includes(a))out.push(a);
-    if(hasLinks())clog(F,'council',gd(F.name),' rides to raid Kragmaw, as they voted.');else clog(F,'council','The call to '+(kind==='crypt'?CRYPT.name:'raid Kragmaw')+' came; ',gd(F.name),' answers it together.');return out}
+    if(hasLinks())clog(F,'council',gd(F.name),' rides to raid Kragmaw, as they voted.');else clog(F,'council','The call to '+(kind==='crypt'?D.name:'raid Kragmaw')+' came; ',gd(F.name),' answers it together.');return out}
   if(hasLinks()){/* a host's world never asks: the company's own vote or nothing */}
   else if(ready&&!(F.cool&&F.cool[kind]>S.gameMin)&&!openProps(F).some(P=>P.kind===kind))
-    askCompany(F,kind,{src:'call',details:noOthers()?(kind==='crypt'?CRYPT.name+' waits, and nobody else will go; do we go down?':'Kragmaw waits, and nobody else will rise against it; do we go?'):kind==='crypt'?'A group is forming for '+CRYPT.name+'; do we all go?':'The faction musters to raid Kragmaw; do we all go?'});
+    askCompany(F,kind,{src:'call',dun:kind==='crypt'&&D!==CRYPT?D.name:undefined,details:noOthers()?(kind==='crypt'?D.name+' waits, and nobody else will go; do we go down?':'Kragmaw waits, and nobody else will rise against it; do we go?'):kind==='crypt'?'A group is forming for '+D.name+'; do we all go?':'The faction musters to raid Kragmaw; do we all go?'});
   else if(!ready&&!(F.cool&&F.cool['n'+kind]>S.gameMin)){(F.cool||(F.cool={}))['n'+kind]=S.gameMin+COUNCIL.CALL_COOL;
-    clog(F,'council','The call to '+(kind==='crypt'?CRYPT.name:'raid Kragmaw')+' came, but not all of ',gd(F.name),' could answer; they stay together.')}
+    clog(F,'council','The call to '+(kind==='crypt'?D.name:'raid Kragmaw')+' came, but not all of ',gd(F.name),' could answer; they stay together.')}
   const out=top.filter(a=>!inUnit(a));for(const a of pool)if(out.length<n&&!inUnit(a)&&!out.includes(a))out.push(a);return out}
 
 // ---- once per step (after the Fellowship tick): every company, in id order ----
@@ -318,6 +322,6 @@ function councilOne(F){const M=members(F);
     resolveProp(P,wait.length?'waited for '+wait.map(b=>b.name).join(' and ')+' as long as it could':'time ran out')}
   // a raid vote that never mustered in time lapses with word to the company, or the faction's reserve would idle on (#826)
   if(hasLinks()&&F.wait&&F.wait.raid&&!(F.accept&&F.accept.raid>S.gameMin)){delete F.wait.raid;clog(F,'council','The muster on Kragmaw never came together; ',gd(F.name),' lets it go.');for(const b of M)notify(b,'The muster on Kragmaw never came together. The vote has lapsed; propose raid again when you are ready.',true)}
-  if(isSolo(F)&&F.wait&&F.wait.crypt&&M[0]&&!(M[0].pq||[]).some(c=>c.kind==='crypt'))delete F.wait.crypt; // a solo who walked away from the mouth
+  if(isSolo(F)&&F.wait&&F.wait.crypt&&M[0]&&!(M[0].pq||[]).some(c=>c.kind==='crypt'))endWait(F); // a solo who walked away from the mouth
   for(const a of members(F)){if(a.cryptOk&&a.state!=='dungeon')a.cryptOk=false;if(a.raidOk&&!a.raid&&a.state!=='raid'&&!(F.accept&&F.accept.raid>S.gameMin))a.raidOk=false;
     if(a.splitUntil&&S.gameMin>=a.splitUntil)delete a.splitUntil}}

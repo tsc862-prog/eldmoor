@@ -3,7 +3,7 @@
 //           the dice when it is a check), initiative order with the current turn marked, whose
 //           turn it is ("Pellora is thinking… (5 s)") and the last act, then the outcome; a scene where everyone
 //           answers at once shows EVERYONE ANSWERS and "3/5 answered · waiting for Fena, Maelell"
-//   combat  a combat scene with rounds (#277, part 2 of #140): ROUND n/3 in the title row, the initiative order as
+//   combat  a combat scene with rounds (#277, part 2 of #140): ROUND n in the title row, the initiative order as
 //           chips (name, HP bar and %, conditions) with the foe at its place and the current actor marked, the rolls
 //           of the round as it plays (d20, bonus, AC, hit/miss/crit, damage), and at the end why it ended
 //   step    in a combat scene, a small button cycles the watcher's round pace (TABLE.step, #285): "Rounds: run on",
@@ -113,8 +113,8 @@ export function combatView(){const sc=S.table;if(!sc||sc.rd==null)return null;co
     for(const n of fell)ends.push([n+' fell','loss']);
     for(const id of new Set(sc.up||[])){const a=byId(id);if(a&&a.state!=='dead'&&a.state!=='downed')ends.push([a.name+' is up again','win'])} // #654: brought back at the table
     for(const a of sc.ids.map(byId))if(a&&a.state==='downed')ends.push([a.name+(a.down&&a.down.stable?' lies stable':' still bleeds'),'loss']);for(const n of back)ends.push([n+' fell back','']);
-    if(f&&!sc.end)ends.push([sc.rd>=TR.ROUNDS?TR.ROUNDS+' rounds: the fight goes on':'The foe still stands',''])}
-  return {round:sc.rd,of:TR.ROUNDS,order,rolls,rolled:rd,prev:rd!==sc.rd,ends,step:TABLE.step,hold:b.hold||null}}
+    if(f&&!sc.end)ends.push([sc.capped==='stall'?'The fight grinds on, out in the world':sc.capped?sc.rd+' rounds: the fight goes on':'The foe still stands',''])}
+  return {round:sc.rd,of:sc.kind==='boss'?TR.BOSS_ROUNDS_MAX:TR.ROUNDS_MAX,order,rolls,rolled:rd,prev:rd!==sc.rd,ends,step:TABLE.step,hold:b.hold||null}}
 // A downed member's tally at the table (#659): {s, f, of, stable}; the failures that end them as the last save said (#654's
 // beat carries the table's count), else the world's (four with a healer near).
 function dnOf(sc,a){const v=downView(a);if(!v)return null;let of=v.of;for(let i=sc.beats.length-1;i>=0;i--){const c=sc.beats[i].check;if(c&&c.kind==='death'&&sc.beats[i].id===a.id){if(c.of)of=c.of;break}}
@@ -171,7 +171,7 @@ function endBlock(box,c){if(!c.ends||!c.ends.length)return;const d=el('div','ten
 
 // ---- the chips and the member rows (#471); the short title is core/scenehead.js ----
 // The status tags as data: [{t, k}] (k: round | paused | all).
-export function sceneChips(b,c){const o=[];if(c)o.push({t:'Round '+c.round+'/'+c.of,k:'round'});if(b.paused)o.push({t:'World paused',k:'paused'});if(b.all)o.push({t:'Everyone answers',k:'all'});return o}
+export function sceneChips(b,c){const o=[];if(c)o.push({t:'Round '+c.round,k:'round'});if(b.paused)o.push({t:'World paused',k:'paused'});if(b.all)o.push({t:'Everyone answers',k:'all'});return o}
 const shortOpt=t=>String(t||'').split(/ \(|: /)[0].replace(/^Ability, /,'');
 // Cut at a word, never inside one (#536).
 export const cutWords=(t,n=28)=>{t=String(t==null?'':t).trim();if(t.length<=n)return t;const i=t.lastIndexOf(' ',n);return (i>=n/3?t.slice(0,i):t.slice(0,n)).replace(/[,;:.\s]+$/,'')+'…'};

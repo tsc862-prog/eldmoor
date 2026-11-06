@@ -17,6 +17,7 @@
 //      mid-play pauses the world at once and the banner names who; restarted, it runs; the DM runner stops: paused; the
 //      owner's Resume anyway overrides until the next change.
 // Usage: npm run labelcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {EventEmitter} from 'node:events';
 import {readFileSync, mkdtempSync, rmSync} from 'node:fs';
@@ -50,7 +51,7 @@ sim.setDmSeat(true); // the DM is always an agent (#559): the page plays every w
 const kids = [];
 const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 47000 + kids.length; k.stdout = new EventEmitter(); k.stderr = new EventEmitter();
   k.stdin = Object.assign(new EventEmitter(), {write() {}}); k.kill = () => setTimeout(() => k.emit('exit', null), 1); kids.push(k); return k};
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-labelcheck-'));
+const tmp = mkTmp('eldmoor-labelcheck-');
 const server = http.createServer((q, s) => {s.writeHead(404); s.end('{}')});
 const play = attachPlay(server, {backend: be, log: () => {}});
 attachRunners(server, {play, enabled: true, log: () => {}, spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '3'}});
