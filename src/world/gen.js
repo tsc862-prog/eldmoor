@@ -141,7 +141,10 @@ export function buildWorld(spec){
   for(let y=0;y<h;y++)for(let x=0;x<w;x++){
     let z=0;for(let i=0;i<regions.length;i++)if(masks[i](x,y))z=i;
     zone[I(x,y)]=z;
-    tiles[I(x,y)]=BIOMES[regions[z].biome](x,y,fbm(x,y,seeds.terrain),fbm(x+50,y+20,seeds.detail))}
+    tiles[I(x,y)]=BIOMES[regions[z].biome](x,y,fbm(x,y,seeds.terrain),fbm(x+50,y+20,seeds.detail));
+    // region.pools {sx, sy, at, seed}: round, wide ice pools in place of the biome's own grain (opt-in, so other worlds are not touched)
+    const pl=regions[z].pools;if(pl){let t=tiles[I(x,y)];if(t===ICE)t=SNOW;
+      if(t===SNOW&&vnoise(x/pl.sx,y/pl.sy,pl.seed)*.78+vnoise(x/2.1,y/2.1,pl.seed+2)*.22>pl.at)t=ICE;tiles[I(x,y)]=t}}
 
   // river
   if(spec.river){const c=curves[spec.river.curve];if(!c)throw new Error('world spec: unknown river curve '+spec.river.curve);
@@ -149,7 +152,19 @@ export function buildWorld(spec){
     // spec.river.span [from,to] (optional): painted only for those rows (a north-south river) or columns, so a river can rise in a spring.
     const sp=spec.river.span,s0=sp?Math.max(0,sp[0]):0,s1=sp?sp[1]:Infinity;
     if(c.axis==='y'){for(let y=s0;y<h&&y<=s1;y++){const x0=c.fn(y);for(let k=0;k<wd;k++)if(x0+k>=0&&x0+k<w)tiles[I(x0+k,y)]=RIVER}}
-    else{for(let x=s0;x<w&&x<=s1;x++){const y0=c.fn(x);for(let k=0;k<wd;k++)if(y0+k>=0&&y0+k<h)tiles[I(x,y0+k)]=RIVER}}}
+    else{for(let x=s0;x<w&&x<=s1;x++){const y0=c.fn(x);for(let k=0;k<wd;k++)if(y0+k>=0&&y0+k<h)tiles[I(x,y0+k)]=RIVER}}
+    // spec.river.mouth {reach, flare} (an east-west river that meets the sea at the west edge): the water flares out over the last
+    // `reach` columns, up to `flare` rows each side at x=0, with a ragged shore. spec.river.pool {x, y, r}: a spring pool at the head,
+    // ringed on its far side with rock and ice so the river rises from somewhere.
+    const mo=spec.river.mouth;
+    if(mo&&c.axis==='x')for(let x=0;x<mo.reach&&x<w;x++){const y0=c.fn(x),e=Math.round(mo.flare*(1-x/mo.reach)+(vnoise(x/2.2,3.7,71)-.5)*1.8);
+      for(let y=y0-e;y<y0+wd+e;y++)if(y>=0&&y<h)tiles[I(x,y)]=RIVER}
+    const po=spec.river.pool;
+    if(po){for(let y=Math.floor(po.y-po.r-3);y<=po.y+po.r+3;y++)for(let x=Math.floor(po.x-po.r-3);x<=po.x+po.r+3;x++){if(x<0||y<0||x>=w||y>=h)continue;
+        const dx=x+.5-po.x,dy=y+.5-po.y,d=Math.hypot(dx,dy)+(vnoise(x/1.7,y/1.7,73)-.5)*1.3;
+        if(d<po.r)tiles[I(x,y)]=RIVER;
+        else if(d<po.r+1.6&&dx>0&&tiles[I(x,y)]!==LAVA)tiles[I(x,y)]=hash(x,y,75)>.45?ROCK:ICE;
+        else if(d<po.r+3&&dx>1.5&&hash(x,y,76)>.6&&tiles[I(x,y)]!==LAVA)tiles[I(x,y)]=PEAK}}}
   // fords (#794): spec.river.fords, places along the river (a y on a north-south river, an x on an east-west one) where it
   // can be waded. The tiles stay RIVER, so they keep its slow pace; the solid grid leaves them open.
   const fords=[];
@@ -171,6 +186,11 @@ export function buildWorld(spec){
       if(q===WALL||q===RIVER||q===BRIDGE)continue;
       if(c.buildings.some(b=>x>=b.box[0]&&x<b.box[0]+b.box[2]&&y>=b.box[1]&&y<b.box[1]+b.box[3]&&!(x===b.door[0]&&y===b.door[1])))continue;
       tiles[I(x,y)]=ROAD}});
+
+  // Piers: spec town `pier: [[dx,dy,w,h], ...]`, rects from the town's corner laid as BRIDGE over water and ROAD over land: a jetty into the river or sea.
+  (spec.towns||[]).forEach((t,i)=>{const c=CITY[i];
+    for(const [dx,dy,rw,rh] of t.pier||[])for(let y=c.y0+dy;y<c.y0+dy+rh;y++)for(let x=c.x0+dx;x<c.x0+dx+rw;x++){
+      if(x<0||y<0||x>=w||y>=h)continue;const q=tiles[I(x,y)];if(q===WALL||q===FLOOR)continue;tiles[I(x,y)]=q===RIVER?BRIDGE:ROAD}});
 
   // landmarks
   // A dungeon's chambers (#65): plain data, checked for shape here; the creature types are the bestiary's (checked by crawlcheck).
@@ -241,6 +261,7 @@ export function buildWorld(spec){
   const LIGHTS=[];const torch=(spec.lights&&spec.lights.townTorches)||[];
   for(const c of CITY)for(const [dx,dy] of torch)LIGHTS.push({x:c.x0+dx,y:c.y0+dy});
   for(const l of LANDMARKS)if(l.light)LIGHTS.push({x:l.x,y:l.y,...l.light});
+  for(const p of (spec.lights&&spec.lights.points)||[])LIGHTS.push({...p}); // braziers, embers: free-standing lights named by the spec
   const LABELS=spec.labels?spec.labels.map(l=>[...l]):[
     ...regions.map((r,i)=>[r.name.toUpperCase(),Math.round(centroid[i].x),Math.round(centroid[i].y)]),
     ...CITY.map(c=>[c.name.toUpperCase(),(c.x0+c.x1+1)/2,c.y0>2?c.y1+2.2:c.y0-.6])];
