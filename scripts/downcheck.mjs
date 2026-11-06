@@ -181,7 +181,7 @@ world(); {const {markPlayer, playerAct} = await import('../src/sim/player.js'); 
   world(); {const a = hero(0), b = hero(1, 'Warrior'), m = mob(); const C = company(a, b); mates(a, b);
     m.maxhp = m.hp = 40000; m.hit = .001; m.cd = 99; m.x = a.x + 1; m.y = a.y;
     for (const x of [a, b]) {x.state = 'fight'; x.target = m}
-    const R0 = TRD.TR.ROUNDS; TRD.TR.ROUNDS = 1;
+    const R0 = TRD.TR.ROUNDS_MAX; TRD.TR.ROUNDS_MAX = 1;
     const sc = T.openScene('rescue', a.name + ' is going down', [a, ' is down.'], {hero: a.id, mob: m.id}, C);
     ok(sc && sc.rd === 1 && sc.ids.length === 2, 'a combat scene in rounds is open');
     rebuild(); a.hp = -3; (await import('../src/sim/heroes.js')).agentDie(a, m);
@@ -191,7 +191,7 @@ world(); {const {markPlayer, playerAct} = await import('../src/sim/player.js'); 
     ok(sc.rd >= 2 && sv.length >= 2 && sv.every((x, i) => x.rd === i + 1), 'the scene went on past TR.ROUNDS 1 while they bled: ' + sc.rd + ' rounds, a save in each (' + sv.map(x => x.res.replace(/^death save /, '')).join(' | ') + ')');
     ok(!sc.beats.some(x => x.by === 'foe' && /where they lie/.test(x.text)), 'the foe kept to the one standing (it does not finish)');
     ok(!(a.state === 'downed' && a.down && !a.down.stable) || sc.rd >= T.TABLE.DOWN_ROUNDS, 'when it ended nobody still bled (or the rescue cap was reached)');
-    TRD.TR.ROUNDS = R0;}
+    TRD.TR.ROUNDS_MAX = R0;}
 
   // (d) the foe strikes the downed only when nobody else stands
   world(); {const a = hero(0), m = mob(); const C = company(a);
