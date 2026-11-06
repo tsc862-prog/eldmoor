@@ -19,6 +19,7 @@
 //      agents' choice with no table timeout.
 // Sessions go to a temporary folder (AGENT_LOGS), never to logs/agents/.
 // Usage: npm run localcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:fs';
@@ -124,6 +125,7 @@ console.log('text-written calls and forced scene turns (issue #163)');
     ok(sceneDue(mine, sess681) === null, 'the scene the session just answered is not due again (brief shows it stale)');
     ok(await sceneToAnswer({scene: mine}, g681, false, sess681) === null && await sceneToAnswer({table: true}, async () => ({ok: true, table: mine}), true, sess681) === null, 'neither the brief path nor the status fallback forces it');
     ok(sceneDue({...mine, frame: 'Another word, later.'}, sess681) !== null, 'a different scene is due');
+    ok(sceneDue({...mine, round: '2 of up to 3'}, sess681) !== null && sceneDue({...mine, id: 9}, sess681) !== null, 'the same words in the next round, or put again as another scene, are due (#926)');
     ok(await sceneToAnswer({table: true}, async () => ({ok: true, table: {...base, acted: true, your_turn: false, everyone_answers: true}}), true, {}) === null, 'the status fallback honours acted');
   }
   const sch = sceneSchema(scene.keys), schS = sceneSchema(scene.keys, {strict: true});
@@ -300,7 +302,7 @@ console.log('ollama adapter chat (mock server)');
 }
 
 // ---------------------------------------------------------------- 2. the runner, end to end
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
+const tmp = mkTmp('eldmoor-localcheck-');
 ctxFrom = seen.length;
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // AGENT_REFLECT=0: no reflection turns where turn counts are exact; H passes --reflect (#179) // pacing (issue #126) kept short for the old sections
 const kids = [];

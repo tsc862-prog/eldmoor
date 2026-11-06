@@ -122,7 +122,7 @@ other. The rules:
 - `npm run rulescheck` (#573): src/sim, src/world and src/data never import src/render or src/ui; no zone, faction or town name literals outside src/data and src/world (known ones in `scripts/rulescheck.allow.json`, with a reason); the append-only tables (MOBS, EPICS, GOODS, CLS, the world specs' regions and towns, ...) keep every existing row in place against origin/main; every `scripts/*check.mjs` with an npm script is a step in ci.yml. CI also runs on `merge_group` for GitHub's merge queue.
 - `npm run worldcheck`: builds the world specs headlessly and checks the Eldmoor map hash.
 - `npm run pathcheck` (#794): walking over the solid grid on both worlds: every gate reaches every gate, landmark, hunting ground and node; rivers crossed only at bridges and fords; the replan rules and `PATH.PER_TICK` in a worst-case tick; solid and unreachable targets; mob limits; save mid-path; move_to's route facts; nobody in a solid tile in a long run.
-- `npm run savecheck`: snapshot/restore round trip of the sim state.
+- `npm run savecheck`: snapshot/restore round trip of the sim state, and a world restored in a fresh process playing 2 minutes exactly as the original did (full snapshot diff; `SAVECHECK_SEED=random` hunts other worlds). World state kept in a module (private dice, timers) registers with `keep()` in `src/sim/kept.js` and rides in the save as `snap.kept`.
 - `npm run invcheck`: the pack, consumables, quest items, the bag-to-pack save migration and determinism.
 - `npm run playcheck`, `npm run play-headless`, `npm run agent`, `npm run mcp`: the agent player (see below).
 - `npm run localcheck`: the local agent runner against a mock Ollama (see "Model providers"), and runner
@@ -153,7 +153,7 @@ other. The rules:
   reconnects and names the same heroes (same id and name, alive; a hero that is gone, renamed by a new world or dead is
   skipped). The page's bridge reconnects by itself after a relay restart. Options: `--relay-port N`, `--vite-port N`,
   `--no-open`, `--repo DIR` (the checkout `u` pulls). The old way, `npm run relay -- --runners` and `npm run dev` in two
-  terminals, still works. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
+  terminals, still works. Temp stays on the project drive (owner rule 2026-11-05): the launcher sets `TEMP`, `TMP` and `TMPDIR` for its children to `logs/tmp` (gitignored; `ELDMOOR_TMP` overrides) and sweeps entries older than a day at start; checks make their temp dirs with `mkTmp` from `scripts/tmp.mjs`, which removes them when the process exits. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run sessioncheck` (#787): Claude sessions kept small, on the real Agent SDK and its CLI binary against a mock Messages API (no key, no network): the compaction window through `query()`'s env, `getContextUsage().autoCompactThreshold`, a real `compact_boundary`, and hero, Fellowship and DM runners end to end (ctx on the turn line, a roll, held back at a scene, the old file, the resume prompt, a "fresh" line, `AGENT_HEAR_WAKE_MIN`, the report's table).

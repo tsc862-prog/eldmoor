@@ -3,6 +3,7 @@
 // frame through the runner supervisor; turns and the ruling voice through the game; the table, talk, ruling and companion voices on
 // the provider's adapter; a fresh session and a switch of provider that keep the notes; and (with `pricey`) a voice spending the last
 // of the budget, which ends as a budget stop.
+import {mkTmp} from './tmp.mjs';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -28,7 +29,7 @@ const RESUME = /no memory of this conversation/;
 // provider, model: the seat's mind; env: the provider's key and mock URL; ok: the check's ok(); port: this and the next two ports are used;
 // seen: the mock's list of chat bodies; pricey: {model, budget}, a model and a budget that one DM turn stays under and one more voice call passes.
 export async function dmMindCases({provider, model, env: env0, ok, port, pricey = null, seen = null}) {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-dmmind-')), kids = [];
+  const tmp = mkTmp('eldmoor-dmmind-'), kids = [];
   const env = {...env0, AGENT_LOGS: tmp, AGENT_MIN_GAP: '0', AGENT_REFLECT: '0'};
   const run = (args, {pipe = false, e = env} = {}) => {
     const p = spawn(process.execPath, args, {cwd: ROOT, env: e, stdio: [pipe ? 'pipe' : 'ignore', 'pipe', 'pipe']}); kids.push(p); let out = '';
@@ -133,14 +134,18 @@ export async function dmMindCases({provider, model, env: env0, ok, port, pricey 
     if (pricey) {
       const B = `http://127.0.0.1:${port + 2}`, w = await world(['--fellowship', '--no-relay', '--dm', '--runners', '--speed', '1'], 'budget', port + 2);
       const hero = (await get(B, '/play/health')).heroes[0];
-      const r = await post(B, '/play/runner/start', {kind: 'dm', provider, model: pricey.model, budget: pricey.budget, by: 'owner'});
+      // fresh: the case above left a session under the same world tag, and when this world's clock had passed its last turn (a slow
+      // start) the runner resumed it: no turn at once, and its first turn here read "[turn 2]", which is not the second turn this proof means
+      const r = await post(B, '/play/runner/start', {kind: 'dm', provider, model: pricey.model, budget: pricey.budget, by: 'owner', fresh: true});
       ok(r.status === 200, tag + 'a paid DM starts with a budget' + (r.status === 200 ? '' : ': ' + r.error));
       const log = () => dmLog().split('=== ').slice(-2).join('');
-      await until(() => /\[turn 1\] /.test(log()) && /ruling voice: /.test(log())); await sleep(800);
+      const first = await until(() => /\[turn 1\] /.test(log()) && /ruling voice: /.test(log())); await sleep(800);
+      ok(first, tag + 'its first turn is turn 1, played at once' + (first ? '' : '\n' + log().slice(-1500)));
       await post(B, '/play/call', {tool: 'attempt', args: {what: 'I read the weather in the gate crows.'}, hero: hero.id});
       const stopped = await until(async () => {const x = (await get(B, '/play/runner')).runners.find(q => q.key === 'dm'); return x && (x.state === 'stopped' || x.state === 'crashed') ? x : null}, 40000);
       ok(stopped && stopped.budgetSpent && stopped.spentWhy === 'budget reached' && stopped.state === 'stopped', tag + 'the voice\'s spend ends the run as a budget stop (#807)' + (stopped ? '' : '\n' + log().slice(-1000)));
-      ok(stopped && stopped.cost >= pricey.budget && stopped.cost < pricey.budget + .02 && !/\[turn 2\] /.test(log()), tag + `no further turn is paid for, at most the one voice call already in flight ($0.011), and the page sees the spend ($${stopped && stopped.cost} of $${pricey.budget})`);
+      const paid = stopped && stopped.cost >= pricey.budget && stopped.cost < pricey.budget + .02 && !/\[turn 2\] /.test(log());
+      ok(paid, tag + `no further turn is paid for, at most the one voice call already in flight ($0.011), and the page sees the spend ($${stopped && stopped.cost} of $${pricey.budget})` + (paid ? '' : '\n' + log().slice(-2500)));
       const ev = readFileSync(join(tmp, 'runners', 'events.jsonl'), 'utf8').split('\n').filter(Boolean);
       ok(ev.some(l => /"budget"/.test(l) && /budget reached/.test(l)), tag + 'logs/runners/events.jsonl records the budget stop');
       const auto = JSON.parse(readFileSync(join(tmp, 'runners', 'active.json'), 'utf8'));

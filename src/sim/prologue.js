@@ -21,6 +21,7 @@
 //   site.prologue  the row's id: its ruin stays on the map; site.xp its share of a site's XP; its loot is plain and it has no epic
 import {CITY,CRYPT,zoneAt} from '../world/map.js';
 import {onMainLand} from '../world/passable.js';
+import {clearLine} from './path.js';
 import {hash} from '../core/rng.js';
 import {homeOf} from '../data/races.js';
 import {PROLOGUES,PROLOGUE_DEFAULT} from '../data/prologues.js';
@@ -39,6 +40,7 @@ import {SITE,ensureSites,siteSpotErr,enterSite,siteById,siteTag} from './sites.j
 
 export const PRO={
   NEAR:14,  // tiles past SITE.TOWN_GAP the mouth may stand from the gate: a short walk
+  FAR:30,   // the longest walk, for a town the short ring leaves nothing for (a river, a neighbour: Brinereach): still the gate's own region
   MAX_LVL:3, // a company with anyone above this is past a green blade's chore: a seasoned apart group keeps the start it chose
 };
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
@@ -59,9 +61,11 @@ const used=()=>new Set(((S.sites&&S.sites.list)||[]).map(s=>s.prologue).filter(B
 export function pickRow(town,fac,taken=used()){const free=PROLOGUES.filter(r=>!taken.has(r.id));
   return free.find(r=>r.towns&&r.towns.includes(town))||free.find(r=>r.fac===fac&&!r.towns)||free.find(r=>r.fac===fac)||null}
 // The nearest open ground past the town's clear ring, walking outward from the gate: no dice, so a town always gets the same spot.
-function mouthNear(c){const g=c.gate||c.qg;if(!g)return null;
-  for(let d=SITE.TOWN_GAP+1;d<=SITE.TOWN_GAP+PRO.NEAR;d++)for(let k=0;k<16;k++){const ang=k*Math.PI/8,q={x:Math.floor(g.x+Math.cos(ang)*d)+.5,y:Math.floor(g.y+Math.sin(ang)*d)+.5};
-    if(q.x<1||q.y<1)continue;const z=zoneAt(q.x,q.y);if(z!=null&&!siteSpotErr(q,z)&&onMainLand(q.x,q.y))return {...q,z}}
+// It stays in the gate's own region (a new town beside a river or a higher band must not put a green company in the next land) and in
+// a clear walk of the gate (#721's towns: Murkstead's nearest ground lay across the Greywater, Brinereach's in Sedgewater).
+export function mouthNear(c){const g=c.gate||c.qg;if(!g)return null;const gz=zoneAt(g.x,g.y);
+  for(let d=SITE.TOWN_GAP+1;d<=SITE.TOWN_GAP+PRO.FAR;d++)for(let k=0;k<16;k++){const ang=k*Math.PI/8,q={x:Math.floor(g.x+Math.cos(ang)*d)+.5,y:Math.floor(g.y+Math.sin(ang)*d)+.5};
+    if(q.x<1||q.y<1)continue;const z=zoneAt(q.x,q.y);if(z!=null&&z===gz&&!siteSpotErr(q,z)&&onMainLand(q.x,q.y)&&clearLine(g,q))return {...q,z}}
   return null}
 function raise(row,at){const X=ensureSites(),T=SITE_THEMES[row.theme],born=Math.round(S.gameMin);
   const s={id:++X.seq,name:row.name,theme:row.theme,label:T.label,region:at.z,band:[1,2],x:at.x,y:at.y,place:null,state:'discovered',born,by:'prologue',reason:'the first delve',lever:null,
