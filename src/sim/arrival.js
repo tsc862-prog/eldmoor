@@ -53,7 +53,7 @@ import {swearBlock,swearWord,takeOath,setAside} from './sworn.js';
 import {hasLinks,runnerLink,agentLive} from './runlink.js';
 import {prepActive} from './prep.js';
 import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
-import {TABLE,openScene,setSceneKind,tableOn,sceneFor,callSeen,callLeft} from './table.js';
+import {TABLE,openScene,setSceneKind,tableOn,sceneFor,callSeen,callLeft,callKey} from './table.js';
 import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf,placeWord} from './company.js';
 import {inRange} from './reach.js';
@@ -298,14 +298,15 @@ export function voicedKind(k,onAnswer){VOICED[k]=typeof onAnswer==='function'?on
 // A scene of another kind the DM voices only sometimes (#922: a first delve's rooms, sim/prologue.js).
 const ALSO=[];export const voicedScene=f=>{ALSO.push(f)};
 export {push as pushCall,resolve as resolveCall,live as voiceLive,say as sayAtTable};
-export const ourScene=()=>findScene(sc=>sc.kind in VOICED||ALSO.some(f=>f(sc))); // any company's (#518)
+const voicedSc=sc=>sc.kind in VOICED||ALSO.some(f=>f(sc));
+export const ourScene=()=>findScene(sc=>voicedSc(sc)&&(sc.calls||[]).some(c=>!c.done))||findScene(voicedSc); // any company's (#518); one whose call waits first (#1017: a fire talked over at another company's table hid it)
 export function sceneCall(){heard('table');const sc=ourScene();if(!sc)return null;const c=(sc.calls||[]).find(x=>!x.done)||null;
   const out={ok:true,staged:null,scene:{title:sc.title,kind:sc.kind,frame:plain(sc.frame),order:sc.ids.map(byId).filter(Boolean).map(b=>b.name+' (L'+b.lvl+' '+b.cls+')'),
-    so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.kind==='arrival'?castOf(sc):[]},call:null};
+    so_far:sc.beats.map(b=>b.name+': '+b.text+(b.res?' ('+b.res+')':'')+(b.line?' "'+b.line+'"':'')),said:(sc.calls||[]).filter(x=>x.done&&x.text).slice(-4).map(x=>x.text),cast:sc.kind==='arrival'?castOf(sc):sc.castW||[]},call:null};
   if(c){const waiting=sc.pause&&live(sc);if(waiting)callSeen(c); // the budget starts at pickup (#680)
-    out.call={id:c.id,kind:c.kind,about:c.about,who:c.who||null,seconds_left:waiting?callLeft(c):0,max_chars:ARRIVE.LINE_MAX}}
+    out.call={id:c.id,key:callKey(sc,c),kind:c.kind,about:c.about,who:c.who||null,seconds_left:waiting?callLeft(c):0,max_chars:ARRIVE.LINE_MAX}}
   return out}
-export function sceneAnswer(a){a=a&&typeof a==='object'?a:{};const sc=ourScene();if(!sc)return null;const id=Math.round(Number(a.call)),text=clean(a.text,ARRIVE.LINE_MAX);
+export function sceneAnswer(a){a=a&&typeof a==='object'?a:{};const key=a.key!=null?String(a.key):null,sc=key?findScene(x=>voicedSc(x)&&(x.calls||[]).some(c=>callKey(x,c)===key)):ourScene();if(!sc)return null;const id=Math.round(Number(a.call)),text=clean(a.text,ARRIVE.LINE_MAX); // key: the call's own, across scenes (#1017)
   const c=(sc.calls||[]).find(x=>x.id===id);if(!c)return {ok:false,error:'no call '+(a.call==null?'':a.call)+' in this scene (see table_call)'};
   if(c.done)return {ok:false,error:'too late: the '+(c.by==='scripted'?'scripted DM':'DM')+' already answered call '+id};
   if(!text)return {ok:false,error:'say something'};

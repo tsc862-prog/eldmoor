@@ -38,6 +38,8 @@ import {spokeFor,VOICE_FIELDS,spokeNote} from './spokefor.js'; // the DM never s
 import {fileWish,wishInvite} from './wish.js'; // #663
 import {pull,leverAlias,aliasParams,leverMenu,LEVERS,ready,activeOf,leverUsage,leverNames,spotErr,LK,takeBack,TAKE_BACK,CONDITIONS,validate as leverValidate} from './levers.js';
 import {log as chronLog} from './chronicle.js';
+import {markNamed,bareName,nameHint,mapNames} from './dmnames.js'; // the names on the map (#1017)
+import {narrCall,narrSay,narrStats} from './narrvoice.js'; // the narrator's voice between scenes (#1017)
 import {setWhen,setWatch,cancel as whenCancel,whensView,whenStatus,whenTick,setWhenHooks} from './dmwhen.js'; // deferred actions and chosen wakes (#635)
 import {EVENTS} from './events.js'; // world event kinds (#10), read only here (#352)
 import {maxHp} from './heroes.js';
@@ -88,6 +90,7 @@ export const DMA={
   DREAM_PER_DAY:2,     // dreams per game day (delivered when the hero next sleeps)
   WHISPER_R:4,         // tiles from the placed person (as) a hero must be within to hear a whisper outside a Table scene
   NARRATE_R:10,        // default radius of a narrate line around its place
+  SPEAK_R:7,           // tiles: the people dm_status speak_to names (earshot of the leader)
   UNDO_MIN:180,        // game minutes an undo can reach back to the DM's last pull or placement (#636)
   UNDOS_PER_DAY:6,     // undo, dismiss and unstage calls per game day
 };
@@ -142,6 +145,8 @@ function placeOf(near){const nt=nearText(near);if(nt.err)return null;const s=Str
   const m=/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/.exec(s);if(m)return {x:Number(m[1]),y:Number(m[2]),label:'around '+m[1]+','+m[2]};
   const lo=s.toLowerCase(),h=S.agents.find(a=>alive(a)&&!a.hidden&&(String(a.id)===s||a.name.toLowerCase()===lo));if(h)return {x:h.x,y:h.y,label:'around '+h.name};
   const c=townOf(s);if(c)return {x:c.gate.x,y:c.gate.y,label:'around '+c.name+'’s gate',town:c.name};
+  const pl=markNamed(s);if(pl)return {x:pl.x,y:pl.y,label:'around '+pl.name}; // a place the DM marked, or a landmark: narrate and when take them (#1017)
+  const lm=LANDMARKS.find(l=>bareName(l.name)===bareName(s));if(lm)return {x:lm.x,y:lm.y,label:'around '+lm.name};
   const z=regionIdx(s);if(z!=null){const p=centreOf(z);return p?{...p,label:'in '+ZONES[z],z}:null}
   return null}
 function remember(tool,args,ok){const D=dmState();D.stats.calls++;
@@ -284,6 +289,12 @@ function worldEvents(){const def=LEVERS.start_event;if(!def)return null;
 const roadTraffic=()=>{const v=trafficView(S.agents.filter(a=>a.company!=null&&a.state!=='dead'));return v?{road_traffic:v}:{}};
 const manyCompanies=()=>{const fs=focuses();return fs.length>1||fs.length===1&&!fs[0].company.slots};
 export const COMPANIES_FIRST='Every company is a thread: serve the company at the head of companies_needs first (the followed company first only when it must choose), then each other company in turn, the one longest without you next; a split-off member is a thread of its own, and a solo is the most fragile.';
+// Who a line reaches right now (#1017): the turn prompt's speak order reads it. The company at the head of the list, its leader by name.
+function speakTo(){const fo=focuses()[0],L=fo?fo.members.filter(b=>!b.hidden):[];if(!L.length)return {}; // below ground nobody hears you but the table
+  const p=fo.party&&fo.party.leader,a=L.includes(p)?p:L[0];
+  const near=peopleAll().filter(q=>Number.isFinite(q.x)&&dist(q,a)<=DMA.SPEAK_R).slice(0,3).map(q=>({id:q.id,name:q.name,role:q.role||null}));
+  return {speak_to:{near:a.name,where:a.state==='town'?a.town||'town':ZONES[zoneAt(a.x,a.y)]||'the wilds',...(near.length?{people:near}:{})}}}
+const NAMES_NOTE='Only these, and what regions, survey and npcs give, are on the map. A place from your notes is not there until mark_place names it; then it can be used by that name.';
 const unheardOf=D=>{const u=unheard(D),n=u.reduce((t,r)=>t+r.lines,0);return {total:n,by_company:u,...(n?{note:'Words were said aloud that you have not heard: read hear first.'}:{})}};
 function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle||[],L=S.dmLog||[],F=slotted();
   const sinceTl=tl.filter(e=>e.gameMin>D.seen.tl).length,i=ch.findIndex(e=>(e.t+txt(e.parts))===D.seen.chron),sinceCh=i<0?Math.min(ch.length,30):i,sinceLog=L.filter(e=>e.id>D.seen.log).length;
@@ -296,9 +307,9 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
     ...(prologueStatus()?{first_delve:prologueStatus()}:{}), // #922: the place, its rooms and what is behind it, for this seat alone
     prep:{...prepView(),...(openingDue()?{opening_due:true}:{}),...(openingWait()?{opening_waits_for:openingWait().names}:{})}, // #437: while it runs the world is held for you; end it with prep_done
-    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
+    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:ourScene().gf?'A scene opens for them: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own line stands).':['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
-      :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out; its calls are not yours (only scenes you staged are).'}):{open:false},
+      :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out. Your table voice framed it; narrate near "table" is the most a turn adds.'}):{open:false},
     staged:stagedView(),
     ...roadTraffic(), // carts and travellers, nearest the companies first: stage_scene near "traffic:<n>" (#796)
     ...(compSummary()?{companions:compSummary()}:{}), // scripted companions of agent companies speak through you (#764)
@@ -308,7 +319,8 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     unheard:unheardOf(D),since_last_look:{timeline:sinceTl,chronicle:sinceCh,dm_log:sinceLog},
     adventures:(S.adventures||[]).filter(v=>v.phase==='active').length,open_jobs:(S.adventures||[]).filter(v=>v.phase==='open').length,
     levers_active:(S.levers&&S.levers.active||[]).length,world_events:worldEvents(),your_pulls_today:day.pulls+'/'+DMA.PULLS_PER_DAY,
-    your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},spoke_for_today:day.spoke||0, // lines cut because they put words in a member's mouth (#750)
+    your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},...speakTo(),spoke_for_today:day.spoke||0, // lines cut because they put words in a member's mouth (#750)
+    ...(focuses().length?{map_names:{near_the_companies:mapNames(),note:NAMES_NOTE}}:{}), // what is really on the map (#1017): a name from your notes is not, until you mark it
     ...(downCallSummary()?{downed:downCallSummary()}:{}), // a hero down: voice it through table_call (#655)
     ...(noOthers()?{others:'none: no background heroes ride here, only the companies and whoever you bring (summon_hero)'}:{}), // the world setting (#780)
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
@@ -508,14 +520,14 @@ function nearSpot(near,o={}){const nt=nearText(near);if(nt.err)return {err:nt.er
   if(m){const p={x:Number(m[1]),y:Number(m[2])},e=spotErr(p),at=openSpot(p,0,3,gap);return at?{at,label:(nt.from?'off '+nt.from+' ':'')+'at '+at.x+','+at.y}:{err:'no open ground at '+m[1]+','+m[2]+(e?' ('+e+')':'')+pointHint(s)}}
   const h=S.agents.find(a=>alive(a)&&!a.hidden&&(String(a.id)===s||a.name.toLowerCase()===lo));if(h)return fromHero(h);
   const c=townOf(s);if(c)return {town:c.name,label:'in '+c.name,at:gateSpot(c)};
-  const pl=(S.places||[]).find(p=>(p.name||'').toLowerCase()===lo||String(p.id)===s);if(pl){const at=openSpot(pl,Math.max(mn,gap),mx+gap,gap);return at?{at,label:'near '+pl.name}:{err:'no open ground near '+pl.name}}
+  const pl=markNamed(s);if(pl){const at=openSpot(pl,Math.max(mn,gap),mx+gap,gap);return at?{at,label:'near '+pl.name}:{err:'no open ground near '+pl.name}}
   const lm=LANDMARKS.find(l=>{const n=l.name.toLowerCase();return n===lo||n.replace(/^the /,'')===lo.replace(/^the /,'')});
   if(lm){const e=(lm.exclude||0)+1,at=openSpot(lm,e,e+5,gap);return at?{at,label:'near '+lm.name}:{err:'no open ground near '+lm.name}}
   const z=regionIdx(s);if(z!=null){const p=centreOf(z),at=p&&openSpot(p,0,8,gap);return at?{at,label:'in '+ZONES[z]}:{err:'no open ground in the middle of '+ZONES[z]}}
-  return {err:'unknown place "'+s+'"'}}
+  return {err:'unknown place "'+s+'".'+nameHint(s)}}
 const heroOf=v=>{const s=clean(v,40),lo=s.toLowerCase();return s?S.agents.find(a=>alive(a)&&(String(a.id)===s||a.name.toLowerCase()===lo))||null:null};
 const placeOrPerson=v=>{const s=clean(v,60),lo=s.toLowerCase();if(!s)return null;
-  return (S.places||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo)||peopleAll().find(n=>String(n.id)===s||n.name.toLowerCase()===lo||((n.title?n.title+' ':'')+n.name).toLowerCase()===lo)||null};
+  return markNamed(s)||peopleAll().find(n=>String(n.id)===s||n.name.toLowerCase()===lo||((n.title?n.title+' ':'')+n.name).toLowerCase()===lo)||null};
 function flatLever(tool,a){a=a&&typeof a==='object'?a:{};if(MORE_FLAT[tool])return flatMore(tool,a);const lever=FLAT_LEVERS[tool],usage=FLAT_USAGE[tool],reason=clean(a.reason,DMA.REASON_MAX),via={tool,usage};
   const no=(why,params)=>leverRefuse(lever,why,usage+'. The lever: '+leverUsage(lever),reason,params||{},via);
   const opt=(k,v)=>v==null||v===''?{}:{[k]:v},str=(v,n)=>typeof v==='string'?clean(v,n)||undefined:v;
@@ -523,7 +535,7 @@ function flatLever(tool,a){a=a&&typeof a==='object'?a:{};if(MORE_FLAT[tool])retu
   let params;
   if(tool==='post_hook'){const t=clean(a.town,40);if(!t)return no('town is required (post_hook needs a town board: a town, or "fellowship", a member or a region for the nearest board)');
     let town=townOf(t);if(!town){const W=nearSpot(t);if(W.err)return no('town: '+W.err+'; '+nearTakes().replace(/^near/,'town'));town=W.town?townOf(W.town):nearestTown(W.at)}
-    let target;if(a.place!=null&&a.place!==''){const q=placeOrPerson(a.place);if(!q)return no('place: no place or person called "'+clean(a.place,40)+'" (see npcs and regions)');target=q.id}
+    let target;if(a.place!=null&&a.place!==''){const q=placeOrPerson(a.place);if(!q)return no('place: no marked place or person called "'+clean(a.place,40)+'" (see npcs and survey; a region goes in region).'+nameHint(a.place,{mark:true}));target=q.id}
     let forHero;if(a.for!=null&&a.for!==''){const h=heroOf(a.for);if(!h)return no('for: no living hero called "'+clean(a.for,40)+'"');forHero=h.id}
     params={town:town.name,tpl:str(a.tpl,20),...opt('giver',str(a.giver,20)),...opt('reward',str(a.reward,12)),...opt('region',str(a.region,40)),...opt('target',target),...opt('forHero',forHero)}}
   else if(tool==='give_item'||tool==='take_item'){const h=heroOf(a.hero);if(!h)return no('hero: no living hero called "'+clean(a.hero,40)+'" (see heroes_near)');
@@ -637,13 +649,13 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   if((day.narr||0)>=DMA.NARRATE_PER_DAY)return {ok:false,error:'Enough narration for one game day ('+DMA.NARRATE_PER_DAY+'): let the world speak for itself.'};
   const near=clean(a.near,60);let hs,label;
   if(near.toLowerCase()==='table'){const sc=S.table;if(!sc)return {ok:false,error:'No Table scene is open.'};hs=sc.ids.map(byIdA).filter(alive);label='at the table'}
-  else{const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+near+'". Use a hero name or id, a town, a region name, "x,y", or "table".'};
+  else{const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+near+'". Use a hero name or id, a town, a marked place, a landmark, a region name, "x,y", or "table".'+nameHint(near)};
     const r=nOf(a.radius,DMA.NARRATE_R,4,20);label=p.label;
     hs=S.agents.filter(b=>alive(b)&&!b.hidden&&(dist(b,p)<=r||p.town&&b.state==='town'&&b.town===p.town))}
-  const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true};for(const b of hs)hearLine(b,e);
+  const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true,...(a._voice?{quiet:1}:{})};for(const b of hs)hearLine(b,e); // _voice: the narrator's voice between scenes (#1017), a moment's kind
   for(const sc of allScenes())if(hs.some(b=>sc.ids.includes(b.id)))sc.narr={t:e.t,text:t}; // the banner and tableView show it
   day.narr=(day.narr||0)+1;
-  dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id)});
+  dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id),...(a._voice?{moment:a._voice}:{})});
   return {ok:true,narrated:t,where:label,heard_by:hs.length,heroes:hs.slice(0,12).map(b=>b.name)}}
 // ---- whisper and dream (#523): a secret for one hero ----
 // whisper: a line only that hero hears (its chat buffer, so chat_read and a soft event), in an open Table scene or within
@@ -766,8 +778,8 @@ function surveyRead(near,radius){const s=clean(near,60),lo=s.toLowerCase();if(!s
   let p=placeOf(s);
   if(!p&&(lo==='fellowship'||lo==='party'||lo==='the fellowship')){const fo=focus();if(fo)p={x:fo.x,y:fo.y,label:'around the Fellowship'}}
   if(!p){const lm=LANDMARKS.find(l=>l.name.toLowerCase()===lo||l.name.toLowerCase().replace(/^the /,'')===lo.replace(/^the /,''));if(lm)p={x:lm.x,y:lm.y,label:'around '+lm.name}}
-  if(!p){const pl=(S.places||[]).find(q=>(q.name||'').toLowerCase()===lo||String(q.id)===s);if(pl)p={x:pl.x,y:pl.y,label:'around '+pl.name}}
-  if(!p)return {ok:false,error:'Unknown place "'+s+'". '+nearTakes()};
+  if(!p){const pl=markNamed(s);if(pl)p={x:pl.x,y:pl.y,label:'around '+pl.name}}
+  if(!p)return {ok:false,error:'Unknown place "'+s+'".'+nameHint(s)+' '+nearTakes()};
   return surveyAt(p,radius)}
 // A place tool that was refused for the ground names survey as the fix (#558).
 const GROUND_ERR=/open ground|walkable|tiles of|inside|too close|off the map|unknown place|not a road|on the |outside /i;
@@ -778,8 +790,9 @@ export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40)
 // One DM tool call: validated, answered, never thrown. The seat must be open.
 export function dmAct(tool,args={}){
   if(tool==='turn_end'){if(!dmSeatOn())return {ok:false,error:'The DM seat is closed.',offline:true};return turnEnd(args)} // the relay's report of a finished turn, not a tool of the agent's
-  const t=BY_NAME.get(tool);if(!t)return unknownTool(tool);
+  const t=BY_NAME.get(tool);if(!t&&tool!=='narrator_call'&&tool!=='narrator_say')return unknownTool(tool);
   if(tool==='companion_call'&&dmSeatOn())return compCall(args); // the companion voice's poll (#764): its own listening stamp, never kept as a turn call
+  if((tool==='narrator_call'||tool==='narrator_say')&&dmSeatOn())return tool==='narrator_call'?narrCall(args,voiceNotes()):narrSay(args,x=>run('narrate',x)); // the narrator's voice (#1017): the runner's, not a tool of the agent's
   if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
   args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
@@ -787,6 +800,7 @@ export function dmAct(tool,args={}){
   try{r=run(tool,args)}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
   if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene'||tool==='mark_danger'||tool==='custom_foe')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
+  if(r.ok===false&&tool==='mark_place'&&typeof r.error==='string'&&/\blimit\b.*\bper region\b/.test(r.error))r.error+=' Use a place that stands already ('+mapNames(6).join(', ')+') or leave it for tomorrow with when {trigger: "day_breaks", action: "mark_place", args: {...}}.';
   if(prepping&&!prepActive()&&tool!=='prep_done'&&r&&typeof r==='object')r={...r,prep:'Your prep is over (its '+(prepView().why==='calls'?'calls':'time')+' ran out): the table opens now. End this turn.'};
   if(!((tool==='table_call'||tool==='npc_call'||tool==='ruling_call')&&r.ok&&!r.call)){remember(tool,args,r.ok!==false);try{recordTurn(tool,args,r)}catch(e){}} // an idle poll of the table is not a call worth keeping
   return r}
@@ -813,6 +827,10 @@ function spokeLog(g,tool){const day=today();day.spoke=(day.spoke||0)+1;const n=g
 function run(tool,args){const g=voiceGuard(tool,args&&typeof args==='object'?args:{});if(g&&g.res)return g.res;
   const r=run0(tool,g?g.args:args);if(!g)return r;spokeLog(g,tool);
   return r&&typeof r==='object'?{...r,spoke_for:g.cut,warning:spokeNote(g.cut)}:r}
+// What the narrator's voice may know of the DM's own mind: its plans and threads that bear on the moment, by title. Never a secret.
+const voiceNotes=()=>{const D=dmState(),hid=new Set((D.notes.secrets||[]).map(n=>n.id));return relevant(dmBook(D),dmContext()).filter(n=>!hid.has(n.id)).slice(0,3).map(n=>n.title)};
+// What the table asks now: a downed hero, else whichever scene has a call waiting (#1017: one company's fire must not hide another's frame).
+function tableNow(){const d=downCall();if(d)return d;const a=sceneCall();if(a&&a.call)return a;const b=tableCall();return b.call||!a?b:a}
 function run0(tool,args){let r;
   switch(tool){
     case 'dm_status':r=status();break;
@@ -847,7 +865,7 @@ function run0(tool,args){let r;
     case 'npc_offer':r=npcOffer(args);break;
     case 'companion_say':r=compSay(args);break; // #764
     case 'stage_scene':r=stageScene(args);if(r&&r.ok&&r.staged!=null&&!r.preview)dmState().last={kind:'stage',id:r.staged,tool:'stage_scene',at:Math.round(S.gameMin)};break;
-    case 'table_call':r=downCall()||sceneCall()||tableCall();break;
+    case 'table_call':r=tableNow();break;
     case 'table_answer':r=downAnswer(args)||sceneAnswer(args)||tableAnswer(args);break;
     case 'ruling_call':r=rulingCall(args);break;
     case 'ruling_answer':r=rulingAnswer(args);break;
@@ -874,7 +892,7 @@ function whenCheck(tool,a,o={}){
     const params=aliasParams(clean(a.lever,40),leverParams(name,a));if(!params)return {error:'params must be an object',usage:leverUsage(name)};
     const v=leverValidate(LEVERS[name],params);return typeof v==='string'?{error:'the lever '+name+': '+v,usage:leverUsage(name)}:null}
   if(o.who)return null;
-  if(tool==='narrate'){const n=clean(a.near,60);if(n.toLowerCase()!=='table'&&!placeOf(n))return {error:'narrate near: unknown place "'+n+'" (a hero name or id, a town, a region, "x,y", or "table")'};return null}
+  if(tool==='narrate'){const n=clean(a.near,60);if(n.toLowerCase()!=='table'&&!placeOf(n))return {error:'narrate near: unknown place "'+n+'" (a hero name or id, a town, a marked place, a landmark, a region, "x,y", or "table").'+nameHint(n)};return null}
   if(tool==='npc_say'){const p=personOf(a.npc);if(!p){const nb=nobody(a.npc);return {error:nb.error}}return null}
   if(tool==='whisper'||tool==='dream'||tool==='give_item'||tool==='take_item'){if(!heroOf(a.hero))return {error:'hero: no living hero called "'+clean(a.hero,40)+'"'};
     if(tool==='whisper'&&a.as!=null&&a.as!==''&&!personOf(a.as))return {error:nobody(a.as).error};if(tool==='dream'&&!heroOf(a.hero).player)return {error:heroOf(a.hero).name+' is not agent-played: only agent heroes dream'};return null}

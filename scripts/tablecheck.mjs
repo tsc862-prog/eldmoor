@@ -469,7 +469,7 @@ if (process.argv[2] === '--fireside') {
   k = 0; while (S.table && k++ < 60 * 600) step(1 / 60);
   // 4. no host: a camp opens no fireside
   CM.breakCampNow('called'); SLT.slotted().fire.last -= 1e4; SIM.setRunnerLinks(null); field(); CM.leaderRest(live, 4); run(30);
-  ok(!S.table && !SLT.slotted().fireQ, 'with no host (npm run sim) a camp opens no fireside');
+  ok(!(S.table && S.table.kind === 'fireside') && !SLT.slotted().fireQ, 'with no host (npm run sim) a camp opens no fireside');
   console.log(fail ? 'FIRESIDE FAILED ' + fail : 'FIRESIDE OK'); process.exit(fail ? 1 : 0);
 }
 
