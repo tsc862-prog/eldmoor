@@ -32,6 +32,7 @@ import {topScores,SKILLS} from './abilities.js';
 import {ARCHETYPES} from '../data/archetypes.js';
 import {refreshStances} from './memory.js'; // a cycle (memory.js reads scriptedStance); only called at run time
 import {inSlots,slotKeyOf,slotted,placeWord} from './company.js'; // the slotted company (#588)
+import {WORDS} from '../world/words.js';
 
 const pick=(a,salt,list)=>list[Math.floor(hash(a.id|0,salt,7)*list.length)%list.length];
 const lc=t=>t?t.charAt(0).toLowerCase()+t.slice(1):'';
@@ -61,10 +62,10 @@ const VOICES=[
   ['Blunt as a dropped axe; three words where others use ten.','Loud, cheerful and filthy; laughs at the worst moments.','Growls more than speaks; every sentence sounds like a dare.','Few words, all of them final.']];
 const TRAIT_VOICE={Reckless:'Talks fast and finishes plans with "and then we hit it".',Cautious:'Thinks aloud about exits.',Greedy:'Prices everything, including compliments.',
   Loyal:'Says "we" far more than "I".',Loner:'Answers questions with shrugs until pressed.',Vengeful:'Remembers names, and says them slowly.',Pious:'Ends hard days with a short prayer.',Boastful:'Retells every fight a little bigger.'};
-const WANTS={avenge:'To see {t} dead by their own hand.',avengeHero:'To settle the blood debt with {t}.',heirloom:'To hold the {t} and carry it home.',heirloomCrypt:'To bring the {t} up out of the Sunken Crypt.',
-  heirloomBoss:'To tear the {t} from Kragmaw.',pilgrimFar:'To stand in the snows of Hoarfell before they die.',pilgrimCrypt:'To stand at the mouth of the Sunken Crypt and see what waits below.',
+export const WANTS={avenge:'To see {t} dead by their own hand.',avengeHero:'To settle the blood debt with {t}.',heirloom:'To hold the {t} and carry it home.',heirloomCrypt:'To bring the {t} up out of '+WORDS.crypt+'.',
+  heirloomBoss:'To tear the {t} from Kragmaw.',pilgrimFar:'To stand in the snows of '+WORDS.farRegion+' before they die.',pilgrimCrypt:'To stand at the mouth of '+WORDS.crypt+' and see what waits below.',
   ascend:'To grow strong enough that nobody has to bury them young.',rival:'To leave {t} behind and make sure they know it.',legend:'To be in the raid that finally kills Kragmaw.',
-  hoard:'Enough gold that hunger never comes back.',delve:'To clear the Sunken Crypt and come out alive.'};
+  hoard:'Enough gold that hunger never comes back.',delve:'To clear '+WORDS.crypt+' and come out alive.'};
 const FEARS={Warrior:['Being the wall that breaks first.','Living through the fight that kills the people behind them.'],Priest:['Running out of light with a friend still bleeding.','Choosing whom to heal, and choosing wrong.'],
   Mage:['The day the spell does not come.','Being caught in the open with nothing between them and the teeth.'],Hunter:['A trail that leads back to their own camp.','Missing the one shot that mattered.'],
   Rogue:['Being seen before they are ready.','Being trusted, and failing it.'],

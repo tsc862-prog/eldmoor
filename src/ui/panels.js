@@ -4,10 +4,12 @@
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
 // delegated click handler (initPanels) looks the hero up in S.agents and hands it
 // to the picker, which controls.js wires to select + follow.
+import {worldFill} from '../world/words.js';
 import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
 import {CITY,CRYPT,LAIR,ZONES,OUTPOSTS,zoneFor} from '../world/map.js';
+import {cryptOfHero} from '../sim/crypts.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
@@ -47,6 +49,7 @@ import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 import {downView,downText,downTitle,flashOf,pips,downKind,DOWN_BADGE} from './downview.js'; // the downed (#659)
+import {siteById} from '../sim/sites.js'; // a DM-made site's record, for the activity line (#917)
 import {threadText} from '../sim/oath.js'; // an unsworn thread, in words (#800)
 
 const $=id=>document.getElementById(id);
@@ -87,7 +90,9 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'follow':return a.party?`Following ${a.party.leader.name}'s party in ${zn}`:'Following the party';
     case 'camp':return a.playDoing||'Resting at camp';
     case 'regroup':return 'Pulling back after a skirmish';
-    case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
+    case 'dungeon':{const D=cryptOfHero(a)||CRYPT,s=a.siteIn!=null?siteById(a.siteIn):null; // a DM-made site names itself, never the Crypt (#917)
+      if(a.siteIn!=null){const n=s?s.name:'a hidden place',t=s&&s.boss?(s.bossTitle?s.boss+', '+s.bossTitle:s.boss):'';if(s&&s.raid)return a.hidden?`Raiding ${n}${t?', fighting toward '+t:''}`:`Gathering a raid at ${n}`;return a.hidden?`Inside ${n}${t?', fighting toward '+t:''}`:`Gathering a group at ${n}`}
+      return a.hidden?`Inside ${D.name}, fighting toward ${D.boss}`:`Gathering a group at ${D.name}`}}return ''}
 
 // ---- hero dossier ----
 const TABS=[['stats','Stats'],['quests','Quests'],['log','Log'],['combat','Combat'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['inv','Pack'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
@@ -211,7 +216,7 @@ function itemCard(it,cls){const d=el('div',cls||'itip');
   for(const f of it.affixes||[])d.append(el('div','ia',f));
   const z=zoneIdx(it.zone);if(z>=0)d.append(el('div','dm','Found in '+ZONES[z]));
   if(it.src)d.append(el('div','dm',it.src));
-  if(it.epic&&EPIC_ITEMS[it.name])d.append(el('div','if',EPIC_ITEMS[it.name].flavour));
+  if(it.epic&&EPIC_ITEMS[it.name])d.append(el('div','if',worldFill(EPIC_ITEMS[it.name].flavour)));
   if(it.over){const o=it.over,ds=itemDelta(it,o);
     d.append(el('div','dm','Replaced '+o.name+' (ilvl '+o.ilvl+')'+(ds.length?': '+ds.join(', '):'')))}
   return d}
@@ -219,10 +224,10 @@ function itemCard(it,cls){const d=el('div',cls||'itip');
 const invEntry=(a,i)=>a&&a.inv?a.inv.list[i]||null:null;
 function supplyCard(e,cls){const d=el('div',cls||'itip');
   if(e.kind==='use'&&USES[e.id]){const U=USES[e.id];d.append(el('div','in qf',e.id),el('div','dm',U.kind.charAt(0).toUpperCase()+U.kind.slice(1)+' · x'+e.n));
-    for(const [c,t] of useLines(e.id))d.append(el('div','is s-'+c,t));d.append(el('div','dm','Costs '+U.price+'g in town'),el('div','if',U.flavour))}
+    for(const [c,t] of useLines(e.id))d.append(el('div','is s-'+c,t));d.append(el('div','dm','Costs '+U.price+'g in town'),el('div','if',worldFill(U.flavour||'')))}
   else if(e.kind==='good'){d.append(el('div','in qp',e.id),el('div','dm',(MATERIALS[e.id]?'Material · ':'Trade good · ')+'x'+e.n));if(GOODS[e.id]||MATERIALS[e.id])d.append(el('div','is s-bn','Sells for about '+price(e.id)+'g each'))}
   else{const Q=QUEST_ITEMS[e.id];d.append(el('div','in gd',e.id),el('div','dm','Quest item'));
-    d.append(el('div','if',Q?Q.flavour:'Carried for a job; it is handed in when the job ends.'),el('div','dm','Cannot be sold, dropped or given.'))}
+    d.append(el('div','if',Q?worldFill(Q.flavour):'Carried for a job; it is handed in when the job ends.'),el('div','dm','Cannot be sold, dropped or given.'))}
   return d}
 const cardOf=(it,cls)=>isGear(it)?itemCard(it,cls):supplyCard(it,cls);
 const hoverItem=()=>{const a=cam.sel;if(!hov||!a||a.id!==hov.id)return null;return hov.inv!=null?invEntry(a,hov.inv):a.slots?a.slots[hov.slot]:null};
@@ -411,7 +416,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   // header and body are patched in place (#145): scroll, focus and open rows survive the 0.3 s tick
   patch(k.hd,h=>{h.append(heroName(a));
     h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
-    const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=a.siteIn!=null?'site:'+a.siteIn:CRYPT.name;b.title='Open the dungeon view';dg.append(' ',b)}if(a.state==='raid'&&a.raid&&LAIR){const b=el('button','dglink','View the raid ▸');b.type='button';b.dataset.dungeon=LAIR.name;b.title='Open the raid arena';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
+    const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=a.siteIn!=null?'site:'+a.siteIn:(cryptOfHero(a)||CRYPT).name;b.title='Open the dungeon view';dg.append(' ',b)}if(LAIR&&(a.state==='raid'&&a.raid||a.state==='downed'&&Math.hypot(a.x-LAIR.x,a.y-LAIR.y)<=(LAIR.r||5)+1)){const b=el('button','dglink','View the raid ▸');b.type='button';b.dataset.dungeon=LAIR.name;b.title='Open the raid arena';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
     h.append(el('div','dm','HP'),meter('hp',a.hp/mh));{const dr=downRow(a);if(dr)h.append(dr)} // DOWNED, the tally and the timer (#659)
     h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
     if(short){const b=el('button','mini fullsheet','Full sheet ▸');b.type='button';b.dataset.fullsheet=a.id;b.title='Open '+a.name+'’s full sheet: stats, gear, story and mind';h.append(b)}});

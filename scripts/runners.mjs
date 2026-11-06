@@ -86,7 +86,7 @@ export const SEATS = HERO_SEATS.LOCAL + 1;
 export const NEW_WORLD_EXIT = 75, RESTART_MS = 1500, MAX_RESTARTS = 5, RESET_WAIT_MS = 5000;
 // Seat restarts (#460): how often the supervisor looks for a solo's heir or a member who left a company, and how long
 // after a hero runner ended with its hero's death it still looks for the heir.
-export const ADOPT_MS = 2000, HEIR_WAIT_MS = 10 * 60000;
+export const ADOPT_MS = 2000, HEIR_WAIT_MS = 30 * 60000; // past a recruit's longest wait for a camp or town (ARRIVE.WAIT_DAYS: 16 minutes at 1x)
 // The Claude model a runner started from the app plays when neither the request nor the hero's saved settings name
 // one (the owner's cost ask, #126): Haiku. Terminal runners keep their own default (Sonnet). AGENT_MODEL / DM_MODEL
 // in the relay's environment override it.
@@ -347,6 +347,7 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
       event('end', r, {why: r.endWhy, state: r.state, exit: code, by: r.stopping ? r.stopBy || 'supervisor' : 'runner', turns: r.turns, cost: r.cost, budget: budgetOf(r), uptime: Math.round((r.ended - r.started) / 1000)});
       if (r.pid) play.dropRunner(`${host}:${r.pid}`); // its claims, in case it could not release them
       if (r.kind === 'hero' && !r.stopping && !closing) {const h = heroes().find(x => x.id === r.hero); if (!h || !h.alive) r.heirWatch = true} // a solo's heir may come (#460)
+      if (multiRunner(r) && !r.stopping && !closing) {const hs = heroes(), ids = [...(r.held || []), ...(r.heroes || [])]; if (ids.length && ids.every(id => {const h = hs.find(x => x.id === id); return !h || !h.alive})) r.heirWatch = true} // the whole company fell: the recruits may come
       dropLeases(r.key); saveActive();
       if (nw) log(`[runners] ${r.key} saw a new world and stopped; it is not started again by itself`);
       const done = [...table.values()].filter(x => x.done); // keep a few finished runners for the page
@@ -517,22 +518,33 @@ export function attachRunners(server, {play, enabled = false, origin = 'http://l
   // names as agent-played and alive, with no claim and no runner of this supervisor on them; a stop from the page or
   // a host shutdown never restarts anything. Heirs are looked for HEIR_WAIT_MS after the runner ended. A runner that spent its
   // budget hands nothing on (#807): the money it was given is gone, and the owner decides at the gate whether to spend more.
+  // A Fellowship or company runner ends by itself when its last member dies. Its recruits (they stay in that company) get the same
+  // runner again, with the mind it had and only what is left of its budget; a company that ended leaves an heir and recruits in a new
+  // company, each with a hero runner and a share of what is left.
   const handed = new Set(); // hero ids already handed a runner by adopt()
   function covered(id) {return play.claimed(id) || running().some(r => r.kind === 'hero' ? r.hero === id : (r.heroes || []).includes(id))}
   function adopt() {
     if (!enabled || closing) return [];
     const hs = heroes(), out = [];
+    const heirsOf = r => r.kind === 'hero' ? hs.filter(h => h.succeeds === r.hero && h.alive) : hs.filter(h => h.alive && h.succeeds != null && ((r.held && r.held.has(h.succeeds)) || (r.heroes || []).includes(h.succeeds)));
+    const leftOver = r => r.budget == null ? undefined : Math.max(.01, r.budget - r.cost);
+    const again = (r, h) => {if (covered(h.id)) return; const o = startRequest({kind: r.kind, ...(r.kind === 'company' ? {company: r.company} : {}), provider: r.provider || undefined, model: r.model || undefined, maxTurns: r.maxTurns ?? undefined, budget: leftOver(r)}, 'adopt');
+      log(`[runners] ${h.name}: takes a place in ${r.name}, who fell to the last: ${o.code === 200 ? 'runner started again' : 'not started (' + (o.obj.error || 'refused') + ')'}`); if (o.code === 200) out.push(o.obj.runner.key)};
     const give = (h, from, why) => {if (handed.has(h.id) || covered(h.id)) return; handed.add(h.id);
       const o = startRequest({kind: 'hero', hero: h.id, provider: from.provider || undefined, model: from.model || undefined, maxTurns: from.maxTurns ?? undefined, budget: from.budget ?? undefined}, 'adopt');
       log(`[runners] ${h.name}: ${why}: ${o.code === 200 ? 'hero runner started' : 'not started (' + (o.obj.error || 'refused') + ')'}`); if (o.code === 200) out.push(o.obj.runner.key)};
     const refuse = (r, h) => {const seen = r.noAdopt || (r.noAdopt = new Set()); if (seen.has(h.id)) return; seen.add(h.id); log(`[runners] ${h.name}: no hero runner: ${r.name} spent its budget, the seat waits for you`); event('no-restart', r, {by: 'adopt', hero: h.id, why: r.budgetOut.why, cost: r.cost})};
     for (const r of [...table.values()]) {
       if (r.budgetOut) { // #807: whoever it would have handed a seat to waits for the owner
-        if (r.heirWatch) {const heir = hs.find(h => h.succeeds === r.hero && h.alive); if (heir) refuse(r, heir)}
+        if (r.heirWatch) for (const heir of heirsOf(r)) refuse(r, heir);
         if (r.kind === 'company' && !r.done) {view(r); for (const id of r.held || []) {const h = hs.find(x => x.id === id); if (h && h.alive && h.company !== r.company && !mine(r, id)) refuse(r, h)}}
         continue}
       if (r.kind === 'hero' && r.done && !r.stopping && r.heirWatch && now() - r.ended <= HEIR_WAIT_MS) {
         const heir = hs.find(h => h.succeeds === r.hero && h.alive); if (heir) {r.heirWatch = false; give(heir, r, `takes the place of ${r.name}`)}}
+      if (multiRunner(r) && !r.done && !r.stopping) view(r); // who it holds, for the day they all fall
+      if (multiRunner(r) && r.done && !r.stopping && r.heirWatch && now() - r.ended <= HEIR_WAIT_MS) {const n = (r.held && r.held.size) || (r.heroes || []).length || 1;
+        for (const h of heirsOf(r)) {if (r.kind === 'fellowship' ? h.fellow : h.company === r.company) {r.heirWatch = false; again(r, h); break}
+          give(h, {...r, budget: r.budget == null ? null : Math.min(RUNNER_KINDS.hero.caps.budget, leftOver(r) / n)}, `takes a place of ${r.name}, who fell to the last`)}}
       if (r.kind === 'company' && !r.done && !r.stopping) {view(r); for (const id of r.held || []) {const h = hs.find(x => x.id === id);
         if (h && h.alive && h.company !== r.company && !mine(r, id)) give(h, r, `left ${r.name} and rides alone`)}}}
     return out}

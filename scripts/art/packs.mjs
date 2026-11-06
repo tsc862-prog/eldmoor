@@ -4,8 +4,8 @@
 //   node scripts/art/packs.mjs [--list] [--only a,b]
 //
 // Sets: kenney-tiny-town, kenney-tiny-dungeon, kenney-roguelike-rpg (CC0, kenney.nl: the page's own "Continue without
-// donating" download flow, session cookie then /download-link, no browser needed), lpc-base (OpenGameArt, CC-BY-SA /
-// GPL, see its credits), lpc-generator (github sanderfrenken/Universal-LPC-Spritesheet-Character-Generator: a blobless
+// donating" download flow, session cookie then /download-link, no browser needed), lpc-base and lpc-roofs (OpenGameArt,
+// CC-BY-SA / GPL, see their credits), lpc-generator (github sanderfrenken/Universal-LPC-Spritesheet-Character-Generator: a blobless
 // git clone, only the credits, the licences, sheet_definitions/ and the layer folders listed in LPC_PATHS; nothing in it
 // is ever run or built), ninja-adventure (pixel-boy, CC0, itch: needs a browser click, so the owner drops the zip).
 //
@@ -26,7 +26,16 @@ export const SETS={
   'kenney-tiny-dungeon':{kind:'kenney',slug:'tiny-dungeon',licence:'CC0 1.0',author:'Kenney (kenney.nl)',link:'https://kenney.nl/assets/tiny-dungeon'},
   'kenney-roguelike-rpg':{kind:'kenney',slug:'roguelike-rpg-pack',licence:'CC0 1.0',author:'Kenney (kenney.nl)',link:'https://kenney.nl/assets/roguelike-rpg-pack'},
   'lpc-base':{kind:'zip',url:'https://opengameart.org/sites/default/files/lpc_base_assets.zip',licence:'CC-BY-SA 3.0 / GPL 3.0 (per asset, see its credits)',author:'LPC contributors',link:'https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles'},
+  'lpc-terrains':{kind:'zip',url:'https://opengameart.org/sites/default/files/lpc-terrains.zip',licence:'CC-BY-SA 3.0 / 4.0',author:'bluecarrot16, Zabin, ZaPaper and others (see its credits)',link:'https://opengameart.org/content/lpc-terrains'},
+  'lpc-roofs':{kind:'zip',url:'https://opengameart.org/sites/default/files/lpc-roofs-v2_0.zip',licence:'CC-BY-SA 3.0 / GPL 3.0',author:'bluecarrot16, Lanea Zimmerman (Sharm), Michele Bucelli (Buch), Casper Nilsson, Xenodora, keith karnage, NaRNeRZz, Talon (Talosaurus); see its CREDITS-roofs.txt',link:'https://opengameart.org/content/lpc-roofs'},
   'lpc-generator':{kind:'git',repo:'https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator.git',licence:'CC-BY-SA 3.0/4.0, GPL 3.0 or OGA-BY 3.0 (per asset, CREDITS.csv)',author:'LPC contributors (CREDITS.csv)',link:'https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator'},
+  // LPC-compatible animals (epic #830): only sets offered under CC-BY-SA 3.0, OGA-BY 3.0 or CC0 (the licence each is used under is in scripts/art/lpc-critters.json).
+  'lpc-cats-dogs':{kind:'files',urls:['cat_0.png','dog_2.png'],licence:'OGA-BY 3.0 / CC-BY-SA 3.0 / CC-BY 3.0 / GPL',author:'bluecarrot16',link:'https://opengameart.org/content/lpc-cats-and-dogs'},
+  'lpc-rabbit':{kind:'files',urls:['rabbit_3.png'],licence:'OGA-BY 3.0 / CC-BY-SA 3.0 / CC-BY 3.0',author:'Stephen Challener (Redshrike), reorganised by Evert',link:'https://opengameart.org/content/reorganised-lpc-rabbit'},
+  'lpc-birds':{kind:'files',urls:['bird_2_black.png','bird_2_white.png'],licence:'OGA-BY 3.0 / CC-BY-SA 3.0 / CC-BY / GPL',author:'bluecarrot16',link:'https://opengameart.org/content/lpc-birds'},
+  'lpc-ram':{kind:'files',urls:['ram_walk.png'],licence:'CC-BY-SA 3.0 / GPL 3.0',author:'Evert',link:'https://opengameart.org/content/lpc-style-ram-male-sheep'},
+  'chicken-sprites':{kind:'zip',url:'https://opengameart.org/sites/default/files/chicken.zip',licence:'CC0',author:'Shepardskin',link:'https://opengameart.org/content/chicken-sprites'},
+  'wild-deer':{kind:'zip',url:'https://opengameart.org/sites/default/files/Deer_0.zip',licence:'CC0',author:'ScratchIO',link:'https://opengameart.org/content/animated-wild-animals'},
   'ninja-adventure':{kind:'hand',licence:'CC0 1.0',author:'pixel-boy (Pixel-boy and AAA)',link:'https://pixel-boy.itch.io/ninja-adventure-asset-pack',
     how:'Download "Ninja Adventure - Asset Pack" from the itch page (it needs a browser click) and drop the .zip into assets/packs/ninja-adventure/ ; run this script again to extract it.'}
 };
@@ -34,7 +43,7 @@ export const SETS={
 export const LPC_PATHS=['/CREDITS.csv','/LICENSE','/README.md','/cc-by-sa-3_0.txt','/gpl-3_0.txt','/sheet_definitions/',
   '/spritesheets/body/bodies/male/','/spritesheets/body/bodies/male.png','/spritesheets/body/bodies/female/','/spritesheets/body/bodies/female.png',
   '/spritesheets/head/heads/human/male/','/spritesheets/head/heads/human/female/','/spritesheets/head/heads/orc/','/spritesheets/hair/plain/','/spritesheets/hair/long/','/spritesheets/hair/ponytail/','/spritesheets/hair/long_messy/','/spritesheets/quiver/','/spritesheets/hair/braid/',
-  '/spritesheets/torso/','/spritesheets/legs/pants/','/spritesheets/legs/armour/','/spritesheets/feet/boots/','/spritesheets/weapon/sword/','/spritesheets/weapon/blunt/','/spritesheets/weapon/ranged/','/spritesheets/weapon/magic/','/spritesheets/hat/'];
+  '/spritesheets/torso/','/spritesheets/legs/pants/','/spritesheets/legs/armour/','/spritesheets/feet/boots/','/spritesheets/weapon/sword/','/spritesheets/weapon/blunt/','/spritesheets/weapon/ranged/','/spritesheets/weapon/magic/','/spritesheets/hat/','/spritesheets/weapon/polearm/'];
 
 const empty=d=>!fs.existsSync(d)||fs.readdirSync(d).length===0;
 const say=(...a)=>console.log('[packs]',...a);
@@ -79,6 +88,13 @@ async function plainZip(name,set){
   const tmp=path.join(PACKS,'_dl');fs.mkdirSync(tmp,{recursive:true});const zip=path.join(tmp,name+'.zip');fs.writeFileSync(zip,buf);
   extract(zip,dir);say(name,'fetched',buf.length,'bytes')}
 
+// Single images off a set's page (OpenGameArt files), each into the set's own new folder.
+async function plainFiles(name,set){
+  const dir=path.join(PACKS,name);
+  if(!empty(dir)){say(name,'already there');return}
+  fs.mkdirSync(dir,{recursive:true});
+  for(const f of set.urls){const buf=Buffer.from(await (await get('https://opengameart.org/sites/default/files/'+f)).arrayBuffer());fs.writeFileSync(path.join(dir,decodeURIComponent(f).replace(/[^\w.-]/g,'_')),buf);say(name,f,buf.length,'bytes')}}
+
 function lpcGenerator(name,set){
   const dir=path.join(PACKS,name),repo=path.join(dir,'repo');
   fs.mkdirSync(dir,{recursive:true});
@@ -103,6 +119,7 @@ export async function fetchSets(only){
     try{
       if(set.kind==='kenney')await kenney(name,set);
       else if(set.kind==='zip')await plainZip(name,set);
+      else if(set.kind==='files')await plainFiles(name,set);
       else if(set.kind==='git')lpcGenerator(name,set);
       else if(ninja(name,set)==='hand')miss.push(name);
     }catch(e){say(name,'FAILED:',e.message);miss.push(name)}}

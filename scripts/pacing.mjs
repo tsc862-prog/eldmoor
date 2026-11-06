@@ -67,8 +67,8 @@ export function failTracker(maxFails) {
 }
 // Did a local-loop turn (scripts/local-agent.mjs result) do anything?
 // (a turn with no call, every call rejected, or a narration repeating the last one with no world-changing call is empty)
-// null (neither worked nor failed; also a turn whose calls failed because the game page did not answer: a hidden or reloading tab is not the runner's fault, failTracker leaves its count): a turn Ollama aborted twice for repeating tokens (#221) with no call made.
-export const localWorked = r => r && r.looped && !r.tools ? null : r && r.gameDown && !r.acts ? null : !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.repeatAct && !r.foreign && !(r.chatbot && !r.acts));
+// null (neither worked nor failed; a turn cut by its own scene before any call, flag scene-cut, #515; also a turn whose calls failed because the game page did not answer: a hidden or reloading tab is not the runner's fault, failTracker leaves its count): a turn Ollama aborted twice for repeating tokens (#221) with no call made.
+export const localWorked = r => r && r.looped && !r.tools ? null : r && r.sceneJump && !r.tools ? null : r && r.gameDown && !r.acts ? null : !!(r && r.mode === 'reflect' ? r.answered : r && r.tools > 0 && r.rejected < r.tools && !(r.repeat && !r.acts) && !r.repeatAct && !r.foreign && !(r.chatbot && !r.acts));
 
 // makePacer({base, hero, runner, heartbeat, minGap, log, stopped}) -> {next(), turnDone(), state}
 //   next(): waits for the next turn. -> {wake:'now'|'soft'|'heartbeat', why, table, clock} or {dead} / {gone, why} / {stopped}
@@ -172,13 +172,15 @@ export const sightNote = b => b && typeof b.insight === 'string' && b.insight ? 
 export const gatherNote = b => b && typeof b.gather === 'string' && b.gather ? `\nSESSION ZERO: ${b.gather.slice(0, 200)}` : '';
 export const holdNote = b => b && typeof b.hold === 'string' && b.hold ? `\nTHE WORLD IS HELD FOR YOU by your rule (${b.hold.slice(0, 160)}): nothing moves until you act (any acting tool), at most 2 minutes. Look, then act.` : '';
 export const woundNote = b => b && typeof b.wounds === 'string' && b.wounds ? `\n${b.wounds.slice(0, 320)}.` : ''; // a lasting wound (brief.wounds, #656)
+// One rare line naming a tool that fits here (brief.invite, src/sim/invite.js, #872, #864): absent on most turns.
+export const inviteNote = b => b && b.invite && typeof b.invite.text === 'string' ? `\n${b.invite.text.slice(0, 240)}` : '';
 export const earshotNote = b => b && typeof b.earshot === 'string' && b.earshot ? `\nIn earshot: ${b.earshot.slice(0, 300)} (the earshot tool tells more).` : '';
 export function talkText(b) {
   if (!b) return '';
   const heard = Array.isArray(b.heard) ? b.heard : [], met = Array.isArray(b.met) ? b.met : [];
   const near = Array.isArray(b.nearby) ? b.nearby : [];
   const road = Array.isArray(b.road) ? b.road : [];
-  return holdNote(b) + earshotNote(b) + sightNote(b) + (road.length ? `\nOn the road: ${road.join('; ')}.` : '') + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
+  return holdNote(b) + inviteNote(b) + earshotNote(b) + sightNote(b) + (road.length ? `\nOn the road: ${road.join('; ')}.` : '') + (near.length ? `\nPeople about (talk to them with talk, or say a word to one): ${near.join('; ')}.` : '') + (heard.length ? `\nSaid lately (party and aloud, oldest first): ${heard.join(' / ')}` : '') +
     (met.length ? `\nCompanions you have met: ${met.join(', ')}. You know each other: do not introduce yourself again or repeat a line; talk to move the party forward (propose, vote, lead_to, or answer a question you were asked).` : '');
 }
 
@@ -190,7 +192,7 @@ What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more;
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
   return gatherNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + (b && b.growth ? `
-${b.growth}` : '') + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `
+${b.growth}` : '') + askedNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `
 Your memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
@@ -207,6 +209,8 @@ export function aimNote(b) {
   const why = String(m.why || '').slice(0, 120);
   return `\n${AIM_ASK} ${line ? 'Your aim was: ' + line + '; ' + why : why.charAt(0).toUpperCase() + why.slice(1)}. Say it first with intent {goal, why, until} (one call), then act on it.${m.wait_limit ? ' Until you do, ' + String(m.wait_limit).replace(/^with no aim, /, '') + '.' : ''}` + lead;
 }
+// A question someone in the world put to a hero riding alone (issue #826): it stands a few game hours, and silence is a no.
+export const askedNote = b => { const q = b && b.asked; return q && q.line ? `\n${String(q.by).slice(0, 60)} asked you: "${String(q.line).slice(0, 200)}" Answer aloud with answer_call {answer: accept|decline, line}; it lapses as a no in about ${Number(q.left) || 1} game hours.` : ''; };
 // What the hero swore, or for a while what its past offers (issue #800). A thread is the past, never a promise.
 export const oathNote = b => (b && b.oath ? `\nYour oath: ${String(b.oath).slice(0, 200).replace(/[.!?]+$/, '')}.` : '') + (b && b.thread ? `\nFrom your past, not sworn: ${String(b.thread).slice(0, 200)} It binds you to nothing unless you swear it (swear_oath, in your own words).` : '');
 // Who the hero is now (brief.persona, src/sim/persona.js personaLine, issue #409): one line in every turn header.

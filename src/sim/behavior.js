@@ -93,7 +93,7 @@ export function makeWatch(opts={}){
   const coSeen=new Map();let coDeaths={}; // hero id -> the company it was last seen in; deaths per company this hour (#460)
   const T=new Map(),seenChat=new WeakSet(),seenFallen=new WeakSet(),seenScene=new WeakSet(),seenProps=new Set(),emitted=new Map(),seq0=new Map(),iseq0=new Map();
   let H=null;const fresh=()=>({share:{agent:0,autopilot:0,relay:0,scripted:0},acts:0,table:{opened:0,resolved:0,agentTurns:0,reflexTurns:0,missed:0,queued:0},
-    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{},talkRefused:{},gambits:{}});
+    levers:{pulled:0,refused:0,by:{}},dmlog:{},dmStage:{moments:0,frames:0,scripted:0},dmShare:{kinds:Object.fromEntries(DM_KINDS.map(k=>[k,{agent:0,late:0,scripted:0}])),seat:{closed:0,norunner:0,live:0,waiting:0,unknown:0}},dmFocus:{acts:0,fellow:0},chat:{},deaths:[],votes:{agent:0,reflex:0},decisions:{},anomalies:0,memories:{},intents:{},talkRefused:{},gambits:{}});
   const tStats=()=>{const F=slotted(),t=F&&F.tableStats;return t?{scenes:t.scenes||0,agent:t.agent||0,reflex:t.reflex||0,capped:(t.capped||0)+(t.stalled||0),fights:t.fights||0}:{scenes:0,agent:0,reflex:0,capped:0,fights:0}};
   let tLast=null;
   // Everything already in the world counts as seen: the logs start from now (a restored save, a reload).
@@ -161,6 +161,8 @@ export function makeWatch(opts={}){
   // The log entries that tell who answered (issue #541): levers and posted hooks by caller, scripted board posts and branches,
   // staged scenes and the DM agent's voice.
   function shareOf(e){const K=H.dmShare.kinds,d=e.detail||{},ag=d.by==='dm-agent';
+    if(e.kind==='agent'&&(d.call==='frame'||d.call==='voice'))H.dmStage[d.by==='scripted'?'scripted':'frames']++; // the DM on stage (#1017): a scene's frame by the DM or by its reflex
+    if(e.kind==='agent'&&d.moment)H.dmStage.moments++; // ... and a line of the narrator's voice between scenes
     if(e.kind==='lever'){if(d.result==='applied'){K[/hook/.test(String(d.lever))&&ag?'board':'levers'][ag?'agent':'scripted']++}}
     else if(e.kind==='hooks'){if(d.added&&d.added.length)K.board.scripted++}
     else if(e.kind==='branch')K.branch.scripted++;

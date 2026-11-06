@@ -11,9 +11,11 @@
 //  6. patch notes (#664): every docs/patchnotes/*.md has front matter and 1-6 player-facing lines; on a pull request the
 //     checked-out (merged) tree holds docs/patchnotes/<PR>.md, unless the PR carries the label no-notes. The PR number
 //     comes from --pr N or PR_NUMBER (CI); the label is read live with gh (GH_TOKEN), so adding it and re-running works.
+//  10. workflows (#597): every .github/workflows/*.yml passes the strict line check in scripts/workflow-lint.mjs (a comma in an unquoted flow-mapping step name made ci.yml invalid and the PR BLOCKED with no failure).
+//  9. every world of WORLDS has its rows (epic #940 slice B): a snapshot row, a campaign file, fauna per region, a first delve per town, its places in docs/LORE.md.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
 import {mkTmp} from './tmp.mjs';
-import {readFileSync, readdirSync, existsSync, mkdtempSync} from 'node:fs';
+import {readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, dirname, resolve, relative, sep} from 'node:path';
@@ -84,8 +86,8 @@ const TABLES = [ // [id, file, picker(module) -> table]; an array row is named b
   ['USES', 'src/data/items.js', m => m.USES], ['CLS', 'src/data/classes.js', m => m.CLS], ['CLSN', 'src/data/classes.js', m => m.CLSN], ['SPECS', 'src/data/classes.js', m => m.SPECS],
   ['FAC', 'src/data/factions.js', m => m.FAC],
   ['PROF', 'src/data/professions.js', m => m.PROF],
-  ['ELDMOOR.regions', 'src/world/spec.js', m => m.ELDMOOR.regions], ['ELDMOOR.towns', 'src/world/spec.js', m => m.ELDMOOR.towns],
-  ['STEPPING.regions', 'src/world/spec.js', m => m.STEPPING.regions], ['STEPPING.towns', 'src/world/spec.js', m => m.STEPPING.towns],
+  // the regions and towns of every world of WORLDS (a world new on this branch has nothing to compare)
+  ...Object.keys(specMod.WORLDS).flatMap(id => ['regions', 'towns'].map(k => [id.toUpperCase() + '.' + k, 'src/world/spec.js', m => (m.WORLDS ? m.WORLDS[id] : m[id.toUpperCase()]) && (m.WORLDS ? m.WORLDS[id] : m[id.toUpperCase()])[k]])),
 ];
 const rowKey = r => r == null ? String(r) : typeof r !== 'object' ? String(r) : Array.isArray(r) ? (typeof r[0] === 'object' ? JSON.stringify(r[0]) : String(r[0])) : String(r.id ?? r.name ?? r.key ?? JSON.stringify(Object.keys(r)));
 const keysOf = t => t == null ? null : Array.isArray(t) ? t.map(rowKey) : Object.keys(t);
@@ -97,17 +99,25 @@ else {
   let t = a.status === 0 ? spawnSync('tar', ['-x'], {cwd: dir, input: a.stdout, maxBuffer: 1 << 30}) : null;
   if (!t || t.status !== 0) ok(false, 'could not read ' + ref + ' (git archive failed: ' + String(a.stderr || (t && t.stderr)).trim().slice(0, 200) + '); run `git fetch origin main`');
   else {
+    // the extract is ES modules whatever the temp dir's own package.json says (tmp.mjs writes commonjs into logs/tmp; without this every table read as new)
+    writeFileSync(join(dir, 'package.json'), '{"type":"module"}\n');
     const allow = ALLOW.tables || {};
+    const newOnes = [];
     for (const [id, file, pick] of TABLES) {
       let head, base;
       try {head = keysOf(pick(await import(pathToFileURL(join(ROOT, file)).href)))} catch (e) {ok(false, id + ' loads on this branch: ' + e.message); continue}
-      try {base = keysOf(pick(await import(pathToFileURL(join(dir, file)).href)))} catch {base = null}
-      if (!base) {ok(true, id + ' is new (nothing to compare)'); continue}
+      let baseMod = null, baseErr = null;
+      try {baseMod = await import(pathToFileURL(join(dir, file)).href)} catch (e) {baseErr = e}
+      if (baseErr && existsSync(join(dir, file))) {ok(false, id + ' cannot be read from ' + ref + ' although ' + file + ' exists there (' + String(baseErr.message).slice(0, 120) + '); the append-only guard would be off'); continue}
+      base = baseMod ? keysOf(pick(baseMod)) : null;
+      if (!base) {ok(true, id + ' is new (nothing to compare)'); newOnes.push(id); continue}
+      if (base.length === 0) {ok(false, id + ' reads empty on ' + ref + '; the append-only guard would compare nothing'); continue}
       if (!head) {ok(false, id + ' is gone from this branch'); continue}
       const bad = [], al = new Set(allow[id] || []);
       base.forEach((k, i) => {if (head[i] !== k && !al.has(k)) bad.push(`row ${i}: '${k}' on ${ref}, '${head[i]}' here`)});
       ok(bad.length === 0, `${id}: ${base.length} existing rows keep their place (${head.length} now)` + (bad.length ? '\n    ' + bad.slice(0, 8).join('\n    ') + (bad.length > 8 ? `\n    ... ${bad.length - 8} more` : '') + '\n    (append new rows at the end; a coordinated rename goes in the allowlist "tables")' : ''));
     }
+    ok(newOnes.length < TABLES.length, 'the guard compares tables (' + (TABLES.length - newOnes.length) + ' of ' + TABLES.length + ' read from ' + ref + '; new: ' + (newOnes.join(', ') || 'none') + ')');
   }
 }
 
@@ -166,6 +176,48 @@ console.log('\ncomments: no code hides after a // comment');
 {
   const r = spawnSync(process.execPath, [join(ROOT, 'scripts/commentcodecheck.mjs')], {cwd: ROOT, encoding: 'utf8'});
   ok(r.status === 0, 'no statement written after a // comment on the same line (scripts/commentcodecheck.mjs)' + (r.status === 0 ? '' : '\n    ' + r.stdout.trim().split('\n').slice(1).join('\n    ')));
+}
+
+// ---- 9. every world has its rows (epic #940 slice B) ----
+console.log('\nworlds: every world of WORLDS has its table rows');
+{
+  const {SNAPSHOTS} = await import(pathToFileURL(join(ROOT, 'scripts/world-snapshots.mjs')).href);
+  const {FAUNA} = await import(pathToFileURL(join(ROOT, 'src/data/fauna.js')).href);
+  const {PROLOGUES} = await import(pathToFileURL(join(ROOT, 'src/data/prologues.js')).href);
+  const lore = existsSync(join(ROOT, 'docs/LORE.md')) ? readFileSync(join(ROOT, 'docs/LORE.md'), 'utf8') : '';
+  // What a world needs besides its spec: a snapshot row (scripts/world-snapshots.mjs), a campaign file, fauna for every region
+  // (Eldmoor keeps the stock tables, so it is the one exception), a first delve for every town, its places in docs/LORE.md.
+  const missing = (id, spec) => {
+    const out = [];
+    if (!SNAPSHOTS[id]) out.push('no row in scripts/world-snapshots.mjs (hashes, minSpawn)');
+    if (!existsSync(join(ROOT, 'docs', 'campaigns', id + '.md'))) out.push(`no campaign file docs/campaigns/${id}.md`);
+    if (id !== 'eldmoor') for (const r of spec.regions || []) if (!FAUNA[r.id]) out.push(`no FAUNA row for region ${r.id} (src/data/fauna.js)`);
+    for (const t of spec.towns || []) if (!PROLOGUES.some(p => p.towns ? p.towns.includes(t.name) : p.fac === t.fac)) out.push(`no first delve naming ${t.name} (src/data/prologues.js)`);
+    for (const n of [...(spec.regions || []).map(r => r.name), ...(spec.towns || []).map(t => t.name)]) if (n && !lore.includes(n)) out.push(`${n} is not in docs/LORE.md`);
+    return out;
+  };
+  for (const [id, spec] of Object.entries(specMod.WORLDS)) {
+    const m = missing(id, spec);
+    ok(m.length === 0, `world ${id} has its rows` + (m.length ? '\n    ' + m.join('\n    ') : ''));
+  }
+  const ghost = missing('ghost', {regions: [{id: 'nowhere', name: 'Nowhereland'}], towns: [{name: 'Nowhere Town'}]});
+  ok(ghost.length >= 5, 'a world with none of its rows is caught, by name (' + ghost.length + ' gaps found for a made-up world)');
+}
+
+// ---- 10. workflow files parse (#597) ----
+console.log('\nworkflows: every .github/workflows/*.yml is valid for GitHub');
+{
+  const {lintWorkflow} = await import(pathToFileURL(join(ROOT, 'scripts/workflow-lint.mjs')).href);
+  const wdir = join(ROOT, '.github', 'workflows');
+  for (const f of existsSync(wdir) ? readdirSync(wdir).filter(f => /\.ya?ml$/.test(f)) : []) {
+    const errs = lintWorkflow(readFileSync(join(wdir, f), 'utf8'));
+    ok(errs.length === 0, `.github/workflows/${f} parses` + (errs.length ? '\n    ' + errs.map(e => `.github/workflows/${f}:${e.line}: ${e.why}`).join('\n    ') : ''));
+  }
+  // negative cases: the guard must fire on the PR #597 break and on an unclosed step, and stay quiet on good lines
+  const bad = lintWorkflow('steps:\n  - {name: Foo (a, b), run: npm run x}\n');
+  ok(bad.length === 1 && bad[0].line === 2, 'a comma in an unquoted flow-mapping step name is caught, with its line (the PR #597 break)');
+  ok(lintWorkflow('steps:\n  - {name: "Foo (a, b)", run: npm run x}\n  - {name: Foo (a; b), run: npm run x}\n').length === 0, 'a quoted name with a comma, and a name without one, pass');
+  ok(lintWorkflow('steps:\n  - {name: Foo, run: npm run x\n').length === 1, 'an unclosed flow-mapping step is caught');
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');

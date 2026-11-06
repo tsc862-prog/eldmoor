@@ -205,7 +205,7 @@ export function nodesView(a,r,kind){const L=nodeNear(a.x,a.y,r,kind);
     o.you=c.ok?'you can work it ('+c.mat+', '+(c.chance>=.7?'a sure hand':c.chance>=.5?'likely':'a stretch')+')':!hasProfession(a,prof)?'needs '+PROF[prof].name:t?'wait for it':c.why;
     return o})}
 const COMPASS=['east','southeast','south','southwest','west','northwest','north','northeast'];
-const compass=(dx,dy)=>Math.hypot(dx,dy)<1.5?'here':COMPASS[((Math.round(Math.atan2(dy,dx)/(Math.PI/4))%8)+8)%8];
+export const compass=(dx,dy)=>Math.hypot(dx,dy)<1.5?'here':COMPASS[((Math.round(Math.atan2(dy,dx)/(Math.PI/4))%8)+8)%8];
 
 // Which node a gather order means: a node id, a kind or name ("herb", "ore vein", "fishing spot"), or nothing (the
 // nearest one the hero can work). r is the hero's sight. {node} or {why}.
@@ -220,7 +220,7 @@ export function pickNode(a,v,r){const s=String(v==null?'':v).trim().toLowerCase(
     return {node:L.find(n=>canGather(a,n).ok)||L[0]}}
   const mine=inView.filter(n=>canGather(a,n).ok);
   if(mine.length)return {node:mine[0]};
-  if(!gatherProfs(a).length)return {why:'You know no gathering trade (herbalism, mining, skinning, fishing). learn_profession one in town first.'};
+  if(!gatherProfs(a).length)return {why:'You know no gathering trade (herbalism, mining, skinning, fishing). learn_profession one at a trainer in a friendly town first.'};
   return {why:'No spot in sight that you can work now.'+nearHint(a,inView)}}
 const nearHint=(a,L)=>{if(!L.length)return ' No gathering spot of any kind is in sight; walk on and look again (nodes).';
   return ' In sight: '+L.slice(0,4).map(n=>n.name+' '+n.id+' ('+Math.round(dist(a,n))+' tiles, '+(isReady(n)?'ready':'spent')+')').join(', ')+'.'}

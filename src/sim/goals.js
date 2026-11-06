@@ -80,7 +80,7 @@ const M={
   ascend:(a,t)=>{if(a.lvl>=20)return null;const need=Math.min(20,Math.max(a.lvl+ri(3,4),t===0?a.lvl+ri(4,7):t===1?ri(10,14):ri(16,20)));return mk('ascend',t,{need})},
   hoard:(a,t)=>mk('hoard',t,{need:Math.max(ri(...HOARD[t]),a.gold+30)}),
   pilgrimCrypt:(a,t)=>CRYPT_Z>=0?Object.assign(mk('pilgrimCrypt',t),{zone:CRYPT_Z,minLvl:Math.max(1,bandMin(CRYPT_Z)-3)}):null,
-  pilgrimFar:(a,t)=>FAR>=0?Object.assign(mk('pilgrimFar',t,{zone:PILGRIM_ZONE}),{zone:FAR,minLvl:Math.max(1,bandMin(FAR)-3)}):null,
+  pilgrimFar:(a,t)=>FAR>=0?Object.assign(mk('pilgrimFar',t,{zone:ZONES[FAR]}),{zone:FAR,minLvl:Math.max(1,bandMin(FAR)-3)}):null,
   avenge:(a,t,E)=>{if(!E){const pool=ELITES.filter(e=>e.lvl>=ELITE_LV[t][0]&&e.lvl<=ELITE_LV[t][1]);if(!pool.length)return null;E=pickA(pool)}
     const g=mk('avenge',t,{target:E.name+', '+E.title});g.target=E.name;return g},
   heirloom:(a,t,name)=>{if(name){if(DG_EPICS.includes(name))return mk('heirloomCrypt',t,{target:name});if(BOSS_EPICS.includes(name))return mk('heirloomBoss',t,{target:name});return mk('heirloom',t,{target:name})}
@@ -137,7 +137,7 @@ export function goalEvent(a,kind,x){
   case 'kill':if(g.type==='avenge'&&x.elite&&x.name===g.target)complete(a);break;
   case 'epic':if(g.type.indexOf('heirloom')===0&&x===g.target)complete(a);break;
   case 'level':if(g.type==='ascend'){g.progress=a.lvl;if(a.lvl>=g.need)complete(a)}else if(g.type==='rival')checkRival(a);break;
-  case 'crypt':if(g.type==='delve')complete(a);break;
+  case 'crypt':if(g.type==='delve'&&(g.dun||CRYPT.name)===x)complete(a);break; // x: the dungeon cleared; an oath is to one dungeon (#891)
   case 'boss':if(g.type==='legend')complete(a);break;
   case 'died':if(rnd()<.5&&!g.offered)log(a,' died with the oath unkept: ',{t:g.text,c:'dm'},'.');break;
   }}

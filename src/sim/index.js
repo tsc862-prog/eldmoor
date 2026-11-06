@@ -5,7 +5,8 @@ import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
 import {S,newWorldId,resetS} from './state.js';
 import {GOODS} from '../data/items.js';
-import {CRYPT} from '../world/map.js';
+import {CRYPTS,LAIR,ZONES,zoneAt} from '../world/map.js';
+import {ACTIVE_SPEC} from '../world/spec.js';
 import {reserveNames} from '../data/races.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
@@ -24,12 +25,15 @@ import {chatTick,resetChatSeed} from './chat.js';
 import {npcsTick,resetNpcSeed} from './npcs.js';
 import {talkTick,resetTalkSeed} from './talk.js'; // NPC conversations (#170)
 import {compTick} from './compvoice.js'; // scripted companions voiced by the DM (#764)
+import './sceneframe.js'; // the DM's frame of every scene (#1017)
+import {narrTick} from './narrvoice.js'; // the narrator's voice between scenes (#1017)
 import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import {downCallTick} from './downcall.js'; // the DM's voice on a downing (#655)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {installRumourLever} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever} from './epithet.js'; // bestow (#638)
 import {installSummonLever} from './summon.js'; // summon_hero (#780)
+import {installCallLever} from './callto.js'; // call_to (#826)
 import {localsTick,resetLocals} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
@@ -94,17 +98,17 @@ export {planOpening,openingDue,openingPending,openingWait,arrivalsView,ARRIVE} f
 export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost,setGateHold,worldHeld,holdLine} from './prep.js'; // the DM's prep before the table opens (#437)
 
 setFallHook(executeWill); // a will executes on the final death (#631)
-installRumourLever();installBestowLever();installSummonLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
+installRumourLever();installBestowLever();installSummonLever();installCallLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
 // o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
-// What a process starts with outside S: the auction house's opening supply and the Crypt's cooldown (init() puts them back, #507).
+// What a process starts with outside S: the auction house's opening supply and each dungeon's cooldown (init() puts them back, #507).
 const GOODS0={};for(const n in GOODS)GOODS0[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
-const CRYPT_CD0=CRYPT.cd;
+const CRYPT_CD0=CRYPTS.map(D=>D.cd);
 function resetWorld(){resetS();
   for(const n in GOODS0){GOODS[n].supply=GOODS0[n].supply;GOODS[n].prev=GOODS0[n].prev}
-  CRYPT.group=null;CRYPT.cd=CRYPT_CD0;reserveNames([],[]);
+  CRYPTS.forEach((D,i)=>{D.group=null;D.cd=CRYPT_CD0[i]});reserveNames([],[]);
   resetCompanyWatch();resetLocals();resetMemorials();resetBrain();resetChatSeed();resetNpcSeed();resetTalkSeed();resetLeverSeed();resetTableSeed();resetStagedSeed()} // the modules' private random streams start over with a world (#674)
 export function init(o={}){resetWorld();
   S.worldId=newWorldId(); // a new world instance (hosts purge the old world's memory mirror on a new id)
@@ -119,8 +123,8 @@ export function init(o={}){resetWorld();
   noteProlog(o); // the first delve (#922): stored only when it differs, so a setup world on the default keeps today's state
   if(o.setup||prologueOn())planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
-  log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
-  log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
+  log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond '+ZONES[zoneAt(LAIR.x,LAIR.y)]+'.'); // the lair's and the first dungeon's own region and name, not Eldmoor's (the Vale has neither Cinderpass nor a Sunken Crypt)
+  log('No guild yet holds a banner, and ',{t:CRYPTS[0].name,c:'gd'},' waits beneath '+ZONES[zoneAt(CRYPTS[0].x,CRYPTS[0].y)]+'.');
   log({t:'Hardcore rules:',c:'gd'},' every hero has one life. The fallen stay fallen.');
 }
 
@@ -140,6 +144,6 @@ export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lap
   // agent-played heroes (sim/player.js) run a reduced machine first
   partyTick();slotsTick(dt);estateTick();companionTick();hireTick();challengeTick();councilTick();campTick(dt);tableTick();sessionTick();prologueTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   woundTick();updBoss(dt);raidCheck(dt);pvpCheck(dt);outpostsTick(dt);dungeonCheck(dt);siteTick(dt);updMarket(dt);
-  trafficTick(dt);chatTick(dt);npcsTick(dt);talkTick();compTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
+  trafficTick(dt);chatTick(dt);npcsTick(dt);talkTick();compTick();narrTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}

@@ -1,8 +1,8 @@
 // The room grid (#744, slice 2 of #140's named positions): tiles underneath, names on top. A crawl room has a small grid of its
 // own, the chamber's box in the dungeon's interior (world/interior.js, world/siteinterior.js); everyone in the room stands on one
 // tile of it. Agents speak in spots and relations ("hold the doorway", "beside Kerin", "toward the stair"), the game turns that
-// into a tile, and they read the room back in words. No rule reads a position yet (#745): nothing here rolls a die or touches
-// the sim's RNG, and it is all pure over plain data.
+// into a tile, and they read the room back in words. The rules that read a position live in sim/geometry.js (#745): nothing here
+// rolls a die or touches the sim's RNG, and it is all pure over plain data.
 //   roomSpots(m, i, spec?)   the named spots of chamber i of interior m in world tiles (feet): {stair, back, front, flankL, flankR,
 //                            cover, den} each {id, x, y, u, v}, own (a room's own spots), {ax, ay} (the unit step from the way in
 //                            toward the den), {px, py} (across it, toward flankR), half, len, coverName, coverWord. Cached.
@@ -14,6 +14,7 @@
 //   goSpot, goBeside         the same for an act that implies a move (spotFor, the reflexes).
 //   roomWords(R, canMove)    the room in a few short sentences, no coordinates; moveNames(R) the spots one may name.
 //   spotAt(G, x, y), spotWord(G, id)   the spot a tile belongs to, and its name in the agents' words.
+//   aimTile(R, text)         a spot, a companion or a foe by name -> its tile {x, y, word} or {error}: where a blast is aimed (#745).
 // R is the room as one member sees it: {G, cr, me (hero id), mates: [{id, name, down}], foes: [{key, name}]}, the living only.
 import {IT} from '../world/interior.js';
 
@@ -63,9 +64,10 @@ export function roomSpots(m,i,spec){const key=m.seed+':'+(m.theme||'')+':'+m.w+'
 const gridCache=new WeakMap(); // interior -> {room key: grid}
 const I=(G,x,y)=>y*G.w+x;
 const on=(G,x,y)=>x>=0&&y>=0&&x<G.w&&y<G.h&&!!G.ok[I(G,x,y)];
+export const gridOn=on;
 const d2=(x,y,X,Y)=>(x-X)*(x-X)+(y-Y)*(y-Y);
 // The free tile nearest (x, y), lowest index on a tie; (x, y) itself when the room is full.
-function nearFree(G,used,x,y){let b=-1,bd=1e9;for(let k=0;k<G.w*G.h;k++){if(!G.ok[k]||used.has(k))continue;const X=k%G.w,Y=(k-X)/G.w,d=d2(X,Y,x,y);if(d<bd){bd=d;b=k}}
+export function nearFree(G,used,x,y){let b=-1,bd=1e9;for(let k=0;k<G.w*G.h;k++){if(!G.ok[k]||used.has(k))continue;const X=k%G.w,Y=(k-X)/G.w,d=d2(X,Y,x,y);if(d<bd){bd=d;b=k}}
   return b<0?{x,y}:{x:b%G.w,y:Math.floor(b/G.w)}}
 export function roomGrid(m,i,spec){let per=gridCache.get(m);if(!per)gridCache.set(m,per={});const key=i+(spec&&spec.spots?JSON.stringify(spec.spots):'');if(per[key])return per[key];
   const r=m.rooms[i],s=roomSpots(m,i,spec);if(!r||!s)return null;const w=r.w,h=r.h,ok=new Uint8Array(w*h),wet=new Uint8Array(w*h);
@@ -75,10 +77,11 @@ export function roomGrid(m,i,spec){let per=gridCache.get(m);if(!per)gridCache.se
   // every spot a tile of its own while the room has tiles to spare
   const used=new Set(),all=[...SPOT_IDS.map(id=>s[id]),...G.own.map(id=>s.own[id])];
   for(const p of all){const c=nearFree(G,used,Math.floor(p.x)-r.x,Math.floor(p.y-.3)-r.y);G.spots[p.id]=c;used.add(I(G,c.x,c.y))}
-  G.names=['front','flankL','flankR','back','cover','stair',...G.own];
-  Object.assign(G.alias,ALIAS);G.alias[norm(s.coverWord)]='cover';for(const id of G.own)G.alias[norm(id)]=id;
+  G.names=['front','flankL','flankR','back','cover','stair',...G.own];aliasSpots(G);
   return per[key]=G}
-export const spotWord=(G,id)=>id==='flankL'?'flank-left':id==='flankR'?'flank-right':id==='cover'?G.coverWord:id;
+// The words a grid's spots answer to: the usual ones, its cover, its own spots and any name it gave a spot (sim/patch.js, #746).
+export function aliasSpots(G){Object.assign(G.alias,ALIAS);G.alias[norm(G.coverWord)]='cover';for(const id of G.own)G.alias[norm(id)]=id;for(const id in G.word||{})G.alias[norm(G.word[id])]=id}
+export const spotWord=(G,id)=>G.word&&G.word[id]||(id==='flankL'?'flank-left':id==='flankR'?'flank-right':id==='cover'?G.coverWord:id);
 const theWord=(G,id)=>id==='flankL'||id==='flankR'||(id==='cover'&&G.coverWord==='cover')?spotWord(G,id):'the '+spotWord(G,id);
 const atWord=(G,id)=>(id==='cover'&&G.coverWord!=='pillar'?'in ':'at ')+theWord(G,id);
 
@@ -93,7 +96,8 @@ function occ(R){const taken=new Set(),block=new Set(),P=R.cr.pos,G=R.G;
   for(const f of R.foes)if(P[f.key]){const k=I(G,P[f.key].x,P[f.key].y);taken.add(k);block.add(k)}
   return {taken,block}}
 const N8=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-function bfs(G,x,y,block){const D=new Int16Array(G.w*G.h).fill(-1);if(x<0||y<0||x>=G.w||y>=G.h)return D;const q=[[x,y]];D[I(G,x,y)]=0;
+export function bfs(G,x,y,block){const D=new Int16Array(G.w*G.h).fill(-1);if(x<0||y<0||x>=G.w||y>=G.h)return D;const q=[[x,y]];D[I(G,x,y)]=0;
+  if(G.cost){for(let h=0;h<q.length;h++){const [X,Y]=q[h],d=D[I(G,X,Y)];for(const [dx,dy] of N8){const a=X+dx,b=Y+dy;if(!on(G,a,b))continue;const k=I(G,a,b);if(block.has(k))continue;const n=d+(G.cost[k]||1);if(D[k]>=0&&D[k]<=n)continue;D[k]=n;q.push([a,b])}}return D} // the open ground (#746): a slow tile costs more, so a tile may be reached again by a cheaper way
   for(let h=0;h<q.length;h++){const [X,Y]=q[h],d=D[I(G,X,Y)];for(const [dx,dy] of N8){const a=X+dx,b=Y+dy;if(!on(G,a,b))continue;const k=I(G,a,b);if(D[k]>=0||block.has(k))continue;D[k]=d+1;q.push([a,b])}}
   return D}
 // As near (tx, ty) as the round allows: the free tile within POS.STEP steps that is fewest steps from it. short: too far, or held.
@@ -143,14 +147,18 @@ export function resolveMove(R,text){const t=String(text==null?'':text).trim().sl
   const e=entity(R,m?m[1]:w);
   if(e){const g=e.spot?goSpot(R,e.spot):goBeside(R,e.key);return g?moved(R,g):refuse(R,t)}
   m=STEPS.exec(w);if(!m)return refuse(R,t);
-  const n=Math.min(POS.STEP,/^\d/.test(m[1]||'')?+m[1]:NUM[m[1]]||1),dir=DIR(G,m[2]),{taken,block}=occ(R);if(n<1)return refuse(R,t);let x=p.x,y=p.y,bx=x,by=y;
-  for(let k=0;k<n;k++){const X=x+dir[0],Y=y+dir[1];if(!on(G,X,Y)||block.has(I(G,X,Y)))break;x=X;y=Y;if(!taken.has(I(G,x,y))){bx=x;by=y}}
+  const n=Math.min(POS.STEP,/^\d/.test(m[1]||'')?+m[1]:NUM[m[1]]||1),dir=DIR(G,m[2]),{taken,block}=occ(R);if(n<1)return refuse(R,t);let x=p.x,y=p.y,bx=x,by=y,left=POS.STEP;
+  for(let k=0;k<n;k++){const X=x+dir[0],Y=y+dir[1];if(!on(G,X,Y)||block.has(I(G,X,Y)))break;left-=G.cost&&G.cost[I(G,X,Y)]||1;if(left<0)break;x=X;y=Y;if(!taken.has(I(G,x,y))){bx=x;by=y}}
   if(bx===p.x&&by===p.y)return {error:'The way '+m[2]+' is blocked. You may move to: '+moveNames(R).join(', ')+'.'};
   return moved(R,{x:bx,y:by})}
 
+// Where a blast lands: what the words name, with no walk at all.
+export function aimTile(R,text){const t=String(text==null?'':text).trim().slice(0,80),e=entity(R,norm(t).replace(LEAD,'')),at=tileOf(R,e);
+  return at?{x:at.x,y:at.y,word:'You aim at '+(e.spot?theWord(R.G,e.spot):t)+'.'}:{error:'Cannot aim at "'+t+'". Name a spot, a companion or a foe.'}}
+
 // ---- the room in words ----
 const tiles=n=>n===1?'1 tile':n+' tiles';
-function cheb(a,b){return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))}
+export function cheb(a,b){return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))}
 // The direction from one tile to another, facing the den.
 function dirWord(G,a,b){const dx=b.x-a.x,dy=b.y-a.y,f=dx*G.ax+dy*G.ay,s=dx*G.px+dy*G.py,F=Math.abs(f),T=Math.abs(s);
   return T<F*.5?(f>0?'ahead':'behind you'):F<T*.5?(s>0?'to your right':'to your left'):(f>0?'ahead':'behind you')+' to the '+(s>0?'right':'left')}
@@ -162,8 +170,8 @@ export function roomWords(R,canMove){const {G,cr}=R,P=cr.pos,p=P[R.me];if(!p)ret
   if(far.length)L.push(list(far.map(b=>{const s=spotAt(G,P[b.id].x,P[b.id].y);return named(b)+' '+(s?atWord(G,s):tiles(cheb(P[b.id],p))+' '+dirWord(G,p,P[b.id]))}))+'.');
   const F=R.foes.filter(f=>P[f.key]).map(f=>({f,t:P[f.key],d:cheb(P[f.key],p)})).sort((a,b)=>a.d-b.d||(a.f.key<b.f.key?-1:1));
   if(F.length)L.push('Foes: '+F.slice(0,4).map(({f,t,d})=>f.name+' '+tiles(d)+' '+dirWord(G,p,t)+(G.wet[I(G,t.x,t.y)]?', in the water':'')).join('; ')+(F.length>4?'; '+(F.length-4)+' more':'')+'.');
-  const st=G.spots.stair;if(here!=='stair')L.push('The stair is '+tiles(Math.max(1,cheb(st,p)))+' '+dirWord(G,p,st)+'.');
-  const cv=G.spots.cover;if(here!=='cover')L.push('Cover: '+(G.coverWord==='cover'?'':'the '+G.coverWord+' ')+tiles(Math.max(1,cheb(cv,p)))+' '+dirWord(G,p,cv)+'.');
+  const st=G.spots.stair;if(here!=='stair')L.push('The '+spotWord(G,'stair')+' is '+tiles(Math.max(1,cheb(st,p)))+' '+dirWord(G,p,st)+'.');
+  const cv=G.spots.cover;if(cv&&here!=='cover')L.push('Cover: '+(G.coverWord==='cover'?'':'the '+G.coverWord+' ')+tiles(Math.max(1,cheb(cv,p)))+' '+dirWord(G,p,cv)+'.');
   if(canMove){const {block}=occ(R),from=bfs(G,p.x,p.y,block),now=[],then=[];for(const id of G.names){if(id===here)continue;const t=G.spots[id],d=from[I(G,t.x,t.y)];if(d>=0&&d<=POS.STEP)now.push(spotWord(G,id));else then.push(id)}
     L.push('You may move to: '+[...now,...then.map(id=>'toward '+theWord(G,id))].join(', ')+' ('+POS.STEP+' tiles a round).')}
   return L.join(' ')}

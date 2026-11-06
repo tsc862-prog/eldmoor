@@ -6,6 +6,8 @@
 import {MOVES,PASSIVES} from '../data/moves.js';
 import {SPEC_LVL} from '../data/classes.js';
 import {notify} from './notify.js';
+import {GATHER} from './gather.js';
+import {professionsOf} from './professions.js';
 import {growthWaiting} from './abilities.js';
 import {GROWTH} from '../data/abilities.js';
 import {foeName} from './lore.js'; // a creature is named only as the hero knows it (#188)
@@ -31,13 +33,15 @@ export function wakeXp(a,x,need){if(!a.player)return;const X=bundle(a);
   pend(a,'xp','+'+X.xp+' XP'+from+(a.lvl<20?'; '+Math.max(0,need-a.xp)+' XP to advance':''),1);
   X.n=a.playPend.xp}
 
+export const TRADE_AGE='Heroes your age take up a trade: a trainer in any friendly town teaches one (recipes shows them).';
 // What a level opens: abilities, passives, the specialisation choice.
 export function wakeLevelUp(a,maxhp){if(!a.player)return;const L=a.lvl,un=[];
   for(const m of Object.values(MOVES))if(m.cls===a.cls&&!m.spec&&m.lvl===L)un.push('ability '+m.name);
   for(const p of Object.values(PASSIVES))if(p.cls===a.cls&&!p.spec&&p.lvl===L)un.push('passive '+p.name);
   if(L===SPEC_LVL)un.push('a specialisation path is open: choose one with choose_specialisation');
   const g=growthWaiting(a);if(g&&g.lvl===L)un.push('a score point to place: raise_score {score, why} (brawn, reflex, grit, wits, insight or presence; the class default follows if you wait '+GROWTH.HOLD+' game hours)');
-  notify(a,'LEVEL UP: you are level '+L+', HP '+maxhp+(un.length?'. Unlocked: '+un.join('; '):''),0,2)}
+  notify(a,'LEVEL UP: you are level '+L+', HP '+maxhp+(un.length?'. Unlocked: '+un.join('; '):''),0,2);
+  if(L===GATHER.LEARN_LVL&&!professionsOf(a).length)notify(a,TRADE_AGE)} // the age the scripted heroes take up a trade; for an agent only words (#872)
 
 export function wakeQuest(a,done){if(!a.player||!a.quest)return;pend(a,'quest','Quest progress: '+a.quest.have+' of '+a.quest.need+' '+(a.quest.type||'')+(done?' - ready to turn in':''),1)}
 export function wakeQuestDone(a,name,gold){notify(a,'Quest completed: '+name+(gold?' ('+gold+'g)':''),0,2)} // an oath or a scene pays no gold

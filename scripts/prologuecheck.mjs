@@ -5,9 +5,11 @@
 //   - 'none', a world with no setup, a solo, and a world with no host are exactly today's opening (nothing raised, nothing stored)
 //   - a save mid-prologue restores into it; a finished one never plays again
 //   - the DM frames the rooms and silence is filled; heroes never read what is behind the place
-// Usage: npm run prologuecheck (Eldmoor); ELDMOOR_WORLD=stepping npm run prologuecheck (npm run prologuecheck:stepping = --world stepping, #721's six towns: every hall gets a mouth in its own region, a clear walk from the gate).  --stats N sound|weak: N mock-company runs, one line of numbers each and a summary (balance reports);
+// Usage: npm run prologuecheck (every world of WORLDS, one process each); ELDMOOR_WORLD=stepping npm run prologuecheck or --world stepping runs one (#721's six towns: every hall gets a mouth in its own region, a clear walk from the gate).  --stats N sound|weak: N mock-company runs, one line of numbers each and a summary (balance reports);
 // --stats N weak [alt]: alt plays the rows a second company takes; weak the same with minds that pick a random legal act half the time (a poor player, not the reflex's sound play).
 {const w = process.argv.indexOf('--world'); if (w > 0) process.env.ELDMOOR_WORLD = process.argv[w + 1]}
+// With no world named (and not --stats) the check runs once in every world of WORLDS, each in its own process (#940 slice B).
+if (!process.env.ELDMOOR_WORLD && process.argv[2] !== '--stats') {const {runWorlds, WORLD_IDS} = await import('./worlds.mjs'); process.exit(runWorlds('prologuecheck', {worlds: WORLD_IDS}) ? 1 : 0)}
 let seed = 0x9e3779b9 ^ (Number(process.env.PROLOGUE_SEED) || 922);
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
 const SIM = await import('../src/sim/index.js');
