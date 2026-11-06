@@ -173,6 +173,8 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: Dungeon crawl room by room, run: npm run crawlcheck}
+      - {name: First delve, run: npm run prologuecheck}
+      - {name: First delve on the Stepping Lands, run: npm run prologuecheck:stepping}
       - {name: DM-made dungeon sites, run: npm run sitecheck}
       - {name: Camp and rest, run: npm run campcheck}
       - {name: Town autopilot and danger edges, run: npm run townpilotcheck}

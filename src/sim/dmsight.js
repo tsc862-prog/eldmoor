@@ -12,7 +12,8 @@
 import {outpostsView} from './outposts.js';
 import {S,clockStr,dayNo} from './state.js';
 import {G,SGRASS,FLOWER,SNOW} from '../world/tiles.js';
-import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPT,CRYPTS,zoneAt,dist} from '../world/map.js';
+import {cryptRow} from './crypts.js';
 import {spotErr,LK,activeOf} from './levers.js';
 import {GROUND,DIRS,bearing,groundScan,groundLines,roadLine,routeFacts,wayWords} from './ground.js'; // the ground, read as a hero reads it (#797)
 import {focuses} from './dmfocus.js';
@@ -119,6 +120,7 @@ export function worldStanding(){
   const grp=CRYPT&&CRYPT.group;
   const crypt={name:CRYPT?CRYPT.name:null,clears:guilds.reduce((t,g)=>t+g.crypt_clears,0),wipes:guilds.reduce((t,g)=>t+g.crypt_wipes,0),
     party_below:grp?{phase:grp.phase,members:(grp.mem||[]).map(a=>a.name)}:null,last_clear:cf?{day:Math.floor((cf.gameMin||0)/1440)+1,text:txt(cf.parts)}:null};
+  if(CRYPTS.length>1)crypt.dungeons=CRYPTS.map(D=>({name:D.name,...cryptRow(D),party_below:D.group?{phase:D.group.phase,members:(D.group.mem||[]).map(a=>a.name)}:null})); // each dungeon's own record (#891)
   const ps=Object.keys(GOODS).map(n=>({n,p:price(n),b:GOODS[n].base})).map(o=>({...o,dev:o.p/Math.max(1,o.b)-1})).sort((x,y)=>Math.abs(y.dev)-Math.abs(x.dev)).slice(0,5);
   const auction={notable:ps.map(o=>({good:o.n,price:o.p,base:o.b,vs_base:(o.dev>=0?'+':'')+Math.round(o.dev*100)+'%'})),shocks:activeOf('price_shock').map(x=>({good:x.params&&x.params.good,direction:x.params&&x.params.direction,hours_left:Math.max(0,Math.round((x.until-S.gameMin)/60))}))};
   const top=S.agents.filter(alive).sort((x,y)=>y.lvl-x.lvl||(y.xp||0)-(x.xp||0)||x.id-y.id).slice(0,5).map(a=>({name:a.name,lvl:a.lvl,cls:a.cls,faction:a.fac===0||a.fac===1?['Concord','Warband'][a.fac]:'neutral',guild:a.guild?a.guild.tag:null}));

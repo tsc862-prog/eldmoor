@@ -6,6 +6,7 @@
 // seeded run repeats; nobody stands in a solid tile or sticks fast in a long run.
 // Runs the active world; with no ELDMOOR_WORLD it runs Eldmoor, then re-runs itself for the Stepping Lands.
 // Usage: npm run pathcheck
+import './seed-first.mjs'; // before the sim loads: its import-time dice are fixed (#888)
 import {spawnSync} from 'node:child_process';
 import {tiles,I,CITY,LANDMARKS,ZPTS,ZONES,NODES,land,mainLand,zoneAt} from '../src/world/map.js';
 import {W,H,RIVER,BRIDGE} from '../src/world/tiles.js';
@@ -129,16 +130,16 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
   ok(!!z&&(/^(bridge|ford)$/.test(z.crossing)||z.crossing==='unknown'&&z.tiles==null),'the crossing is a fact, and one the hero cannot know has no kind or distance: '+JSON.stringify(z))}
 
 // ---- a long run ----
-{const run=seed=>{seedRng(seed);init();const P=[];let bad=new Map(),stuck=0;const last=new Map();
+{const run=seed=>{seedRng(seed);init();const P=[];let bad=new Map(),stuck=0;const who=[],last=new Map();
     for(let i=0;i<20*3600;i++){step(1/60);if(i%30)continue;
       for(const L of [S.agents,S.mobs,S.npcs||[],S.wanderers||[],S.traffic&&S.traffic.list||[],S.traffic&&S.traffic.guards||[]])for(const e of L){if(e.state==='dead'||e.hidden||e.alive===false||e.gone)continue;
         if(solidAt(e.x,e.y)){const k=(e.kind||'person')+':'+(e.state||'')+':'+solidWhy(e.x,e.y);bad.set(k,(bad.get(k)||0)+1)}}
       if(i%600)continue;
-      for(const a of S.agents){if(a.state!=='travel'&&a.state!=='return'){last.delete(a);continue}const p=last.get(a);if(p&&p.st===a.state&&Math.hypot(p.x-a.x,p.y-a.y)<.01)stuck++;last.set(a,{x:a.x,y:a.y,st:a.state})}}
-    seedRng(null);return {bad,stuck,sig:S.agents.map(a=>a.x.toFixed(4)+','+a.y.toFixed(4)).join('|')}};
+      for(const a of S.agents){if(a.state!=='travel'&&a.state!=='return'){last.delete(a);continue}const p=last.get(a);if(p&&p.st===a.state&&Math.hypot(p.x-a.x,p.y-a.y)<.01){stuck++;who.push(a.name+'@'+a.x.toFixed(1)+','+a.y.toFixed(1)+' '+a.state)}last.set(a,{x:a.x,y:a.y,st:a.state})}}
+    seedRng(null);return {bad,stuck,who,sig:S.agents.map(a=>a.x.toFixed(4)+','+a.y.toFixed(4)).join('|')}};
   const A=run(5),B=run(5);
   ok(A.bad.size===0,'20 minutes: nobody stands in a solid tile'+(A.bad.size?' '+JSON.stringify([...A.bad]):''));
-  ok(A.stuck===0,'nobody travelling stands fast for 10 seconds ('+A.stuck+')');
+  ok(A.stuck===0,'nobody travelling stands fast for 10 seconds ('+A.stuck+(A.stuck?' '+A.who.join(' '):'')+')');
   ok(A.sig===B.sig,'a seeded run repeats')}
 
 console.log('plans',pathStats.plans,'worst search',pathStats.peak,'nodes');

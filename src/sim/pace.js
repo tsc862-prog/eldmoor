@@ -64,7 +64,7 @@ export function paceCheck(id,{since=null,minutes=240,wake='all',reflect=false}={
   const from=Number.isFinite(Number(since))&&since!==null?Number(since):S.gameMin,m=Math.min(PACE.MIN[1],Math.max(PACE.MIN[0],Number(minutes)||240));
   const out=(w,why,must)=>({ok:true,wake:w,why:why||null,...(must?{must:true}:{}),gameMin:Math.round(S.gameMin),since:from,clock:day(),table:!!tv});
   const tv=tableView(a);
-  if(tv&&!tv.acted&&tv.phase!=='outcome'&&tv.waiting_for!=='the DM')return out('now','a scene at the table: '+tv.scene,true); // not while the DM sets it (#682)
+  if(tv&&!tv.acted&&tv.phase!=='outcome'&&tv.waiting_for!=='the DM'&&tv.your_turn)return out('now','a scene at the table: '+tv.scene,true); // only when it asks something of this hero (#926): a member whose turn has not come was woken again and again to find nothing to answer; its YOUR TURN event (level 3) wakes it // not while the DM sets it (#682)
   const seen=a.playEvSeen||0,sleeping=asleep(a);let soft=null,now=null; // a sleeper's agent gets no soft turns and no heartbeat: only wake events (#178)
   for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=3)return out('now',e.text,true);if(l===2&&!now)now=e;if(l===1&&!soft&&!sleeping)soft=e}
   if(wake==='must'||tableRest(a))return null;
@@ -122,7 +122,7 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
 function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options||tv.waiting_for==='the DM')return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
   const g=swornOf(a)&&a.goal.text?a.goal.text:null,tl=toldLine(a);
-  return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
+  return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,id:sceneOf(a).id,...(tv.round?{round:tv.round}:{}),keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
     you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{}),...(tv.your_past?{past:tv.your_past}:{})},...(tv.swear?{swear:tv.swear}:{}),...(tv.room?{room:tv.room}:{}),...(tv.moves?{moves:tv.moves}:{}),...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)
 // Where the hero stands, for the header (#399): a town by name when it is inside one ("Highgate (town; Lowmark around it)"), so
 // an agent waiting in town no longer reads the region and calls hunt there. The same words move_to reads back.
