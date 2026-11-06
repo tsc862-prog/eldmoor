@@ -1,6 +1,6 @@
 // Rules from geometry (#745, slice 3 of #140's named positions): where people stand decides what a blow may do, so "flank" and
 // "guard" mean one thing in every room. One resolver, pure over plain data: nothing here rolls a die, writes a position or knows
-// what a crawl is; a scene builds a field and reads the answers (sim/crawl.js today, open-world scenes later). The dice stay the
+// what a crawl is; a scene builds a field and reads the answers (sim/crawl.js below ground, sim/patch.js on the open map, #746). The dice stay the
 // caller's: these are the modifiers on them, the tiles people walk to and the room's consequences in words. No coordinates in words.
 //   A field F: {G (a grid of sim/roomgrid.js: w, h, ok, spots), pos ({key: {x, y}}), mates [{id, name, down}], foes [{key, name, role,
 //   fin (strikes the downed), boss (keeps its den)}], guards [hero ids drawing the foes this round]}. A key is a hero id or a foe's key.
@@ -30,9 +30,12 @@ export const GEO={
   FOE_STEP:3,    // tiles a foe goes in a round
   STAIR_R:1,     // on the stair: this near its tile (it holds one, and they leave by it in turn)
   SHOT_MIN:2,    // a class or role with this reach or more fights at range (CLS range, ROLES reach)
+  PATCH:[9,7],   // the tiles of world map an open-world scene freezes round its anchor (#746, sim/patch.js)
 };
 
 const P=(F,k)=>F.pos[k];
+// Can a shot pass this tile? A wall or a pillar stops it; on the open map water and fire do not, though nobody stands on them (G.see, #746).
+const seeOn=(G,x,y)=>G.see?x>=0&&y>=0&&x<G.w&&y<G.h&&!!G.see[y*G.w+x]:gridOn(G,x,y);
 const standing=F=>F.mates.filter(b=>!b.down&&F.pos[b.id]);
 const liveFoes=F=>F.foes.filter(f=>F.pos[f.key]);
 export const adj=(p,q)=>!!p&&!!q&&cheb(p,q)===1;
@@ -44,7 +47,7 @@ export const foeShoots=f=>!!(ROLES[f.role]&&ROLES[f.role].reach>=GEO.SHOT_MIN);
 // Every tile between two tiles, one a step along the longer axis.
 function between(p,q){const n=cheb(p,q),o=[];for(let i=1;i<n;i++)o.push({x:Math.round(p.x+(q.x-p.x)*i/n),y:Math.round(p.y+(q.y-p.y)*i/n)});return o}
 // {clear: no wall or pillar in the way, friend: the name of someone standing on it}. A friend stops no shot, it spoils it.
-export function lineOf(F,p,q,me){let friend=null;for(const t of between(p,q)){if(!gridOn(F.G,t.x,t.y))return {clear:false,friend:null};
+export function lineOf(F,p,q,me){let friend=null;for(const t of between(p,q)){if(!seeOn(F.G,t.x,t.y))return {clear:false,friend:null};
     if(!friend){const b=standing(F).find(x=>x.id!==me&&P(F,x.id).x===t.x&&P(F,x.id).y===t.y);if(b)friend=b.name}}
   return {clear:true,friend}}
 // Can a strike from tile p reach tile q? {ok, pen (the line's), how: 'adjacent' | 'shot', friend?}.
@@ -62,7 +65,7 @@ function hemmed(F,fk){const q=P(F,fk),by=standing(F).filter(b=>adj(P(F,b.id),q))
   return by.some(a=>by.some(b=>{const s=P(F,a.id),t=P(F,b.id);return a!==b&&(s.x-q.x)*(t.x-q.x)+(s.y-q.y)*(t.y-q.y)<0}))}
 // The guard beside a member (never the member itself): its cover against free blows and the foes' aim. Null: nobody.
 export function guardOf(F,me,at){const p=at||P(F,me);for(const id of F.guards||[]){if(id==me)continue;const b=F.mates.find(x=>x.id==id);if(b&&!b.down&&adj(P(F,id),p))return b}return null}
-export const inCover=(F,me)=>{const p=P(F,me);return !!p&&spotAt(F.G,p.x,p.y)==='cover'};
+export const inCover=(F,me)=>{const p=P(F,me);return !!p&&(F.G.cover?!!F.G.cover[p.y*F.G.w+p.x]:spotAt(F.G,p.x,p.y)==='cover')}; // on the open map every tree and rock is cover (#746)
 // The foes a step from one tile to another walks out of: each has its free blow.
 export const leaving=(F,from,to)=>liveFoes(F).filter(f=>adj(from,P(F,f.key))&&!adj(to,P(F,f.key)));
 
@@ -116,14 +119,15 @@ export const atStair=(F,me)=>within(P(F,me),F.G.spots.stair,GEO.STAIR_R);
 
 // ---- the foes ----
 // Who a foe can strike from where it stands: those beside it, or along a clear line for one that shoots.
-export function blowsFrom(F,f,L=standing(F)){const q=P(F,f.key),far=foeShoots(f);return L.filter(b=>{const p=P(F,b.id);return p&&(adj(p,q)||(far&&cheb(p,q)<=GEO.RANGE&&lineOf(F,q,p,f.key).clear))})}
+export function blowsFrom(F,f,L=standing(F)){const q=P(F,f.key),far=foeShoots(f);return L.filter(b=>{const p=P(F,b.id);return p&&(adj(p,q)||(f.reach&&cheb(p,q)<=f.reach)||(far&&cheb(p,q)<=GEO.RANGE&&lineOf(F,q,p,f.key).clear))})}
 // Where a foe goes this round (scripted, no dice). to: a hero it was drawn to. Swarms spread over the party and take the far side of
 // their prey; archers hold their range; what finishes goes for the downed; a named boss keeps its den until it is hemmed in, then
 // breaks for someone who is not on it. Null: it stays.
-export function foeTile(F,f,to){const q=P(F,f.key),up=standing(F);if(!q||!up.length)return null;const L=walks(F,f.key,GEO.FOE_STEP,true),h=held(F,f.key);
+export function foeTile(F,f,to){const q=P(F,f.key),up=standing(F);if(!q)return null;const L=walks(F,f.key,GEO.FOE_STEP,true),h=held(F,f.key);
   const nearestOf=A=>{let b=null,bd=1e9;for(const m of A){const d=cheb(P(F,m.id),q);if(d<bd){bd=d;b=m}}return b};
   const go=t=>!t||(t.x===q.x&&t.y===q.y)?null:{x:t.x,y:t.y};
   const beside=(m,more)=>{const p=P(F,m.id),w=toward(F,p,h.taken);return go(top(L,x=>(adj(x,p)?100:w(x))+(more?more(x,p):0)))};
+  if(!up.length){const m=nearestOf(F.mates.filter(b=>b.down&&P(F,b.id)));return m&&!adj(q,P(F,m.id))?beside(m):null} // nobody stands: it goes to those who lie there (the open map; below ground that is the wipe)
   if(to!=null&&!foeShoots(f)){const m=up.find(b=>b.id==to);if(m)return adj(q,P(F,m.id))?null:beside(m)}
   if(f.boss){if(!hemmed(F,f.key))return null;const m=nearestOf(up.filter(b=>!adj(P(F,b.id),q)));return m?beside(m):null}
   if(f.fin){const m=nearestOf(F.mates.filter(b=>b.down&&P(F,b.id)));if(m)return adj(q,P(F,m.id))?null:beside(m)}
