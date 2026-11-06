@@ -37,3 +37,4 @@
 - [Town walls and plaza](lpcwalls.md) — #830 LPC walls per side, towers, shadows, LPC Roofs shakes, vite restart trap
 - [Kit rows and houses](lpchouses.md) — plan `kit` rows, houses out of TOWN_PIECES, palisade wall set, streets through the plaza
 - [Scenery](scenery.md) — #940 Vale art pass: scenery.js, spec note, smoothed river and roads, felled trees, staging
+- [Vale stack](valestack.md) — #980 ten PRs as one branch: merge order, shadow-pass trap, stacked PRs after landing
