@@ -116,6 +116,7 @@ import {defineGambits,idlePick,fightRules,reflexPick,HOLD,gambitRec,ruleText,GAM
 import {aidOrder,aidView,DOWN} from './downed.js'; // help a downed companion: stabilize, tend, carry (#626, #658)
 import {tendBy,tendBlock,chapelTend,woundLook,woundsView} from './tend.js'; // wounds: tend, the chapel priest (#656)
 import {wounded} from './wounds.js';
+import {cleanArgs,polishRefusal} from './argfix.js'; // arguments made to fit the tool's table, refusals that name what is missing (toolfuzz)
 import {histNote} from './persona.js';
 import {raiseScore,growthTick,growthText} from './abilities.js';
 onSafetyChange((a,before,after,why)=>histNote(a,'gambits',before,after,why)); // a safety rule changed: the persona history says so (#617)
@@ -602,8 +603,10 @@ function doingText(a,adv,cmd){
 
 // ---- places ----
 const SPOT_ALIASES={'auction house':'ah','ah':'ah','market':'ah','quest giver':'qg','questgiver':'qg','quests':'qg','gate':'gate','graveyard':'grave','grave':'grave'};
-function townSpot(c,name){const k=SPOT_ALIASES[name];if(k&&c[k])return {x:c[k].x,y:c[k].y,label:name};
-  if(c.spots&&c.spots[name])return {x:c.spots[name].x,y:c.spots[name].y,label:'the '+name};
+const fleeFrom=v=>{const n=Number(v)/100;return Number.isFinite(n)?Math.min(.6,Math.max(.05,n)):PK.FLEE}; // a flee mark that is not a number is the default, never NaN
+const own=(o,k)=>o&&Object.hasOwn(o,k)?o[k]:undefined; // a table read by the hero's own words: 'constructor' and '__proto__' are not keys
+function townSpot(c,name){const k=own(SPOT_ALIASES,name);if(k&&c[k])return {x:c[k].x,y:c[k].y,label:name};
+  if(own(c.spots,name))return {x:c.spots[name].x,y:c.spots[name].y,label:'the '+name};
   ensureNpcs();const p=(S.npcs||[]).find(p=>p.town===c.name&&(p.name.toLowerCase()===name||p.role===name||p.title.toLowerCase()===name||(p.title+' '+p.name).toLowerCase()===name));
   if(p)return {x:p.x,y:p.y+.6,label:p.title+' '+p.name};return null}
 const enemyNear=(a,p,r=12)=>CITY.some(c=>c.fac!==a.fac&&(dist(p,c.gate)<r||inRect(c,p,2)));
@@ -617,7 +620,7 @@ function plan(a,target){const raw=clean(target,60),t0=raw.toLowerCase().trim();
   return placeFallback(a,t0,raw)||{error:unknownPlace(a,t0,raw)}}
 const SPOT_WORDS={blacksmith:'smith',smithy:'smith',forge:'smith',armorer:'smith',armourer:'smith',tanner:'smith',tavern:'inn',innkeeper:'inn',temple:'chapel',church:'chapel',shrine:'chapel',plaza:'square',gates:'gate','town gate':'gate','main gate':'gate','city gate':'gate',auctioneer:'auction house'};
 const TOWN_SPOTS=['gate','inn','smith','chapel','square','auction house','quest giver'];
-const spotWord=x=>{x=x.trim().replace(/^the\s+/,'');return SPOT_WORDS[x]||(/^(?:town|market|main|village|city)?\s*square$/.test(x)?'square':x)};
+const spotWord=x=>{x=x.trim().replace(/^the\s+/,'');return (Object.hasOwn(SPOT_WORDS,x)&&SPOT_WORDS[x])||(/^(?:town|market|main|village|city)?\s*square$/.test(x)?'square':x)};
 // The ways an agent writes a place, most literal first: as given, without a trailing "(...)", without "the"/"town", a spot word,
 // and "<spot> in|of|at <town>" or "<town> <spot>" (a friendly town that is not home: its gate).
 function placeVariants(a,t0){const out=[],seen=new Set(),add=(t,town)=>{t=String(t||'').trim();const k=t+'|'+(town?town.name:'');if(t&&!seen.has(k)){seen.add(k);out.push({t,town})}};
@@ -662,7 +665,7 @@ function huntGrounds(a){const out=[];for(let z=0;z<ZONES.length;z++){const n=ZON
   return out.sort((x,y)=>x[1]-y[1]).map(x=>x[0])}
 const toFieldOf=(a,p,label)=>{const c=homeOf(a);return {legs:inTown(a)?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}],last:'hunt',label}};
 function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
-  if(inT){if(!(t==='town'||t==='home'||SPOT_ALIASES[t]||TOWN_SPOTS.includes(t)||inT.spots&&inT.spots[t]))return null;
+  if(inT){if(!(t==='town'||t==='home'||own(SPOT_ALIASES,t)||TOWN_SPOTS.includes(t)||own(inT.spots,t)))return null;
     return toFieldOf(a,{x:inT.gate.x,y:inT.gate.y},'the gate of '+inT.name)}
   const toTown=(p,label)=>({legs:here?[{x:p.x,y:p.y,st:'town'}]:[{x:c.gate.x,y:c.gate.y,st:'return'},{x:p.x,y:p.y,st:'town'}],last:'town',label});
   const toField=(p,label)=>({legs:here?[{x:c.gate.x,y:c.gate.y,st:'town'},{x:p.x,y:p.y,st:'travel'}]:[{x:p.x,y:p.y,st:'travel'}],last:'hunt',label});
@@ -1208,7 +1211,7 @@ const T={
     p.chosen=o;return {ok:true,chose:o+') '+p.opts[o]}},
   fight(a,{target_id,target,flee_below}){need(fieldState(a)||a.state==='fight','You can only pick a fight out in the world.');
     const t=foeBy(a,target_id,target);need(t&&alive(t)&&!t.hidden,'No such target'+givenAs(target_id,target)+'. '+foeList(a));need(dist(a,t)<=sightOf(a),'You cannot see that from here. '+foeList(a));
-    const fb=flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100));
+    const fb=flee_below==null?PK.FLEE:fleeFrom(flee_below);
     if(t.kind==='mob'){need(!(t.target&&t.target!==a&&t.target.state!=='dead'),'Someone else is already fighting it. '+foeList(a,true));
       a.pq=[{kind:'fight',id:t.id,flee:fb}];a.target=t;a.state='fight';a.dest=null;
       const pr=perceived(a,t);return {ok:true,target:foeName(a,t),threat:threatText(a,t),warning:pr==null?'You cannot tell how strong it is.':pr>=3?'You judge it '+threatText(a,t).replace(/^looks /,'')+'.':undefined}}
@@ -1223,7 +1226,7 @@ const T={
     if(!w&&!(fieldState(a)&&!inTown(a))){const ct=cityAt(a)||(inTown(a)?homeOf(a):null),g=huntGrounds(a)[0];
       need(false,'Hunt out in the world, not in town'+(ct?' (you are in '+ct.name+')':'')+': '+(g?'hunt {where: "'+g+'"} walks you to '+g+' and hunts there'+(ct&&g===ZONES[zoneAt(ct.gate.x,ct.gate.y)]?' ('+g+' lies around '+ct.name+')':'')+', or move_to a place you know first.':'hunt {where: "north"} (a direction or "x,y") walks out and hunts; no hunting ground is known to you yet.'))}
     need(w||a.state!=='return','You are heading home. hunt {where: "<a region you know>"} to turn around and hunt there.');
-    const n=Math.min(10,Math.max(1,Math.round(Number(count)||3))),fl=flee_below==null?PK.FLEE:Math.min(.6,Math.max(.05,Number(flee_below)/100));
+    const n=Math.min(10,Math.max(1,Math.round(Number(count)||3))),fl=flee_below==null?PK.FLEE:fleeFrom(flee_below);
     // what the hero chooses (#188): a creature it knows by name, or whatever is around that it has not learned to fear
     let pk=null;if(prey!=null&&String(prey).trim()&&!/^(any|anything|around|whatever.*)$/i.test(String(prey).trim())){pk=preyKey(a,prey);need(pk,'You know of no creature called "'+clean(prey,40)+'". Hunt what is around (no prey), or learn its name first (fight one, look, ask around).')}
     const what=n+' kill'+(n>1?'s':'')+(pk?' ('+clean(prey,40)+' only)':' (whatever is around that you do not fear)'),hunt={kind:'hunt',n,prey:pk||undefined,flee:fl};
@@ -1273,7 +1276,7 @@ const T={
   auction_browse(a){need(inTown(a),'The auction house is in town.');const ago=l=>Math.max(0,Math.round((l.until-S.gameMin)/60));
     const row=l=>({id:l.id,what:l.kind==='gear'?itemText(l.item):l.good,n:l.n,each:l.ask,seller:l.sname,hours_left:ago(l),...(l.kind==='gear'?{slot:l.item.slot,level:l.item.ilvl,class:l.item.cls||'any',better_by:Math.max(0,gearUpgrade(a,l.item)),wearable:gearUpgrade(a,l.item)>=0}:{})});
     const all=listings();return {ok:true,listings:all.filter(l=>l.seller!==a.id).map(row),yours:all.filter(l=>l.seller===a.id).map(row),recent_trades:(S.trades||[]).slice(0,5).map(t=>t.seller+' sold '+t.what+(t.n>1?' x'+t.n:'')+' to '+t.buyer+' for '+t.gold+'g'),gold:a.gold}},
-  auction_list(a,{index,n,price:ask}){need(inTown(a),'The auction house is in town.');const i=Number(index);need(i>=0&&i<used(a),'No pack entry '+index+'.');
+  auction_list(a,{index,n,price:ask}){need(inTown(a),'The auction house is in town.');const i=Number(index);need(Number.isInteger(i)&&i>=0&&i<used(a),'No pack entry '+index+'. inventory lists them by index.');
     need(mine(a).length<TRADE.MAX_PER_HERO,'You already have '+TRADE.MAX_PER_HERO+' listings.');const e=invOf(a).list[i];
     if(isGear(e)){const ref=gearRef(e),p=ask==null?ref:Number(ask);need(p>=ref*TRADE.MIN_X&&p<=ref*TRADE.MAX_X,'Ask between '+Math.ceil(ref*TRADE.MIN_X)+'g and '+Math.floor(ref*TRADE.MAX_X)+'g for that.');
       invOf(a).list.splice(i,1);const l=listFor(a,{item:e},p);return {ok:true,listed:itemText(e),id:l.id,each:l.ask,lapses_in_hours:TRADE.DAYS*24}}
@@ -1544,6 +1547,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(!a.player)return {ok:false,error:a.name+' is not agent-played.'};
   if(a.state==='dead'){const r={ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+', at '+(a.diedAt||'?')+'). Hardcore: one life. Their story is over.'};logCall(a,tool,args,r);return r}
   const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'+wishInvite(a)};
+  args=cleanArgs(meta,args);
   if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}}
   if(meta.act&&a.state==='downed'&&tool!=='wait'){const r={ok:false,downed:true,offline:true,error:'You are down, bleeding at zero health: you cannot act until someone brings you back or you rise. Listen, remember, or wait.'};logCall(a,tool,args,r);return r} // downed (#626): reads still answer // held before play (#559): look, recall and the other reads still answer
   if(args&&args._pool===true&&(tool==='recall'||tool==='journal_search'))return fn(a,args); // the relay's ask for the texts it embeds (#553): not a turn, not logged
@@ -1553,6 +1557,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   a.playFresh=false;if(tool==='wait')turnEnd(a);else if(a.playTurn==null)turnStart(a); // the turn is open while the agent calls tools; a wait hands the world back (#240)
   if(meta.act&&a.state==='aid'&&AID_BREAK.has(tool)){a.aid=null;a.aidHow=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;a.moving=false} // an order to go elsewhere ends the help (#658)
   const q0=a.pq&&a.pq[0];let r;try{r=asSrc('agent',()=>fn(a,args&&typeof args==='object'?args:{}))}catch(e){r=e instanceof Rule?{ok:false,error:e.message}:{ok:false,error:'The world did not understand that ('+String(e&&e.message||e).slice(0,120)+').'}}
+  if(r&&r.ok===false)polishRefusal(meta,args,r);
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
   if(r&&r.ok!==false)errandTool(a,tool); // running a town errand is progress toward the aim (#727)
@@ -1581,7 +1586,7 @@ function logCall(a,tool,args,r){const L=a.playLog||(a.playLog=[]);
   L.unshift({t:clockStr(),d:dayNo(),tool,args:argText(args),ok:r.ok!==false,pending:!!r.pending||undefined,text:r.pending?'waiting...':summarize(r)});if(L.length>PK.LOG)L.pop()}
 const argText=x=>{if(!x||typeof x!=='object')return '';const k=Object.keys(x).filter(j=>j[0]!=='_');return k.length?clean(k.map(j=>j+'='+(typeof x[j]==='string'?'"'+x[j]+'"':x[j])).join(' '),120):''};
 function summarize(r){if(r.ok===false)return 'x '+clean(r.error,160);const skip={ok:1,events:1,pending:1,as_of:1,since_look:1,changed:1,table_waits:1};
-  return clean(Object.keys(r).filter(k=>!skip[k]).map(k=>{const v=r[k];return k+': '+(typeof v==='string'||typeof v==='number'?v:Array.isArray(v)?v.length+' item'+(v.length===1?'':'s'):v&&typeof v==='object'?'{...}':String(v))}).join(' · '),200)}
+  return clean(Object.keys(r).filter(k=>!skip[k]&&r[k]!==undefined).map(k=>{const v=r[k];return k+': '+(typeof v==='string'||typeof v==='number'?v:Array.isArray(v)?v.length+' item'+(v.length===1?'':'s'):v&&typeof v==='object'?'{...}':String(v))}).join(' · '),200)}
 
 // The runner's narration (the agent's own text between tool calls), for the Agent tab.
 export function playerNarrate(id,text){const a=hero(Number(id));if(!a||!a.player)return false;const t=clean(text,600);if(!t)return false;
