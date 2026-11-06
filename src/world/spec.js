@@ -115,7 +115,9 @@ export const ELDMOOR={
     [[40,25],[38,33],[44,43.4]],              // south to the Sunken Crypt
     [[40,25],[46,17],[52,8]],                 // north road into Hoarfell
   ],
-  lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]]},
+  lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]],
+    // Free-standing fires: the braziers either side of the Drowned Weir's mouth, the Kiln's two torches, ember cracks in Ashenfold, the Barrow's cairn fire.
+    points:[{x:79.4,y:39.3},{x:83.6,y:39.3},{x:113.7,y:45.5},{x:117.3,y:45.5},{x:111,y:27.5},{x:104,y:19},{x:119,y:35},{x:105,y:41}]},
   spawn:{townPad:[4,3]},
   nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{
     thornvale:{herb:7,ore:4,hide:6,fish:5},mirefen:{herb:7,ore:4,hide:5,fish:5},
@@ -322,11 +324,13 @@ export const VALE={
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'wEdge'},{kind:'west-of-curve',curve:'mEdge'},{kind:'north-of-curve',curve:'river'}]}},
     {id:'ashenfold',name:'Ashenfold',band:[10,15],biome:'ash',
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'eEdge'},{kind:'west-of-curve',curve:'fEdge'}]}},
-    {id:'rimecrown',name:'Rimecrown',band:[14,Infinity],biome:'tundra',
+    {id:'rimecrown',name:'Rimecrown',band:[14,Infinity],biome:'tundra',pools:{sx:6,sy:4.4,at:.66,seed:31},
       sky:[['clear',.45],['snow',.2],['squall',.35]], // squalls off the crown
       mask:{kind:'east-of-curve',curve:'fEdge'}},
   ],
-  river:{curve:'river',width:2,span:[0,121],fords:[76]}, // the Wend rises at x=122; the Weirgate ford is the only wading place
+  // The Wend flares into a sea off the west edge (mouth) and rises from a spring pool under the rock at x~123 (pool). The Weirgate ford is the
+  // only wading place: the Low Bridge and the High Bridge are the other two crossings, and no road runs over the water anywhere else.
+  river:{curve:'river',width:2,span:[0,121],fords:[76],mouth:{reach:16,flare:6},pool:{x:123,y:30,r:2.7}},
   // Art notes (src/render/scenery.js reads them; the sim and the map never do).
   scenery:{
     wash:{wendmouth:'meadow',hawkwold:'heath',greywood:'woods',ashenfold:'ash'},
@@ -345,7 +349,7 @@ export const VALE={
     // Gullstrand: a harbour. The gate faces the river; a street runs up from it to a lane under the halls, and a quay and jetty reach out south.
     {name:'Gullstrand',fac:0,x0:6,y0:17,w:13,h:9,gate:'S',race:'skerrin',spots:{square:[6.5,4.1]},
       buildings:townPlan(6,17,[['auction',8,1],['smithy',11,1],['hall',2,1],['chapel',1,1],['board',8,7],['inn',2,5]]),
-      ground:[[1,3,11,1],[6,3,2,5],[6,9,2,3],[5,12,4,1]]},
+      ground:[[1,3,11,1],[6,3,2,5],[6,9,2,3],[5,12,4,1]],pier:[[6,13,2,5],[3,13,1,2]]},
     // Hawkstead: a ridge town on terraces: the chapel stands on the hall's shoulder, a stair climbs the middle.
     {name:'Hawkstead',fac:0,x0:52,y0:10,w:11,h:11,gate:'E',race:'tarrow',spots:{square:[5.5,5.1]},
       buildings:townPlan(52,10,[['smithy',1,1],['auction',3,1],['hall',7,1],['chapel',9,3],['inn',2,6],['board',6,8]]),
@@ -384,6 +388,7 @@ export const VALE={
     fordN:[76,26],fordS:[76,33],         // the Weirgate ford (no road crosses it)
     highN:[110,31],highS:[110,36],       // the High Bridge
     lairGate:[128,30],
+    southWay:[94,36],                    // keeps the fordS-highS road on the south bank (it once found the north road and bridged at x=74)
     northWay:[34,21],                    // keeps the Gullstrand-Hawkstead road off the river bank (its gate faces the water)
   },
   roads:[
@@ -395,7 +400,7 @@ export const VALE={
     {from:'fordS',to:'The Drowned Weir'},
     {from:'Hawkstead',to:'The Kestrel Barrow'},
     {from:'Stiltmere',to:'The Sallow Vaults'},
-    {from:'fordN',to:'highN'},{from:'highN',to:'highS'},{from:'fordS',to:'highS'},
+    {from:'fordN',to:'highN'},{from:'highN',to:'highS'},{from:'fordS',via:['southWay'],to:'highS'},
     {from:'highS',to:'The Brandwright Kiln'},
     {from:'highN',to:'lairGate'},
   ],

@@ -64,7 +64,10 @@ function data(){if(D)return D;
   const wash=new Uint8Array(W*H);{const w=NOTE.wash||{},byZ=REGIONS.map(r=>WASH[w[r.id]]||0);for(let k=0;k<W*H;k++)wash[k]=byZ[zone[k]]||0}
   const fords=[];for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(tt(x,y)===RIVER&&!solid[I(x,y)])fords.push([x,y]);
   const fc=fords.length?[fords.reduce((s,f)=>s+f[0],0)/fords.length+.5,fords.reduce((s,f)=>s+f[1],0)/fords.length+.5]:null;
-  const farm=new Uint8Array(W*H);for(const [x,y,w,h] of NOTE.fields||[])for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++){const t=tt(i,j);if(t===G||t===FLOWER)farm[I(i,j)]=1}
+  const farm=new Uint8Array(W*H);for(const [x,y,w,h] of NOTE.fields||[])for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++){const t=tt(i,j);
+    // a field is not a box: its corners are cut and its edge cells wander (a field of 3 rows or fewer keeps its rows, losing only ends)
+    const ex=i===x||i===x+w-1,ey=(j===y||j===y+h-1)&&h>3,hh=hash(i,j,879);if((ex&&ey)||((ex||ey)&&hh<.34)||(ex&&h<=3&&hh<.5&&j!==y+(h>>1)))continue;
+    if(t===G||t===FLOWER)farm[I(i,j)]=1}
   const lair=LANDMARKS.find(L=>L.kind==='lair'&&(NOTE.dress||{})[L.name]==='lair')||null;
   // roads out in the country (a town's own streets keep their tiles), and the land they pass over
   const town=(x,y)=>CITY.some(c=>x>=c.x0&&x<=c.x1&&y>=c.y0&&y<=c.y1);
