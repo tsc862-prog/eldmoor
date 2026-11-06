@@ -13,7 +13,7 @@
 // Stats on S.mercyStats (finished, spared, bled, repaid, held: a blow held back by a debt).
 import {rnd,clamp} from '../core/rng.js';
 import {dist,zoneAt,ZONES} from '../world/map.js';
-import {S,mayFight} from './state.js';
+import {S,mayFight,loreSides} from './state.js';
 import {log} from './chronicle.js';
 import {pop} from './effects.js';
 import {record} from './history.js';
@@ -110,7 +110,7 @@ function downedEnemy(a,hero){const k=String(hero==null?'':hero).toLowerCase().tr
   const t=nearHeroes(a.x,a.y,M.REACH+1).find(b=>b!==a&&(String(b.id)===k||b.name.toLowerCase()===k||b.name.toLowerCase().split(' ')[0]===k));
   if(!t)return {error:'No hero by that name within '+M.REACH+' tiles.'};
   if(!isDown(t))return {error:t.name+' is not down.'};
-  if(!mayFight(a,t))return {error:t.name+' is of your own faction: help them instead (stabilize, a heal, a potion).'};
+  if(!mayFight(a,t))return {error:t.name+(loreSides()?' is no foe of yours':' is of your own faction')+': help them instead (stabilize, a heal, a potion).'};
   if(dist(a,t)>M.REACH)return {error:t.name+' lies too far off: come within '+M.REACH+' tiles.'};
   return {t}}
 export function finishTool(a,hero){if(isDown(a))return {error:'You are down yourself.'};

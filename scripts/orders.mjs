@@ -3,6 +3,7 @@
 // the tools already fill. Both sit between ORDERS_HEAD and ORDERS_TAIL so withSituationOrders can swap or add them.
 export const ORDERS_HEAD = 'SITUATIONS (what to do depends on where you are):';
 export const ORDERS_TAIL = '(end of situations)';
+import {loreText} from '../src/data/player-tools.js';
 import {toolMap} from './toolmap.mjs';
 export const SHORT_BUDGET = 1200;
 
@@ -61,9 +62,14 @@ const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const BLOCK = new RegExp('\\n?' + esc(ORDERS_HEAD) + '[\\s\\S]*?' + esc(ORDERS_TAIL));
 // Put the situations block into a prompt: swapped if one is there, else added before a persona block (pacing.mjs) or at the end.
 // local: the short variant for a local (Ollama) mind.
-export function withSituationOrders(sys, local = false) {
-  const s = String(sys || ''), block = local ? ORDERS_SHORT : ORDERS_FULL;
+export function withSituationOrders(sys, local = false, sides = null) {
+  const s = String(sys || ''), block = ordersFor(local ? ORDERS_SHORT : ORDERS_FULL, sides);
   if (BLOCK.test(s)) return s.replace(BLOCK, () => '\n' + block);
   const i = s.indexOf('\nYOUR PERSONA');
   return i >= 0 ? s.slice(0, i) + '\n' + block + s.slice(i) : s + '\n' + block;
 }
+
+// Sides as lore (#1025): the orders of a world with no sides. Phrase swaps, so a world with sides reads what it always read.
+const LORE_ORDERS = [['Honour among your own: challenge {hero, to: "first blood" or "yield", text} settles a quarrel with a hero of your faction within 6 tiles', 'Honour among friends: challenge {hero, to: "first blood" or "yield", text} settles a quarrel with a hero within 6 tiles'],
+  ['A company puts it to the vote with propose crypt or raid; alone, go_crypt and join_raid, and answer_call when someone has asked you.', 'A company puts it to the vote with propose crypt or raid; alone, go_crypt, and answer_call when someone has asked you. A raid is a company\'s own.']];
+export const ordersFor = (text, sides) => sides === 'lore' ? loreText(LORE_ORDERS.reduce((t, [a, b]) => t.split(a).join(b), text)) : text; // loreText: the tool map inside the orders quotes the tools

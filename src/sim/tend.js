@@ -8,7 +8,7 @@
 // wounds, smaller prey), dungeon.js (no Crypt). Agent heroes hear of it in words and decide for themselves; autopilot and the
 // gambit presets know nothing of wounds. On an agent hero the creature that did it is learned as feared (lore.js woundFear),
 // the record line below is the landmark (tiers.js RX) and the reflection moment is kind 'wound'.
-import {S,dayNo,ownTown,sameSide} from './state.js';
+import {S,dayNo,ownTown,sameSide,loreSides} from './state.js';
 import {CITY,dist} from '../world/map.js';
 import {record} from './history.js';
 import {log} from './chronicle.js';
@@ -75,7 +75,7 @@ export function chapelVisit(a){if(!wounded(a)||!reflexMay(a)||a.chapelDay===dayN
   const c=homeOf(a),p=c&&priestOf(c);if(p)paid(a,a,c,p)}
 // The chapel_tend tool (sim/player.js): payer stands at a chapel of their side and pays for t. -> {ok, ...} or {error}.
 export function chapelTend(payer,t){const c=CITY.find(x=>ownTown(x,payer)&&x.spots&&x.spots.chapel&&dist(payer,x.spots.chapel)<=W.CHAPEL_R),p=c&&priestOf(c);
-  if(!p)return {error:'The priest is at the chapel of a town of your side: walk there first (move_to chapel).'};
+  if(!p)return {error:'The priest is at the chapel of a town'+(loreSides()?'':' of your side')+': walk there first (move_to chapel).'};
   if(!wounded(t))return {error:(t===payer?'You carry':t.name+' carries')+' no wound.'};
   if(t!==payer&&dist(payer,t)>W.NEAR)return {error:t.name+' must stand with you at the chapel.'};
   if(t.chapelDay===dayNo())return {error:p.title+' '+p.name+' has dressed that wound today; come back tomorrow.'};
