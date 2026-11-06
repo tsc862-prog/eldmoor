@@ -8,6 +8,9 @@
 //      The art loop (#661) is the launcher's third child: started, shown by `s` (next check, spend), restarted by `u`,
 //      stopped cleanly by q (its state file says stopped), skipped by --no-art (checked on a second launcher); it talks to
 //      a dead local address only, never the real API.
+//      The voice engine (#554) is the fourth child ([voice]), only when KOKORO_START / --voice-script names a start script; checked
+//      on fake scripts and spare ports (never 8880): starts and stops with the launcher (powershell -File on Windows), a port that
+//      already answers is left alone, a missing file or a crash is one line, --no-voice and nothing configured start nothing.
 //      Patch notes (#664): start records HEAD in logs/last-seen.json; a pull bringing "Merge pull request #101" prints that
 //      PR's note under [notes] (a note of an unmerged PR is not shown) and records the new HEAD; n shows the last notes.
 import {mkTmp, tmpRoot} from './tmp.mjs';
@@ -159,7 +162,7 @@ console.log('launcher (real children on spare ports)');
   const ORIGIN = `http://localhost:${VP}`;
   let out = '';
   const proc = spawn(process.execPath, ['scripts/up.mjs', '--relay-port', String(RP), '--vite-port', String(VP), '--no-open', '--repo', work], {cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'],
-    env: {...process.env, ...artEnv, AGENT_LOGS: logs, UP_NPM_CLI: mockNpm, UP_GRACE_MS: String(fastMs(15000, 3000)), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9'}});
+    env: {...process.env, ...artEnv, AGENT_LOGS: logs, UP_NPM_CLI: mockNpm, UP_GRACE_MS: String(fastMs(15000, 3000)), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9', KOKORO_START: ''}});
   proc.stdout.on('data', d => {out += d}); proc.stderr.on('data', d => {out += d});
   let exited = null; proc.on('exit', c => {exited = c});
   const send = s => proc.stdin.write(s + '\n');
@@ -289,7 +292,7 @@ console.log('launcher --no-art');
   const RP = await freePort(), VP = await freePort();
   let out = '', exited = null;
   const proc = spawn(process.execPath, ['scripts/up.mjs', '--relay-port', String(RP), '--vite-port', String(VP), '--no-open', '--no-art', '--repo', ROOT], {cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'],
-    env: {...process.env, AGENT_LOGS: join(tmp, 'logs'), ART_STATE: join(tmp, 'art-loop.json'), ART_LOG: join(tmp, 'art.log'), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9', UP_GRACE_MS: String(fastMs(15000, 3000))}});
+    env: {...process.env, AGENT_LOGS: join(tmp, 'logs'), ART_STATE: join(tmp, 'art-loop.json'), ART_LOG: join(tmp, 'art.log'), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9', KOKORO_START: '', UP_GRACE_MS: String(fastMs(15000, 3000))}});
   proc.stdout.on('data', d => {out += d}); proc.stderr.on('data', d => {out += d}); proc.on('exit', c => {exited = c});
   try {
     ok(await until(async () => /vite started \(pid \d+\)/.test(out), 30000), '--no-art: the launcher starts');
@@ -301,6 +304,108 @@ console.log('launcher --no-art');
     if (exited == null) {try {spawnSync('taskkill', ['/T', '/F', '/PID', String(proc.pid)], {windowsHide: true})} catch {} try {proc.kill()} catch {}}
     if (fail) console.error('--- launcher output ---\n' + out.slice(-2000));
     await sleep(300); try {rmSync(tmp, {recursive: true, force: true})} catch {}
+  }
+}
+
+// ---------------------------------------------------------------- 3. the voice engine (#554), fake start scripts, spare ports
+console.log('launcher voice engine (fake scripts)');
+{
+  const tmp = mkTmp('eldmoor-upvoice-');
+  const fakeMjs = join(tmp, 'fake-voice.mjs'), mark = join(tmp, 'voice-ran.txt');
+  writeFileSync(fakeMjs, `import net from 'node:net'; import {appendFileSync} from 'node:fs';
+appendFileSync(process.env.FAKE_MARK, process.pid + '\\n');
+if (process.env.FAKE_MODE === 'crash') {console.log('fake voice: failing'); process.exit(3)}
+net.createServer().listen(Number(new URL(process.env.TTS_URL).port), '127.0.0.1', () => console.log('fake voice: listening'));`);
+  const fakePs1 = join(tmp, 'fake voice.ps1'); // a space in the path: the argument array keeps it whole
+  writeFileSync(fakePs1, `Add-Content -Path $env:FAKE_MARK -Value $PID
+$l = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, [int]([uri]$env:TTS_URL).Port)
+$l.Start(); Write-Output 'fake voice: listening'; Start-Sleep -Seconds 600
+`);
+  const launch1 = async ({args = [], env = {}} = {}) => {
+    const RP = await freePort(), VP = await freePort(); let out = '', exited = null;
+    const proc = spawn(process.execPath, ['scripts/up.mjs', '--relay-port', String(RP), '--vite-port', String(VP), '--no-open', '--no-art', '--repo', ROOT, ...args], {cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'],
+      env: {...process.env, AGENT_LOGS: join(tmp, 'logs'), NO_COLOR: '1', RELAY_BEHAVIOR: '0', RELAY_MIRROR: '0', ANTHROPIC_API_KEY: '', OLLAMA_URL: 'http://127.0.0.1:9', FAKE_MARK: mark, UP_GRACE_MS: String(fastMs(15000, 3000)), KOKORO_START: '', VOICE: '', ...env}});
+    proc.stdout.on('data', d => {out += d}); proc.stderr.on('data', d => {out += d}); proc.on('exit', c => {exited = c});
+    const o = {proc, get out() {return out}, send: k => proc.stdin.write(k + '\n'), seen: (re, ms = 30000) => until(async () => re.test(out), ms),
+      quit: async () => {o.send('q'); const r = await until(async () => exited != null, 30000); if (exited == null) {try {spawnSync('taskkill', ['/T', '/F', '/PID', String(proc.pid)], {windowsHide: true})} catch {} try {proc.kill()} catch {}} return r !== null && exited === 0}};
+    return o;
+  };
+  const pidIn = (out, re) => { const m = out.match(re); return m ? Number(m[1]) : null };
+  const marks = () => existsSync(mark) ? readFileSync(mark, 'utf8').split(/\r?\n/).filter(Boolean).length : 0;
+  const url = p => 'http://127.0.0.1:' + p;
+  let L = null;
+  const dog = setTimeout(() => {console.error('  FAIL the voice section did not finish in 4 minutes (a launcher or child never settled)'); if (L) console.error(String(L.out).slice(-2500)); try {spawnSync('taskkill', ['/T', '/F', '/PID', String(L.proc.pid)], {windowsHide: true})} catch {} try {L.proc.kill()} catch {} process.exit(1)}, 240000);
+  try {
+    // A: KOKORO_START from the environment, a .mjs script, on a spare port; the launcher does not wait for it
+    let VPORT = await freePort();
+    L = await launch1({env: {KOKORO_START: fakeMjs, TTS_URL: url(VPORT)}});
+    ok(await L.seen(/relay started \(pid \d+\)/) && await L.seen(/vite started \(pid \d+\)/) && await L.seen(/voice engine started \(pid \d+\)/), '[voice] KOKORO_START starts a fourth child beside the relay and Vite');
+    const vpid = pidIn(L.out, /voice engine started \(pid (\d+)\)/);
+    ok(await until(async () => await listening(VPORT), 15000), 'the engine answers on its port (' + VPORT + ')');
+    ok(await L.seen(/voice engine answering after/, 15000), 'one line when it starts answering');
+    ok(/\[voice\]\s+fake voice: listening/.test(L.out), 'its output is prefixed [voice]');
+    L.send('s'); ok(await L.seen(/voice: running \(pid \d+/, 15000), 's shows it running');
+    ok(await L.quit(), 'q exits the launcher');
+    await sleep(500);
+    ok(vpid && !alive(vpid) && !(await listening(VPORT)), 'q stops the engine and frees its port');
+
+    if (process.platform === 'win32') { // B: powershell -ExecutionPolicy Bypass -File, a path with a space, --voice-script
+      VPORT = await freePort(); const n0 = marks();
+      L = await launch1({args: ['--voice-script', fakePs1], env: {TTS_URL: url(VPORT)}});
+      ok(await L.seen(/voice engine started \(pid \d+\)/) && await until(async () => await listening(VPORT), 30000), '--voice-script runs a .ps1 through powershell and it answers');
+      const ppid = pidIn(L.out, /voice engine started \(pid (\d+)\)/);
+      ok(marks() === n0 + 1, 'started once');
+      ok(await L.quit() && (await sleep(500), !alive(ppid)) && !(await listening(VPORT)), 'q stops powershell and its listener');
+    }
+
+    // C: something already answers on the port: left alone, no second engine, never killed
+    VPORT = await freePort(); const heldSockets = new Set(), held = net.createServer(c => {heldSockets.add(c); c.on('close', () => heldSockets.delete(c)); c.on('error', () => {})}); await new Promise(r => held.listen(VPORT, '127.0.0.1', r)); const n1 = marks();
+    L = await launch1({env: {KOKORO_START: fakeMjs, TTS_URL: url(VPORT)}});
+    ok(await L.seen(/voice: something already answers on port \d+; not starting another/), 'an engine already on the port is not started twice');
+    L.send('s'); ok(await L.seen(/voice: already running elsewhere \(left alone\)/, 15000) && marks() === n1 && !/voice engine started/.test(L.out), 's says so and the script never ran');
+    ok(await L.quit() && await listening(VPORT), 'q leaves what it did not start running');
+    for (const c of heldSockets) c.destroy(); await Promise.race([new Promise(r => held.close(r)), sleep(5000)]); // close() waits for every open socket: never let that hang the check
+
+    // D: a script that is not there: one line, the game carries on
+    L = await launch1({env: {KOKORO_START: join(tmp, 'nope.ps1'), TTS_URL: url(await freePort())}});
+    ok(await L.seen(/voice: start script not found: .*nope\.ps1/) && await L.seen(/vite started \(pid \d+\)/) && await L.seen(/relay started \(pid \d+\)/), 'a missing start script is one line and the relay and Vite run');
+    L.send('s'); ok(await L.seen(/voice: script not found/, 15000), 's says script not found');
+    ok(await L.quit(), 'and q is clean');
+
+    // E: a crash is one line, no restart loop
+    const n2 = marks();
+    L = await launch1({env: {KOKORO_START: fakeMjs, FAKE_MODE: 'crash', TTS_URL: url(await freePort())}});
+    ok(await L.seen(/voice engine exited on its own \(code 3\)/), 'a crashing engine is one line');
+    await sleep(fastMs(4000, 1500));
+    ok(marks() === n2 + 1 && (L.out.match(/voice engine exited on its own/g) || []).length === 1, 'and is not started again');
+    L.send('s'); ok(await L.seen(/voice: stopped \(exited on its own, code 3\)/, 15000), 's shows it stopped');
+    ok(await L.quit(), 'the game goes on and quits cleanly');
+
+    // F: --no-voice beats the configuration; VOICE=0 does too
+    const n3 = marks();
+    L = await launch1({args: ['--no-voice'], env: {KOKORO_START: fakeMjs, TTS_URL: url(await freePort())}});
+    ok(await L.seen(/vite started \(pid \d+\)/), '--no-voice: the launcher starts');
+    L.send('s'); ok(await L.seen(/voice: off/, 15000) && marks() === n3 && !/voice engine started/.test(L.out), '--no-voice starts nothing and s says off');
+    ok(await L.quit(), 'clean quit');
+    L = await launch1({env: {KOKORO_START: fakeMjs, VOICE: '0', TTS_URL: url(await freePort())}});
+    L.send('s'); ok(await L.seen(/voice: off/, 30000) && marks() === n3, 'VOICE=0 starts nothing');
+    ok(await L.quit(), 'clean quit');
+
+    // G: nothing configured: behaves as before, with one hint line
+    L = await launch1();
+    ok(await L.seen(/vite started \(pid \d+\)/) && await L.seen(/voice: no speech engine configured/), 'not configured: one hint line');
+    L.send('s'); ok(await L.seen(/voice: not configured/, 15000) && !/voice engine started/.test(L.out), 's says not configured');
+    ok(await L.quit(), 'clean quit');
+
+    // H: a TTS_URL on another machine is refused
+    L = await launch1({env: {KOKORO_START: fakeMjs, TTS_URL: 'http://192.0.2.7:8880'}});
+    ok(await L.seen(/voice: TTS_URL must be 127\.0\.0\.1 or localhost/) && !/voice engine started/.test(L.out), 'a TTS_URL that is not on this machine is refused');
+    ok(await L.quit(), 'clean quit');
+  } catch (e) {
+    console.error('  FAIL voice check threw: ' + (e && e.stack || e)); fail++;
+    if (L) {console.error('--- launcher output ---\n' + L.out.slice(-2500)); try {spawnSync('taskkill', ['/T', '/F', '/PID', String(L.proc.pid)], {windowsHide: true})} catch {}}
+  } finally {
+    clearTimeout(dog); await sleep(300); try {rmSync(tmp, {recursive: true, force: true})} catch {}
   }
 }
 
