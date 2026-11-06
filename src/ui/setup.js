@@ -12,7 +12,8 @@ import {companies,slotMembers,slotted,SLOT_KEYS} from '../sim/company.js';
 import {S} from '../sim/state.js';
 import {slotsOf,groupsOf,MAX_HEROES,CLASSIC,seatCap,seatNote,hallTowns,prologueOf} from '../sim/setup.js';
 import {CLS} from '../data/classes.js';
-import {CITY,REGIONS} from '../world/map.js';
+import {worldFacts,worldPreview,worldTowns,worldStarts} from '../render/worldpreview.js';
+import {pickRow} from '../sim/prologue.js';
 import {ARCHETYPES,ARCHETYPE_IDS} from '../data/archetypes.js'; // persona archetypes (#295)
 import {racesOf} from '../data/races.js';
 import {PROF,PROF_IDS,MAX_PROF} from '../data/professions.js';
@@ -116,8 +117,8 @@ function mindControls(who,m){const d=el('div','smind'),seg=el('span','mseg');
 // Apart: where a hero sets out (#454). 'home' = its people's home town; a town of its faction (the CITY rows, no names here);
 // or a region, seasoned to the low end of its band.
 const startValue=h=>{const st=h.start||{};return st.region?'region:'+st.region:st.town&&st.town!=='home'?'town:'+st.town:'home'};
-const startOptions=h=>[['home','Home town of their people']].concat(CITY.filter(c=>c.fac===facOfHero(h)).map(c=>['town:'+c.name,'Town: '+c.name]))
-  .concat(REGIONS.map(r=>['region:'+r.name,'Region: '+r.name+(r.band?' (L'+r.band[0]+'+)':'')]));
+const startOptions=h=>{const w=worldStarts(st.setup.world,facOfHero(h));
+  return [['home','Home town of their people']].concat(w.towns.map(n=>['town:'+n,'Town: '+n])).concat(w.regions.map(r=>['region:'+r.name,'Region: '+r.name+(r.low!=null?' (L'+r.low+'+)':'')]))};
 const groupOptions=n=>[['','Alone']].concat(Array.from({length:n},(x,i)=>[String(i+1),'Company '+(i+1)]));
 function slotCard(k){const p=heroAt(k),card=el('div','scard'),top=el('div','stop'),T=heroTitle(k);
   top.append(el('span','srole',T));
@@ -168,6 +169,16 @@ function runnerSummary(){const pl=plan(st.setup);if(!pl.length)return 'No runner
   const max=relay.runner&&relay.runner.max;
   return 'On Start: '+pl.map(r=>r.kind==='fellowship'?'one Fellowship runner ('+labelOf(r)+')':r.kind==='company'?'one runner for '+r.label+' ('+labelOf(r)+')':r.kind==='dm'?'the DM runner ('+labelOf(r)+')':r.label+' runner ('+labelOf(r)+')').join(', ')+'. '+pl.length+(max?' of '+max+' runners allowed.':' runner'+(pl.length===1?'':'s')+'.')}
 
+// The map the setup is for: its picture, name, a line about it and its shape (render/worldpreview.js; any entry of WORLDS).
+function worldCard(id){const f=worldFacts(id),d=el('div','swcard'+(id===WORLD_ID?'':' other'));
+  d.append(worldPreview(id,'spv'));const b=el('div','swbody');
+  b.append(el('div','swname',f.name),el('div','swblurb',f.blurb),el('div','swfact',f.line1),el('div','swfact',f.line2));
+  if(id!==WORLD_ID)b.append(el('div','swnote','Not the map this page is on: Start reloads into '+f.name+(saveSummary(id)?' and replaces its save.':'.')));
+  d.append(b);return d}
+// What the Opening will be for the hall chosen: the first delve's name and keeper, from data/prologues.js (the game's own pick).
+function delveHint(s){if(prologueOf(s)!=='delve'||s.mode==='apart')return null;
+  const row=s.hall?pickRow(s.hall,s.fac,new Set()):null;
+  return el('div','dm sopen',row?'Opening: '+row.name+', a short delve near '+s.hall+' ('+row.boss+' keeps it), then home.':'Opening: a short delve near the hall, named once you pick a hall town.')}
 function render(){if(!root)return;const s=st.setup,page=el('div','spage'),halls=hallTowns(s.world,s.fac);if(s.hall&&!halls.includes(s.hall))delete s.hall; // another faction or map: back to the default
   const head=el('div','shead');head.append(el('h2',null,'New World'),el('div','dm','Build the world, choose who plays whom, and the heroes are agent-played from the first minute. Nothing changes until you press Start.'));page.append(head);
 
@@ -189,14 +200,16 @@ function render(){if(!root)return;const s=st.setup,page=el('div','spage'),halls=
   const wsec=el('section','ssec');wsec.append(el('h3',null,'World'));
   const wrow=el('div','sgrid');
   wrow.append(field('World',select('world',Object.keys(WORLDS_INFO).map(id=>[id,WORLDS_INFO[id]]),s.world)));
+  wsec.append(worldCard(s.world));
   const seed=el('input','sinput');seed.type='number';seed.min=0;seed.step=1;seed.value=String(s.seed);seed.dataset.f='seed';seed.setAttribute('aria-label','Seed');
   const sr=el('div','snamerow');sr.append(seed,btn('Reroll','seedroll',{},'sdice'));wrow.append(field('Seed',sr));
   if(together()){wrow.append(field('Faction',select('fac',FAC.map((f,i)=>[String(i),f.name]),String(s.fac))));
-    if(halls.length>1)wrow.append(field('Hall',select('hall',[['','The Tank\'s home town']].concat(halls.map(n=>[n,n])),s.hall||'','The town where all five start, whatever their peoples')));
+    if(halls.length>1)wrow.append(field('Hall',select('hall',[['',"The Tank's home town"]].concat(worldTowns(s.world,s.fac).map(t=>[t.name,t.label])),s.hall||'','The town where all five start, whatever their peoples: its region and its people')));
     const fn=el('input','sinput');fn.type='text';fn.maxLength=40;fn.placeholder='Fellowship name: chosen for you';fn.value=s.name||'';fn.dataset.f='fname';
     wrow.append(field('Fellowship name',fn))}
   wrow.append(field('Other heroes',select('others',[['full','The usual roster'],['none','None: the company and whoever the DM brings']],s.others==='none'?'none':'full','Whether the world has background heroes of its own')));
   wrow.append(field('Opening',select('prologue',[['delve','A first delve'],['none','Straight to the hall']],prologueOf(s),'A company of two or more starts at the mouth of a small dungeon near its hall, then comes home to the open world; a solo keeps its short opening')));
+  const dl=delveHint(s);if(dl)wrow.append(dl);
   wsec.append(wrow);page.append(wsec);
 
   const fsec=el('section','ssec');

@@ -184,6 +184,7 @@ jobs:
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: Tool fuzz (every hero and DM tool with valid and hostile arguments in many states), run: npm run toolfuzz}
+      - {name: Table fights on the map patch, run: npm run patchcheck}
       - {name: First delve in the Wending Vale, run: npm run prologuecheck:vale}
 
   g8:
