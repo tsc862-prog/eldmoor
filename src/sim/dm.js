@@ -67,6 +67,7 @@ import {pull,ready,spotErr,attitudeDc,activeOf} from './levers.js';
 import {GOODS} from '../data/items.js';
 import {playerBranch} from './player-choice.js';
 import {isSolo,inSlots} from './company.js';
+import {hasLinks} from './runlink.js';
 import {supplyPlan,notePosted} from './supply.js'; // goods jobs: the board asks for crafted or gathered goods (#720)
 import {onWorld} from './kept.js';
 
@@ -263,6 +264,7 @@ export function takeBounty(a,b){a.quest={type:b.type,need:b.need,have:0,at:Math.
 function fellowHook(c,fo){
   const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl)),five=!!fo.company.slots,co=fo.cid;
   if(!five&&lo<K.MIN_LVL)return null; // nothing on a board fits a company with a member this green (#450)
+  if(five&&lo<K.MIN_LVL&&hasLinks())return null; // in a hosted world the hall posts no job the five's agents would be turned away from (#1016); a headless world draws as before
   for(const a of fo.members){if(a.adv||a.lvl<K.MIN_LVL||S.adventures.some(h=>h.phase==='open'&&h.for===a.id))continue;
     const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data,ff:1,cid:co},(five?'a Fellowship member’s ':'a company member’s ')+(a.goal.offered?'unsworn thread':'oath'),true)}
   const taken=m=>S.adventures.some(h=>h.data&&h.data.eliteId===m.id&&h.phase!=='done');

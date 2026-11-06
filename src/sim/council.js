@@ -25,7 +25,7 @@
 // unique across companies. Only the Fellowship's proposals open a Table decision scene until #440 (table per company).
 // Plain data, saved with the world on each company: C.props [{id,kind,details,by,at,until,votes,status,result}],
 // C.accept {crypt|raid: gameMin until a passed vote stands}, a.splitUntil, a.cryptOk / a.raidOk.
-import {CRYPT,LAIR,REGIONS,zoneAt,dist} from '../world/map.js';
+import {CRYPT,LAIR,REGIONS,ZONES,zoneFor,zoneAt,dist} from '../world/map.js';
 import {S,clockStr,dayNo,noOthers} from './state.js';
 import {log} from './chronicle.js';
 import {maxHp} from './heroes.js';
@@ -41,6 +41,7 @@ import {entryOf,cryptNamed,cryptFor,cryptCtx,cryptOfCtx} from './crypts.js';
 import {reflexMay,ownerHeld,hasLinks} from './runlink.js';
 import {record} from './history.js';
 import {wounded} from './wounds.js';
+import {jobShort} from './jobbar.js';
 import {wishInvite} from './wish.js'; // #829
 import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {inRange,together,outOfRange,nameList,makePlan,reachTick,toldBy,REACH} from './reach.js';
@@ -129,12 +130,20 @@ export function reflexVote(a,P){const mh=maxHp(a),hurt=a.hp<mh*.6;
 const GREEN_WARN='Those who went below were tried blades; you are not.';
 export function greenWarn(F,kind,D=CRYPT){if(kind!=='crypt'&&kind!=='raid')return '';const at=kind==='crypt'?D:LAIR,R=at&&REGIONS[zoneAt(at.x,at.y)],b=R&&R.band;
   return b&&members(F).some(m=>m.lvl<b[0])?' '+(kind==='crypt'?GREEN_WARN:'Those who went to the lair were tried blades; you are not.'):''}
+// A job the company cannot take by level is not put to the vote: the job-giver would refuse the leader at the gate, and the vote and the
+// walk back to the board were spent for nothing (#1016). The same words every time until a member's level changes, so a refused job is not
+// put again by itself. Only agents' proposals: the scripted reflex never names a job.
+function jobRefusal(F,id){const h=(S.adventures||[]).find(x=>x.id===id&&x.phase==='open');if(!h)return null;
+  const L=members(F).filter(m=>m.state!=='dead'&&m.kind==='hero'),lo=L.length?Math.min(...L.map(m=>m.lvl)):null,n=lo==null?null:jobShort(h,lo);if(n==null)return null;
+  const g=ZONES[zoneFor(lo)];
+  return 'Not put to the party: job '+id+' asks for level '+n+' and the '+word(F)+' is level '+lo+' at its lowest, so the job-giver would turn you away. Grow first'+(g?' (hunt '+g+' together)':'')+' and propose it again at level '+n+'; list_jobs shows what the board offers now.'}
 export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return 'Only a member of a company can put something to the party.';
   if(!PROP_KINDS.includes(kind))return 'Kind must be one of: '+PROP_KINDS.join(', ')+'.';
   if(isSolo(F)&&kind!=='break_camp')return SOLO;
   const D=kind==='crypt'?(o.dun&&cryptNamed(o.dun))||cryptFor(a):CRYPT,what=kind==='crypt'?'go down into '+D.name+' together':KIND_TEXT[kind]; // which dungeon (#891): the one named, else the one that fits
   if(kind==='site'&&o.site==null)return 'Put a site to the party with enter_site {site}: it names the place.';
   if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break: the '+word(F)+' is not camped. Go on with move_to'+(leaderOfC(F)===a&&!isSolo(F)?' or lead_to':'')+'.';
+  if(kind==='job'&&o.job!=null&&a&&a.player){const w=jobRefusal(F,Number(o.job));if(w)return w} // told before the vote, not after it (#1016)
   let ex=null;if(kind==='expel'||kind==='merge'){if(!groupHook)return 'Not available here.'+(a&&a.player?wishInvite(a):'');ex=groupHook.prepare(a,F,kind,o);if(ex.error)return ex.error}
   {const O=openProps(F).find(P=>P.kind===kind);if(O)return 'Proposal '+propLine(O)+' is already open. Vote on it with vote('+O.id+', yes|no), or wait for it to settle'+leftText(O)+' before proposing another.'}
   const d=ex?ex.details:clean(details,200);if(!d&&kind==='other')return 'Say what you propose.';
