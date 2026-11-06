@@ -27,7 +27,7 @@
 //
 // State (plain data, saved with the world): S.challenges [{id, by, to, mode, at, text}] (absent while empty), S.challengeSeq;
 // a.duelDay {d, n}, a.duelLast {[heroId]: gameMin}, a.duelRec {[heroId]: {w, l, d}}; the scene's ctx (below).
-import {S,dayNo,sameSide} from './state.js';
+import {S,dayNo,sameSide,loreSides} from './state.js';
 import {dist,zoneAt,ZONES} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
 import {hash,rnd} from '../core/rng.js';
@@ -103,8 +103,8 @@ function modeOf(to){if(to==null||String(to).trim()==='')return 'first blood';con
 // An agent hero challenges b. args {hero, to, text}; text already checked for English by player.js.
 export function issue(a,{hero:who,to,text}={}){
   if(!a||!a.player)return no('Only an agent hero issues a challenge.');
-  if(who==null||String(who).trim()==='')return no('Challenge whom? hero: the name or id of a hero of your faction within '+DUEL.RANGE+' tiles ('+nearList(a)+').');
-  const b=findHero(a,who);if(!b||!alive(b))return no('No hero called "'+clean(who,40)+'" in sight. Heroes of your faction within '+DUEL.RANGE+' tiles: '+nearList(a)+'.');
+  if(who==null||String(who).trim()==='')return no('Challenge whom? hero: the name or id of a hero'+(loreSides()?'':' of your faction')+' within '+DUEL.RANGE+' tiles ('+nearList(a)+').');
+  const b=findHero(a,who);if(!b||!alive(b))return no('No hero called "'+clean(who,40)+'" in sight. Heroes'+(loreSides()?'':' of your faction')+' within '+DUEL.RANGE+' tiles: '+nearList(a)+'.');
   if(b===a)return no('You cannot challenge yourself.');
   if(!sameSide(a,b))return no(b.name+' is not of your faction: an honour duel is fought among your own (fight is for foes).');
   let mode=modeOf(to);if(!mode)return no('to is "first blood" (the first hit ends it) or "yield" (until one yields).');

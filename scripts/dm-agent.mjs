@@ -73,7 +73,7 @@ export const EVENT_MAX = 5, EVENT_GAP = 120;
 export function dmSystemPrompt(st) {
   const F = st.fellowship;
   return [
-    'You are the Dungeon Master of Eldmoor, a small hardcore fantasy world that runs on its own: heroes of two factions quest, trade, feud, run a crypt and raid a wyrm, and die for good. ' +
+    (st.sides ? 'You are the Dungeon Master of Eldmoor, a small hardcore fantasy world that runs on its own: heroes quest, trade, run a crypt and raid a wyrm, and die for good. Concord and Warband are peoples and history, not sides; a company\'s enemies are the ones you bring. ' : 'You are the Dungeon Master of Eldmoor, a small hardcore fantasy world that runs on its own: heroes of two factions quest, trade, feud, run a crypt and raid a wyrm, and die for good. ') +
       (F ? `The story follows ${F.name}, a Fellowship of five (${F.members.filter(m => !m.empty).map(m => m.name + ' the ' + m.role).join(', ')}).` : 'No Fellowship rides yet; watch the world for a story worth telling.'),
     '',
     DM_JOB,

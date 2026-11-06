@@ -57,12 +57,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
-import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
+import {withSituationOrders, ORDERS_FULL, ordersFor} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
 import {lazyOn, toolOptions, withLazyEnv, markLazy, lazyLine, searchCount, lazyRec} from './lazy-tools.mjs'; // AGENT_LAZY_TOOLS (issue #808)
-import {PLAYER_TOOLS} from '../src/data/player-tools.js';
+import {PLAYER_TOOLS, toolsFor} from '../src/data/player-tools.js';
 import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, tableHooks, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -78,7 +78,7 @@ const flag = k => argv.includes('--' + k);
 export function systemPrompt(st) {
   const traits = (st.traits || []).join('; ');
   return [
-    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of ${st.world || 'Eldmoor'} (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
+    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls}${st.sides === 'lore' ? '' : ' of the ' + st.faction}, from ${st.home}. You live in the land of ${st.world || 'Eldmoor'} (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
     st.origin ? `Your past: ${st.origin}` : '',
     st.oath ? `Your oath: ${String(st.oath).replace(/[.!?]+$/, '')}.` : '',
     st.thread ? `A thread in your past, not an oath: ${st.thread} You have sworn nothing; what you swear, if anything, is yours to choose.` : '',
@@ -101,7 +101,7 @@ export function systemPrompt(st) {
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
-    ORDERS_FULL,
+    ordersFor(ORDERS_FULL, st.sides),
   ].filter(s => s !== null).join('\n');
 }
 
@@ -203,7 +203,7 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
     try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a reflection moment (issue #179)
       if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a Fellowship member's own scene (issue #163)
-      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + briefText(b0), model: rs.model, toolTurns,
+      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: ol.chat, tools: toolsFor(st.sides), call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + briefText(b0), model: rs.model, toolTurns,
       on})), {pacer, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); delete sess.rolled}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
@@ -234,7 +234,7 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
     try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a reflection moment (issue #179)
       if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a Fellowship member's own scene (issue #163)
-      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + briefText(b0), model: rs.model, toolTurns, on})), {pacer, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); delete sess.rolled}
+      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: adapter.chat, tools: toolsFor(st.sides), call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + briefText(b0), model: rs.model, toolTurns, on})), {pacer, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); delete sess.rolled}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
@@ -284,13 +284,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (note) console.log('[agent] ' + note);
   if (inheritRunner(sess, pick.hero && pick.hero.succeeds)) console.log(`[agent] plays with the runner settings of the hero whose place it took (#${pick.hero.succeeds}): ${sess.runner.provider} ${sess.runner.model || ''}`); // #452
   sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
-  sess.system = withSituationOrders(sess.system, false); // situations (#531); the local variant is set once the runner's provider is known
+  sess.system = withSituationOrders(sess.system, false, st.sides); // situations (#531); the local variant is set once the runner's provider is known
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
   if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama, openai, huggingface or google.`); await release(); process.exit(1)}
-  sess.system = withSituationOrders(sess.system, rs.provider === 'ollama'); // the short variant for a local model (#531)
+  sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides); // the short variant for a local model (#531)
   if (rs.provider === 'ollama') {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
@@ -353,7 +353,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the next turn carries on
     const grab = sceneGrab({due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, abort: () => turnAbort.abort(),
       onGrab: () => console.log(`  [scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
-    const opened = !sess.sessionId, to = toolOptions(lazy, `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}`);
+    const opened = !sess.sessionId, to = toolOptions(lazy, `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}${st.sides === 'lore' ? '&sides=lore' : ''}`);
     const q = query({prompt, options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
