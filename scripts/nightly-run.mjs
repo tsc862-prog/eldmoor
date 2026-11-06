@@ -15,6 +15,7 @@ const MINUTES = Number(opt('minutes', 60)), SPEED = Number(opt('speed', 8)), OUT
 const TH = JSON.parse(readFileSync(resolve(opt('thresholds', join(HERE, 'nightly-thresholds.json'))), 'utf8'));
 const WORLD = 'nightly';
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+let restarts = 0; // Fellowship runners started again for the recruits (#822)
 
 // ---- the run ----
 async function run() {
@@ -24,24 +25,31 @@ async function run() {
   const env = {...process.env, AGENT_LOGS: join(OUT, 'agents'), BEHAVIOR_DIR: join(OUT, 'behavior'), ANTHROPIC_API_KEY: '', OPENAI_API_KEY: '', OLLAMA_URL: mock.url,
     AGENT_MIN_GAP: '2', AGENT_HEARTBEAT: '60', AGENT_REFLECT: '1', RELAY_VERBOSE: ''};
   const kids = [], log = [];
-  const kid = (name, a) => { const p = spawn(process.execPath, a, {cwd: ROOT, env, stdio: ['pipe', 'pipe', 'pipe']}); const k = {name, p, done: new Promise(r => p.on('exit', c => r(c)))};
-    const keep = d => { for (const l of String(d).split(/\r?\n/)) if (l.trim()) { log.push(`[${name}] ${l}`); if (log.length > 4000) log.shift(); } };
+  const kid = (name, a) => { const p = spawn(process.execPath, a, {cwd: ROOT, env, stdio: ['pipe', 'pipe', 'pipe']}); const k = {name, p, dead: 0, other: 0, done: new Promise(r => p.on('exit', (c, sig) => { k.how = sig ? 'signal ' + sig : 'code ' + c; r(c); }))};
+    const keep = d => { for (const l of String(d).split(/\r?\n/)) if (l.trim()) { const e = /\] done \(([^)]+)\)/.exec(l); if (e) k[/^(dead|left agent play)$/.test(e[1]) ? 'dead' : 'other']++; log.push(`[${name}] ${l}`); if (log.length > 20000) log.shift(); } };
     p.stdout.on('data', keep); p.stderr.on('data', keep); kids.push(k); return k; };
   kid('world', ['scripts/play-headless.mjs', '--fellowship', '--agents', '0', '--port', String(port), '--quiet', '--speed', String(SPEED), '--warm', '1',
     '--world', join(OUT, 'world.json'), '--log-world', WORLD, '--no-relay']);
   for (let i = 0; i < 300 && !log.some(l => /headless world at /.test(l)); i++) await sleep(200);
   if (!log.some(l => /headless world at /.test(l))) throw new Error('the headless world did not start\n' + log.slice(-20).join('\n'));
   const rflags = ['--url', base, '--provider', 'ollama', '--model', 'mock-table:1b', '--ollama-url', mock.url];
-  kid('fellowship', ['scripts/fellowship.mjs', ...rflags, '--min-gap', '2', '--heartbeat', '60']);
+  const startRunner = () => kid('fellowship', ['scripts/fellowship.mjs', ...rflags, '--min-gap', '2', '--heartbeat', '60']);
+  let runner = startRunner();
+  // A Fellowship runner ends by itself when its last member dies, and in the game the supervisor starts it again for the recruits (adopt in
+  // scripts/runners.mjs). There is no supervisor here, so this is that step: without it the rest of the run measured seats nobody plays (#822: every
+  // reflex-scenes and stuck-state of the 2026-11-06 run came after the runner left at minute 4). A runner that ended any other way stays down and shows in the numbers.
+  const recruits = async () => { try { const h = await (await fetch(base + '/play/health')).json(); return (h.heroes || []).some(x => x.alive && x.fellow); } catch { return false; } };
   console.log(`[nightly] world on ${base}, runners started; playing ${MINUTES} real minutes at ${SPEED}x`);
   const end = Date.now() + MINUTES * 60000;
+  let said = 0;
   while (Date.now() < end) {
-    await sleep(Math.min(30000, end - Date.now()));
-    const dead = kids.filter(k => k.p.exitCode !== null);
-    if (dead.some(k => k.name === 'world')) throw new Error('the headless world exited early\n' + log.slice(-20).join('\n'));
-    console.log(`[nightly] ${Math.round((end - Date.now()) / 60000)} min left; ${dead.length ? 'exited: ' + dead.map(k => k.name + ':' + k.p.exitCode).join(' ') : 'all up'}`);
+    await sleep(Math.min(2000, end - Date.now()));
+    const gone = kids.find(k => k.name === 'world' && k.how);
+    if (gone) { writeFileSync(join(OUT, 'run.log'), log.join('\n') + '\n'); throw new Error(`the headless world exited early (${gone.how})\n` + log.filter(l => l.startsWith('[world]')).slice(-10).join('\n')); }
+    if (runner.p.exitCode !== null && runner.dead && !runner.other && await recruits()) { runner = startRunner(); restarts++; console.log(`[nightly] the last member fell: runner started again for the recruits (${restarts})`); }
+    if (Date.now() - said >= 30000) { said = Date.now(); console.log(`[nightly] ${Math.round((end - Date.now()) / 60000)} min left; ${restarts ? restarts + ' runner restarts; ' : ''}${runner.p.exitCode === null ? 'all up' : 'the runner is down: ' + runner.p.exitCode}`); }
   }
-  for (const k of kids.slice().reverse()) { try { k.p.stdin.write('stop\n'); } catch {} }
+  for (const k of kids.slice().reverse()) { if (k.p.exitCode === null) try { k.p.stdin.write('stop\n'); } catch {} }
   await sleep(3000);
   for (const k of kids.slice().reverse()) { if (k.p.exitCode === null) k.p.kill(); }
   await Promise.race([Promise.all(kids.map(k => k.done)), sleep(8000)]);
@@ -59,9 +67,10 @@ function jsonl(dir, name) {
 export function measure(dir) {
   const T = jsonl(dir, 'turns.jsonl'), W = jsonl(dir, 'world.jsonl'), A = jsonl(dir, 'anomalies.jsonl');
   const sh = {agent: 0, autopilot: 0, relay: 0, scripted: 0}; let scenes = 0, deaths = 0, idleMax = 0;
+  const members = new Set(W.flatMap(w => (w.members || []).map(m => m.name))); // a fallen member gone from the roster by the next digest carries no flag (#822)
   for (const w of W) {
     const s = w.share || {}; for (const k of Object.keys(sh)) sh[k] += Number(s[k]) || 0;
-    scenes += (w.table && w.table.opened) || 0; deaths += Array.isArray(w.deaths) ? w.deaths.filter(d => d.fellow || d.agent || d.watched).length : 0;
+    scenes += (w.table && w.table.opened) || 0; deaths += Array.isArray(w.deaths) ? w.deaths.filter(d => d.fellow || d.agent || d.watched || members.has(d.name)).length : 0;
   }
   for (const a of A) if (a.kind === 'idle') idleMax = Math.max(idleMax, Number(a.evidence && a.evidence.minutes || 0) / 60);
   const tot = Object.values(sh).reduce((a, b) => a + b, 0), kinds = {};
@@ -92,7 +101,7 @@ async function main() {
     `| agent turns | ${m.turns} | at least ${TH.minTurns} |`, `| empty turn rate | ${(m.emptyRate * 100).toFixed(0)}% | ${(TH.maxEmptyTurnRate * 100).toFixed(0)}% |`,
     `| autopilot share | ${(m.autopilotShare * 100).toFixed(0)}% | ${(TH.maxAutopilotShare * 100).toFixed(0)}% |`, `| Table scenes | ${m.scenes} | at least ${TH.minTableScenes} |`,
     `| deaths (watched) | ${m.deaths} | ${TH.maxDeaths} |`, `| longest idle (game hours) | ${m.idleMaxHours.toFixed(1)} | ${TH.maxIdleGameHours} |`,
-    `| anomalies | ${Object.entries(m.anomalies).map(([k, n]) => k + ' ' + n).join(', ') || 'none'} | see thresholds |`, ''];
+    `| runner restarts for recruits | ${restarts} | none set |`, `| anomalies | ${Object.entries(m.anomalies).map(([k, n]) => k + ' ' + n).join(', ') || 'none'} | see thresholds |`, ''];
   writeFileSync(join(OUT, 'summary.md'), L.join('\n')); console.log(L.join('\n'));
   process.exit(bad.length ? 1 : 0);
 }
