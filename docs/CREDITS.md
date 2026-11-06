@@ -9,6 +9,9 @@ by `npm run art:packs` into `assets/packs/<set>/`, which is gitignored: only the
 
 | Set | Author | Licence | Link | Used |
 | --- | --- | --- | --- | --- |
+| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions, the crypt mouth and the lair |
+| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions, rocks and whole trees |
+| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions, rocks and whole trees; town buildings |
 | Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions, rocks and whole trees (also the recoloured highland set of the Wending Vale); town buildings |
 | [LPC] Roofs | bluecarrot16, Lanea Zimmerman (Sharm), Michele Bucelli (Buch), Casper Nilsson, Xenodora, keith karnage, NaRNeRZz, Talon (Talosaurus) | CC-BY-SA 3.0 (also GPL 3.0) | https://opengameart.org/content/lpc-roofs |
 | Universal LPC Spritesheet Character Generator (layers) | per layer, below | CC-BY-SA 3.0 (each layer also offered under the licences listed below) | https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator | the hero sheets (seven classes by six peoples) |
@@ -24,6 +27,12 @@ tiles `grass.png`, `dirt.png` and `water.png` by Leana Zimmerman (Sharm), CC-BY-
 the 2012 Liberated Pixel Cup base assets (https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles).
 The cut pieces are derivative works and stay under CC-BY-SA 3.0. The script is `scripts/art/packcut.mjs`.
 
+## LPC landmarks
+
+`landmark:crypt-mouth` is cut from the arch and brick course of `castlewalls.png` by Daniel Armstrong (HughSpectrum) and `landmark:lair` from
+the charcoal rock of `lavarock.png` by Leana Zimmerman (Sharm), both from the 2012 Liberated Pixel Cup base assets, CC-BY-SA 3.0 (also GPL 3.0).
+The stone is recoloured onto the crypt's violet-grey and a few details are drawn by hand; the pieces are derivative works and stay under CC-BY-SA 3.0.
+The script is `scripts/art/landmarkcut.mjs`.
 ## LPC town buildings
 
 `building:lpc-<style>-<piece>` (stone and timber: auction house, smithy, hall, chapel, notice board, inn) are laid up by
@@ -99,3 +108,20 @@ that licence (attribution), not under CC-BY-SA; the same goes for any other laye
 - `weapon/sword/dagger`: bluecarrot16, Johannes Sjölund (wulax), Matthew Krohn (makrohn). Offered under OGA-BY 3.0, CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-medieval-fantasy-character-sprites https://opengameart.org/content/lpc-extended-weapon-animations
 - `weapon/sword/rapier`: Johannes Sjölund (wulax), bluecarrot16. Offered under OGA-BY 3.0, CC-BY-SA 3.0; used under CC-BY-SA 3.0. https://opengameart.org/content/lpc-medieval-fantasy-character-sprites https://opengameart.org/content/lpc-extended-weapon-animations
 <!-- lpc-heroes:end -->
+
+## LPC creature sheets
+
+`sprite:mob-<creature>` for wolf, rimehound, boar, mudboar, spider, lurker, golem, wight and bog are cut by
+`scripts/art/lpc-creatures.mjs` (choices in `scripts/art/lpc-creatures.json`) from community LPC packs on OpenGameArt: three walk
+frames by four directions, recoloured by luminance to the creature's own tint, never scaled. Each sheet is a derivative work
+shared under the licence in its line below (the packs offer CC-BY-SA 3.0, or OGA-BY 3.0 among others; the OGA-BY ones are used under OGA-BY 3.0, attribution).
+The bestiary's Ash Drake and Tundra Shaghorn have no fitting free art and stay procedural.
+
+<!-- lpc-creatures:begin -->
+- https://opengameart.org/content/lpc-wolf-animation: Stephen Challener (Redshrike), commissioned and uploaded by zerohero. Offered under CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0; used under OGA-BY 3.0. Cut into: `mob-wolf`, `mob-rimehound`.
+- https://opengameart.org/content/lpc-wild-boar: FiveBrosStopMosYT (based on the pig of Daniel Eddeland (daneeklu), colours from the LPC Wolf). Offered under CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. Cut into: `mob-boar`, `mob-mudboar`.
+- https://opengameart.org/content/lpc-spider: Stephen Challener (Redshrike), commissioned and uploaded by zerohero. Offered under CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0; used under OGA-BY 3.0. Cut into: `mob-spider`, `mob-lurker`.
+- https://opengameart.org/content/lpc-golem: Stephen Challener (Redshrike), uploaded by Nemisys. Offered under CC-BY 3.0, CC-BY 4.0, GPL 2.0, GPL 3.0, OGA-BY 3.0; used under OGA-BY 3.0. Cut into: `mob-golem`.
+- https://opengameart.org/content/lpc-skeleton: Johannes Sjolund (wulax), Matthew Krohn (makrohn), Snabisch. Offered under CC-BY-SA 3.0, GPL 3.0; used under CC-BY-SA 3.0. Cut into: `mob-wight`.
+- https://opengameart.org/content/lpc-frogman: Puffolotti (after Stephen Challener (Redshrike)'s frog man). Offered under CC-BY 3.0, OGA-BY 3.0; used under OGA-BY 3.0. Cut into: `mob-bog`.
+<!-- lpc-creatures:end -->
