@@ -1324,7 +1324,7 @@ console.log('the DM prepares the table');
     sc.beats.push({id:'foe',name:fp.foes[0].name,k:'attack',res:'d20 1+2=3 vs AC 14 (a natural 1): missed',by:'foe',roll:{die:1,mod:2,total:3,vs:14,hit:false,crit:false,dmg:0,target:m0.name,down:false}});t=tick(t,12);
     ok(F.tilt!==0,'patch: a foe’s natural 1 is a stumble');t=tick(t,16);
     sc.beats.push({id:m0.id,name:m0.name,k:'strike',res:'hit',by:'agent',roll:{die:12,mod:4,total:16,vs:12,hit:true,crit:false,dmg:hp-9,target:fp.foes[0].name,down:true}});mob.hp=0;mob.alive=false;t=tick(t,1);
-    const fell=[];sv.sceneFallen(fell);ok(fell.includes(mob)&&F.fade===1,'patch: a slain foe stays drawn until its killing blow lands');t=tick(t,26);fell.length=0;sv.sceneFallen(fell);ok(!fell.includes(mob)&&F.fade===0,'patch: and falls away after it');
+    const fell=[];sv.sceneFallen(fell);ok(fell.includes(mob)&&F.fade===1,'patch: a slain foe stays drawn until its killing blow lands');t=tick(t,40);fell.length=0;sv.sceneFallen(fell);ok(!fell.includes(mob)&&F.fade===0,'patch: and falls away after it');
     // at 8x the beats are skipped; a cold gap replays nothing
     TABLE.speed=8;sc.beats.push({id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'});m0.x=x0;t=tick(t,1);ok(sv.sceneQueue().length===0&&P.x===m0.x,'patch: at 8x the beats are skipped and everyone snaps to their tile');TABLE.speed=1;
     sc.beats.push({id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'});t=tick(t,1,5);ok(sv.sceneQueue().length===0,'patch: after a gap nothing is replayed');

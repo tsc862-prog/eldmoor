@@ -26,13 +26,15 @@ import {S,noOthers} from './state.js';
 import {log} from './chronicle.js';
 import {record} from './history.js';
 import {bond,FRIEND,CLOSE} from './bonds.js';
+import {hasLinks} from './runlink.js';
 
 export const CAP=12,MAX_FOUND=6,NEAR_FOUND=20,JOIN_LVL=3,SPLIT_DAYS=6,DISBAND_DAYS=7,TICK=5,JOIN_P=.2;
 const DAY=1440;
 
 const alive=a=>a&&a.state!=='dead';
 // A world with no others (#780) raises no banner around a company: its people and their companions stay out of the guilds. Heroes the DM summons found and join as ever.
-const open=a=>!(noOthers()&&(a.company!=null||a.companion!=null));
+// With a host that reports runner links (#954) a company member or agent-played hero never founds or joins a guild by script: that is the agent's own decision (guild_found, guild_join). Hostless worlds (npm run sim, the seeded checks) keep the script.
+const open=a=>!(noOthers()&&(a.company!=null||a.companion!=null))&&!(hasLinks()&&(a.company!=null||a.player));
 const stats=()=>S.guildStats||(S.guildStats={founded:0,joined:0,succeeded:0,split:0,disbanded:0});
 export const livingGuilds=()=>S.GUILDS.filter(g=>!g.retired);
 export const membersOf=g=>S.agents.filter(a=>a.guild===g&&alive(a));
@@ -129,3 +131,28 @@ export function guildsTick(dt){
 
 // Test hook for scripts: a random living guild of faction f, or null.
 export const randomGuild=f=>{const l=livingGuilds().filter(g=>g.fac===f);return l.length?pickA(l):null};
+
+
+// ---- agent choice (#954): guild_join and guild_found, called from player.js at a town ----
+export function guildJoinFor(a,name){
+  if(a.guild)return {ok:false,why:'You already wear <'+a.guild.tag+'> '+a.guild.name+'. Guilds are not left by tool; your standing in it is yours to live with.'};
+  if(a.lvl<JOIN_LVL)return {ok:false,why:'A guild roll is signed at level '+JOIN_LVL+' or above; you are level '+a.lvl+'.'};
+  const sizes=new Map();for(const x of S.agents)if(x.guild&&alive(x))sizes.set(x.guild,(sizes.get(x.guild)||0)+1);
+  const cand=livingGuilds().filter(x=>x.fac===a.fac&&(sizes.get(x)||0)<CAP);
+  if(!cand.length)return {ok:false,why:'No guild of your side has a place open. guild_found raises one if two comrades stand with you.'};
+  let g=null;const q=name!=null?String(name).trim().toLowerCase().replace(/^</,''):'';
+  if(q){g=cand.find(x=>x.name.toLowerCase()===q||x.tag.toLowerCase()===q.replace(/>.*/,'')||x.name.toLowerCase().includes(q));
+    if(!g)return {ok:false,why:'No open guild of your side matches "'+name+'". Open: '+cand.map(x=>'<'+x.tag+'> '+x.name+' ('+(sizes.get(x)||0)+')').join(', ')+'.'}}
+  else return {ok:true,choose:cand.map(x=>({guild:x.name,tag:x.tag,members:sizes.get(x)||0,leader:(leaderOf(x)||{}).name||null})),how:'guild_join {guild: "<name or tag>"}'};
+  enroll(a,g,'Signed the roll of ');stats().joined++;log(a,' joins ',tagTxt(g),'.');
+  return {ok:true,joined:'<'+g.tag+'> '+g.name}}
+
+export function guildFoundFor(a){
+  if(a.guild)return {ok:false,why:'You already wear <'+a.guild.tag+'> '+a.guild.name+'.'};
+  if(a.lvl<JOIN_LVL)return {ok:false,why:'A banner is raised at level '+JOIN_LVL+' or above; you are level '+a.lvl+'.'};
+  // comrades: unguilded same-faction heroes the script may enrol (not company members or agent heroes, who choose for themselves) linked to the founder
+  const mates=S.agents.filter(b=>b!==a&&alive(b)&&b.fac===a.fac&&!b.guild&&open(b)&&linked(a,b)).sort((x,y)=>bond(a,y)-bond(a,x)).slice(0,MAX_FOUND-1);
+  if(mates.length<2)return {ok:false,why:'A banner needs three: you and two comrades of your side, unguilded and close by or in town together. Only '+mates.length+' stand with you.'};
+  const g=newGuild(a.fac,a);for(const m of [a,...mates])enroll(m,g,'Raised a banner with comrades: ');
+  stats().founded++;log(a,' raises a banner with ',...names(mates.map(m=>m.name)),': ',tagTxt(g),'.');
+  return {ok:true,founded:'<'+g.tag+'> '+g.name,with:mates.map(m=>m.name)}}

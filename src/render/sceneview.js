@@ -183,15 +183,25 @@ function glyph(x,rows,gx,gy,col){const rim=SCENE.markRim; // o the colour, X the
   rows.forEach((r,j)=>[...r].forEach((c,i)=>{if(c==='.')return;x.fillStyle=c==='X'?rim:col;x.fillRect(gx+i*DOT,gy+j*DOT,DOT,DOT)}))}
 // The marks of one grid, painted once: a line round every tile one can stand on (solid ground stays clear, so the ground reads by its
 // grid), cover and slow tiles washed and marked in opposite corners, the patch's edge. G comes from patchGrid, which caches it.
+// Cover and slow ground are the sim's own and stay so (patch.js), but a patch on a stone floor, a lair or a field of snow can be nearly all of one,
+// and a glyph on every tile says nothing. A few tiles are all marked; many, only a handful spread over the ground, the named one first.
+const MANY=.2,FEW=4,SLOW_FEW=6;
+function marks(G,test,few,spot){const n=G.w*G.h,out=new Uint8Array(n),all=[];let ok=0;for(let k=0;k<n;k++){if(G.ok[k])ok++;if(G.ok[k]&&test(k))all.push(k)}
+  if(all.length<=Math.max(few,Math.floor(ok*MANY))){for(const k of all)out[k]=1;return out}
+  const xy=k=>[k%G.w,Math.floor(k/G.w)],f=spot?spot.y*G.w+spot.x:-1,pick=[f>=0&&all.includes(f)?f:all[0]];
+  while(pick.length<few){let b=-1,bd=-1;for(const k of all){if(pick.includes(k))continue;const [x,y]=xy(k);let d=1e9;for(const q of pick){const [qx,qy]=xy(q);d=Math.min(d,Math.max(Math.abs(x-qx),Math.abs(y-qy)))}if(d>bd){bd=d;b=k}}if(b<0)break;pick.push(b)}
+  for(const k of pick)out[k]=1;return out}
+export const coverMarks=G=>marks(G,k=>G.cover[k],FEW,G.spots&&G.spots.cover);
+export const slowMarks=G=>marks(G,k=>G.cost[k]>1,SLOW_FEW,null); // the wash stays on every slow tile; this is the glyph
 const layers=new WeakMap();
-export function patchLayer(G){let c=layers.get(G);if(c)return c;c=document.createElement('canvas');c.width=G.w*LT;c.height=G.h*LT;const x=c.getContext('2d'),ok=(i,j)=>i>=0&&j>=0&&i<G.w&&j<G.h&&!!G.ok[j*G.w+i];
+export function patchLayer(G){let c=layers.get(G);if(c)return c;c=document.createElement('canvas');c.width=G.w*LT;c.height=G.h*LT;const x=c.getContext('2d'),ok=(i,j)=>i>=0&&j>=0&&i<G.w&&j<G.h&&!!G.ok[j*G.w+i],cv=coverMarks(G),sm=slowMarks(G);
   for(let j=0;j<G.h;j++)for(let i=0;i<G.w;i++){const k=j*G.w+i,px=i*LT,py=j*LT;if(!G.ok[k])continue;
-    if(G.cost[k]>1){x.fillStyle=SCENE.slowWash;x.fillRect(px,py,LT,LT)}if(G.cover[k]){x.fillStyle=SCENE.coverWash;x.fillRect(px,py,LT,LT)}}
+    if(G.cost[k]>1){x.fillStyle=SCENE.slowWash;x.fillRect(px,py,LT,LT)}if(cv[k]){x.fillStyle=SCENE.coverWash;x.fillRect(px,py,LT,LT)}}
   for(let j=0;j<=G.h;j++)for(let i=0;i<=G.w;i++){const px=i*LT,py=j*LT; // each line once: the top and left of every tile, and of the row and column past the end
     if(i<G.w&&(ok(i,j)||ok(i,j-1))){x.fillStyle=SCENE.grid;x.fillRect(px,py-1,LT,2);x.fillStyle=SCENE.gridHi;x.fillRect(px,py+1,LT,1)}
     if(j<G.h&&(ok(i,j)||ok(i-1,j))){x.fillStyle=SCENE.grid;x.fillRect(px-1,py,2,LT);x.fillStyle=SCENE.gridHi;x.fillRect(px+1,py,1,LT)}}
   for(let j=0;j<G.h;j++)for(let i=0;i<G.w;i++){const k=j*G.w+i,px=i*LT,py=j*LT;if(!G.ok[k])continue;
-    if(G.cover[k])glyph(x,SHIELD,px+5,py+5,SCENE.cover);if(G.cost[k]>1)glyph(x,WAVE,px+LT-WAVE[0].length*DOT-5,py+LT-(WAVE.length+1)*DOT-5,SCENE.slow)}
+    if(cv[k])glyph(x,SHIELD,px+5,py+5,SCENE.cover);if(sm[k])glyph(x,WAVE,px+LT-WAVE[0].length*DOT-5,py+LT-(WAVE.length+1)*DOT-5,SCENE.slow)}
   x.fillStyle=SCENE.patchEdge;x.fillRect(0,0,c.width,3);x.fillRect(0,c.height-3,c.width,3);x.fillRect(0,0,3,c.height);x.fillRect(c.width-3,0,3,c.height);
   layers.set(G,c);return c}
 function drawPatch(ctx,fp){const c=patchLayer(patchGrid(fp));ctx.drawImage(c,0,0,c.width,c.height,fp.ox*T,fp.oy*T,fp.w*T,fp.h*T)}
@@ -200,7 +210,7 @@ function drawPatch(ctx,fp){const c=patchLayer(patchGrid(fp));ctx.drawImage(c,0,0
 // As render/crawlview.js plays a crawl room, with the same timings, words and motions; its helpers are private to it, so the few small
 // tables are repeated here. A pose is what one member or foe shows: bx/by the place it has reached, x/y that plus the beat's motion.
 const SPEED=3.4,FOE_PACE=.8,SNAP=7;  // tiles a second a member walks; a foe's share of that; further than this is no walk (a blink)
-const BEAT={strike:.8,blow:.7,save:.6,ring:.6,other:.45},COLD=.75,WALK_WAIT=1.2,HOLD_S=3,FALL_S=.6,POP_S=1.1;
+const BEAT={strike:.8,blow:.7,save:.6,ring:.6,other:.45},COLD=.75,WALK_WAIT=1.2,HOLD_S=3,FALL_S=1.3,STUMBLE_S=1.1,LIE=.5,POP_S=1.1;
 const pace=()=>TABLE.speed>=8?0:TABLE.speed>=3?.4:1; // at 3x the beats play fast; at 8x they are skipped
 const WORD={guard:'on me',hold:'hold!',ward:'ward',retreat:'fall back',stabilize:'bound',stunned:'stunned',attempt:'tries',yield:'yields',flee:'runs',breath:'breath!'};
 const GREY=new Set(['retreat','stunned','attempt','yield','flee']);
@@ -214,7 +224,7 @@ function pop(x,y,txt,col,now){let p=pops[0];for(const q of pops){if(!q.on){p=q;b
 const poseFor=(e,foe)=>{let p=poses.get(e);if(!p){p={e,foe,bx:e.x,by:e.y,x:e.x,y:e.y,hp:Math.max(0,e.hp),show:e.hp,pend:0,fresh:0,walk:false,face:e.face<0?-1:1,dir:0,tilt:0,flash:0,col:'',fade:1,flashAt:-9,shakeAt:-9,stumbleAt:-9,claim:0,fellAt:-1};poses.set(e,p)}return p};
 const entOf=r=>r.kind==='boss'?S.boss:r.kind==='hero'?byId(r.id):S.mobs.find(m=>m.id===r.id)||null;
 const gone=e=>(e.kind==='mob'||e.kind==='boss')&&!e.alive; // a fallen hero foe is a grave in the world already
-const popAt=(p,txt,col,now,up=0)=>pop(p.bx,p.by-(p.e.kind==='boss'?3:1.6)-up,txt,col,now);
+const popAt=(p,txt,col,now,up=0)=>pop(p.bx,p.by-(p.e.kind==='boss'?3.4:HEAD/T+.5)-up,txt,col,now); // starts above the nameplate (HEAD), not on it
 // A new patch, or the view back after a gap: everyone where they stand, nothing replayed.
 function playBegin(sc,fp){playReset();PL.fp=fp;PL.seen=sc.beats.length;PL.foes=fp.foes.map(r=>({name:r.name,e:entOf(r)})).filter(f=>f.e);
   for(const id of sc.ids){const a=byId(id);if(a)poseFor(a,false)}for(const f of PL.foes)poseFor(f.e,true)}
@@ -267,9 +277,10 @@ function playTick(sc,now){const fp=sc&&sc.id===openId&&sc.fp||null;if(!fp&&!PL.f
   playQueue(now);const q=PL.play;
   for(const p of poses.values()){let x=p.bx,y=p.by;if(!p.walk){const o=nearestOther(p);if(o)facing(p,o.bx-p.bx,o.by-p.by)}
     const lg=lungeOf(q,p);if(lg){const t=q.tgt,d=Math.hypot(t.bx-p.bx,t.by-p.by)||1;x+=(t.bx-p.bx)/d*lg;y+=(t.by-p.by)/d*lg}
-    const sk=now-p.shakeAt,st=now-p.stumbleAt,fl=now-p.flashAt,fa=p.fellAt<0?0:(now-p.fellAt)/FALL_S;
+    const sk=now-p.shakeAt,st=now-p.stumbleAt,fl=now-p.flashAt,fa=p.fellAt<0?0:(now-p.fellAt)/FALL_S,ease=Math.min(1,fa/.4);
     if(sk<.45)x+=Math.round(Math.sin(sk*70)*1.5)/T;
-    p.tilt=st<.9?Math.sin(st/.9*Math.PI)*.5*p.face:fa>0?Math.min(1,fa)*Math.PI/2*p.face:0;p.flash=fl<.3?.8*(1-fl/.3):0;p.fade=fa>0?Math.max(0,1-fa):1;p.x=x;p.y=y;p.show=p.e.hp+p.pend}}
+    p.tilt=st<STUMBLE_S?Math.sin(st/STUMBLE_S*Math.PI)*.75*p.face:fa>0?(1-(1-ease)*(1-ease))*Math.PI/2*p.face:0; // a fall: over to the ground in the first 40%, lying, then fading in the last (it used to fade as it turned)
+    p.flash=fl<.3?.8*(1-fl/.3):0;p.fade=fa>LIE?Math.max(0,1-(fa-LIE)/(1-LIE)):1;p.x=x;p.y=y;p.show=p.e.hp+p.pend}}
 // The foes the world no longer draws but the fight still shows: their last blow is yet to land, or they are falling.
 export function sceneFallen(list){for(const p of poses.values())if(gone(p.e)&&p.fade>0)list.push(p.e)}
 // A sprite (or a whole sheet) filled with one colour, cached per source: the hit flash, as crawlview.js tints its own.
@@ -302,12 +313,12 @@ export function drawSceneRings(ctx,cam,cut){const px1=cam.dpr/cam.sc; // under t
     ctx.strokeStyle=col;ctx.globalAlpha=.85;ctx.lineWidth=1.5*px1;ctx.beginPath();ctx.ellipse(p.x*T,p.y*T+.5,7*PROC_SCALE*.75,2.8,0,0,7);ctx.stroke()}
   ctx.globalAlpha=1;if(cut.patch)drawBeatRing(ctx,px1)}
 export function drawSceneMarks(ctx,cam,cut,now){const sc=cam.sc;
-  if(cut.patch)drawPops(ctx,cam,now);
   if(cut.cur&&live(cut.cur)){const px1=cam.dpr/sc,m=Math.max(3,5*px1),p=at(cut.cur),x=Math.round(p.x*T),y=Math.round(p.y*T-HEAD-16*px1-2*m-px1-7+Math.sin(now*5));ctx.fillStyle=MARK.edge;ctx.fillRect(x-4,y-1,9,5);ctx.fillStyle=SCENE.turn;ctx.fillRect(x-3,y,7,1);ctx.fillRect(x-2,y+1,5,1);ctx.fillRect(x-1,y+2,3,1);ctx.fillRect(x,y+3,1,1)}
   {const mk=answerMarks(S.table),px1=cam.dpr/sc,m=Math.max(3,5*px1); // "..." while a member thinks, a tick once answered (#536)
     for(const e of cut.members){const k=mk[e.id];if(!live(e)||(k!=='think'&&k!=='done')||e===cut.cur)continue;const p=at(e);answerMark(ctx,p.x*T,Math.round(p.y*T-HEAD-16*px1-2*m-px1-1),k,now)}}
   const s=cut.speaker;if(s&&s.e&&live(s.e)&&!(s.e.bubble&&s.e.bubble.life>0)){const e=s.e,hero=e.kind==='hero',p=at(e);
     bubble(ctx,p.x*T,p.y*T-HEAD-1,hero?e.name.toUpperCase():'['+(e.name||'?')+']',hero&&inSlots(e)?classColor(e.cls):e.kind==='mob'||hero?DISP.hostile.color:DISP.neutral.color,s.text,cam.dpr,sc,Math.min(1,(SPEAK_S-(clock()-s.t))/.6))}
+  if(cut.patch)drawPops(ctx,cam,now); // last of the world marks: a word-pop floats over the chips and bubbles, never under them
   if(cam.director)return; // the cinema view shows the whole picture (#979)
   // screen space: dim outside the cut, a thin gold frame with corner brackets
   ctx.setTransform(1,0,0,1,0,0);const cv=ctx.canvas,x0=Math.round((cut.cx-cut.w/2)*T*sc+cam.offX),y0=Math.round((cut.cy-cut.h/2)*T*sc+cam.offY),x1=Math.round((cut.cx+cut.w/2)*T*sc+cam.offX),y1=Math.round((cut.cy+cut.h/2)*T*sc+cam.offY);

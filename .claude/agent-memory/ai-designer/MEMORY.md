@@ -97,9 +97,11 @@
 - [Errands inside #790](errand_wait.md) — #732 + #802: an errand is a capped wait, stale unless run, guard outranks it and ARRIVE_HOLD
 - [Paths #794](paths_794.md) — path.js rules: near lines skip A*, mob limit, clearLine, reachable goal swap, road shoulders, fixture traps
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
+- [Invitations #872/#864](invitations.md) — invite.js: one rare header line, computed at read, marks on playFresh; why not events
 - [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
 - [New blood grace #660](new_blood_grace.md) — Fellowship replacements skip chance duels 480 min; recruit() stamps newBlood, pvp.js skips
 - [DM day one #910](dm_day_one.md) — ensure() in postHook/withdrawHook; held-world prep turn must not crash; dmcheck --dayone
 - [Seeded import dice #888](seeded_import_dice.md) — GOODS stock rolled at import, before seedRng; seeded checks import scripts/seed-first.mjs first
 - [Save drift #324](save_drift.md) — v7/v6 flake = solo id reuse in the fixture; boss, dice, timers now saved (kept.js); play-on check
 - [Several dungeons #891](multi_dungeon.md) — CRYPTS, crypts.js one reader, first dungeon writes nothing, cryptFor, entry, a room's blows must fit its rounds
+- [Guild choice #954](guild_choice.md) — hasLinks gate in guilds open(); guild_join/guild_found tools
