@@ -27,6 +27,8 @@ export const TEXT={
 };
 
 // Marks drawn by the renderer.
+// Whole-map marks (#729, render/lod.js): the colours that are not a faction's. lit: each faction's lit shoulder; night: how much of the dark dims the marks.
+export const LOD={person:TEXT.person,grave:TEXT.dead,ghost:'#d8ecff',skin:'#f0d8b0',lit:['#a8c4ff','#ffa89c'],night:.5};
 export const MARK={
   sel:UI.gold,selHi:'#fff2b0',  // the selection chevron blinks between these
   hpHero:'#3fbf4a',hpFoe:'#e0483e',hpBack:'#000',
@@ -203,6 +205,18 @@ export const TOWN={
   timber:{roof:['#b0583c','#8a3a28','#5a2418'],wall:['#7a5a3e','#5a3e2a','#3a281c'],trim:['#2a2420','#141012'],
     stone:['#6a6266','#4a4448','#332e32','#1a1618'],glass:['#ffb060','#c8601a'],door:['#3a2414','#1e140c'],gold:['#c8c4bc','#7a7672'],moss:['#6a7a3a','#4a5a2a']},
 };
+// The town's ground and wall tops (#830), dark to light: the plaza's flagstones and the walks on the walls. A table of its own,
+// because the manifest quantises generated buildings to everything in TOWN.<style>.
+export const TOWN_GROUND={
+  stone:{plaza:['#6e685e','#8e887c','#a49e90','#b4aea0','#c4beb0'],walk:['#4a4652','#5e5a66','#726e7a','#868290']},
+  timber:{plaza:['#3a3230','#524844','#625852','#70665e','#7e746a'],walk:['#262226','#343034','#433e42','#524c50'],
+    street:['#2c2420','#3e3228','#4e4030','#5e4e3a','#6e5c46']}, // packed earth, a step warmer than the paving and no brighter (a stone town's street is the road's own dirt)
+};
+// A house's wood shakes (scripts/art/packcut-buildings.mjs), dark to light, where they are not the town's own roof: weathered oak over
+// the stone towns' cottages, a tarred brown over the timber towns'. Beside TOWN for the same reason as TOWN_GROUND.
+export const HOUSE_SHAKE={stone:['#4a3224','#6e4c34','#8e6a48','#ac8a60'],timber:['#2e2018','#463226','#5e4634','#786048']};
+// The palisade's stakes and its plank decking, dark to light (scripts/art/packcut-walls.mjs).
+export const PALISADE={log:['#1e140e','#3a281c','#5a3e2a','#7a5a3e','#9a7a56'],deck:['#2e2218','#46342a','#5a4432','#6e563e','#826a4e']};
 export const LANDMARK={
   crypt:['#78748a','#5a5668','#4a4652','#2e2a34','#0a0810','#7ad0a0','#c8ffd8','#e8e4d8','#5a8a44'],
   lair:['#5a2a1c','#3a1c16','#655c58','#4a423e','#2a2422','#c8401a','#f07a22','#ffd04a','#e8e0c8','#a8a090'],

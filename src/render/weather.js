@@ -19,7 +19,7 @@ for(let y=0;y<H;y++){let x=0;while(x<W){const z=zone[I(x,y)];let x1=x;while(x1<W
 const LOOK={
   drizzle: {tint:'rgba(70,85,110,.1)',   n:40,vx:-.3,vy:4,  w:1, h:2, col:'rgba(170,190,230,.45)'},
   rain:    {tint:'rgba(70,85,110,.15)',  n:70,vx:-.6,vy:7,  w:1, h:3, col:'rgba(170,190,230,.7)'},
-  fog:     {tint:'rgba(200,205,215,.35)',n:24,vx:.5, vy:0,  w:40,h:12,col:'rgba(225,230,240,.14)',wob:.3},
+  fog:     {tint:'rgba(200,205,215,.18)',n:0}, // the banks themselves are drawn by atmos.js
   ashfall: {tint:'rgba(60,50,45,.12)',   n:50,vx:.3, vy:.9, w:1, h:1, col:'rgba(40,32,30,.75)',wob:.4,big:4},
   ashstorm:{tint:'rgba(150,100,70,.3)',  n:90,vx:9,  vy:.6, w:2, h:1, col:'rgba(235,160,95,.75)',col2:'rgba(50,38,32,.8)'},
   snow:    {tint:'rgba(230,235,245,.12)',n:60,vx:.4, vy:1.2,w:1, h:1, col:'rgba(245,248,255,.85)',wob:.6,big:3},

@@ -89,7 +89,10 @@ export async function dmMindCases({provider, model, env: env0, ok, port, pricey 
       ok(turn1 && new RegExp(`\\[turn 1\\] ${reEsc(model)} \\(${provider}\\) \\| 2 tool calls.*\\| run \\$\\d+\\.\\d+`).test(dm.out()), tag + 'it plays a turn through the DM tools, with the line the supervisor reads' + (turn1 ? '' : '\n' + dm.out().slice(-1500)));
       ok(/> dm_status\(\)/.test(dm.out()) && /> notes_read\(\)/.test(dm.out()), tag + 'it reads the seat and its notes');
       ok(new RegExp(`the seat changes mind \\(anthropic -> ${provider}\\)`).test(dm.out()), tag + 'another provider sets the old conversation aside');
-      const old = readdirSync(join(tmp, 'agents', 'old')).filter(f => f.startsWith('dm-')), kept = old.length && JSON.parse(readFileSync(join(tmp, 'agents', 'old', old[0]), 'utf8')), now = JSON.parse(readFileSync(join(tmp, 'agents', 'dm.json'), 'utf8'));
+      // the turn line prints before the session is saved, and the old file has already moved aside: wait for the new one
+      const readNow = () => {try {return JSON.parse(readFileSync(join(tmp, 'agents', 'dm.json'), 'utf8'))} catch {return null}};
+      await until(() => (readNow() || {}).turns >= 1);
+      const old = readdirSync(join(tmp, 'agents', 'old')).filter(f => f.startsWith('dm-')), kept = old.length && JSON.parse(readFileSync(join(tmp, 'agents', 'old', old[0]), 'utf8')), now = readNow() || {runner: {}};
       ok(kept && kept.sessionId === 'claude-session-1' && !now.sessionId && now.runner.provider === provider && now.turns >= 1, tag + 'the Claude session waits in logs/agents/old/, dm.json starts over on the new mind');
       if (seen) {const q = seen.slice(n0).find(b => (b.tools || []).length && b.messages.some(m => m.role === 'user' && RESUME.test(m.content)));
         ok(q, tag + 'the first turn is told to read its notes and the DM log');

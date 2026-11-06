@@ -120,7 +120,7 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
 // ---- the agent's answer ----
 {init({fellowship:false});const a=S.agents.find(h=>h.state!=='dead');markPlayer(a,true);const c=CITY.find(t=>t.fac===a.fac)||CITY[0];
   a.x=c.gate.x;a.y=c.gate.y;a.state='hunt';a.lvl=20;a.adv=null;
-  const far=ZPTS.flat().filter(p=>Math.hypot(p.x-a.x,p.y-a.y)>20).find(p=>{const r=route(a.x,a.y,p.x,p.y);return r&&r.cross});
+  const far=ZPTS.flat().filter(p=>Math.hypot(p.x-a.x,p.y-a.y)>20&&!CITY.some(t=>t.fac!==a.fac&&(Math.hypot(p.x-t.gate.x,p.y-t.gate.y)<14||(p.x>=t.x0-3&&p.x<=t.x1+3&&p.y>=t.y0-3&&p.y<=t.y1+3)))).find(p=>{const r=route(a.x,a.y,p.x,p.y);return r&&r.cross});
   const r=playerAct(a.id,'move_to',{target:Math.floor(far.x)+','+Math.floor(far.y)}),o=r&&r.result||r;
   ok(o&&o.ok&&o.going&&o.distance!=null,'move_to keeps its line ('+(o&&o.going)+', '+(o&&o.distance)+')');
   ok(o&&o.route&&o.route.tiles>=o.distance-1&&o.route.by&&o.route.by.length>0,'and adds the route: '+JSON.stringify(o&&o.route));
@@ -143,5 +143,5 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
   ok(A.sig===B.sig,'a seeded run repeats')}
 
 console.log('plans',pathStats.plans,'worst search',pathStats.peak,'nodes');
-if(!process.env.ELDMOOR_WORLD&&!process.env.PATH_CHILD){const r=spawnSync(process.execPath,[process.argv[1]],{env:{...process.env,ELDMOOR_WORLD:'stepping',PATH_CHILD:'1'},stdio:'inherit'});if(r.status)fail++}
+if(!process.env.ELDMOOR_WORLD&&!process.env.PATH_CHILD)for(const w of ['stepping','vale']){const r=spawnSync(process.execPath,[process.argv[1]],{env:{...process.env,ELDMOOR_WORLD:w,PATH_CHILD:'1'},stdio:'inherit'});if(r.status)fail++}
 if(fail){console.log(fail+' check(s) failed');process.exit(1)}console.log('pathcheck ok');
