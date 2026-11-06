@@ -1,8 +1,8 @@
-// Shadows that move with the sun (#979). Two kinds, both drawn on the ground, under everything standing:
-//   cast     what stands still (trees, buildings, town walls, mountains) throws one world-sized shadow canvas at SK pixels a tile. Each kind of
+// Shadows that move with the sun (#979). Two kinds:
+//   cast     what stands still (trees, buildings, town walls, mountains) throws one world-sized shadow canvas at SK pixels a tile, multiplied in by the light map, so it falls on people too. Each kind of
 //            caster is a mask with a height band; the shadow is that mask swept along the sun by doubling (drawn over itself at 1, 2, 4...
 //            steps), so a whole map costs a few dozen small blits, and only when the sun has moved. A frame costs one scaled blit.
-//   figures  what moves throws its own silhouette, sheared along the sun: long and thin at dusk, a short smudge at noon.
+//   figures  what moves throws its own silhouette on the ground, sheared along the sun: long and thin at dusk, a short smudge at noon.
 // The sweep leaves out the art of the casters themselves: cast shadows lie on the ground, and crowns and roofs are painted into the terrain
 // chunks. Depth inside a wood comes from the light map's canopy shade (lightmap.js), which falls on crowns and people alike.
 // From the world's tiles, CITY, and the trees as terrain.js stands them: no zone, no town, no asset needed (with no canopy art every TREE tile casts).
@@ -59,12 +59,15 @@ function cast(){const o=out.getContext('2d'),L=G.len*SK,dx=G.sx*L,dy=G.sy*L;
   o.globalCompositeOperation='destination-out';o.drawImage(cover,0,0);
   o.globalCompositeOperation='source-over';o.globalAlpha=FACE_A*Math.abs(G.sx);o.imageSmoothingEnabled=true;o.drawImage(G.sx>0?bands.east:bands.west,0,0);o.globalAlpha=1; // the mountain faces turned from the sun: east ones at dusk, west at dawn
   o.globalCompositeOperation='source-in';o.fillStyle=`rgb(${G.shade[0]|0},${G.shade[1]|0},${G.shade[2]|0})`;o.fillRect(0,0,CW,CHT);o.globalCompositeOperation='source-over'}
-// Draw the cast shadows over the terrain; ctx is in the world transform.
-export function drawCast(ctx,gameMin){if(G.sunA<.01)return;if(!bands||gen!==chunkGen)build();
+// Keep the cast shadows up to date with the sun. They are laid down by the light map (castInto), not on the ground, so whoever stands in one is in its shade.
+export function drawCast(gameMin){if(G.sunA<.01)return;if(!bands||gen!==chunkGen)build();
   // every three game minutes, and no oftener than four times a real second however fast the world runs
   const k=Math.floor(gameMin/3),t=performance.now(),pd=peakDirty();if(pd){if(peakStale){peakBox[0]=Math.min(peakBox[0],pd[0]);peakBox[1]=Math.min(peakBox[1],pd[1]);peakBox[2]=Math.max(peakBox[2],pd[2]);peakBox[3]=Math.max(peakBox[3],pd[3])}else{peakBox=pd;peakStale=true}}
   if((k!==key||peakStale)&&(key<0||t-castAt>250)){if(peakStale){peakMasks(peakBox);peakStale=false}key=k;castAt=t;cast()}
-  ctx.globalAlpha=G.sunA;ctx.imageSmoothingEnabled=true;ctx.drawImage(out,0,0,CW,CHT,0,0,W*T,H*T);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1}
+}
+// Multiply the cast shadows into the light map; lx is mid-multiply, k and ox,oy its scale and offset. The art of what casts is cut out of them, so crowns and roofs stay lit, and a blit
+// here is a sixteenth of the pixels of one on the world.
+export function castInto(lx,k,ox,oy){if(G.sunA<.01||!out)return;lx.globalAlpha=G.sunA;lx.setTransform(k,0,0,k,ox,oy);lx.drawImage(out,0,0,CW,CHT,0,0,W*T,H*T);lx.setTransform(1,0,0,1,0,0);lx.globalAlpha=1}
 
 // The art of what casts, at shadow scale, for others that lie on the ground (sheen.js).
 export const castCover=()=>cover;

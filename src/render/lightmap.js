@@ -12,6 +12,7 @@ import {treeAnchor,chunkGen} from './terrain.js';
 import {drawCampLight} from './camp.js';
 import {lifeLight,lifeWindows} from './townlife.js';
 import {G} from './grade.js';
+import {castInto} from './shadows.js';
 import {FX} from './quality.js';
 
 const NR=4; // the map is this many times coarser than the screen
@@ -81,6 +82,7 @@ export function lightPass(ctx,cv,cam,o){const {S,sel,sc,inView,cut,seen}=o,dk=G.
   lx.globalCompositeOperation='multiply';lx.imageSmoothingEnabled=true;
   lx.setTransform(k,0,0,k,ox,oy);lx.drawImage(shade,0,0,W*SH,H*SH,0,0,W*T,H*T);lx.setTransform(1,0,0,1,0,0);
   lx.drawImage(vignette(w,h),0,0);
+  castInto(lx,k,ox,oy);
   cloudShadows(k,ox,oy,w,h,now);
   // the lights
   qn=0;
