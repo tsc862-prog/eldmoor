@@ -6,6 +6,7 @@ import {U as T} from './tile.js';
 import {G} from './grade.js';
 import {FX} from './quality.js';
 import {castCover} from './shadows.js';
+import {quayLip} from './harbour.js';
 
 const K=4; // mask pixels a tile
 let mask=null,tint=null,key=-1;
@@ -14,6 +15,7 @@ function build(){const r=mk(W*K,H*K),x=r.getContext('2d');let any=false;x.fillSt
   for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];if(t===RIVER){x.fillRect(tx*K,ty*K,K,K);any=true}else if(t===SWAMP){x.globalAlpha=.5;x.fillRect(tx*K,ty*K,K,K);x.globalAlpha=1;any=true}}
   const m=mk(W*K,H*K),o=m.getContext('2d');o.filter='blur(1.2px)';o.drawImage(r,0,0);o.filter='none';
   for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++)if(tiles[I(tx,ty)]===BRIDGE)o.clearRect(tx*K-1,ty*K-1,K+2,K+2); // the blur spilled the water's blue over the deck
+  for(const [x,y,h] of quayLip())o.clearRect(x*K,y*K-1,K,h*K+1);
   mask=any?m:false;tint=mk(W*K,H*K)}
 // The tint at this hour: the low sun's colour, else the moon's. Strength in the alpha.
 export function drawSheen(ctx,gameMin){if(!FX.full)return;if(mask===null)build();if(!mask)return;
