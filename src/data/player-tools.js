@@ -6,8 +6,8 @@
 // In-game only (issue #123): a hero's tools answer with what its character perceives (sight, earshot,
 // the party channel, its own sheet, journal and memories) and never with DM notes, the DM log or
 // another hero's journal, memories, mind or prompt (scripts/channelcheck.mjs proves it).
-import {WORDS} from '../world/words.js';
-export const PLAYER_TOOLS=[
+import {WORDS,worded} from '../world/words.js';
+export const PLAYER_TOOLS=worded(()=>[
   {name:'look',act:false,desc:'Look around: the place, time, weather, and the heroes, townsfolk and monsters you can see (about 12 tiles, less in fog or storms; the whole town square when in town). A creature you do not know is described, not named, with your own read of its threat ("hard to judge" until you learn it). Also returns what happened since your last call.',args:{}},
   {name:'status',act:false,desc:'Your hero: level, HP, XP, gold, what you are doing, your command queue, quest, oath, origin, traits, party, adventure and any scene choice waiting for you, plus the places you know and can travel to.',args:{}},
   {name:'inventory',act:false,desc:'Your seven equipment slots and your pack, by index: trade goods to sell, spare gear to equip, consumables (potions, bandages, rations, torches, antidotes, scrolls) to use, and quest items. Shows how many slots are used.',args:{}},
@@ -130,10 +130,10 @@ export const PLAYER_TOOLS=[
   {name:'spare',act:true,desc:'Spare a downed enemy hero within 4 tiles: you leave them stable to wake later, and take nothing. They owe you a life: they will not raise a hand against you, and owe you one helping hand (they come to you when you are down or hard pressed near them). Both of you remember it.',args:{hero:{type:'string',desc:'The downed hero, by name or id'}}},
   {name:'scene_act',act:false,desc:'Table mode: when the Fellowship is in a scene (status/look/wait show "table"), act in it. option is one of the keys the scene lists (for example strike, guard, heal, retreat; a or b; yes or no). You may answer as soon as the scene opens; it happens on your turn. On your turn you have a few real seconds, then your reflexes act for you. line: what you say aloud as you act, in your own voice and about yourself (optional, up to 600 characters; a longer line is refused, and so is one that repeats a line another member said at this table).',args:{option:{type:'string',desc:'The option key'},line:{type:'string',desc:'What you say as you act',optional:true},move:{type:'string',desc:'In a dungeon room or a fight in the open, where you go as you act: a spot the scene\'s room names (front, back, flank-left, reeds, stair; in the open also the road back, the trees, the road, the bridge, the bank), a relation (beside Kerin, behind Ooloss, toward the stair, away from the shambler) or steps (2 ahead). Up to 3 tiles a round; a step out of the reach of a foe gives it a free blow unless a guard stands by you. Leave it out to stay put: a strike, a heal or tending out of reach walks you toward them by itself. For a Mage, read: the move names the centre of the blast (a spot, a foe, a companion), and you stay.',optional:true},swear:{type:'string',desc:'At the first table only: an oath of your own, sworn aloud as you act. Your words, or yes to take up what your past holds, or no to set it aside. Leave it out and you are bound to nothing.',optional:true}}},
   {name:'wait',act:false,desc:'Let game time pass (10-240 game minutes; 1 real second is 6 game minutes) while your command runs. Returns early when something urgent happens: an attack, a choice, low HP, a finished command. Use it between actions instead of polling. At the table no time passes: once you have answered, wait ends your turn and you are woken when the table settles.',args:{minutes:{type:'integer',desc:'Game minutes (10-240, default 60)',optional:true}}},
-];
+]);
 export const TOOL_NAMES=PLAYER_TOOLS.map(t=>t.name);
 // Sides as lore (#1025): the same tools in a world with no sides. Phrase swaps on the text above, so a world with sides sends what it always sent.
-const LORE_SWAPS=[
+const LORE_SWAPS=worded(()=>[
   ['a downed hero of your side','a downed hero'],['At the chapel of a town of your side','At the chapel of any town'],
   ['a hero of your own faction nearby','a hero nearby'],['a hero of your own faction within 6 tiles','a hero within 6 tiles'],['a hero of your faction within 6 tiles','a hero within 6 tiles'],
   ['or an enemy-faction hero outside '+WORDS.lowRegion,'or a hero who has come as your enemy'],['a hero (any faction)','a hero'],[' another faction, a fight',' a fight'],
@@ -142,9 +142,9 @@ const LORE_SWAPS=[
   ['fall in with your faction\'s muster on Kragmaw while one is out, and ride to the lair. You learn of a muster as you learn of anything: the town criers (read_chronicle), people, rumour. With no muster out it is refused.','there is no muster to fall in with here, so this is refused: a raid is a company\'s own.'],
   ['which faction holds it (or none), how far control leans, whether both factions are there now','which people hold it (or none), how far control leans, whether both are there now'],['heroes of your faction at a held outpost heal faster, and kills near an outpost count double honor. Enemy heroes who find you there will fight.','heroes of the people who hold it heal faster there.'],
   ['Finish a downed enemy hero (of the other faction) within 4 tiles: they die. Honour, the kill XP and a tenth of their gold are yours alone, and their whole guild will swear vengeance on you.','Finish a downed enemy hero within 4 tiles: they die. The kill XP and a tenth of their gold are yours alone.'],
-];
+]);
 export const loreText=s=>LORE_SWAPS.reduce((t,[a,b])=>t.split(a).join(b),s);
-const LORE_TOOLS=PLAYER_TOOLS.map(t=>({...t,desc:loreText(t.desc),args:Object.fromEntries(Object.entries(t.args||{}).map(([k,v])=>[k,v&&v.desc?{...v,desc:loreText(v.desc)}:v]))}));
+const LORE_TOOLS=worded(()=>PLAYER_TOOLS.map(t=>({...t,desc:loreText(t.desc),args:Object.fromEntries(Object.entries(t.args||{}).map(([k,v])=>[k,v&&v.desc?{...v,desc:loreText(v.desc)}:v]))})));
 export const toolsFor=sides=>sides==='lore'?LORE_TOOLS:PLAYER_TOOLS;
 // The no-such-tool refusal names attempt first, then the wish line (#864, #829): a hero's way to try it now comes before the note for later.
 export const ATTEMPT_INVITE='If no tool does it, try it in words with attempt {what}.';

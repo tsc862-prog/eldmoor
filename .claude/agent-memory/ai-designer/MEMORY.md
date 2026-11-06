@@ -103,6 +103,7 @@
 - [DM day one #910](dm_day_one.md) — ensure() in postHook/withdrawHook; held-world prep turn must not crash; dmcheck --dayone
 - [Seeded import dice #888](seeded_import_dice.md) — GOODS stock rolled at import, before seedRng; seeded checks import scripts/seed-first.mjs first
 - [Save drift #324](save_drift.md) — v7/v6 flake = solo id reuse in the fixture; boss, dice, timers now saved (kept.js); play-on check
+- [Map rebind #1013](map_rebind.md) — onWorld hooks, worded() tables, WORDS.world stays, atlas tables, mapKey, capture lint, no-lair gap
 - [Several dungeons #891](multi_dungeon.md) — CRYPTS, crypts.js one reader, first dungeon writes nothing, cryptFor, entry, a room's blows must fit its rounds
 - [Guild choice #954](guild_choice.md) — hasLinks gate in guilds open(); guild_join/guild_found tools
 - [Sides as lore #1025](sides_lore.md) — loreSides gates: sameSide, ownTown, foeOf, mayFight, sidesOff, raidSide; fac stays, others stays separate

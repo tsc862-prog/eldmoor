@@ -5,7 +5,7 @@
 // side is src/sim/dmagent.js. Each tool:
 //   {name, desc, act, args:{argName:{type:'string'|'integer'|'number'|'object', desc, optional?, enum?}}}
 // act: true for tools that change something (the world through a lever, the DM's own notes or log, a line spoken in the game).
-import {WORDS} from '../world/words.js';
+import {WORDS,worded} from '../world/words.js';
 import {ADVENTURES} from './adventures.js';
 import {WANDER_ROLES} from './npcs.js';
 export const NOTE_SECTIONS=['threads','characters','plans','secrets'];
@@ -14,7 +14,7 @@ export const TRIGGER_NAMES=['enter_region','enter_town','near_place','near_perso
 const ADV_TPLS=Object.keys(ADVENTURES).filter(k=>k!=='fallen'); // the world alone posts a recovery for the fallen
 const PERSON_ROLES=WANDER_ROLES.map(r=>r.id);
 const REASON={type:'string',desc:'Why, in one sentence (shown in the DM log)'};
-export const DM_TOOLS=[
+export const DM_TOOLS=worded(()=>[
   {name:'dm_status',act:false,desc:'Where the campaign stands (once you set a when or watch: whens, watches, and what fired since: fired, watches_fired; unheard counts the lines the companies said aloud that you have not heard: read hear first), the Fellowship first: fellowship_needs (what they need from you now: where they ride, open threads and oaths, pending decisions, what would make their next game hours interesting) and the Fellowship at a glance; when other companies ride (a solo is a company of one), companies_needs lists every company neediest first; then game day and time, whether a Table scene or a party vote is open (then leave the table alone), the Fellowship at a glance, how much happened since you last looked, your lever budget today, world_events (the festivals, plagues and other world events running now with region, days left and reason, whether start_event may be pulled today and why not, and the regions the Fellowship rides) and your notes.',args:{}},
   {name:'read_timeline',act:false,desc:'The world timeline: notable events (deaths, levels, raids, the Crypt, oaths, world changes), newest first.',args:{n:{type:'integer',desc:'How many (1-30, default 12)',optional:true}}},
   {name:'read_chronicle',act:false,desc:'The latest news lines as the town criers tell them, newest first.',args:{n:{type:'integer',desc:'How many (1-30, default 12)',optional:true}}},
@@ -170,5 +170,5 @@ export const DM_TOOLS=[
   {name:'companion_say',act:true,desc:'Speak as the waiting companion (companion_call): one or two sentences in their own voice, true to their card and the day, new to whoever hears it (a line it already said to them is refused). Never words for a hero: a quote put in the mouth of a hero is cut. 6 lines a companion a game day.',args:{call:{type:'integer',desc:'The call id from companion_call'},text:{type:'string',desc:'What the companion says (up to 300 characters)'}}},
   {name:'log_intent',act:true,desc:'Write one line of your reasoning or plan into the DM log (max 200 characters, a few a day), so the watcher can follow what you are preparing.',args:{text:{type:'string',desc:'The line'}}},
   {name:'wish',act:false,desc:'Leave a note for the people who build the game about a tool you wished you had, to tell this story. It is read later and never answered in play; nothing changes this session, and you may wish for things the rules forbid (touching HP, life, levels, time). 3 a game day, so pick the ones that mattered. English only.',args:{tool:{type:'string',desc:'The name you would give it (2-32 characters, snake_case suggested)'},what:{type:'string',desc:'What it would have done (up to 300 characters)'},why:{type:'string',desc:'Why this moment needed it (up to 200)'},moment:{type:'string',desc:'The moment itself, a sentence of story (up to 200)'}}},
-];
+]);
 export const DM_TOOL_NAMES=DM_TOOLS.map(t=>t.name);

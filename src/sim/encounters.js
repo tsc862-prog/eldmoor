@@ -21,6 +21,7 @@ import {isStorm} from './weather.js';
 import {record} from './history.js';
 import {offerUpgrade} from './gear.js';
 import {encRate,encKind,encSpot} from './levers.js';
+import {onWorld} from './kept.js';
 
 // ---- knobs ----
 const MAX_ALIVE=3;            // encounters on the roads at once
@@ -44,11 +45,14 @@ const KINDS=Object.keys(ENC);
 const pickKind=()=>{let tot=0;for(const k of KINDS)tot+=ENC[k].w;let r=rnd()*tot;for(const k of KINDS){r-=ENC[k].w;if(r<=0)return k}return KINDS[KINDS.length-1]};
 
 // Road tiles far enough from every gate (and clear of the lair ring) where encounters may appear.
-const SPOTS=[];
-for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){if(tiles[I(x,y)]!==ROAD)continue;
-  const p={x:x+.5,y:y+.5};if(CITY.some(c=>dist(p,c.gate)<GATE_CLEAR)||dist(p,LAIR)<7)continue;SPOTS.push(p)}
+function roadSpots(){const out=[];
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){if(tiles[I(x,y)]!==ROAD)continue;
+    const p={x:x+.5,y:y+.5};if(CITY.some(c=>dist(p,c.gate)<GATE_CLEAR)||(LAIR&&dist(p,LAIR)<7))continue;out.push(p)}
+  return out}
 // Zone level for XP and loot: the lowest level the ladder sends to that zone, plus two.
-const ZLVL=ZONES.map((_,z)=>{for(let l=1;l<=40;l++)if(zoneFor(l)===z)return l+2;return 1});
+const zoneLevels=()=>ZONES.map((_,z)=>{for(let l=1;l<=40;l++)if(zoneFor(l)===z)return l+2;return 1});
+let SPOTS=roadSpots(),ZLVL=zoneLevels();
+onWorld(()=>{SPOTS=roadSpots();ZLVL=zoneLevels()},()=>({encSpots:SPOTS,encZoneLevels:ZLVL})); // another map (#1013)
 
 const d20=()=>ri(1,20);
 export const encStats=()=>S.encStats;
