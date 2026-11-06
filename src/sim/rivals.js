@@ -23,6 +23,7 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {inSlots} from './company.js'; // the slotted company (#588)
+import {WORDS} from '../world/words.js';
 
 export const RIV={VET:12,KILL_VET:2.5,KILL:1,CRYPT:1,BOSS:1.5,CONTEST:1440,DECLARE:3.5,END:1,CAP:8,HALF:2,DUEL:1.6,ASSIST:1.5,TICK:30};
 
@@ -51,7 +52,7 @@ export function rivalKill(victim,killer){
 // others: guilds of the other side present at the deed (Kragmaw's losing raiders), if any.
 export function rivalDeed(kind,g,others){
   if(!live(g))return;const r=R(),amt=kind==='boss'?RIV.BOSS:RIV.CRYPT;
-  const what=kind==='boss'?'both lay claim to Kragmaw':'both stake their name on the Sunken Crypt';
+  const what=kind==='boss'?'both lay claim to Kragmaw':'both stake their name on '+WORDS.crypt;
   const seen=new Set();
   for(const h of others||[]){if(seen.has(h))continue;seen.add(h);heat(g,h,amt,'they fought over Kragmaw',kind)}
   for(const k in r.last){const [kd,id]=k.split(':');if(kd!==kind)continue;const h=byId(id);

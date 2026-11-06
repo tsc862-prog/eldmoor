@@ -66,7 +66,7 @@ import {WebSocketServer} from 'ws';
 import {z} from 'zod';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {PLAYER_TOOLS} from '../src/data/player-tools.js';
+import {PLAYER_TOOLS, ATTEMPT_INVITE} from '../src/data/player-tools.js';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -80,6 +80,7 @@ export const LATE_MS = 30000, LATE_MAX_MS = 5 * 60000, PAGE_SILENT_MS = 5000;
 // not offline. The turn ends here (turn_over, #868: nobody keeps a Claude slot for a wait) and pacing starts the next one.
 export const HELD_WAIT = {ok: true, waited_min: 0, held: true, turn_over: true, why: 'the game has not answered this wait yet; your turn is over: end it here, you will be woken when something needs you (the world is not offline)'};
 export const DM_VOICE_MS = 10000; // the longest a voice call counts as pending without its answer (#682)
+export const RUNNER_DM_TOOLS = new Set(['narrator_call', 'narrator_say']); // the narrator's voice (#1017): the runner's plain JSON route only, never an MCP tool of the agent's
 export const DM_WAIT_MAX = 25000; // the longest long poll of table_call / npc_call / ruling_call {wait_ms} (#680; src/sim/player-host.js DM_WAIT.MAX)
 // What an agent hears while the game page is away (#399): a pause in the world, not advice to a human ("Press Agent ...", which
 // models read as something they must do). offline:true marks it for the runners (not the model's mistake, scripts/local-agent.mjs).
@@ -316,7 +317,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   // The DM's voice is answering a call (#682): a voice poll handed it a call (table/talk/ruling) and its answer has not come
   // yet. The runner supervisor lets a hero's Claude slot request yield DM_FIRST_MS meanwhile (scripts/runners.mjs).
   let dmVoiceAt = 0;
-  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call', 'companion_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say', 'companion_say']);
+  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call', 'companion_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say', 'companion_say']); // the narrator's voice never holds the world, so it does not ask a hero's slot request to yield (#1017)
   const dmVoiceBusy = () => dmVoiceAt > 0 && now() - dmVoiceAt < DM_VOICE_MS;
   // A DM tool call (issue #66): counted, logged, never thrown.
   async function dmCall(tool, args) {
@@ -334,7 +335,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
     if (VOICE_POLLS.has(tool) && r.ok && r.call && Number(r.call.seconds_left) > 0) dmVoiceAt = now(); else if (VOICE_ANSWERS.has(tool) && (tool !== 'npc_say' || (args && args.conv != null))) dmVoiceAt = 0;
-    if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call' || tool === 'companion_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
+    if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call' || tool === 'companion_call' || tool === 'narrator_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
     log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'}${note} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
     return r;
@@ -432,7 +433,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         pushLinks(); return send(200, {ok: true, ready: readyOf(id)})}
       if (path === '/play/behavior/turn') return send(...await behaviorTurn(b, b.hero !== undefined ? heroParam(b.hero) : hero, rid, dmAsked));
       if (path === '/play/dm') {
-        if (typeof b.tool !== 'string' || !DM_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown DM tool'});
+        if (typeof b.tool !== 'string' || !(DM_TOOLS.some(t => t.name === b.tool) || RUNNER_DM_TOOLS.has(b.tool))) return send(400, {error: 'unknown DM tool'});
         // seats stay apart (issue #123): a hero's runner has no DM tools, and a held DM seat answers only its runner
         if (role === 'hero' || b.role === 'hero' || hero != null || b.hero != null || heroClaimOf(rid)) return send(403, {ok: false, error: 'Heroes have no DM tools: a hero hears the DM only in the game.'});
         const dh = heldBy(DM_KEY, rid); if (dh) return send(409, {ok: false, refused: true, error: `The DM seat is held by another runner (${dh}).`});
@@ -452,7 +453,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         return send(200, {ok: true, dm: dmInfo(), ...(info ? {runner: info} : {})})}
       if (b.hero !== undefined) {hero = heroParam(b.hero); if (Number.isNaN(hero)) return send(400, {error: 'bad hero id'})}
       if (path === '/play/call') {
-        if (typeof b.tool !== 'string' || !PLAYER_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown tool'});
+        if (typeof b.tool !== 'string' || !PLAYER_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown tool. ' + ATTEMPT_INVITE});
         const r = await call(hero, b.tool, b.args && typeof b.args === 'object' ? b.args : {}, rid);
         return send(r && r.refused ? 409 : 200, r)}
       // Runner pacing (issue #126): the claimed runner's long poll between turns. Not a tool call: it is not

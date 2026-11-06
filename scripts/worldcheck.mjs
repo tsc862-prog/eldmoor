@@ -4,7 +4,7 @@
 // checks; a new world needs only a row in scripts/world-snapshots.mjs.
 // Usage: npm run worldcheck
 // If you changed a map on purpose, paste the new hashes into scripts/world-snapshots.mjs.
-import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS, TOWN_KIT} from '../src/world/spec.js';
+import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS, MAPS, TESTLINK, TOWN_KIT} from '../src/world/spec.js';
 import {buildWorld} from '../src/world/gen.js';
 import {RACES} from '../src/data/races.js';
 import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
@@ -154,6 +154,54 @@ for (const [id, spec] of Object.entries(WORLDS)) {
   if (spec.river) {let open = 0; for (const i of w.fords) open++; console.log(`  ${id} river crossings: ${new Set(w.ROUTES.flat().filter(([x, y]) => w.tiles[w.I(x, y)] === BRIDGE).map(([x]) => Math.round(x / 4))).size} bridge span(s), ${(spec.river.fords || []).length} ford(s), ${open} open ford tiles`)}
   const dungeons = w.LANDMARKS.filter(l => l.kind === 'crypt'); if (spec.ladder && !dungeons.some(l => (l.rooms || []).length >= 5)) {console.error(`FAIL: ${tag} has no great dungeon (5+ rooms)`); fail++}
   const names = [...w.CITY.map(c => c.name), ...w.LANDMARKS.map(l => l.name), ...w.ZONES]; if (new Set(names).size !== names.length) {console.error(`FAIL: ${tag} repeats a place name`); fail++}
+}
+// ---- linked maps (#1013 slice 1a): exits are data on every map of MAPS (the worlds and the TESTLINK fixtures) ----
+// Each exit stands on walkable road (a road or bridge tile at its spot, on an edge exit all of its stretch), is joined to a town by
+// road, names a map and an exit that exist, and the far exit names this one back. MAPS is looped over, never counted. A link
+// fixture is never in WORLDS.
+function exitFaults(maps) {
+  const bad = [], built = {};
+  for (const [id, spec] of Object.entries(maps)) built[id] = buildWorld(spec);
+  for (const [id, w] of Object.entries(built)) {
+    const ids = w.EXITS.map(e => e.id);
+    if (new Set(ids).size !== ids.length) bad.push(id + ' repeats an exit id');
+    for (const e of w.EXITS) {
+      const tag = id + ' exit ' + e.id;
+      if (!e.name || !e.to || !e.to.map || !e.to.exit) {bad.push(tag + ' needs a name and a destination {map, exit}'); continue}
+      const cells = e.edge ? Array.from({length: e.edge.to - e.edge.from + 1}, (_, k) => e.edge.side === 'N' ? [e.edge.from + k, 0] : e.edge.side === 'S' ? [e.edge.from + k, w.h - 1] : e.edge.side === 'W' ? [0, e.edge.from + k] : [w.w - 1, e.edge.from + k]) : [[Math.floor(e.x), Math.floor(e.y)]];
+      for (const [x, y] of cells) {const t = w.tiles[w.I(x, y)]; if (t !== ROAD && t !== BRIDGE) {bad.push(tag + ' does not stand on road at ' + x + ',' + y); break}}
+      const cx = Math.min(w.w - 1, Math.floor(e.x)), cy = Math.min(w.h - 1, Math.floor(e.y));
+      if (!w.CITY.some(c => roadConnected(w, [Math.floor(c.gate.x), Math.floor(c.gate.y)], [cx, cy]))) bad.push(tag + ' is not joined to a town by road');
+      const far = built[e.to.map]; if (!far) {bad.push(tag + ' leads to a map that does not exist: ' + e.to.map); continue}
+      const back = far.EXITS.find(f => f.id === e.to.exit);
+      if (!back) bad.push(tag + ' leads to ' + e.to.map + ' exit ' + e.to.exit + ', which does not exist');
+      else if (back.to.map !== id || back.to.exit !== e.id) bad.push(tag + ' and ' + e.to.map + ' ' + back.id + ' do not name each other');
+    }
+  }
+  return bad;
+}
+{
+  for (const b of exitFaults(MAPS)) {console.error('FAIL: ' + b); fail++}
+  const n = Object.values(MAPS).reduce((a, sp) => a + (sp.exits || []).length, 0);
+  console.log('  exits: ' + n + ' exit(s) over ' + Object.keys(MAPS).length + ' maps, all on road and linked both ways');
+  if (Object.keys(TESTLINK).some(k => WORLDS[k])) {console.error('FAIL: a TESTLINK fixture is in WORLDS'); fail++}
+  const a = TESTLINK.testlinka, b = TESTLINK.testlinkb;
+  const doctored = [
+    {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: 'nowhere', exit: 'x'}}]}},
+    {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: 'testlinkb', exit: 'nope'}}]}},
+    {...MAPS, testlinkb: {...b, exits: [{...b.exits[0], to: {map: 'testlinka', exit: 'zzz'}}]}},
+    {...MAPS, testlinka: {...a, roads: [], exits: [{...a.exits[0], edge: undefined, at: {x: 20.5, y: 5.5, r: 2}}]}},
+  ];
+  doctored.forEach((m, i) => {if (!exitFaults(m).length) {console.error('FAIL: the exit check missed doctored case ' + (i + 1)); fail++}});
+  // setWorld swaps every live binding and the size, and back (single-map worlds never call it)
+  const M = await import('../src/world/map.js'), T = await import('../src/world/tiles.js');
+  const id0 = M.MAP_ID, w0 = T.W, n0 = M.CITY.length;
+  M.setWorld('testlinka');
+  if (M.MAP_ID !== 'testlinka' || T.W !== 32 || M.CITY[0].name !== 'Hearthlink' || M.EXITS.length !== 1 || M.tiles.length !== 32 * 24) {console.error('FAIL: setWorld did not swap the live bindings'); fail++}
+  M.setWorld(id0);
+  if (M.MAP_ID !== id0 || T.W !== w0 || M.CITY.length !== n0 || M.WORLD_ID !== id0) {console.error('FAIL: setWorld did not swap back'); fail++}
+  let threw = false; try {M.setWorld('nowhere')} catch (e) {threw = true} if (!threw) {console.error('FAIL: setWorld accepted an unknown map'); fail++}
+  console.log('  setWorld: linka and back, live bindings follow');
 }
 console.log(fail ? `\n${fail} check(s) failed` : '\nworldcheck: all checks passed');
 process.exit(fail ? 1 : 0);

@@ -25,7 +25,7 @@ export const FAUNA={
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the
   // shaghorn are left out on purpose. Levels sit inside the region's band (nothing near a home town above it; elites are the one
   // exception, as everywhere). Goods are Vale-only (VALE_GOODS), priced up the same ladder as Eldmoor's.
-  wendmouth: {tier:0,count:12,roadMinX:30,elite:'Hollowfang',species:[
+  wendmouth: {tier:0,count:12,roadMinX:999,elite:'Hollowfang',species:[
     {sp:'wolf',name:'Strand Wolf',pl:'Strand Wolves',lv:[1,3],loot:'Strandpelt',q:'Wolves on the Strand'},
     {sp:'boar',name:'Reed Boar',pl:'Reed Boars',lv:[2,4],loot:'Reed-Tusk',q:'Tusks from the Reeds'},
     {sp:'spider',name:'Dyke Weaver',pl:'Dyke Weavers',lv:[3,5],loot:'Dyke Silk',q:'Sweep the Dykes'}]},
@@ -71,7 +71,7 @@ export function applyFauna(regions){
       const lo=Math.round(a+i*(hi-a-2)/Math.max(1,n-1)),key=sp+'@'+z;
       MOBS[key]={...stock[sp],z,lv:[lo,Math.min(hi,lo+3)]};COUNTS[key]=F.count});
     const E=typeof F.elite==='string'?stockElites.find(e=>e.name===F.elite):F.elite;
-    ELITES.push({...E,base:(E.base||'wolf')+'@'+z,lvl:E.fixLvl||Math.min(hi+2,24),scale:E.scale||2.2,hit:E.hit||1.5});
+    ELITES.push({...E,...(E.title?{title:E.title.replace(/ of (Thornvale|Mirefen|Cinderpass|Hoarfell)$/,' of '+r.name)}:{}),base:(E.base||'wolf')+'@'+z,lvl:E.fixLvl||Math.min(hi+2,24),scale:E.scale||2.2,hit:E.hit||1.5});
     EPICS.push(stockEpics[F.tier]);
     ECO.roadMinX.push(F.roadMinX||0)});
   if(regions.some(r=>FAUNA[r.id]&&FAUNA[r.id].species.some(x=>typeof x==='object')))for(const [n,base] of VALE_GOODS)if(!GOODS[n]){GOODS[n]={base,supply:8,prev:0};GOODS[n].prev=price(n)}

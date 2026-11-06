@@ -454,7 +454,7 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 - The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (see the town table and entries above).
 
 ### The Wending Vale (third world, epic #940)
-`VALE` in `src/world/spec.js` is a 144x60 map shaped for the owner's wide screen. One river, the **Wend**, rises from a spring in the high north-east and runs west to the sea off the map's west edge. The Concord holds the north bank, the Warband the south. Three crossings carry all travel: the **Low Bridge** at the home towns, the **Weirgate ford** in the middle (the only wading place, with the great dungeon beside it) and the **High Bridge** at the contested upper edge. Creatures are a first pass in `src/data/fauna.js`. Select it as the third world; geography is its own, not Eldmoor's.
+`VALE` in `src/world/spec.js` is a 184x60 map shaped for the owner's wide screen. One river, the **Wend**, rises from a spring in the high north-east and runs west to the sea off the map's west edge. The Concord holds the north bank, the Warband the south. Three crossings carry all travel: the **Low Bridge** at the home towns, the **Weirgate ford** in the middle (the only wading place, with the great dungeon beside it) and the **High Bridge** at the contested upper edge. Creatures are a first pass in `src/data/fauna.js`. Select it as the third world; geography is its own, not Eldmoor's. (Widened from 144 to 184 columns in #979 so the towns stand apart; the first cut, 144 wide, is gone and its saves cannot continue.)
 
 | Region | Levels | Description |
 | --- | --- | --- |
@@ -525,6 +525,7 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
+`TESTLINK` in the same file is a pair of 32x24 fixtures for the linked-map checks (#1013), two tiny maps joined by one road each way; they never appear in the game or in `WORLDS`. Reserved: the maps **Linka** and **Linkb** (regions **Linka Mead**, **Linkb Mead**, 1-5), the towns **Hearthlink** and **Mooring**, and the exits **the east road** and **the west road**.
 
 ## Creatures
 | Creature | Zone | Levels | Drops | Quest |

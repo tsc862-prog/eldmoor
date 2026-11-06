@@ -39,7 +39,7 @@ import {TRAITS,tm} from '../data/traits.js';
 import {listings,mine,listFor,buyListing,cancelListing,gearRef,goodRef,gearUpgrade,TRADE} from './market.js'; // hero-to-hero trades (#14)
 import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../data/items.js';
 import * as D from '../data/adventures.js';
-import {PLAYER_TOOLS} from '../data/player-tools.js';
+import {PLAYER_TOOLS,ATTEMPT_INVITE} from '../data/player-tools.js';
 import {S,clockStr,dayNo} from './state.js';
 import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
@@ -71,9 +71,11 @@ import {moment,talked,REFLECT} from './reflect.js'; // reflection moments (#179)
 // making camp is a reflection moment for each agent-played member at the fire (camp.js event 'make', #178/#179)
 onCamp((kind,g,d)=>{if(kind!=='make'||!g)return;for(const id of g.ids||[])moment(S.agents.find(x=>x.id===id),'camp',d&&d.zone)});
 import {reflexMay,agentLive,hasLinks} from './runlink.js';
+import {guildJoinFor,guildFoundFor} from './guilds.js';
 import {notEnglish} from './lang.js';
 import {fileWish,wishInvite} from './wish.js'; // a note for the people who build the game (#663)
-const ENGLISH='Not said: speak in English. Everyone in Eldmoor speaks English; say it again in English.'; // #126
+import {lookInvites,sellsBest} from './invite.js'; // tools nothing else invites (#872, #864)
+const ENGLISH='Not said: speak in English. Everyone in '+WORDS.world+' speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote,soloCrypt,greenWarn} from './council.js';
 import {joinRaid} from './boss.js'; // a solo's join_raid (#826)
 import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sightings.js';
@@ -120,6 +122,7 @@ import {tendBy,tendBlock,chapelTend,woundLook,woundsView} from './tend.js'; // w
 import {wounded} from './wounds.js';
 import {histNote} from './persona.js';
 import {raiseScore,growthTick,growthText} from './abilities.js';
+import {WORDS,worldFill} from '../world/words.js';
 onSafetyChange((a,before,after,why)=>histNote(a,'gambits',before,after,why)); // a safety rule changed: the persona history says so (#617)
 
 // ---- knobs ----
@@ -467,7 +470,7 @@ const heardText=e=>e.whisper?'(whispered) '+(e.from&&e.from.name||'Someone')+': 
 // Hearing (issue #126): a line from an agent-played hero (aloud in earshot, or on the party channel) starts the
 // listener's turn promptly (2), at most once per PK.HEAR_WAKE game minutes per listener so two agents cannot
 // talk each other into turns forever; the narrator, an NPC or a scripted companion's party line wake after the gap (1).
-export function hearWake(a,e){const f=e.from;
+export function hearWake(a,e){const f=e.from;if(e.quiet)return 0; // the narrator's voice between scenes: heard at the next turn, never a turn of its own (#1017)
   if(f&&f.kind==='hero'&&f.player){if(S.gameMin-(a.playHeardAt??-1e9)>=(a.playHearGap??PK.HEAR_WAKE)){a.playHeardAt=S.gameMin;return 2}return 0}
   if(e.talk||e.dream)return 2; // a person answering the hero in a conversation (#170): a turn at once
   return e.party||f&&(f.kind==='dm'||f.kind==='npc')?1:0}
@@ -900,16 +903,16 @@ function creatureLook(a,m){const v=mobView(a,m),o={ok:true,kind:'creature',what:
   o.distance=r1(dist(a,m))+' tiles';o.next='fight {target: "'+v.what+'"} (id '+m.id+'), or lore {about} for what you know';return o}
 // An item: a pack entry, a piece you wear, or (by name) a supply or trade good you know of.
 function itemLook(a,e,at){const o={ok:true,kind:'item'};
-  if(isGear(e)){o.item=itemText(e);o.where=at;const ep=e.epic&&EPIC_ITEMS[e.name];if(ep&&ep.flavour)o.lore=ep.flavour;
+  if(isGear(e)){o.item=itemText(e);o.where=at;const ep=e.epic&&EPIC_ITEMS[e.name];if(ep&&ep.flavour)o.lore=worldFill(ep.flavour);
     o.sells='about '+SELL_VALUE(e)+'g at the auction house';
     if(e.cls&&!e.epic&&e.cls!==a.cls)o.wear='made for a '+e.cls+'; you cannot wear it';
     else if(at!=='worn'&&e.ilvl>a.lvl+INV.WEAR_OVER)o.wear='too far above you: wearable from level '+(e.ilvl-INV.WEAR_OVER);
     else if(at!=='worn'){const cur=a.slots&&a.slots[e.slot];o.wear='you can wear it (equip {index}); on your '+e.slot+' now: '+(cur?itemText(cur):'nothing')}
     if(e.src)o.from=e.src;return o}
   const id=e.id;o.item=id;if(at)o.where=at;if(e.n)o.count=e.n;
-  if(USES[id]){const U=USES[id];o.does=useLines(id).map(l=>l[1]).join('; ');if(U.flavour)o.lore=U.flavour;o.town_price=U.price+'g at the quartermaster (from level '+U.lvl+')';o.sells='supplies are kept, not sold';if(at)o.use='use_item {index}'}
+  if(USES[id]){const U=USES[id];o.does=useLines(id).map(l=>l[1]).join('; ');if(U.flavour)o.lore=worldFill(U.flavour);o.town_price=U.price+'g at the quartermaster (from level '+U.lvl+')';o.sells='supplies are kept, not sold';if(at)o.use='use_item {index}'}
   else if(GOODS[id]){o.does='a trade good: worth gold, nothing more';o.sells='about '+price(id)+'g each at the auction house now'}
-  else{const Q=QUEST_ITEMS[id];o.does='a quest item: bound to its bearer, never sold, dropped or given';if(Q&&Q.flavour)o.lore=Q.flavour}
+  else{const Q=QUEST_ITEMS[id];o.does='a quest item: bound to its bearer, never sold, dropped or given';if(Q&&Q.flavour)o.lore=worldFill(Q.flavour)}
   return o}
 function catalogueItem(q){const n=normName(q),sq=singular(n),all=[...Object.keys(USES),...Object.keys(GOODS),...Object.keys(QUEST_ITEMS)];
   return all.find(x=>normName(x)===n||singular(normName(x))===sq)||all.find(x=>singular(normName(x)).includes(sq))||null}
@@ -967,6 +970,7 @@ const T={
       if(!here){const b=placeWays(a,GROUND.BETWEEN,true);if(b.length)r.between=b.map(x=>x.place+': '+x.way)}}
     {const road=roadLook(a);if(road.length)r.on_the_road=road} // carts, travellers and guards in sight, in words (#796)
     {const f=followLine(a);if(f)r.following=f;const by=followersOf(a);if(by.length)r.walks_with_you=by.map(b=>b.name+' walks with you')} // follow (#445)
+    lookInvites(a,r); // the trainer, what sells, gathering spots, whether you can attempt (#872, #864)
     lookSnap(a);return r},
   // The lay of the land in sight, or the way to one place (#797). Read only: no dice, no walking, nothing learned.
   survey(a,{to}={}){if(to!=null&&String(to).trim()){const p=peekPlan(a,to);if(p.error)throw new Rule(p.error);
@@ -978,7 +982,7 @@ const T={
     const w=wayNow(a);if(w)r.your_way=w;const L=placeWays(a,GROUND.WAYS,false);if(L.length)r.ways=L.map(x=>x.place+' ('+x.dir+'): '+x.way);
     r.use='survey {to} tells the way to one place before you set out; to takes what move_to takes.';return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
-    const r={ok:true,name:a.name,...(titleOf(a)?{known_as:styled(a)}:{}),people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,home:c.name,level:a.lvl,
+    const r={ok:true,name:a.name,...(titleOf(a)?{known_as:styled(a)}:{}),people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,home:c.name,world:WORDS.world,level:a.lvl,
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
       state:a.state,doing:a.playDoing||null,queue:(a.pq||[]).map(cmdText),
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
@@ -1236,7 +1240,7 @@ const T={
       a.pq=[{kind:'fight',id:t.id,flee:fb}];a.target=t;a.state='fight';a.dest=null;
       const pr=perceived(a,t);return {ok:true,target:foeName(a,t),threat:threatText(a,t),warning:pr==null?'You cannot tell how strong it is.':pr>=3?'You judge it '+threatText(a,t).replace(/^looks /,'')+'.':undefined}}
     need(t.kind==='hero'&&t!==a,'No such target'+givenAs(target_id,target)+'. '+foeList(a));need(t.fac!==a.fac,'You will not raise a hand against your own faction.');
-    need(zoneAt(a.x,a.y)>=1&&zoneAt(t.x,t.y)>=1,'Thornvale is the peaceful vale: no duels there.');
+    need(zoneAt(a.x,a.y)>=1&&zoneAt(t.x,t.y)>=1,WORDS.lowRegion+' is the peaceful vale: no duels there.');
     need(['hunt','travel','return','follow'].includes(t.state),t.name+' is not free to be challenged right now.');
     a.pq=[];a.state=t.state='duel';a.target=t;t.target=a;a.dest=t.dest=null;record(a,'Challenged ',t,'.');
     return {ok:true,duel:t.name+' ('+t.cls+' L'+t.lvl+')',note:'A duel runs until one falls or breaks off; you break off on your own at low HP, or flee().'}},
@@ -1295,7 +1299,7 @@ const T={
     need(n,'Nothing to sell.');a.gold+=tot;if(tot>=REFLECT.TRADE)moment(a,'trade','sold '+n+' thing'+(n>1?'s':'')+' for '+tot+'g');return {ok:true,sold:n,gold_gained:tot,gold:a.gold}},
   auction_browse(a){need(inTown(a),'The auction house is in town.');const ago=l=>Math.max(0,Math.round((l.until-S.gameMin)/60));
     const row=l=>({id:l.id,what:l.kind==='gear'?itemText(l.item):l.good,n:l.n,each:l.ask,seller:l.sname,hours_left:ago(l),...(l.kind==='gear'?{slot:l.item.slot,level:l.item.ilvl,class:l.item.cls||'any',better_by:Math.max(0,gearUpgrade(a,l.item)),wearable:gearUpgrade(a,l.item)>=0}:{})});
-    const all=listings();return {ok:true,listings:all.filter(l=>l.seller!==a.id).map(row),yours:all.filter(l=>l.seller===a.id).map(row),recent_trades:(S.trades||[]).slice(0,5).map(t=>t.seller+' sold '+t.what+(t.n>1?' x'+t.n:'')+' to '+t.buyer+' for '+t.gold+'g'),gold:a.gold}},
+    const all=listings();return {ok:true,listings:all.filter(l=>l.seller!==a.id).map(row),yours:all.filter(l=>l.seller===a.id).map(row),recent_trades:(S.trades||[]).slice(0,5).map(t=>t.seller+' sold '+t.what+(t.n>1?' x'+t.n:'')+' to '+t.buyer+' for '+t.gold+'g'),gathered_sells_best:sellsBest(),gold:a.gold}},
   auction_list(a,{index,n,price:ask}){need(inTown(a),'The auction house is in town.');const i=Number(index);need(i>=0&&i<used(a),'No pack entry '+index+'.');
     need(mine(a).length<TRADE.MAX_PER_HERO,'You already have '+TRADE.MAX_PER_HERO+' listings.');const e=invOf(a).list[i];
     if(isGear(e)){const ref=gearRef(e),p=ask==null?ref:Number(ask);need(p>=ref*TRADE.MIN_X&&p<=ref*TRADE.MAX_X,'Ask between '+Math.ceil(ref*TRADE.MIN_X)+'g and '+Math.floor(ref*TRADE.MAX_X)+'g for that.');
@@ -1357,7 +1361,7 @@ const T={
   // memories (issue #155, sim/notebook.js): the hero's own notebook only
   // who you are (#409, sim/persona.js): the hero's own persona, read and grown by its agent
   self:a=>{const r=selfView(a),w=willView(a);if(w&&r&&typeof r==='object')r.will=w;return r},
-  become(a,x){const t=x&&x.text!=null?String(Array.isArray(x.text)?x.text.join(', '):x.text):'';need(!t||!notEnglish(t),'Not changed: write it in English, as everyone in Eldmoor speaks.');return become(a,x||{})},
+  become(a,x){const t=x&&x.text!=null?String(Array.isArray(x.text)?x.text.join(', '):x.text):'';need(!t||!notEnglish(t),'Not changed: write it in English, as everyone in '+WORDS.world+' speaks.');return become(a,x||{})},
   remember:(a,x)=>heroMemory(a,'remember',x),recall:(a,x)=>heroMemory(a,'recall',x),update_memory:(a,x)=>heroMemory(a,'update_memory',x),forget:(a,x)=>heroMemory(a,'forget',x),pin:(a,x)=>heroMemory(a,'pin',x),
   party_say(a,{text}){need(a.state!=='ghost','Ghosts do not speak.');need(!notEnglish(text),ENGLISH);const no=lineRefusal(a,spokenLine(a,text,1e9).text);need(!no,no); // not the same line again, no second introduction (sim/talk.js)
     const n=partySay(a,text);if(typeof n==='string')throw new Rule(n);const e=a.chat&&a.chat[a.chat.length-1];agentLine(a,e);
@@ -1425,6 +1429,10 @@ const T={
     const d=Math.round(dist(a,n)*10)/10;
     return {ok:true,gathering:n.name+' ('+n.id+')',material:c.mat,distance:d,takes:'about '+Math.round(GATHER.MIN+d*3)+' game minutes',
       odds:c.chance>=.7?'a sure hand':c.chance>=.5?'likely':'a stretch for your skill',note:'wait() while you work; an attack interrupts and you go back to it after the fight.'}},
+  guild_join(a,{guild}={}){need(inTown(a),'The guild rolls are signed in town. Walk to a friendly town first.');
+    const r=guildJoinFor(a,guild);need(r.ok,r.why);return r},
+  guild_found(a){need(inTown(a),'A banner is raised in town, with comrades beside you. Walk to a friendly town first.');
+    const r=guildFoundFor(a);need(r.ok,r.why);return r},
   smith(a,args={}){const ct=cityAt(a),here=inTown(a)||!!(ct&&ct.fac===a.fac);const r=smithTool(a,args,{inTown:here});need(r.ok,r.why);return r},
   craft(a,{recipe,count,for:forWho}={}){need(recipe!=null&&String(recipe).trim()!=='','Which recipe? craft {recipe: "meal-perch"}; recipes lists yours, what each needs and how many you carry.');
     need(!['fight','duel','assist','dead','ghost'].includes(a.state),'Not now ('+a.state+').');
@@ -1454,7 +1462,7 @@ const T={
   intent(a,{goal,why,until,done,forced}={}){const g=goal!=null?String(goal).trim():'';
     if(/^(yes|true|done|kept|abandon(ed)?|drop(ped)?)$/i.test(String(done==null?'':done))||/^(done|none|nothing)$/i.test(g))return endIntent(a,why);
     if(!g)return intentView(a,leaderFor(a));
-    need(!notEnglish(g+' '+(why||'')),'Not set: say it in English, as everyone in Eldmoor speaks.');
+    need(!notEnglish(g+' '+(why||'')),'Not set: say it in English, as everyone in '+WORDS.world+' speaks.');
     // #727: in town, a goal that names this town or runs an errand here (ask, buy, rest, ...) is not a walk: the errand holds
     // the hero in town (a wait-kind order until its until), and the answer names who is about and the tools for it
     const c=a.pq&&a.pq[0],ct=townHere(a),er=ct?errandOf(g):null;let order=orderOf(a,c&&!c.auto?(c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c):null),here=false;
@@ -1566,7 +1574,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(!a)return {ok:false,error:'No such hero.'};
   if(!a.player)return {ok:false,error:a.name+' is not agent-played.'};
   if(a.state==='dead'){const r={ok:false,dead:true,error:a.name+' is dead ('+(a.cause||'fallen')+', at '+(a.diedAt||'?')+'). Hardcore: one life. Their story is over.'};logCall(a,tool,args,r);return r}
-  const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'.'+wishInvite(a)};
+  const meta=TOOL_META[tool],fn=T[tool];if(!meta||!fn)return {ok:false,error:'Unknown tool '+tool+'. '+ATTEMPT_INVITE+wishInvite(a)};
   if(meta.act){const why=worldHeld();if(why){const r={ok:false,held:why,offline:true,error:holdLine()};logCall(a,tool,args,r);return r}}
   if(meta.act&&a.state==='downed'&&tool!=='wait'){const r={ok:false,downed:true,offline:true,error:'You are down, bleeding at zero health: you cannot act until someone brings you back or you rise. Listen, remember, or wait.'};logCall(a,tool,args,r);return r} // downed (#626): reads still answer // held before play (#559): look, recall and the other reads still answer
   if(args&&args._pool===true&&(tool==='recall'||tool==='journal_search'))return fn(a,args); // the relay's ask for the texts it embeds (#553): not a turn, not logged

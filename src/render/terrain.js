@@ -12,6 +12,7 @@ import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
+import {drawQuay} from './harbour.js';
 import {sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery,soilAt,soilEdge} from './scenery.js';
 import {ASSET_PEAKS,peakArt,peakPixel} from './peaks.js';
 
@@ -486,4 +487,4 @@ function scenePixel(t,tx,ty,ax,ay){const w=peakArt()&&peakPixel(tx,ty,ax,ay)?nul
 
 // Towns and landmarks (walls, gate, buildings, banners, graves, crypt mouths, the lair): render/townart.js draws them in
 // world units onto the chunk context, from their generated assets or procedurally (#177 slice 3).
-function decorate(tctx,x0,y0,x1,y1){drawPlaces(tctx,x0,y0,x1,y1)}
+function decorate(tctx,x0,y0,x1,y1){drawPlaces(tctx,x0,y0,x1,y1);drawQuay(tctx,x0,y0,x1,y1)}
