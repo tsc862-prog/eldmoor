@@ -14,6 +14,7 @@
 // nothing allocates per frame (the entity list takes pooled objects).
 import {CITY} from '../world/map.js';
 import {solidAt} from '../world/passable.js';
+import {outsideTown} from '../world/gen.js';
 import {FAC} from '../data/factions.js';
 import {npcRole} from '../data/npcs.js';
 import {RACES,racesOf} from '../data/races.js';
@@ -45,11 +46,11 @@ onAssets(()=>{for(const L of LAY.values())roofSpots(L)});
 function layout(c,ci){let L=LAY.get(c);if(L)return L;
   L={c,ci,chim:[],doors:[],stalls:[],guards:[],flag:null};
   const race=(RACES.find(x=>x.id===c.race)||racesOf(c.fac)[0]||RACES[0]).id; // the town's people, as sim/npcs.js staffs it
-  const open=(x,y)=>x>c.x0&&x<c.x1&&y>c.y0&&y<c.y1&&!solidAt(x,y);
+  const open=(x,y)=>x>c.x0&&x<c.x1&&y>c.y0&&y<c.y1&&!solidAt(x,y)&&!outsideTown(c,x,y);
   const doorSet=c.buildings.map(b=>b.door);
   roofSpots(L);
   for(const b of c.buildings){const [dx,dy]=b.door;
-    if(b.piece!=='board')L.doors.push({x:(dx+.5)*T+(b.piece==='smithy'?-2:0),y:(dy+1)*T,forge:b.piece==='smithy',w:b.box[2]})}
+    if(b.piece!=='board'&&b.piece!=='well')L.doors.push({x:(dx+.5)*T+(b.piece==='smithy'?-2:0),y:(dy+1)*T,forge:b.piece==='smithy',w:b.box[2]})}
   // stalls: two tiles wide, with the rows above and below clear, away from doors and the gate lane. A plan with little open ground gets
   // a second look below: a stall needs only its own two tiles off the streets and open ground behind it, so it never hides a front.
   const gate=c.gateTiles,gx=gate[0][0],gy=gate[0][1],cand=[];
@@ -79,7 +80,7 @@ function layout(c,ci){let L=LAY.get(c);if(L)return L;
   const opp=OPPOSITE[side],horiz=opp==='N'||opp==='S',len=(horiz?c.x1-c.x0:c.y1-c.y0)-2;
   L.walk={opp,horiz,len,x0:c.x0+1,y0:c.y0+1,x1:c.x1,y1:c.y1,off:hash(ci,3,8)*40};
   L.walker={kind:'deco',x:0,y:0,face:1,dir:2,fr:0,col:0,walk:true,kp:{kind:'npc',role:'guard',fac:c.fac,race,id:ci*10+5},paint:paintGuard,town:L,torch:true};
-  L.noWalk=opp==='N'&&c.buildings.some(b=>b.kit&&b.box[1]===c.y0+1); // a plan's north row stands over that wall: he would walk on its roofs
+  L.noWalk=!!c.notch||opp==='N'&&c.buildings.some(b=>b.kit&&b.box[1]===c.y0+1); // a plan's north row stands over that wall: he would walk on its roofs
   LAY.set(c,L);return L}
 
 const WALK=[1,0,2,0]; // sheet columns of a walk cycle

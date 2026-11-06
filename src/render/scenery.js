@@ -17,6 +17,7 @@ import {W,H,G,TREE,ROCK,LAVA,ROAD,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE,MUD,SWAMP,
 import {tiles,zone,I,CITY,LANDMARKS,REGIONS,OUTPOSTS,solid} from '../world/map.js';
 import {ACTIVE_SPEC} from '../world/spec.js';
 import {asset,assetPixels,onAssets} from './assets.js';
+import {outsideTown} from '../world/gen.js';
 import {ATLAS} from './sceneryatlas.js';
 
 export const ASSET_SCENERY={'prop:scenery':TREE}; // hook table (artcheck): the sheet of pieces; no piece, no procedural stand-in
@@ -70,7 +71,7 @@ function data(){if(D)return D;
     if(t===G||t===FLOWER)farm[I(i,j)]=1}
   const lair=LANDMARKS.find(L=>L.kind==='lair'&&(NOTE.dress||{})[L.name]==='lair')||null;
   // roads out in the country (a town's own streets keep their tiles), and the land they pass over
-  const town=(x,y)=>CITY.some(c=>x>=c.x0&&x<=c.x1&&y>=c.y0&&y<=c.y1);
+  const town=(x,y)=>CITY.some(c=>!outsideTown(c,x,y));
   const open=new Uint8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++)if((tt(x,y)===ROAD||tt(x,y)===BRIDGE)&&!town(x,y))open[I(x,y)]=1;
   const road=field((x,y)=>x>=0&&y>=0&&x<W&&y<H&&open[I(x,y)],2);
   const nearR=new Uint8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!open[I(x,y)])continue;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const X=x+dx,Y=y+dy;if(X>=0&&Y>=0&&X<W&&Y<H&&!town(X,Y))nearR[I(X,Y)]=1}}
