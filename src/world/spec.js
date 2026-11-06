@@ -71,6 +71,7 @@ const CRYPT_ROOMS=[
 
 export const ELDMOOR={
   name:'Eldmoor',
+  blurb:'Two cities, Highgate and Grimhold, face each other across a river and a long grudge. Somewhere past the hills a wyrm named Kragmaw sleeps on its hoard, and sooner or later someone will be fool enough to wake it.',
   size:{w:80,h:50},
   seeds:{terrain:11,detail:23},
   curves:{
@@ -192,6 +193,7 @@ const CAIRN_ROOMS=[
 
 export const STEPPING={
   name:'Stepping Lands',
+  blurb:'A wide, rough continent with room to get lost in: long roads, far-apart towns and a new danger every few days of walking. Pack for the journey, because help is rarely close.',
   size:{w:160,h:100},
   seeds:{terrain:37,detail:61},
   curves:{
@@ -336,6 +338,7 @@ function townPlan(x0,y0,list){return list.map(([kit,dx,dy])=>{const k=TOWN_KIT[k
   return{piece,kit,box:[x0+dx,y0+dy,k.foot[0],k.foot[1]],door:[x0+dx+k.door[0],y0+dy+k.door[1]],serves:TOWN_SERVES[piece]||null}})}
 export const VALE={
   name:'The Wending Vale',
+  blurb:'One river, two banks and three crossings, and an old weir that has quietly stopped holding. Six towns, four dungeons and a wyrm at the river\'s head; whoever holds the water holds the vale.',
   size:{w:144,h:60},
   seeds:{terrain:53,detail:77},
   // #934 / epic #940: no region next to a region whose low band is more than `step` levels above it, seen from any home town.
