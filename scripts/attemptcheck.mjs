@@ -166,6 +166,24 @@ console.log('the ruling voice (scripts/dm-agent.mjs) with a mock model');
   ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.call === r.call && e.detail.by === 'dm-agent'), 'logged as the DM agent ruling');
   ok(DA.effectList([{kind: 'none', target: '', value: ''}]).join() === 'none' && DA.effectList([{kind: 'wound', target: '5', value: ''}]).join() === 'wound:5', 'effect objects become the game strings')}
 
+console.log('the invitation (#864)');
+{ const {INVITE} = await import('../src/sim/invite.js'), {hostPace} = await import('../src/sim/player-host.js'), {talkText} = await import('./pacing.mjs'), {ATTEMPT_INVITE} = await import('../src/data/player-tools.js'), {WISH_INVITE} = await import('../src/sim/wish.js'), {cleanArgs} = await import('./local-agent.mjs');
+  const lm = LANDMARKS[0]; fresh(B); B.state = 'hunt'; B.pq = []; B.x = lm.x + 2; B.y = lm.y; B.profs = [{id: 'alchemy', skill: 1}, {id: 'cooking', skill: 1}]; B.nudge = null; B.reflect = null;
+  const turn = async () => {B.playFresh = true; B.reflect = null; return (await hostPace(B.id, {brief: true})).brief};
+  let b = await turn();
+  ok(b.invite && b.invite.kind === 'attempt' && b.invite.text.includes(lm.name) && /attempt \{what\}/.test(b.invite.text) && talkText(b).includes(b.invite.text), 'beside a landmark the header says an attempt fits: ' + (b.invite || {}).text);
+  b = await turn(); ok(!b.invite, 'once, then quiet');
+  S.gameMin += INVITE.GAP + 1; b = await turn(); ok(!b.invite, 'and quiet for the rest of the game day');
+  S.gameMin += INVITE.DAY; B.attempts = [S.gameMin, S.gameMin, S.gameMin]; b = await turn(); ok(!b.invite, 'no line with no attempts left this hour');
+  let lk = act(B, 'look'); ok(lk.can_attempt === false && lk.attempts_left === 0, 'look: can_attempt false, none left');
+  B.attempts = [S.gameMin]; lk = act(B, 'look'); ok(lk.can_attempt === true && lk.attempts_left === 2, 'look: can_attempt true with the hour\'s attempts left');
+  B.attempts = []; B.nudge = null; B.x = -999; B.y = -999; ok(!(await turn()).invite, 'nothing near: no line'); B.x = lm.x + 2; B.y = lm.y; B.profs = [];
+  B.wishInv = null; r = act(B, 'no_such_tool', {}); const iA = r.error.indexOf(ATTEMPT_INVITE), iW = r.error.indexOf(WISH_INVITE);
+  ok(!r.ok && iA > 0 && iW > iA, 'the no-such-tool refusal names attempt before the wish: ' + r.error);
+  r = act(B, 'no_such_tool', {}); ok(r.error.includes(ATTEMPT_INVITE) && !r.error.includes(WISH_INVITE), 'the wish line keeps its once a day; attempt stays');
+  const c = cleanArgs('pry_door', {}); ok(c.error.indexOf('attempt {what}') > 0 && c.error.indexOf('attempt {what}') < c.error.indexOf('Tools:'), 'the runner-side refusal too, ahead of the tool list');
+}
+
 console.log('lapsed: a hero gone');
 fresh(B); setDmSeat(true); dmAct('ruling_call', {budget_s: 10}); r = act(B, 'attempt', {what: 'I look for tracks.'}); B.state = 'dead';
 a2 = dmAct('ruling_answer', {call: r.call, skill: 'tracking', dc: 'fair', text: 'Tracks.'}); ok(!a2.ok && /lapses/.test(a2.error), 'the dead hero\'s attempt lapses');

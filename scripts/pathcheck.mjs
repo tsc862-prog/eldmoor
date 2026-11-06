@@ -7,7 +7,7 @@
 // Runs the active world; with no ELDMOOR_WORLD it runs Eldmoor, then re-runs itself for the Stepping Lands.
 // Usage: npm run pathcheck
 import './seed-first.mjs'; // before the sim loads: its import-time dice are fixed (#888)
-import {spawnSync} from 'node:child_process';
+import {runWorlds} from './worlds.mjs';
 import {tiles,I,CITY,LANDMARKS,ZPTS,ZONES,NODES,land,mainLand,zoneAt} from '../src/world/map.js';
 import {W,H,RIVER,BRIDGE} from '../src/world/tiles.js';
 import {solidAt,solidWhy,nearestOpen,landAt} from '../src/world/passable.js';
@@ -120,7 +120,7 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
 // ---- the agent's answer ----
 {init({fellowship:false});const a=S.agents.find(h=>h.state!=='dead');markPlayer(a,true);const c=CITY.find(t=>t.fac===a.fac)||CITY[0];
   a.x=c.gate.x;a.y=c.gate.y;a.state='hunt';a.lvl=20;a.adv=null;
-  const far=ZPTS.flat().filter(p=>Math.hypot(p.x-a.x,p.y-a.y)>20).find(p=>{const r=route(a.x,a.y,p.x,p.y);return r&&r.cross});
+  const far=ZPTS.flat().filter(p=>Math.hypot(p.x-a.x,p.y-a.y)>20&&!CITY.some(t=>t.fac!==a.fac&&(Math.hypot(p.x-t.gate.x,p.y-t.gate.y)<14||(p.x>=t.x0-3&&p.x<=t.x1+3&&p.y>=t.y0-3&&p.y<=t.y1+3)))).find(p=>{const r=route(a.x,a.y,p.x,p.y);return r&&r.cross});
   const r=playerAct(a.id,'move_to',{target:Math.floor(far.x)+','+Math.floor(far.y)}),o=r&&r.result||r;
   ok(o&&o.ok&&o.going&&o.distance!=null,'move_to keeps its line ('+(o&&o.going)+', '+(o&&o.distance)+')');
   ok(o&&o.route&&o.route.tiles>=o.distance-1&&o.route.by&&o.route.by.length>0,'and adds the route: '+JSON.stringify(o&&o.route));
@@ -129,19 +129,20 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
   ok(known.every(n=>{const q=playerAct(a.id,'places',{});return JSON.stringify(q).includes(n)}),'the route names only places the hero knows ('+(known.join(', ')||'none')+')');
   ok(!!z&&/^(bridge|ford)$/.test(z.crossing),'the crossing is a fact: '+JSON.stringify(z))}
 
-// ---- a long run ----
+// ---- a long run ---- (20 game minutes in Eldmoor; the other worlds get a shallow pass of PATHCHECK_MINUTES, 5, from the parent: full depth on one world, #940)
+const MINUTES=Number(process.env.PATHCHECK_MINUTES)||20;
 {const run=seed=>{seedRng(seed);init();const P=[];let bad=new Map(),stuck=0;const who=[],last=new Map();
-    for(let i=0;i<20*3600;i++){step(1/60);if(i%30)continue;
+    for(let i=0;i<MINUTES*3600;i++){step(1/60);if(i%30)continue;
       for(const L of [S.agents,S.mobs,S.npcs||[],S.wanderers||[],S.traffic&&S.traffic.list||[],S.traffic&&S.traffic.guards||[]])for(const e of L){if(e.state==='dead'||e.hidden||e.alive===false||e.gone)continue;
         if(solidAt(e.x,e.y)){const k=(e.kind||'person')+':'+(e.state||'')+':'+solidWhy(e.x,e.y);bad.set(k,(bad.get(k)||0)+1)}}
       if(i%600)continue;
       for(const a of S.agents){if(a.state!=='travel'&&a.state!=='return'){last.delete(a);continue}const p=last.get(a);if(p&&p.st===a.state&&Math.hypot(p.x-a.x,p.y-a.y)<.01){stuck++;who.push(a.name+'@'+a.x.toFixed(1)+','+a.y.toFixed(1)+' '+a.state)}last.set(a,{x:a.x,y:a.y,st:a.state})}}
     seedRng(null);return {bad,stuck,who,sig:S.agents.map(a=>a.x.toFixed(4)+','+a.y.toFixed(4)).join('|')}};
   const A=run(5),B=run(5);
-  ok(A.bad.size===0,'20 minutes: nobody stands in a solid tile'+(A.bad.size?' '+JSON.stringify([...A.bad]):''));
+  ok(A.bad.size===0,MINUTES+' minutes: nobody stands in a solid tile'+(A.bad.size?' '+JSON.stringify([...A.bad]):''));
   ok(A.stuck===0,'nobody travelling stands fast for 10 seconds ('+A.stuck+(A.stuck?' '+A.who.join(' '):'')+')');
   ok(A.sig===B.sig,'a seeded run repeats')}
 
 console.log('plans',pathStats.plans,'worst search',pathStats.peak,'nodes');
-if(!process.env.ELDMOOR_WORLD&&!process.env.PATH_CHILD)for(const w of ['stepping','vale']){const r=spawnSync(process.execPath,[process.argv[1]],{env:{...process.env,ELDMOOR_WORLD:w,PATH_CHILD:'1'},stdio:'inherit'});if(r.status)fail++}
+if(!process.env.ELDMOOR_WORLD)fail+=runWorlds('pathcheck',{env:{PATHCHECK_MINUTES:'5'}})
 if(fail){console.log(fail+' check(s) failed');process.exit(1)}console.log('pathcheck ok');

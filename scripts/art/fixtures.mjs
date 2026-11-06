@@ -21,17 +21,22 @@ const GROUND={
   meadow:{ramp:['#34782f','#3a8236','#3f8a3a','#45923c','#4a9a40'],acc:['#f4e06a','#f08ab0','#f4f4f8','#6cc050'],odds:.05},
   fen:{ramp:['#3d5729','#42602c','#46622f','#4a6632'],acc:['#7a9a46','#9ab060'],odds:.05},
   swamp:{ramp:['#2a5242','#2c5646','#2f5a4a','#335f4e'],acc:['#5a8a6a','#8aa050'],odds:.04},
-  mud:{ramp:['#4f4e2c','#545330','#5b5a34','#6e6a3e'],acc:['#3e3c22','#7a7650'],odds:.04},
+  mud:{ramp:['#5e4c2c','#645230','#6c5834','#7e6a3e'],acc:['#3e3c22','#7a7650'],odds:.04},
   ash:{ramp:['#585050','#5f5652','#655c58','#6e6460','#746a64'],acc:['#4a423e','#8a807a','#7e8a52'],odds:.04},
   snow:{ramp:['#d8e0e8','#dde4ec','#e2e8ee','#e6ecf2'],acc:['#c4ced8','#ffffff'],odds:.03},
   ice:{ramp:['#aad4e2','#b4dce8','#bde2ec'],acc:['#e4f8fc','#6a98b0'],odds:.03},
   road:{ramp:['#9f8455','#a68a58','#a88c5c','#b09460'],acc:['#c8b088','#8a7048'],odds:.05},
+  lava:{ramp:['#c8401a','#f07a22','#ff9a30','#ffd04a'],acc:['#3a1c16','#fff4a0'],odds:.05},
   water:{ramp:['#2e5fb0','#3264b4','#3468b8','#3a70c4'],acc:['#6a9ce0','#8ab8f0'],odds:.04}};
-const TILE_GROUND={'tile:grass':'grass','tile:meadow':'meadow','tile:fen-grass':'fen','tile:swamp':'swamp','tile:mud':'mud','tile:ash-rock':'ash','tile:snow':'snow','tile:ice':'ice','tile:road':'road','tile:water':'water'};
+const TILE_GROUND={'tile:grass':'grass','tile:meadow':'meadow','tile:fen-grass':'fen','tile:swamp':'swamp','tile:mud':'mud','tile:ash-rock':'ash','tile:snow':'snow','tile:ice':'ice','tile:road':'road','tile:water':'water','tile:lava':'lava'};
 // Transition pairs: A side, B side and a seam colour drawn on the A side of the border (foam, a worn rim, dying grass).
 const PAIR={'grass-road':['grass','road','#2f6a2c'],'bank-water':['grass','water','#dce8f8'],'meadow-fen':['grass','fen','#3f5a30'],
-  'fen-ash':['fen','ash','#6a6640'],'ash-snow':['ash','snow','#a8b0b8'],
-  'fen-river':['fen','water','#dce8f8'],'snow-river':['snow','water','#e8f0f8'],'mud-swamp':['mud','swamp','#3e3c22']};
+  'fen-ash':['ash','fen','#6a6640'],'ash-snow':['ash','snow','#a8b0b8'],
+  'fen-river':['fen','water','#dce8f8'],'snow-river':['snow','water','#e8f0f8'],'mud-swamp':['mud','swamp','#3e3c22'],
+  'mud-fen':['mud','fen','#3f5a30'],'fen-swamp':['fen','swamp','#3e3c22'],'snow-ice':['ice','snow','#c4ced8'],'meadow-ash':['ash','grass','#4a423e'],'mud-ash':['ash','mud','#4a423e'],
+  'ash-lava':['ash','lava','#2a2422'],'road-fen':['fen','road','#3f5a30'],'road-mud':['mud','road','#3e3c22'],'road-ash':['ash','road','#4a423e'],'road-snow':['snow','road','#c4ced8'],
+  'road-swamp':['swamp','road','#3e3c22'],'fen-snow':['fen','snow','#c4ced8'],'swamp-snow':['snow','swamp','#c4ced8'],'mud-snow':['mud','snow','#c4ced8'],'ice-ash':['ice','ash','#4a423e'],'meadow-snow':['grass','snow','#c4ced8'],
+  'ice-fen':['ice','fen','#3f5a30'],'lava-snow':['snow','lava','#2a2422'],'ash-swamp':['ash','swamp','#3e3c22'],'mud-river':['mud','water','#dce8f8'],'swamp-river':['swamp','water','#dce8f8'],'meadow-swamp':['grass','swamp','#3e3c22'],'meadow-mud':['mud','grass','#3f5a30'],'road-ice':['ice','road','#c4ced8']};
 
 // Colour of ground g at pixel (x,y) of a texture repeating every p pixels.
 function ground(g,x,y,p,s){const G=GROUND[g],n=pnoise(x,y,p,8,s)*.75+pnoise(x,y,p,4,s+9)*.25,h=hh(x,y,s+3);
@@ -210,6 +215,7 @@ export function fixtures(man,tier=32){const out={};
     else if((m=/^autotile:([a-z]+-[a-z]+)(-corner|-inner)?$/.exec(e.id))&&PAIR[m[1]])im=piece(m[1],m[2]?m[2].slice(1):'edge',e.seed,size[0]);
     else if((m=/^prop:(tree|rock)-([a-z]+)-(\d)$/.exec(e.id)))im=upscale((m[1]==='tree'?tree:rock)(m[2],+m[3]),size[0]);
     else if((m=/^prop:canopy-([a-z]+)-(\d)$/.exec(e.id)))im=canopy(m[1],+m[2],size);
+    else if(e.kind==='portrait')im=face(e.id,size[0]);
     else if(e.kind==='sprite'&&e.frames)im=sheet(e,size);
     else if((m=/^(?:building|tile):([a-z]+)-([a-z-]+)$/.exec(e.id))&&STYLE[m[1]])im=building(m[1],m[2],size,e.seed);
     else if((m=/^landmark:([a-z-]+)$/.exec(e.id)))im=landmark(m[1],size,e.seed);

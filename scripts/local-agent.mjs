@@ -22,7 +22,7 @@
 // turns are dropped (the journal is the long-term memory). Local calls cost nothing: the loop
 // counts tokens (prompt_eval_count / eval_count) and seconds instead.
 // Plain Node, no SDK import; scripts/localcheck.mjs tests it against a mock Ollama.
-import {PLAYER_TOOLS} from '../src/data/player-tools.js';
+import {PLAYER_TOOLS, ATTEMPT_INVITE} from '../src/data/player-tools.js';
 
 // temperature/repeatPenalty (issue #126): a local model looping on one plan, or drifting into another language, is
 // nudged out of it; freshAfter: that many empty turns in a row and the next turn starts with a fresh context.
@@ -93,7 +93,7 @@ const wishInviteOnce = () => {const n = Date.now(); if (n - inviteAt < 3600e3) r
 export function cleanArgs(name, raw, list = PLAYER_TOOLS) {
   const M = byName(list), t = M.get(name);
   // a DM calling a world lever by name (post_hook, mark_place: issue #401) is pointed at pull_lever
-  if (!t) return {error: `unknown tool "${name}". Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '') + (M.has('wish') ? wishInviteOnce() : '')};
+  if (!t) return {error: `unknown tool "${name}". ${M.has('attempt') ? ATTEMPT_INVITE + ' ' : ''}Tools: ${[...M.keys()].join(', ')}` + (M.has('pull_lever') ? `. If "${name}" is a world lever (see levers), pull it through pull_lever: {"lever":"${name}","params":{...},"reason":"one sentence"}` : '') + (M.has('wish') ? wishInviteOnce() : '')};
   let a = raw; if (typeof a === 'string') {try {a = a.trim() ? JSON.parse(a) : {}} catch {return {error: 'arguments are not valid JSON'}}}
   if (a == null) a = {}; if (typeof a !== 'object' || Array.isArray(a)) return {error: 'arguments must be an object'};
   // a tool with one object argument (pull_lever's params): keys the tool does not take are that object's, not dropped
@@ -681,7 +681,7 @@ export function actSig(acted) {
 }
 
 // Marks on a turn line (issue #126): the model was told to act, or only repeated itself.
-const turnFlags = st => (st.sceneJump ? ' | its scene opened mid-turn: answered it first' : '') + (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.broke ? ' | ended early: ' + st.broke.n + ' refusals of ' + st.broke.tool + (st.broke.inRow > st.broke.n ? ' (' + st.broke.inRow + ' in a row)' : '') : '') + (st.throttled ? ' | ended early: the per-minute call cap' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : st.repeatAct ? ' | empty turn (repeat-act: the same ' + st.tried[0].name + ' as last turn)' : '');
+const turnFlags = st => (st.sceneJump ? ' | its scene opened mid-turn: answered it first' : '') + (st.mode === 'reflect' ? ' | reflection (' + (st.wrote || 0) + ' memories' + (st.misses ? ', ' + st.misses + ' missed' : '') + ')' : '') + (st.mode === 'scene' ? ' | forced scene turn' + (st.misses ? ' (' + st.misses + ' missed)' : '') : '') + (st.fresh ? ' | fresh context' : '') + (st.broke ? ' | ended early: ' + st.broke.n + ' refusals of ' + st.broke.tool + (st.broke.inRow > st.broke.n ? ' (' + st.broke.inRow + ' in a row)' : '') : '') + (st.throttled ? ' | ended early: the per-minute call cap' : '') + (st.reprompted ? ' | re-prompted to act' : '') + (st.looped ? ' | empty turn (Ollama stopped the model repeating itself twice; next turn starts afresh, not counted as a failure)' : st.loopRetried ? ' | retried once from a trimmed context (the model repeated itself)' : '') + (st.looped ? '' : st.sceneJump && !st.tools ? ' | cut by its scene before any call (not an empty turn)' : st.foreign ? ' | empty turn (not in English)' : !st.tools ? ' | empty turn (no tool call)' : st.repeat && !st.acts ? ' | empty turn (repeated narration)' : st.repeatAct ? ' | empty turn (repeat-act: the same ' + st.tried[0].name + ' as last turn)' : '');
 // The cost line for a local turn: tokens and seconds, cost 0.
 export const localLine = (st, model) => `${model} (local) | ${st.tools} tool calls${st.rejected ? ' (' + st.rejected + ' rejected)' : ''}, ${(st.ms / 1000).toFixed(1)} s (${(st.modelMs / 1000).toFixed(1)} s in the model), ${st.modelCalls} model calls${st.mode === 'json' ? ', JSON-action mode' : ''} | tokens in ${st.in} / out ${st.out} | $0 (local)${st.capped ? ' | hit the model-call cap' : ''}${turnFlags(st)}`;
 
