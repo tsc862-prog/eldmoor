@@ -3,7 +3,7 @@
 // roads bridge rivers, and fails if the ELDMOOR map drifted from its snapshot.
 // Usage: npm run worldcheck
 // If you changed the Eldmoor map on purpose, paste the new hashes into SNAPSHOT.
-import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS} from '../src/world/spec.js';
+import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS, TOWN_KIT} from '../src/world/spec.js';
 import {buildWorld} from '../src/world/gen.js';
 import {RACES} from '../src/data/races.js';
 import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
@@ -13,7 +13,7 @@ const SNAPSHOT = {zone: '7d08ac18', tiles: 'bda9e97b'};
 // Same for the Stepping Lands (160x100). Update when the STEPPING spec or the generator changes on purpose.
 const SNAPSHOT_STEPPING = {zone: '1089eab4', tiles: '2763d8b2'};
 // The Wending Vale (144x60, epic #940). Update when the VALE spec or the generator changes on purpose.
-const SNAPSHOT_VALE = {zone: '93993d12', tiles: '7f860cb3'};
+const SNAPSHOT_VALE = {zone: '93993d12', tiles: '15854ffd'};
 const TILE_NAMES = ['grass','tree','swamp','mud','rock','peak','lava','road','floor','wall','river','bridge','sgrass','flower','snow','ice'];
 
 function fnv(a) {let h = 0x811c9dc5; for (let i = 0; i < a.length; i++) {h ^= a[i]; h = Math.imul(h, 16777619) >>> 0} return h.toString(16).padStart(8, '0')}
@@ -141,6 +141,17 @@ for (const [id, spec] of Object.entries(WORLDS)) {
   if (id === 'vale') {
     if (fnv(vw.zone) !== SNAPSHOT_VALE.zone) {console.error(`FAIL: Vale zone array hash ${fnv(vw.zone)} != snapshot ${SNAPSHOT_VALE.zone}`); fail++}
     if (fnv(vw.tiles) !== SNAPSHOT_VALE.tiles) {console.error(`FAIL: Vale tile array hash ${fnv(vw.tiles)} != snapshot ${SNAPSHOT_VALE.tiles}`); fail++}
+  }
+  // town plans (epic #940 slice C): a spec town's own buildings keep the art kit's footprints and doors, rise only over the wall or another
+  // building, and stay inside their walls (the LPC cutter, scripts/art/packcut-buildings.mjs, cuts one shape per style and piece)
+  if (id === 'vale') for (const c of vw.CITY) {
+    const kit = (spec.towns.find(t => t.name === c.name) || {}).buildings ? TOWN_KIT : null;
+    if (!kit) continue;
+    const at = (x, y) => c.buildings.some(b => x >= b.box[0] && x < b.box[0] + b.box[2] && y >= b.box[1] && y < b.box[1] + b.box[3]);
+    for (const b of c.buildings) {const k = TOWN_KIT[b.piece], [bx, by, bw, bh] = b.box;
+      if (!k || bw !== k.foot[0] || bh !== k.foot[1] || b.door[0] - bx !== k.door[0] || b.door[1] - by !== k.door[1]) {console.error(`FAIL: ${c.name}: ${b.piece} does not keep the kit's footprint and door`); fail++}
+      if (bx <= c.x0 || by <= c.y0 || bx + bw - 1 >= c.x1 || by + bh - 1 >= c.y1) {console.error(`FAIL: ${c.name}: ${b.piece} is not inside the walls`); fail++}
+      if (k) for (let j = 1; j <= k.rise; j++) for (let i = 0; i < bw; i++) if (by - j > c.y0 && !at(bx + i, by - j)) {console.error(`FAIL: ${c.name}: ${b.piece} would rise over walkable ground at ${bx + i},${by - j}`); fail++}}
   }
   for (let z = 0; z < vw.ZONES.length; z++) if (vw.ZPTS[z].length < 150) {console.error(`FAIL: ${tag} region ${vw.ZONES[z]} has ${vw.ZPTS[z].length} spawn points`); fail++}
   for (const path of vw.ROUTES) {const a = path[0], b = path[path.length - 1];

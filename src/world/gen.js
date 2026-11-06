@@ -162,6 +162,15 @@ export function buildWorld(spec){
     for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++)
       tiles[I(x,y)]=(x===c.x0||x===c.x1||y===c.y0||y===c.y1)?WALL:FLOOR;
     for(const [gx,gy] of c.gateTiles)tiles[I(gx,gy)]=FLOOR}
+  // A town's streets and approaches (epic #940 slice C): spec town `ground: [[dx,dy,w,h], ...]`, rects from the town's top-left
+  // corner, laid as ROAD over anything but wall, water and a building's footprint (inside the walls this turns floor into street;
+  // outside it is a causeway or quay). Absent, nothing is painted: Eldmoor and Stepping build as before.
+  (spec.towns||[]).forEach((t,i)=>{const c=CITY[i];
+    for(const [dx,dy,rw,rh] of t.ground||[])for(let y=c.y0+dy;y<c.y0+dy+rh;y++)for(let x=c.x0+dx;x<c.x0+dx+rw;x++){
+      if(x<0||y<0||x>=w||y>=h)continue;const q=tiles[I(x,y)];
+      if(q===WALL||q===RIVER||q===BRIDGE)continue;
+      if(c.buildings.some(b=>x>=b.box[0]&&x<b.box[0]+b.box[2]&&y>=b.box[1]&&y<b.box[1]+b.box[3]&&!(x===b.door[0]&&y===b.door[1])))continue;
+      tiles[I(x,y)]=ROAD}});
 
   // landmarks
   // A dungeon's chambers (#65): plain data, checked for shape here; the creature types are the bestiary's (checked by crawlcheck).
