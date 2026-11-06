@@ -132,7 +132,7 @@ export function tonePixel(c,t,tx,ty,ax,ay){if(!NOTE)return c;const d=data();
     if(q<8){const p=1-q/8+(n-.5)*1.3+b*.16;if(p>.92)c=mix(c,'#2c2624',.86);else if(p>.62)c=mix(c,'#57504e',.8);else if(p>.44)c=mix(c,'#8a8684',.6)}} // the wyrm's heat: snow gone to soot and slush round the nest
   if(w===0)return c;
   const L=LOOK[w],isAsh=w===4;
-  if(isAsh?t!==ROCK&&t!==PEAK:!softMeadow(t))return c; // peaks too: their ground would stand out pale on a dark flow
+  if(isAsh?t!==ROCK:!softMeadow(t))return c; // not the peaks: toned, the cliffs lose their contrast
   if(L.all)c=mix(c,L.all[0],L.all[1]);
   const b=(B4[(Y&3)*4+(X&3)]+.5)/16-.5,v=at(d.tone,x,y)+b*.035;
   if(v<.43)c=mix(c,L.lo[0],L.lo[1]*Math.min(1,(.47-v)*9));else if(v>.56)c=mix(c,L.hi[0],L.hi[1]*Math.min(1,(v-.52)*9));

@@ -1,6 +1,6 @@
 // The scenery sheet of the Wending Vale art pass (epic #940 slice E): one image, `prop:scenery`, of the small things that make the
 // map's places (src/render/scenery.js): bridge decks and rails, ground bits, crops, bones, stones. Most pieces are cut 1:1 from the LPC
-// base assets (bridges, brazier, hay, barrel, trunk: Lanea Zimmerman, CC-BY-SA 3.0) and "[LPC] Terrains" (pebbles, tufts, pools,
+// base assets (bridges, hay, barrel, brick: Lanea Zimmerman; the brazier: Daniel Armstrong; CC-BY-SA 3.0) and "[LPC] Terrains" (pebbles, tufts, pools,
 // flowers, CC-BY-SA 3.0, authors in its credit file), recoloured where a biome needs it; the rest (crops, bones, standing stones,
 // stepping stones, stone deck) are drawn here in the same ramps. Nothing is scaled. Deterministic: no clock, no random.
 //   node scripts/art/packcut-scenery.mjs [--out DIR] [--index]        (ELDMOOR_PACKS: a packs folder kept outside this checkout)
@@ -94,6 +94,6 @@ export function sheet(){const P=pieces(),im=blank(SHEET_W,SHEET_H);
 function main(){const a=process.argv.slice(2),o=a.includes('--out')?a[a.indexOf('--out')+1]:path.join(ROOT,'assets'),id='prop:scenery',file=fileOf(id,32),im=sheet(),buf=encodePng(im);
   fs.mkdirSync(path.dirname(path.join(o,file)),{recursive:true});fs.writeFileSync(path.join(o,file),buf);console.log('[cut]',id,'->',path.join(o,file),im.w+'x'+im.h);
   if(a.includes('--index')){const ip=path.join(ROOT,'assets','index.json'),idx=JSON.parse(fs.readFileSync(ip,'utf8'));
-    idx.assets[id+'@32']={id,kind:'prop',file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:'lpc-terrains',license:'CC-BY-SA 3.0',authors:['Lanea Zimmerman (Sharm)','bluecarrot16','Daniel Eddeland (Daneeklu)','Richard Kettering (Jetrel)','Zachariah Husiar (Zabin)'],url:'https://opengameart.org/content/lpc-terrains',accepted:idx.assets[id+'@32']?.accepted||'2026-11-05'};
+    idx.assets[id+'@32']={id,kind:'prop',file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:'lpc-terrains',license:'CC-BY-SA 3.0',authors:['Lanea Zimmerman (Sharm)','Daniel Armstrong (HughSpectrum)','bluecarrot16','Daniel Eddeland (Daneeklu)','Richard Kettering (Jetrel)','Zachariah Husiar (Zabin)'],url:'https://opengameart.org/content/lpc-terrains',accepted:idx.assets[id+'@32']?.accepted||'2026-11-05'};
     fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main();
