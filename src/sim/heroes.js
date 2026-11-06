@@ -16,7 +16,7 @@ import {CLS} from '../data/classes.js';
 import {rollTraits,tm,traitPhrase} from '../data/traits.js';
 import {MOBS} from '../data/mobs.js';
 import {EPICS,GOODS,price} from '../data/items.js';
-import {S,clockStr,noOthers,sidesOff} from './state.js';
+import {S,clockStr,noOthers,sidesOff,raidSide} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
 import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,leaveParty,regroup,steerClear} from './party.js';
@@ -186,7 +186,7 @@ export function strike(a,t,o){
   if(t.kind==='hero')d*=.6*dmgTaken(t);
   d=Math.round(d);t.hp-=d;actHit(a,t,d,crit);if(t.kind==='hero')actHurt(t,a,d);if(c.range>2)bolt(a,t,c.orb||c.acc);
   pop(t.x,t.y-.6,crit?d+'!':String(d),crit?'#ffe060':'#ffffff');
-  if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return d}
+  if(t.kind==='boss'){S.boss.dmg[raidSide(a)]+=d;return d}
   if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}
   return d}
 
@@ -301,7 +301,7 @@ export function updAgent(a,dt){
     const idx=a.raidIdx,ang=Math.PI*(.55+idx*.18),rr=Math.min(CLS[a.cls].range+.9,3.2);
     const px=boss.x+Math.cos(ang)*rr*-1,py=boss.y-.3+Math.sin(ang)*rr*(idx%2?1:-1)*.8;
     if(dist(a,boss)>rr+.6){moveTo(a,px,py,dt,2.4);break}a.moving=false;a.face=boss.x>a.x?1:-1;
-    const raiders=S.agents.filter(b=>b.raid&&b.fac===a.fac);priestHeal(a,raiders);
+    const raiders=S.agents.filter(b=>b.raid&&raidSide(b)===raidSide(a));priestHeal(a,raiders);
     {const mv=fightMoves(a,boss,raiders,a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,boss);a.cd=1.1}}
     fightAid(a,boss);break}
   }}
