@@ -143,12 +143,12 @@ for (const [id, spec] of Object.entries(WORLDS)) {
     if (fnv(vw.tiles) !== SNAPSHOT_VALE.tiles) {console.error(`FAIL: Vale tile array hash ${fnv(vw.tiles)} != snapshot ${SNAPSHOT_VALE.tiles}`); fail++}
   }
   // town plans (epic #940 slice C): a spec town's own buildings keep the art kit's footprints and doors, rise only over the wall or another
-  // building, and stay inside their walls (the LPC cutter, scripts/art/packcut-buildings.mjs, cuts one shape per style and piece)
+  // building, and stay inside their walls (the LPC cutter, scripts/art/packcut-buildings.mjs, cuts one shape per style and kit row)
   if (id === 'vale') for (const c of vw.CITY) {
     const kit = (spec.towns.find(t => t.name === c.name) || {}).buildings ? TOWN_KIT : null;
     if (!kit) continue;
     const at = (x, y) => c.buildings.some(b => x >= b.box[0] && x < b.box[0] + b.box[2] && y >= b.box[1] && y < b.box[1] + b.box[3]);
-    for (const b of c.buildings) {const k = TOWN_KIT[b.piece], [bx, by, bw, bh] = b.box;
+    for (const b of c.buildings) {const k = TOWN_KIT[b.kit], [bx, by, bw, bh] = b.box;
       if (!k || bw !== k.foot[0] || bh !== k.foot[1] || b.door[0] - bx !== k.door[0] || b.door[1] - by !== k.door[1]) {console.error(`FAIL: ${c.name}: ${b.piece} does not keep the kit's footprint and door`); fail++}
       if (bx <= c.x0 || by <= c.y0 || bx + bw - 1 >= c.x1 || by + bh - 1 >= c.y1) {console.error(`FAIL: ${c.name}: ${b.piece} is not inside the walls`); fail++}
       if (k) for (let j = 1; j <= k.rise; j++) for (let i = 0; i < bw; i++) if (by - j > c.y0 && !at(bx + i, by - j)) {console.error(`FAIL: ${c.name}: ${b.piece} would rise over walkable ground at ${bx + i},${by - j}`); fail++}}

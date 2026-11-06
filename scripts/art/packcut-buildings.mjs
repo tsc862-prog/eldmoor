@@ -19,7 +19,12 @@
 // nothing to walk on behind it: the north row stands against the town wall. Terrain art never hides an
 // entity, so a piece must not rise over walkable ground; the check below refuses a rise that would.
 //
-// Assets: `building:lpc-<style>-<piece>`, no manifest row (nothing generates them), `source` and `license` on the entry. The
+// Kit rows: a plan may name a row of src/world/spec.js TOWN_KIT (`kit` on the building: house-cottage, inn-harbour, hall-long, ...), and
+// each row is its own image with its own footprint and door, beside the piece's plain cut. So a piece has as many shapes as it has
+// rows, and a town without rows (Eldmoor, the Stepping Lands) keeps the one cut per style and piece. A shape no row names still draws
+// procedurally. The `house` piece is only rows: houses serve nobody, so they stand in the plans that list them and nowhere else.
+//
+// Assets: `building:lpc-<style>-<kit or piece>`, no manifest row (nothing generates them), `source` and `license` on the entry. The
 // entry also says what the renderer must know: `foot` [w, h] tiles and `door` [x, y] tile inside it (a building of another
 // shape or door draws its procedural form, never this one stretched), and `spots` {chimney, flag} in art pixels from the top
 // left of the image, where the town life (src/render/townlife.js) puts the smoke and the pennant.
@@ -29,8 +34,8 @@ import {fileURLToPath} from 'node:url';
 import {decodePng,encodePng} from './png.mjs';
 import {sha256,fileOf} from './lib.mjs';
 import {LPC_TILES} from './packcut.mjs';
-import {TOWN,MARK} from '../../src/render/palette.js';
-import {WORLDS} from '../../src/world/spec.js';
+import {TOWN,MARK,HOUSE_SHAKE} from '../../src/render/palette.js';
+import {WORLDS,TOWN_KIT} from '../../src/world/spec.js';
 import {buildWorld} from '../../src/world/gen.js';
 import {townStyle} from '../../src/data/townart.js';
 
@@ -75,6 +80,7 @@ export const PARTS={
   lintel:['house',232,90,48,6],
   inn:['signs',8,4,24,23],
   sword:['signs',40,4,24,23],
+  barrel:['barrel',2,6,29,31],
 };
 const range=new Map();
 function lightOf(name){if(range.has(name))return range.get(name);const [s,x,y,w,h]=PARTS[name],im=sheet(s),v=[];
@@ -136,6 +142,7 @@ function chimney(im,K,x,y,w,h){rect(im,x,y,w,h,K.line);lay(im,'ashlar',x+1,y+3,w
 // foot [w, h] tiles, door [x, y] inside it. Each returns {im, spots}. rise: tiles of art behind the footprint.
 function hall(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),rf=42,wy=rf-1,wh=H-wy;
   wall(im,K,0,wy,W,wh);roof(im,K,0,0,W,rf,{hip:12});
+  if(W>96)for(const wx of [W*.5-58,W*.5+41])windowAt(im,K,Math.round(wx),wy+10,26); // a long hall: a window more each side of the porch
   const dx=dr[0]*T+16,foot_=H;door(im,K,dx,foot_-3,{w:28,h:44});
   // a porch: the kit's posts and lintel round the door
   lay(im,'lintel',dx-24,wy+2,48,6,K.frame,{bias:.05});
@@ -178,29 +185,66 @@ function board(K,foot){const W=foot[0]*T,H=foot[1]*T,im=blank(W,H);
   rect(im,1,0,W-2,3,K.roof(.75));rect(im,1,0,W-2,1,K.line);
   for(const [x,y,w,h] of [[5,6,8,10],[15,5,6,7],[22,7,6,9]]){rect(im,x,y,w,h,K.style==='stone'?'#e8e0c8':'#b8a888');rect(im,x+1,y+2,w-2,1,K.line);rect(im,x+1,y+4,w-3,1,K.line)}
   return {im,spots:{}}}
-export const RECIPES={hall,auction,smithy,chapel,inn,board};
-// How far a piece stands above its footprint, in tiles (the chapel from its draw box, so the spire keeps its reach).
+// ---- houses and the rows of a piece ----
+// A house under wood shakes whatever the town's own roof is: LPC Roofs' courses along HOUSE_SHAKE.
+const shaked=K=>({...K,shingle:'shake',shingleY:0,roof:ramp(HOUSE_SHAKE[K.style],7)});
+// A barrel against a wall, its foot at y, in the kit's own wood along the town's door timber.
+const butt=(im,K,x,y)=>lay(im,'barrel',x,y-20,undefined,undefined,K.door,{bias:.15,clip:(px,py)=>py<=y});
+// A low house on a two-tile footprint: the door on its plan tile, a window on the other, the chimney over the window.
+function cottage(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),rf=27,wy=rf-1,dx=dr[0]*T+16,wx=W-dx,cx=wx<W/2?8:W-19;
+  wall(im,K,0,wy,W,H-wy,{plinth:6,corners:false});chimney(im,K,cx,0,10,15);roof(im,K,0,3,W,rf-3,{hip:5,sx:dr[0]*30});
+  door(im,K,dx,H-2,{w:22,h:33});windowAt(im,K,wx-8,wy+8,18);
+  return {im,spots:{chimney:[cx+5,1]}}}
+const croft=(K,foot,dr,rise)=>cottage(shaked(K),foot,dr,rise);
+// A gable end to the street: the ridge runs back from the viewer, the two slopes meet over a wall with a pointed head, the left one lit.
+function gable(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),ay=24,ey=52,v=x=>ay+(ey-ay)*Math.abs(x+.5-W/2)/(W/2),dx=dr[0]*T+16,wx=W-dx;
+  wall(im,K,0,ay,W,H-ay,{plinth:6,corners:false});
+  // the head of the wall: a timber frame over the plaster, a round window
+  if(K.style==='stone'){rect(im,1,ey+3,W-2,2,K.trim(.3));rect(im,(W>>1)-1,ay+6,2,ey-ay-3,K.trim(.3))}
+  const cy=ay+20;for(let j=-5;j<=5;j++)for(let i=-5;i<=5;i++){const d=Math.hypot(i+.5,j+.5);if(d<=5.2)set(im,(W>>1)+i,cy+j,d>3.8?rgb(K.line):K.glass(1-(j+5)/10))}
+  lay(im,K.shingle,0,0,W,ey+1,K.roof,{sy:K.shingleY,bias:-.08,at:i=>i<W/2?.12:-.2,clip:(x,y)=>y<v(x)});
+  for(let x=0;x<W;x++){const y=Math.round(v(x));set(im,x,y-1,rgb(K.line));set(im,x,y,K.frame(.95));set(im,x,y+1,K.frame(.55));set(im,x,y+2,rgb(K.line));set(im,x,y+3,K.wall(0))}
+  rect(im,(W>>1)-1,0,2,ay-1,K.roof(1));rect(im,(W>>1)+1,0,1,ay-1,K.roof(.1));rect(im,0,0,W,1,K.line);rect(im,1,1,W-2,1,K.roof(.85));rect(im,0,0,1,ey,K.line);rect(im,W-1,0,1,ey,K.line);
+  door(im,K,dx,H-2,{w:24,h:36});windowAt(im,K,wx-8,H-37,20);
+  return {im,spots:{}}}
+// A house on the north row, as tall as the halls beside it.
+function terrace(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),rf=42,wy=rf-1,cx=W-24;
+  wall(im,K,0,wy,W,H-wy);chimney(im,K,cx,0,10,18);roof(im,K,0,8,W,rf-8,{hip:8,sx:14});
+  door(im,K,dr[0]*T+16,H-3,{w:26,h:42});windowAt(im,K,8,wy+12,26);windowAt(im,K,W-25,wy+12,26);
+  return {im,spots:{chimney:[cx+5,1]}}}
+// A harbour inn: two storeys under a broad roof, the upper one jettied on a beam, the door on the street side and the plaque over it.
+function harbourInn(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),rf=32,wy=rf-1,jy=55,dx=dr[0]*T+16,cx=W-30;
+  wall(im,K,0,wy,W,H-wy,{plinth:7});chimney(im,K,cx,0,11,16);chimney(im,K,18,0,10,14);roof(im,K,0,6,W,rf-6,{hip:9,sx:50});
+  rect(im,1,jy,W-2,3,K.trim(.45));rect(im,1,jy,W-2,1,K.trim(.9));rect(im,1,jy+3,W-2,1,K.line);rect(im,1,jy+4,W-2,2,K.wall(.05));
+  for(let x=2;x<W-4;x+=21){rect(im,x,wy+2,3,jy-wy-2,K.trim(.35));rect(im,x,wy+2,1,jy-wy-2,K.trim(.7))}
+  for(const x of [10,31,73,94])windowAt(im,K,x,wy+5,15);
+  door(im,K,dx,H-2,{w:26,h:34});plaque(im,K,'inn',dx-12,wy+1);
+  for(const x of [14,44])windowAt(im,K,x,jy+9,17);butt(im,K,W-22,H-1);butt(im,K,W-36,H-1);
+  return {im,spots:{chimney:[cx+5,1]}}}
+export const RECIPES={hall,auction,smithy,chapel,inn,board,'hall-long':hall,'inn-harbour':harbourInn,'house-cottage':cottage,'house-croft':croft,'house-gable':gable,'house-row':terrace};
+// How far a piece stands above its footprint, in tiles (the chapel from its draw box, so the spire keeps its reach). A kit row says so itself.
 export const RISE={hall:1,auction:1,smithy:1,chapel:1.5,inn:0,board:0};
+const riseOf=b=>(b.kit&&b.kit!==b.piece?TOWN_KIT[b.kit].rise:RISE[b.piece])||0;
 
 // ---- the plans ----
-// Every building of every town of every world, by style and piece: the shapes to cut.
+// Every building of every town of every world, by style and kit row (or piece): the shapes to cut.
 export function shapes(worlds=WORLDS){const out=new Map();
   for(const [wn,spec] of Object.entries(worlds)){const W=buildWorld(spec);
-    for(const c of W.CITY)for(const b of c.buildings||[]){const st=townStyle(c),[x,y,w,h]=b.box,k=`${st}-${b.piece}`,door=[b.door[0]-x,b.door[1]-y],s=`${w}x${h}@${door}`;
-      const e=out.get(k)||{style:st,piece:b.piece,foot:[w,h],door,seen:new Set(),towns:[]};e.seen.add(s);e.towns.push(`${wn}/${c.name}`);out.set(k,e);
+    for(const c of W.CITY)for(const b of c.buildings||[]){const st=townStyle(c),[x,y,w,h]=b.box,name=b.kit||b.piece,k=`${st}-${name}`,door=[b.door[0]-x,b.door[1]-y],s=`${w}x${h}@${door}`;
+      const e=out.get(k)||{style:st,piece:b.piece,name,rise:riseOf(b),foot:[w,h],door,seen:new Set(),towns:[]};e.seen.add(s);e.towns.push(`${wn}/${c.name}`);out.set(k,e);
       checkRise(c,b)}}
   return out}
 // A piece may rise only over ground nobody walks: every tile behind it is the town wall or another building.
-function checkRise(c,b){const r=Math.ceil(RISE[b.piece]||0),[x,y,w]=b.box,bad=[];
+function checkRise(c,b){const r=Math.ceil(riseOf(b)),[x,y,w]=b.box,bad=[];
   const covered=(tx,ty)=>ty<=c.y0||(c.buildings||[]).some(q=>tx>=q.box[0]&&tx<q.box[0]+q.box[2]&&ty>=q.box[1]&&ty<q.box[1]+q.box[3]);
   for(let j=1;j<=r;j++)for(let i=0;i<w;i++)if(!covered(x+i,y-j))bad.push([x+i,y-j]);
   if(bad.length)throw new Error(`${c.name}: ${b.piece} would rise over walkable ground at ${bad.join(' ')}`)}
 
 export function cutBuildings(){const out={};
-  for(const e of shapes().values()){if(e.seen.size>1)console.log(`[cut] ${e.style}-${e.piece}: the plans disagree (${[...e.seen].join(', ')}): cut for the first, the rest draw procedurally`);
-    const K=kit(e.style),f=RECIPES[e.piece];if(!f)continue;
-    const {im,spots}=f(K,e.foot,e.door,RISE[e.piece]||0);
-    out[`building:lpc-${e.style}-${e.piece}`]={im,foot:e.foot,door:e.door,spots}}
+  for(const e of shapes().values()){if(e.seen.size>1)console.log(`[cut] ${e.style}-${e.name}: the plans disagree (${[...e.seen].join(', ')}): cut for the first, the rest draw procedurally`);
+    const K=kit(e.style),f=RECIPES[e.name];if(!f)continue;
+    const {im,spots}=f(K,e.foot,e.door,e.rise);
+    out[`building:lpc-${e.style}-${e.name}`]={im,foot:e.foot,door:e.door,spots}}
   return out}
 
 function main(argv=process.argv.slice(2)){
@@ -208,7 +252,7 @@ function main(argv=process.argv.slice(2)){
   const out=o.out||path.join(ROOT,'assets'),cut=cutBuildings(),ip=path.join(ROOT,'assets','index.json'),idx=o.index?JSON.parse(fs.readFileSync(ip,'utf8')):null;
   for(const [id,{im,foot,door,spots}] of Object.entries(cut)){if(o.only&&!o.only.some(k=>id.endsWith(k)))continue;
     const file=fileOf(id,32),buf=encodePng(im);fs.mkdirSync(path.dirname(path.join(out,file)),{recursive:true});fs.writeFileSync(path.join(out,file),buf);console.log('[cut]',id,`${im.w}x${im.h}`);
-    const kitSet=/timber/.test(id)&&!/-board$/.test(id)?LPC_ROOF_KIT:LPC_KIT;
+    const kitSet=(/timber/.test(id)&&!/-board$/.test(id))||/-croft$/.test(id)?LPC_ROOF_KIT:LPC_KIT;
     if(idx)idx.assets[id+'@32']={id,kind:'building',file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:kitSet.source,license:kitSet.license,authors:kitSet.authors,url:kitSet.url,accepted:new Date().toISOString().slice(0,10),foot,door,...(Object.keys(spots).length?{spots}:{})}}
   if(idx){idx.assets=Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]));fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main();

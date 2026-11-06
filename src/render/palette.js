@@ -211,6 +211,11 @@ export const TOWN_GROUND={
   stone:{plaza:['#6e685e','#8e887c','#a49e90','#b4aea0','#c4beb0'],walk:['#4a4652','#5e5a66','#726e7a','#868290']},
   timber:{plaza:['#3a3230','#524844','#625852','#70665e','#7e746a'],walk:['#262226','#343034','#433e42','#524c50']},
 };
+// A house's wood shakes (scripts/art/packcut-buildings.mjs), dark to light, where they are not the town's own roof: weathered oak over
+// the stone towns' cottages, a tarred brown over the timber towns'. Beside TOWN for the same reason as TOWN_GROUND.
+export const HOUSE_SHAKE={stone:['#4a3224','#6e4c34','#8e6a48','#ac8a60'],timber:['#2e2018','#463226','#5e4634','#786048']};
+// The palisade's stakes and its plank decking, dark to light (scripts/art/packcut-walls.mjs).
+export const PALISADE={log:['#1e140e','#3a281c','#5a3e2a','#7a5a3e','#9a7a56'],deck:['#2e2218','#46342a','#5a4432','#6e563e','#826a4e']};
 export const LANDMARK={
   crypt:['#78748a','#5a5668','#4a4652','#2e2a34','#0a0810','#7ad0a0','#c8ffd8','#e8e4d8','#5a8a44'],
   lair:['#5a2a1c','#3a1c16','#655c58','#4a423e','#2a2422','#c8401a','#f07a22','#ffd04a','#e8e0c8','#a8a090'],
