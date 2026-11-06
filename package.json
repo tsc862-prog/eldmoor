@@ -35,6 +35,7 @@
     "playcheck": "node scripts/playcheck.mjs",
     "localcheck": "node scripts/localcheck.mjs",
     "orderscheck": "node scripts/orderscheck.mjs",
+    "guildchoicecheck": "node scripts/guildchoicecheck.mjs",
     "scenewaitcheck": "node scripts/scenewaitcheck.mjs",
     "openaicheck": "node scripts/openaicheck.mjs",
     "hfcheck": "node scripts/hfcheck.mjs",
