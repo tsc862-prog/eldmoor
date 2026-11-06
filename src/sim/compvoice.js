@@ -18,6 +18,7 @@
 //           (sim/spokefor.js, #750); hero tools hear the line as the companion's, never that the DM spoke it (e.comp, e.dm and
 //           e.by are for the watcher's Chat tab only). DM log kind 'companion': the companion's name and line, never the hero's
 // State S.compVoice {seq, cur:[call], day:{d, n:{heroId:count}, total}, stats}, saved with the world.
+import {WORDS} from '../world/words.js';
 import {S,clockStr,dayNo} from './state.js';
 import {swornOf} from './oath.js';
 import {hash} from '../core/rng.js';
@@ -180,7 +181,7 @@ export function compSay(args){const V=state(),id=Math.round(Number(args&&args.ca
   const sp=hero(c.comp);if(!voiced(sp)){V.cur.splice(V.cur.indexOf(c),1);return no('That companion is gone or no longer rides with the company.')}
   let t=clean(args&&args.text,COMP.LINE_MAX+200);if(!t)return no('Say what? companion_say takes call and text (the companion\'s line).');
   if(t.length>COMP.LINE_MAX)return no('Too long: a companion speaks briefly ('+COMP.LINE_MAX+' characters at most).');
-  if(notEnglish(t))return no('Not said: the companion speaks English, like everyone in Eldmoor.');
+  if(notEnglish(t))return no('Not said: the companion speaks English, like everyone in '+WORDS.world+'.');
   const heroes=S.agents.filter(a=>a.kind==='hero'&&a.player&&a.state!=='dead'),allow={};for(const a of heroes)allow[a.name]=(a.talkSaid||[]).slice();
   const g=spokeFor(t,{names:heroes.map(a=>a.name),allow});
   if(g.cut.length){V.stats.cut++;t=g.text;if(!clean(t,COMP.LINE_MAX))return no(spokeNote(g.cut)+' Nothing else was left in it: answer again as the companion, in their own words.')}

@@ -24,7 +24,7 @@ import {MARK,TOWN} from './palette.js';
 import {hash} from '../core/rng.js';
 import {F,frame,inTiles,skyAt,WET,WIND,ramp,lamps} from './life.js';
 import {critterEnts,drawRoostBirds} from './critters.js';
-import {pieceSpot,buildingArt} from './townart.js';
+import {pieceSpot,buildingArt,gateArt,gatePosts} from './townart.js';
 import {townStyle} from '../data/townart.js';
 import {harbourEnts,harbourLight} from './harbour.js';
 import {onAssets,assetPixels} from './assets.js';
@@ -136,7 +136,7 @@ export function lifeEnts(ents){
   for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci),h=F.hour;
     const shut=!!WET[skyAt(c.x0,c.y0)],mk=shut?0:ramp(h,7,8,17,18);
     for(const s of L.stalls){s.open=mk;ents.push(s)}
-    for(const g of L.guards)ents.push(g);
+    const gh=gateArt(c),at=gh&&(gh.posts||(gh.posts=gatePosts(c)));for(let i=0;i<L.guards.length;i++){const g=L.guards[i];if(g.hx===undefined){g.hx=g.x;g.hy=g.y}g.x=at?at[i][0]:g.hx;g.y=at?at[i][1]:g.hy;ents.push(g)}
     if(!L.noWalk){placeWalker(L,F.now);ents.push(L.walker)}}}
 // Air pass, over the entities and under the night: smoke, flags, door lamps, birds off the trees.
 export function lifeAir(ctx,blink){drawRoostBirds(ctx);if(F.tpx<9)return;

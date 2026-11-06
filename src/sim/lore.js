@@ -14,7 +14,7 @@
 //             p:{placeName:{how:'home'|'been'|'seen'|'told', at, hurt, fell, warned, dm}}}
 //   dm: the id of a DM-marked place (S.places, #423), learned like a landmark; the entry fades with the marker.
 //   key: a MOBS key, a VARIANTS key (site foes), or 'n:'+name for a named elite or an adventure's named foe.
-import {S} from './state.js';
+import {S,ownTown} from './state.js';
 import {hash} from '../core/rng.js';
 import {ZONES,REGIONS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
 import {homeOf} from '../data/races.js';
@@ -27,6 +27,7 @@ import {moment} from './reflect.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {held} from './scenes.js';
 import {sightFor} from './weather.js';
+import {clearLine} from './path.js';
 
 export const LORE={
   DC:12,          // the first-sight read (d20 + the better of Lore and Perception)
@@ -220,7 +221,7 @@ export function loreView(a,about){const L=loreOf(a),q=clean(about,60).toLowerCas
   let cs=Object.keys(L.c).map(k=>creatureLine(a,k,L.c[k])),ps=Object.keys(L.p).map(n=>placeLine(a,n,L.p[n]));
   if(q){cs=cs.filter(x=>x.name.toLowerCase().includes(q)||(x.known||[]).some(s=>s.toLowerCase().includes(q)));ps=ps.filter(x=>x.place.toLowerCase().includes(q)||(x.notes||[]).some(s=>s.toLowerCase().includes(q)))}
   const hp=Object.keys(L.h||{}).map(n=>({person:n,how:'you have heard of them from '+L.h[n].from})).filter(x=>!q||x.person.toLowerCase().includes(q));
-  return {creatures:cs,places:ps,towns:CITY.filter(c=>c.fac===a.fac).map(c=>c.name),...(hp.length?{people:hp}:{})}}
+  return {creatures:cs,places:ps,towns:CITY.filter(c=>ownTown(c,a)).map(c=>c.name),...(hp.length?{people:hp}:{})}}
 // status.places: where this hero can walk by name.
 export function placesView(a){const L=loreOf(a);return Object.keys(L.p).map(n=>{const p=L.p[n],w=[];if(p.how==='home')w.push('home');else if(p.mk===1)w.push('yours');else if(p.mk)w.push('told by '+(p.src||'a companion'));else if(p.how==='told')w.push('heard of'+(p.from?' from '+p.from:''));{const y=dangerWhy(a,n,p);if(y)w.push('danger: '+y);else if(p.hurt||p.fell||p.warned)w.push('danger')}return w.length?n+' ('+w.join(', ')+')':n})}
 // The hero's warning words for a known region (move_to/lead_to), or null.
@@ -239,10 +240,10 @@ export function preyKey(a,name){const s=clean(name,60).toLowerCase().replace(/^(
   return null}
 // hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear). Whatever is around means
 // around on the ground the hero hunts (#934): a creature of that ground, standing on it, with nothing between them. From Thornvale's
-// bank the snowfield is in plain sight, and a hero who took "the nearest thing" walked round by the bridge to a Tarn Wight. Named prey
+// bank the snowfield is in plain sight, and a hero who took "the nearest thing" walked round by the bridge to a Tarn Wight. With no ground ordered it is the region the hero stands in (#822, #1023). Named prey
 // is the agent's choice and may stand anywhere it can be reached in a line; a creature already on the hero is always taken.
 const onGround=(m,gz)=>gz==null||zoneAt(m.x,m.y)===gz&&(!MOBS[m.type]||MOBS[m.type].z===gz);
-export function pickPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y)),gz=cmd&&cmd.ground;let best=null,bs=1e9;
+export function pickPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y)),gz=cmd&&cmd.ground!=null?cmd.ground:zoneAt(a.x,a.y);let best=null,bs=1e9;
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a)||held(m))continue; // held in a scene (#518)
     const d=dist(a,m);if(d>R)continue;
     if(m.target!==a){if(!clearLine(a,m))continue;
