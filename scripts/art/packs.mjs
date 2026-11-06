@@ -4,8 +4,8 @@
 //   node scripts/art/packs.mjs [--list] [--only a,b]
 //
 // Sets: kenney-tiny-town, kenney-tiny-dungeon, kenney-roguelike-rpg (CC0, kenney.nl: the page's own "Continue without
-// donating" download flow, session cookie then /download-link, no browser needed), lpc-base (OpenGameArt, CC-BY-SA /
-// GPL, see its credits), lpc-generator (github sanderfrenken/Universal-LPC-Spritesheet-Character-Generator: a blobless
+// donating" download flow, session cookie then /download-link, no browser needed), lpc-base and lpc-roofs (OpenGameArt,
+// CC-BY-SA / GPL, see their credits), lpc-generator (github sanderfrenken/Universal-LPC-Spritesheet-Character-Generator: a blobless
 // git clone, only the credits, the licences, sheet_definitions/ and the layer folders listed in LPC_PATHS; nothing in it
 // is ever run or built), ninja-adventure (pixel-boy, CC0, itch: needs a browser click, so the owner drops the zip).
 //
@@ -26,6 +26,7 @@ export const SETS={
   'kenney-tiny-dungeon':{kind:'kenney',slug:'tiny-dungeon',licence:'CC0 1.0',author:'Kenney (kenney.nl)',link:'https://kenney.nl/assets/tiny-dungeon'},
   'kenney-roguelike-rpg':{kind:'kenney',slug:'roguelike-rpg-pack',licence:'CC0 1.0',author:'Kenney (kenney.nl)',link:'https://kenney.nl/assets/roguelike-rpg-pack'},
   'lpc-base':{kind:'zip',url:'https://opengameart.org/sites/default/files/lpc_base_assets.zip',licence:'CC-BY-SA 3.0 / GPL 3.0 (per asset, see its credits)',author:'LPC contributors',link:'https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles'},
+  'lpc-roofs':{kind:'zip',url:'https://opengameart.org/sites/default/files/lpc-roofs-v2_0.zip',licence:'CC-BY-SA 3.0 / GPL 3.0',author:'bluecarrot16, Lanea Zimmerman (Sharm), Michele Bucelli (Buch), Casper Nilsson, Xenodora, keith karnage, NaRNeRZz, Talon (Talosaurus); see its CREDITS-roofs.txt',link:'https://opengameart.org/content/lpc-roofs'},
   'lpc-generator':{kind:'git',repo:'https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator.git',licence:'CC-BY-SA 3.0/4.0, GPL 3.0 or OGA-BY 3.0 (per asset, CREDITS.csv)',author:'LPC contributors (CREDITS.csv)',link:'https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator'},
   // LPC-compatible animals (epic #830): only sets offered under CC-BY-SA 3.0, OGA-BY 3.0 or CC0 (the licence each is used under is in scripts/art/lpc-critters.json).
   'lpc-cats-dogs':{kind:'files',urls:['cat_0.png','dog_2.png'],licence:'OGA-BY 3.0 / CC-BY-SA 3.0 / CC-BY 3.0 / GPL',author:'bluecarrot16',link:'https://opengameart.org/content/lpc-cats-and-dogs'},
