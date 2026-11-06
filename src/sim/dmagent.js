@@ -24,7 +24,7 @@
 //              turn: {id, day, t (clock), gm0, gm1 (game minutes), open, calls, errors, reads:{tool:n}, tools:{tool:{ok,bad}}, notes, levers, staged, said, other,
 //                     and once the runner reported: turn (its number), model, provider, cost, seconds, tokensIn, tokensOut}
 //   The turn record is the DM's own data for the watcher's DM tab: no hero tool, prompt or snapshot reads it (issue #123).
-import {S,clockStr,dayNo,noOthers} from './state.js';
+import {S,clockStr,dayNo,noOthers,loreSides} from './state.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // what a hero swore aloud, and the thread only offered (#800)
 import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,zoneAt,dist} from '../world/map.js';
 import {FAC} from '../data/factions.js';
@@ -329,6 +329,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     ...(focuses().length?{map_names:{near_the_companies:mapNames(),note:NAMES_NOTE}}:{}), // what is really on the map (#1017): a name from your notes is not, until you mark it
     ...(downCallSummary()?{downed:downCallSummary()}:{}), // a hero down: voice it through table_call (#655)
     ...(noOthers()?{others:'none: no background heroes ride here, only the companies and whoever you bring (summon_hero)'}:{}), // the world setting (#780)
+    ...(loreSides()?{sides:'lore: every town takes in every company and no hero attacks one unasked. An antagonist is yours to bring: summon_hero of the other fac from the company\'s own is its foe, of its own fac a friend; or stage_scene'}:{}), // #1025
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
