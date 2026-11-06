@@ -70,7 +70,7 @@ import {iqTick} from './interrogate.js'; // a yielded foe questioned at the tabl
 import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
-import {opening,othersStart,noteProlog} from './opening.js';
+import {opening,othersStart,sidesStart,noteProlog} from './opening.js';
 import {resetMats} from './gather.js'; // gathered materials at the auction house (#257)
 import {questTick} from './questlog.js'; // several quests per hero
 import {held} from './scenes.js'; // the engaged of a live-clock Table scene stay put (#518)
@@ -87,7 +87,7 @@ export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} fr
 export {foundSlots,autoPick,disbandSlots,slotMembers,slotHeroes,setSlotMinds,slotted} from './company.js'; // the five places (#588)
 export {TABLE,bannerOf,decisionsWaiting} from './table.js';
 export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} from './runlink.js'; // the Fellowship's decisions wait for its runners (#148)
-export {fellowshipStart,othersStart,prologueStart,START_BANDS} from './opening.js';
+export {fellowshipStart,othersStart,sidesStart,prologueStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,OTHERS,prologueOf,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,resolveArchetype,slotsView,asV2,MODES,SHAPE_PRESETS,MIND_PRESETS,SEATS,seatCap,seatNote} from './setup.js'; // New World setup (#133; v2 #453)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
 export {setDmAlive,gone as dmGone,dmAlive} from './dmreflex.js'; // the DM's reflexes: the host's word on its runner (#561)
@@ -115,11 +115,12 @@ export function init(o={}){resetWorld();
   resetMats(); // a new world's auction house opens with the materials table's stock
   const seeded=!!(o.setup&&o.setup.seed!=null);
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
-  const none=othersStart(o)==='none';if(none)S.setup={others:'none'}; // no background heroes (#780): the opening makes only the setup's
+  const none=othersStart(o)==='none',lore=sidesStart(o)==='lore';if(none||lore)S.setup={...(none?{others:'none'}:{}),...(lore?{sides:'lore'}:{})}; // no background heroes (#780): the opening makes only the setup's; sides as lore (#1025)
   spawnAll();
   if(!none)for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5);
   try{opening(o)}finally{if(seeded)seedRng(null)}
   if(none)S.setup={...S.setup,others:'none'}; // the opening writes its own record of the setup
+  if(lore)S.setup={...S.setup,sides:'lore'};
   noteProlog(o); // the first delve (#922): stored only when it differs, so a setup world on the default keeps today's state
   if(o.setup||prologueOn())planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one

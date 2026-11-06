@@ -24,7 +24,7 @@
 // State: C.iqQ {at, foe:{kind:'hero'|'mob', id}, ids, anchor, camp?} one waiting interrogation per company; the scene's
 // ctx {mode:'yield'|'staged', who:{kind, id, name}, dc, secret:{text, place}, lie:{text, place}, said:[], lied, caught,
 // broken, end, town, camp?} (plain data, saved with the table).
-import {S} from './state.js';
+import {S,loreSides} from './state.js';
 import {CITY,LANDMARKS,ZONES,REGIONS,zoneAt,dist} from '../world/map.js';
 import {hash} from '../core/rng.js';
 import {check,socialSkill,trained} from './abilities.js';
@@ -108,7 +108,7 @@ function presentFor(C,q){const f=q.foe.kind==='hero'?byId(q.foe.id):mobOf(q.foe.
   const L=memOf(C).filter(living).filter(a=>!a.hidden),an=L.find(a=>a.id===q.anchor)||L.find(a=>dist(a,f)<=IQ.NEAR);if(!an)return false;
   if(L.some(a=>['fight','duel'].includes(a.state)&&a.target&&a.target!==f))return null; // still fighting something else
   const H=L.filter(a=>a===an||inRange(an,a));return H.some(a=>dist(a,f)<=IQ.NEAR)?H:false}
-const friendlyTown=(C,at)=>{const fac=(memOf(C)[0]||{}).fac;let best=null,bd=1e9;for(const t of CITY){if(fac!=null&&t.fac!=null&&t.fac!==fac)continue;const d=Math.hypot(t.gate.x-at.x,t.gate.y-at.y);if(d<bd){bd=d;best=t}}
+const friendlyTown=(C,at)=>{const fac=(memOf(C)[0]||{}).fac;let best=null,bd=1e9;for(const t of CITY){if(!loreSides()&&fac!=null&&t.fac!=null&&t.fac!==fac)continue;const d=Math.hypot(t.gate.x-at.x,t.gate.y-at.y);if(d<bd){bd=d;best=t}}
   return best&&bd<=IQ.WATCH?best:null};
 function openYield(C,q,H){const f=q.foe.kind==='hero'?byId(q.foe.id):mobOf(q.foe.id),nm=foeName(f),at={x:f.x,y:f.y},seed=(f.id|0)*31+(C.id|0);
   const {secret,lie}=yieldSecret(f,at,H,seed),T=friendlyTown(C,at),skip=memOf(C).filter(a=>!H.includes(a)).map(a=>a.id);
