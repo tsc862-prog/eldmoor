@@ -72,8 +72,8 @@ console.log('manifest and hooks');
   ok(!bad.length,`every id has a file per tier, e.g. ${man.assets[0].id} -> assets/${fileOf(man.assets[0].id,32)} and assets/${fileOf(man.assets[0].id,64)}`+(bad.length?': '+bad.map(a=>a.id):''));
   bad=man.assets.filter(a=>!TIERS.every(t=>sizeOf(a,t))||sizeOf(a,64)[0]!==2*sizeOf(a,32)[0]||sizeOf(a,64)[1]!==2*sizeOf(a,32)[1]);
   ok(!bad.length,`every asset has a size per tier, the 64 tier twice the 32 (${TIERS.join(', ')})`+(bad.length?': '+bad.map(a=>a.id):''));
-  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
-  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier`+(bad.length?': '+bad.map(a=>a.id):''));
+  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&!/^prop:canopy-/.test(a.id)&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
+  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier (a whole canopy tree, #834, is the exception)`+(bad.length?': '+bad.map(a=>a.id):''));
   const {ASSET_SPRITES}=await import('../src/render/sprites.js'),sp=man.assets.filter(a=>a.kind==='sprite');
   ok(sp.length&&sp.every(a=>ASSET_SPRITES[a.id]&&a.frames.cols===3&&a.frames.rows===4),`sprite sheets: 3 frames by 4 directions (${sp.length})`);
   const hero=sp.filter(a=>/^sprite:hero-/.test(a.id));ok(hero.length&&hero.every(a=>sizeOf(a,32)[0]/3===32&&sizeOf(a,32)[1]/4===48&&sizeOf(a,64)[0]/3===64&&sizeOf(a,64)[1]/4===96),`hero frames 32x48 at the 32 tier, 64x96 at 64 (${hero.length} classes)`);
@@ -462,8 +462,8 @@ try{
     ok(P0()-p6===3&&Object.keys(q.incoming).every(k=>/#alt1$/.test(k))&&S.posts.slice(p6).every(p=>p.seed>=2771),'complete manifest: alternates with new seeds (--max 3)');
     await previewAll(dir);const altKey=Object.keys(q.incoming)[0],before=checkIndex(man,dir);r=await node('accept.mjs',['--dir',dir,altKey]);
     {const ix=loadIndex(dir),id=altKey.split('#')[0];ok(r.code===0&&ix.assets[id].fromAlt===1&&before.count===N&&!checkIndex(man,dir).errs.length,'an accepted alternate replaces its asset')}
-    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
-    d++;const p7=P0();r=await daily(['--date','2026-12-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
+    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); d++;r=await daily(['--date','2027-01-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // a month's credits no longer cover two alternates of every asset (the manifest passed 100 assets, #834): the rest in the next month // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
+    d++;const p7=P0();r=await daily(['--date','2027-01-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all'+(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog())?'':' ('+(P0()-p7)+' calls; '+lastLog().slice(0,300)+')'));
     ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
     S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
 

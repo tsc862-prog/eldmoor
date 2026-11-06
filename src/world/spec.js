@@ -173,6 +173,20 @@ const STEPPING_CRYPT_ROOMS=[
     foes:[{type:'graveward',n:1,name:'Mere-Warden Hask',hits:3,atk:1.5},{type:'tombskit',n:1}],lvl:1,hit:.36,rounds:2,boss:true},
 ];
 
+// The Hollow Cairn's chambers (#717): four, pitched for Cairnwold (levels 8-13; offsets from the party's average).
+// Bestiary species only; the boss is a Grave Warden under the name the spec already reserved. The rooms are data on the
+// landmark; a group going down here needs the engine to name this dungeon, which dungeon.js does not yet (one CRYPT).
+const CAIRN_ROOMS=[
+  {id:'throat',name:'The Cold Throat',frame:'The hill opens into a low passage of fitted stones, breathing out cold. Small legs click along the walls ahead of the light.',
+    foes:[{type:'tombskit',n:4}],lvl:-1,hit:.23,rounds:2},
+  {id:'ringhall',name:'The Ring of Heaped Stones',frame:'A round hall where every burial has been heaped to the height of a man. The heaps shift, and a dry bowstring creaks from the dark between them.',
+    foes:[{type:'shambler',n:2},{type:'boneshot',n:1,hits:1}],lvl:0,hit:.29,rounds:2},
+  {id:'lamps',name:'The Hall of Unlit Lamps',frame:'Rows of stone lamps, every wick long dead. Archers stand among them, and something old and patient watches from behind the last row.',
+    foes:[{type:'boneshot',n:2,hits:1},{type:'graveward',n:1,hits:2}],lvl:1,hit:.34,rounds:2},
+  {id:'warden',name:"The Cairn-Warden's Door",frame:'The last chamber is closed by one great slab, and it stands open. The Warden within has kept the door against everyone, the living and the dead, and knows the weight of every name.',
+    foes:[{type:'graveward',n:1,name:'The Cairn-Warden',hits:4,atk:1.6},{type:'shambler',n:1}],lvl:2,hit:.42,rounds:2,boss:true},
+];
+
 export const STEPPING={
   name:'Stepping Lands',
   size:{w:160,h:100},
@@ -214,8 +228,8 @@ export const STEPPING={
     {kind:'crypt',name:'The Sunken Crypt',boss:'Mere-Warden Hask',x:72.5,y:86.1,mouth:{x0:71,y0:84,w:3,h:3},exclude:3.5,cd:25,rooms:STEPPING_CRYPT_ROOMS,
       sign:CRYPT_SIGN,captain:CRYPT_CAPTAIN},
     {kind:'lair',name:'Kragmaw',x:140.5,y:66.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
-    // Placeholder second dungeon: an entrance only, no group, boss or loot yet (see LORE.md).
-    {kind:'crypt',name:'The Hollow Cairn',boss:'The Cairn-Warden',x:84.5,y:14.1,mouth:{x0:83,y0:12,w:3,h:3},exclude:3.5,cd:25},
+    // The second dungeon (#717): its chambers and boss are data here; see LORE.md.
+    {kind:'crypt',name:'The Hollow Cairn',boss:'The Cairn-Warden',x:84.5,y:14.1,mouth:{x0:83,y0:12,w:3,h:3},exclude:3.5,cd:25,rooms:CAIRN_ROOMS},
   ],
   points:{hubW:[58,46],hubE:[104,52],lairGate:[134,66],frostGate:[116,24],paleGate:[146,22]},
   roads:[
