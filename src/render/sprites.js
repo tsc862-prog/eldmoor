@@ -836,6 +836,11 @@ export function sheetFrame(e,dir,col){
   const c=sheetOf(id,e.kind==='hero'||e.kind==='npc'?e.fac:0);if(!c)return null;
   FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}
 
+// One frame of a sheet known only by its id (critters.js: no entity to look a sheet up for), or null while it is missing or loading. Drawn as it is, in no
+// faction's colours. The answer is the shared FR, as sheetFrame's: read it before asking for the next.
+export function idFrame(id,dir,col){if(!hasAsset(id))return null;const c=sheetOf(id,0);if(!c)return null;
+  FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}
+
 // ---- scene figures (#862) ----
 // One helper for every room view (interior.js, crawlview.js, raidview.js): the entity's current sheet frame when its
 // sheet is loaded (a hero by class and people with the faction tabard, a creature, and townsfolk once their sheets land,

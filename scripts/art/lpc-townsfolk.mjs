@@ -19,7 +19,7 @@ import {CONFIG as HEROES,buildClass,sheetOf,peopleLook,creditLines} from './lpc-
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','..');
 export const CONFIG=path.join(ROOT,'scripts','art','lpc-townsfolk.json');
-const ROLES=[...NPC_ROLES,...WANDER_ROLES]; // the town roles and the DM-placed wanderers
+const SIM_ROLES=[...NPC_ROLES,...WANDER_ROLES]; // the town roles and the DM-placed wanderers
 const LICENCE='CC-BY-SA 3.0';
 
 // A role's layers for one faction: a `fac` layer only for its faction, a variant object {fac: variant} resolved.
@@ -28,12 +28,13 @@ export function roleLayers(rc,fac){return rc.layers.filter(L=>L.fac===undefined|
 export function main(argv=process.argv.slice(2)){
   const o={};for(let i=0;i<argv.length;i++){const a=argv[i];if(a==='--out')o.out=argv[++i];else if(a==='--only')o.only=argv[++i].split(',');else if(a==='--credits')o.credits=true;else if(a==='--index')o.index=true;else if(a==='--credits-md')o.md=argv[++i]}
   const cfg=JSON.parse(fs.readFileSync(CONFIG,'utf8')),hero=JSON.parse(fs.readFileSync(HEROES,'utf8')),out=o.out||path.join(ROOT,'assets','sprite','32'),all=[],made=[];
+  const ROLES=[...SIM_ROLES,...(cfg.renderOnly||[]).map(id=>({id}))]; // renderOnly: figures the renderer draws that the sim never staffs (the town guards of townlife.js)
   for(const R of ROLES)if(!cfg.roles[R.id])throw new Error('lpc-townsfolk.json: role '+R.id+' (data/npcs.js) has no look');
   for(const id of Object.keys(cfg.roles))if(!ROLES.some(R=>R.id===id))throw new Error('lpc-townsfolk.json: '+id+' is not a role of data/npcs.js');
   for(const R of ROLES){if(o.only&&!o.only.includes(R.id))continue;
     for(const race of RACES){
       const look=peopleLook(hero,race.id),rc=cfg.roles[R.id],built=buildClass(R.id,{body:rc.body,skin:look.skin,layers:roleLayers(rc,race.fac)},look);all.push(built.credits);
-      const sh=sheetOf(built,hero),buf=encodePng(sh),id='sprite:npc-'+R.id+'-'+race.id,file='npc-'+R.id+'-'+race.id+'.png';
+      const sh=sheetOf(built,rc.frame?{...hero,frames:{...hero.frames,...rc.frame}}:hero),buf=encodePng(sh),id='sprite:npc-'+R.id+'-'+race.id,file='npc-'+R.id+'-'+race.id+'.png';
       fs.mkdirSync(out,{recursive:true});fs.writeFileSync(path.join(out,file),buf);made.push({id,role:R.id,race:race.id,file,sh,buf,credits:built.credits,look});console.log('[lpc]',id,'->',file)}}
   if(o.credits)console.log(creditLines(all).join('\n'));
   if(o.md&&made.length){const B='<!-- lpc-townsfolk:begin -->',E='<!-- lpc-townsfolk:end -->',t=fs.readFileSync(o.md,'utf8'),a=t.indexOf(B),z=t.indexOf(E);
