@@ -453,6 +453,76 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 - **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.
 - The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (see the town table and entries above).
 
+### The Wending Vale (third world, epic #940)
+`VALE` in `src/world/spec.js` is a 144x60 map shaped for the owner's wide screen. One river, the **Wend**, rises from a spring in the high north-east and runs west to the sea off the map's west edge. The Concord holds the north bank, the Warband the south. Three crossings carry all travel: the **Low Bridge** at the home towns, the **Weirgate ford** in the middle (the only wading place, with the great dungeon beside it) and the **High Bridge** at the contested upper edge. Creatures are a first pass in `src/data/fauna.js`. Select it as the third world; geography is its own, not Eldmoor's.
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Wendmouth | 1-5 | Meadow at the river's mouth in the west; the four home towns and the Low Bridge. Everyone starts here. |
+| Sallowfen | 3-8 | Fen and willow-flats on the south bank. The Sallow Vaults lie in its edge. |
+| Hawkwold | 3-8 | Windy highland on the north bank, facing Sallowfen across the water. The Kestrel Barrow is cut into its hills. |
+| Greywood | 6-11 | Old wood and meadow in the middle vale, around the Weirgate ford. |
+| Ashenfold | 10-15 | Ash-fields and cold slag where the old kilns burned. |
+| Rimecrown | 14+ | The tundra crown above the High Bridge, squalls off the snow. The Wend rises here and Kragmaw's lair sits at its head. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Aldermere | Concord | Hallowan | Alder-shaded home town in the north-west, first of the Concord towns on the Wend. A market green inside the walls, the forge and halls fronting a paved lane, the inn on the green's west edge. |
+| Gullstrand | Concord | Skerrin | A gull-loud harbour town just south of Aldermere, at the river's mouth. Its gate faces the water: a street climbs from the quay and jetty to a lane under the halls. |
+| Hawkstead | Concord | Tarrow | A falconers' upland market on the north bank, road to the Kestrel Barrow and the ford. Built on terraces, the chapel on the hall's shoulder and a stair up the middle. |
+| Brandhold | Warband | Ashfolk | Brand-marked home town in the south-west, first of the Warband towns. A forge town with its gate in the north wall and one straight street to the yard before the inn. |
+| Stiltmere | Warband | Mirekin | A stilted fen town in Sallowfen, road to the Sallow Vaults. Wide and loose, its buildings standing apart along planked lanes. |
+| Hornridge | Warband | Thornhide | A horn-and-bone ridge-town on the south bank, road to the ford. A hold on a long slope, gate at the top and two terraces down to the inn. |
+
+- **The Wend**: the one river of the vale; the name is the vale's too, the Wending Vale. **The Low Bridge, the Weirgate ford, the High Bridge**: its three crossings, west to east.
+- **The Drowned Weir** (dungeon, level 7+ entry, south bank beside the Weirgate ford): the great delve, five chambers, a flooded sluice-works of green stone. Boss **Weir-Warden Orsk** (a Grave Warden of the old weir-keepers, named exception like Mere-Warden Hask). Chambers: **The Sluice Stair**, **The Millrace Gallery**, **The Weighing Hall**, **The Flooded Granary**, **The Weir-Warden's Chair**.
+- **The Kestrel Barrow** (dungeon, level 4+, Hawkwold): a falconer-lord's grassed mound. Boss **Lord Merrin Hawkwright**. Chambers: **The Low Door**, **The Kestrel Niches**, **The Falconer's Mews**.
+- **The Sallow Vaults** (dungeon, level 4+, Sallowfen): cellars under a burnt kiln, a smugglers' hold. Boss **Captain Dane Sallow**. Chambers: **The Eel Cellar**, **The Salt Tally**, **The Cold Store**.
+- **The Brandwright Kiln** (dungeon, level 10+, Ashenfold): a great kiln still red at the heart. Boss **The Kiln-Warden**, a golem built to tend it. Chambers: **The Flue Gallery**, **The Ash Floor**, **The Kiln Heart**.
+- **Weirgate Watch** (outpost, Greywood, level 6-11): the old guard-post on the north bank by the ford. **Kilnmark Cross** (outpost, Ashenfold, level 10-15): a crossroads post on the road to the Brandwright Kiln.
+- **Kragmaw's Lair** (Rimecrown, level 20): the same wyrm and raid as Eldmoor, here at the river's head.
+- **Greymane, the Pack-Father of the Hawkwold** (elite, Hawkwold, wolf): a grey wolf grown huge on the uplands' flocks. **Thornback, the Boar-King of the Greywood** (elite, Greywood, mud-boar): a tusked boar with a back like a hedge.
+- **First delves of the Vale** (`src/data/prologues.js`, one a home town, each about level 2, plain loot): **the Drowned Millhouse** (Aldermere, ruin, keeper **Miller Quill**, a frightened miller run by river-thieves), **the Gull Cliff Den** (Gullstrand, den, keeper **Old Brine**, a sea-wolf mother), **the Herders' Cairn** (Hawkstead, barrow, keeper **Shepherd Wick**, an old herder counting lost sheep), **the Cold Forge** (Brandhold, mine, keeper **Slagmaster Brok**, a self-crowned smith), **the Salt Pans** (Stiltmere, ruin, keeper **Boil-Master Garr**, a short-weight smuggler) and **the Bone Pit** (Hornridge, den, keeper **Mother Rattle**, a goat-fat she-beast). Campaign seed: `docs/campaigns/vale.md`.
+- **The Green Keeper** (DM-only figure, not a creature or a person): the green-cloaked toll-collector travellers meet at the Weirgate ford, who gives a receipt in an unreadable hand. It is what is left of Orsk's oath walking the crossings; as the oath thins it appears less and the Wend wanders more. No stats, no fight; the DM voices it. Unique within Eldmoor's canon.
+- **The Vale's story in one line**: the Wend was moved long ago and the Drowned Weir was built to hold it in its new bed; Orsk's oath is failing, Kragmaw's heat is drying the spring, and the green stone to mend the weir is fired only in the Brandwright Kiln. Three endings: free the warden, relieve him, or mend the weir. Seed and secrets: `docs/campaigns/vale.md`. The title-screen blurbs for Eldmoor, Stepping and the Vale are `blurb:` in each spec.
+- **Grimbrand, the Kiln-Golem of the Ashenfold** (elite, Ashenfold, level 17, golem kin): the last kiln-tender's guardian, gone wild when there was nobody left to tend. Slag-grey, cracked along the ribs, and one arm is still a bellows that wheezes before it swings. It walks the ash-fields between the old kilns as if still making its rounds.
+- Dungeon boss chambers run longer at the table: the Kestrel Mews 3 rounds; the Weir-Warden's Chair, the Cold Store and the Kiln Heart 4 each.
+
+#### Creatures of the Vale
+Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names and trade goods (goods in `VALE_GOODS`, Vale-only). Kin is the Eldmoor creature a species borrows its build and look from.
+
+| Creature | Region | Levels | Drops | Quest | Kin |
+| --- | --- | --- | --- | --- | --- |
+| Strand Wolf | Wendmouth | 1-3 | Strandpelt | Wolves on the Strand | Timber Wolf |
+| Reed Boar | Wendmouth | 2-4 | Reed-Tusk | Tusks from the Reeds | Bristleback Boar |
+| Dyke Weaver | Wendmouth | 3-5 | Dyke Silk | Sweep the Dykes | Webspinner |
+| Sallow Bogling | Sallowfen | 2-4 | Sallow Moss | Boglings in the Willows | Bogling |
+| Sallow Hog | Sallowfen | 3-6 | Willow Hide | Hides from the Flats | Mudback Boar |
+| Eel Lurker | Sallowfen | 5-8 | Eel Venom | Venom for the Stilt-Healers | Fen Lurker |
+| Heath Wolf | Hawkwold | 2-4 | Heath Pelt | Wolves on the Heath | Timber Wolf |
+| Crag Boar | Hawkwold | 3-5 | Crag Tusk | Tusks from the Crags | Bristleback Boar |
+| Windhound | Hawkwold | 4-7 | Gale Sinew | Windhounds on the Ridge | Rimehound |
+| Oak Weaver | Greywood | 6-8 | Oak Silk | Webs in the Old Wood | Webspinner |
+| Thicket Boar | Greywood | 7-10 | Thicket Hide | Hides from the Thicket | Mudback Boar |
+| Grey Stalker | Greywood | 9-11 | Greywood Fur | Stalkers of the Greywood | Timber Wolf |
+| Ash Weaver | Ashenfold | 10-12 | Ash Silk | Webs in the Ash | Webspinner |
+| Slag Golem | Ashenfold | 11-14 | Slag Core | Cores from the Slag | Cinder Golem |
+| Ember Hound | Ashenfold | 12-15 | Ember Fur | Hounds of the Old Kilns | Timber Wolf |
+| Squall Wolf | Rimecrown | 14-16 | Squall Pelt | Wolves in the Squall | Timber Wolf |
+| Crown Hound | Rimecrown | 15-18 | Crown Rime | Howls on the Crown | Rimehound |
+| Crown Wight | Rimecrown | 17-20 | Crown Marrow | What the Crown Keeps | Tarn Wight |
+
+- **Wendmouth**: the strand wolves are salt-matted and bold, and the reed boars root up the dykes the farmers swear they mended last spring. Dyke weavers hang their webs between the sluice-posts, which is a nuisance to everyone but the flies.
+- **Sallowfen**: boglings and hogs share the willow-flats in an uneasy truce; the eel lurkers are another matter. The Stilt-Healers of Stiltmere pay well for the venom and ask nobody how it was got.
+- **Hawkwold**: the heath wolves follow the flocks up the slopes, the crag boars hold the broken ground, and windhounds run the ridge-tops so lean and fast that the falconers say the hawks give way to them.
+- **Greywood**: the old wood is quiet in the wrong places. Oak weavers spin across the deer-paths, the thicket boars live in the hedge-tangles, and the grey stalkers wait where the trees go dark.
+- **Ashenfold**: whatever the kilns burned, the fold has not forgotten it. Slag golems wander the cold floors with the patience of things nobody told to stop, and the ember hounds still den in the warm brick.
+- **Rimecrown**: the squall wolves hunt inside the storm, crown hounds answer them from the snow, and what the crown wights leave is sold as marrow. As in Hoarfell, nobody in Hornridge asks what it is for.
+- Elites of the Vale: Hollowfang (Wendmouth), Old Mother Sedge (Sallowfen), Greymane (Hawkwold, level 9), Thornback (Greywood), Grimbrand (Ashenfold, level 17) and Ulfryn Coldmarrow (Rimecrown) all stalk their regions; Hollowfang, Old Mother Sedge and Ulfryn Coldmarrow are the Eldmoor elites re-used and re-levelled, as in the Stepping Lands, the other three are the Vale's own.
+- Name check (2026-11-05): no clash found in LORE.md or the repo; Grimbrand shares only the "brand" sound with Brandhold and the Brandwright Kiln, which suits it (the kiln-tender's guardian). No changes made to fauna.js.
+
+- Name notes: Greywood stands beside Eldmoor's Greywater and Stepping's Greyreach by sound only; the town Wendmere of the test fixture shares the Wend root and stays reserved and unused.
+
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
 

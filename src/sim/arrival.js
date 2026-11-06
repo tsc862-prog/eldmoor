@@ -62,7 +62,7 @@ export const ARRIVE={
   POLL_MS:5000,   // the table waits for the DM's voice only if its runner polled table_call this recently (as staged scenes)
   MISS_MAX:2,     // missed calls before the scripted DM fills the rest of the scene at once
   LINE_MAX:2000,  // a technical ceiling for the DM's lines
-  WAIT_DAYS:4,    // a recruit waits this many game days for a camp or a town, then arrives wherever the company is
+  WAIT_DAYS:4,    // a recruit waits this many game days for a camp or a town, then arrives wherever the company is (at once when nobody of the company is left)
   HEIR_WAIT:60,   // game minutes a solo's heir's opening waits for a runner to hold the heir (a new hero id), then plays without one
   GATHER_MIN:540, // game minutes session zero waits for members out of range (#771): PREP.MS of real time at 1x, then it opens with those present
 };
@@ -186,11 +186,14 @@ function queueArrival(C,q){if(!q.cls)return false;reserve(C.fac,q.cls);(C.arriva
 setArrivalHook((F,q)=>hosted()?queueArrival(F,q):false);
 // Any other company: an agent member's seat is refilled the same way; a solo's heir starts at home (owner answer 2).
 // In a world with no others (#780) no recruit comes behind them: the last of a company always leaves an heir, host or no host.
+// A company that falls to the last leaves one heir: the seats still waiting go to the heir's company, and whoever fell in the same tick waits there too, so no seat and no reserved recruit is lost with it.
 setCompanyDeathHook((C,a)=>{const none=noOthers();if(!(hosted()||none)||!a||!a.player)return;
   const rest=C.ids.map(byId).filter(x=>living(x)&&x!==a);
   if(rest.length){if(hosted())queueArrival(C,{cls:a.cls,fallen:a.id,name:a.name,lvl:a.lvl});return}
-  if(!none&&!LIVE[runnerLink(a)])return; // a solo nobody was playing leaves no heir behind (its replacement is the world's usual recruit)
+  const had=companyById(C.heirCo);if(had){queueArrival(had,{cls:a.cls,fallen:a.id,name:a.name,lvl:a.lvl});return}
+  if(!none&&C.ids.length<2&&!(C.arrivals&&C.arrivals.length)&&!LIVE[runnerLink(a)])return; // a solo nobody was playing leaves no heir behind (its replacement is the world's usual recruit)
   reserve(a.fac,a.cls);const h=hushOath(()=>makeHero(a.fac,a.cls,null,1));h.succeeds=a.id;markPlayer(h,true);const N=soloFor(h);
+  if(N){C.heirCo=N.id;if(C.arrivals){N.arrivals=C.arrivals;delete C.arrivals}}
   if(N&&C.letters){N.letters={};for(const k in C.letters){const l=C.letters[k];if(l&&l.from===a.id)N.letters[k]={...l}}}
   if(N)(S.opening||(S.opening={queue:[]})).queue.push({company:N.id,kind:'heir',fallen:a.name,cause:a.cause||null,since:Math.round(S.gameMin)})});
 // An heir's opening waits (up to HEIR_WAIT) until a runner holds the new hero, so the scene is its agent's and not settled
@@ -214,6 +217,7 @@ function place(C,a,where){const ld=leadOf(C)||a,town=isFellowship(C)?C.hall:ld.t
   const c=homeOf(ld),gt=c.gate||c.qg;if(gt){a.x=gt.x;a.y=gt.y}a.state='town';a.townStep=1;return 'the gate of '+c.name}
 function openArrival(C,q,where){const lead=leadOf(C);if(where==='town'&&lead&&lead.state!=='town')where='road';
   const a=makeRecruit(C,q);if(!a)return null;const at=place(C,a,where),ld=leadOf(C),role=placeWord(a.cls);
+  if(!memOf(C).some(b=>b!==a))log(nar(''),gd(C.name||'The company'),' fell to the last. ',a,' is the first to answer the call to ',gd(townOf(C)),'.'); // nobody is left to greet them: the outcome below seats them, no scene
   const title='A newcomer: '+a.name;
   const frame=[a,', a level '+a.lvl+' '+a.cls.toLowerCase()+', comes to '+at+', sent to take ',gd(q.name),'\'s place as the company\'s '+role+'.'];
   const ctx={arrival:1,recruit:a.id,fallen:q.fallen,fname:q.name,role,slot:q.slot||null,skip:[a.id],anchor:ld?ld.id:null,at,...(where==='town'?{setting:'tavern',town:homeOf(leadOf(C)||a).name}:{})};
@@ -235,9 +239,9 @@ function settleArrival(C,ctx,beats){const a=byId(ctx.recruit);if(!a)return '';co
   log(a,' swears the oath at the table and takes ',gd(ctx.fname),'\'s place in ',gd(C.name||'the company'),'.');
   timeline('oath',a,' joins ',gd(C.name||'the company'),' in ',gd(ctx.fname),'\'s place.');
   record(a,'Swore into ',gd(C.name||'the company'),' at the table, in '+ctx.fname+'\'s place.');
-  remember(a,'join','Swore into '+(C.name||'the company')+' at the table as its '+ctx.role+', in '+ctx.fname+'\'s place. '+names(L.map(b=>b.name))+' ride with me now.'+(obj.length?' '+names(obj)+' spoke against it.':''));
+  remember(a,'join','Swore into '+(C.name||'the company')+' at the table as its '+ctx.role+', in '+ctx.fname+'\'s place. '+(L.length?names(L.map(b=>b.name))+' ride with me now.':'Nobody of the old company is left; what they were starts again with me.')+(obj.length?' '+names(obj)+' spoke against it.':''));
   for(const b of L)remember(b,'join',a.name+' swore in at the table, in '+ctx.fname+'\'s place'+(obj.includes(b.name)?'; I said my piece against it.':'.'));
-  notify(a,'You have sworn into '+(C.name||'the company')+' at the table, in '+ctx.fname+'\'s place: '+names(L.map(b=>b.name))+' ride with you now.'+(q.length?' '+names(q)+' asked who you are.':''),true,2);
+  notify(a,'You have sworn into '+(C.name||'the company')+' at the table, in '+ctx.fname+'\'s place: '+(L.length?names(L.map(b=>b.name))+' ride with you now.':'nobody of the old company is left, and more are sent for.')+(q.length?' '+names(q)+' asked who you are.':''),true,2);
   return a.name+' swears the oath'+(obj.length?'; '+names(obj)+' spoke against it, and it stands':'')+'.'}
 
 // ---- the scene kinds and the DM's calls ----
@@ -307,8 +311,10 @@ export function sessionTick(){const O=S.opening,CS=S.companies;
   if(!hosted()){if(O&&!O.queue.length)delete S.opening;return}
   if(O&&O.queue&&O.queue.length){if(prepActive())return;if(PRO)PRO.ready();const i=O.queue.findIndex(q=>heirReady(q)&&!sceneFor(companyById(q.company))&&gathered(q));
     if(i>=0){const q=O.queue.splice(i,1)[0];if(!O.queue.length)delete S.opening;openOpening(q);return}}
-  for(const C of companies()){if(!C.arrivals||!C.arrivals.length||sceneFor(C))continue; // each company its own table (#518)
-    const where=settled(C)||(noOthers()&&!memOf(C).length?'town':false)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!memOf(C).some(cryptOfHero)?'town':false);if(!where)continue;
+  // Not companies(): a company with nobody left is what this loop must not miss. Each company its own table (#518); an heir's opening goes first.
+  for(const C of (CS||[]).filter(x=>x.arrivals&&x.arrivals.length).sort((x,y)=>x.id-y.id)){if(sceneFor(C)||(O&&O.queue&&O.queue.some(q=>q.kind==='heir'&&q.company===C.id)))continue;
+    const L=memOf(C);if(L.length&&L.every(x=>x.succeeds!=null&&!agentLive(x))&&S.gameMin-C.arrivals[0].since<ARRIVE.HEIR_WAIT)continue; // the next newcomer is greeted by an agent, so its table waits for theirs as an heir's opening does
+    const where=settled(C)||(!L.length?'town':false)||(S.gameMin-C.arrivals[0].since>ARRIVE.WAIT_DAYS*1440&&!memOf(C).some(cryptOfHero)?'town':false);if(!where)continue;
     const q=C.arrivals.shift();if(!C.arrivals.length)delete C.arrivals;openArrival(C,q,where);return}}
 // The panels: what waits.
 export function arrivalsView(C){return (C&&C.arrivals||[]).map(q=>({cls:q.cls,fallen:q.name,since:q.since}))}

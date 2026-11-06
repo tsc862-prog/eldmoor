@@ -34,7 +34,7 @@ export function pvpCheck(dt){S.pvpT-=dt;if(S.pvpT>0)return;S.pvpT=.5;const agent
       log(a,' spots ',b,', who killed ',grudgeOf(a,id),{t:a.nemesis[id],c:'f'+a.fac},', and charges.');break}}
   // Chance duels: each free Concord hero rolls against every free Warband hero within 3 tiles (sight-scaled), in id order.
   for(const a of free){if(a.fac!==0)continue;const r=3*sightMul(zoneAt(a.x,a.y));
-    for(const b of nearHeroes(a.x,a.y,r)){if(!freeSet.has(b)||b.fac!==1||a.state==='duel'||b.state==='duel'||owes(a,b)||owes(b,a))continue;
+    for(const b of nearHeroes(a.x,a.y,r)){if(!freeSet.has(b)||b.fac!==1||a.state==='duel'||b.state==='duel'||owes(a,b)||owes(b,a)||(a.newBlood||0)>S.gameMin||(b.newBlood||0)>S.gameMin)continue; // a fresh replacement is left alone a while (company.js NEW_BLOOD)
       if(dist(a,b)<r&&Math.abs(a.lvl-b.lvl)<=2&&clearLine(a,b)){const rm=rivalMul(a,b,'duel'),fm=duelFocus(a,b); // declared guild rivals duel more often (sim/rivals.js), as do Warpath guilds (sim/guildfocus.js)
         if(rnd()<.03*tm(a,'bold')*tm(b,'bold')*rm*fm){a.state=b.state='duel';a.target=b;b.target=a;a.dest=b.dest=null;if(rm>1)rivalCount('duels');if(fm>1)focusCount('duels')}}}}
   for(const a of agents){if(a.state==='duel'&&a.target){if(a.histDuel!==a.target){a.histDuel=a.target;record(a,'Dueled ',a.target,' in '+ZONES[zoneAt(a.x,a.y)]+'.')}}else a.histDuel=null}

@@ -56,6 +56,7 @@
 - [DM old saves](dm-old-saves.md) — #562 convertOldDm on restore, DM hard rule in CLAUDE.md, savecheck seat/flaky-regex pitfalls
 - [DM reflexes](dm-reflexes.md) — #561 dmreflex.js heard/alive/gone, no seat-closed paths, fill why slow|gone, dmShare arrival, RNG test pitfall
 - [Scene props](scene-props.md) — #592 sc.props data, examine/search/give_item hooks, cast.item, pitfalls
+- [Narrator voice](narrator-voice.md) — #554 local TTS: loopback engine, relay routes, hash cache, page queue rules, ttscheck
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
 - [Cost report](cost-report.md) — #799 sources, wake classes, game hours from digests, measured spend and lever evidence
 - [Way words](way-words.md) — #797 ground.js: route facts, way sentence, hero survey tool, sight gate, brief.way, waycheck pitfalls

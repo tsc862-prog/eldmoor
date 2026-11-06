@@ -96,7 +96,6 @@ jobs:
       - {name: Townsfolk hails, run: npm run localscheck}
       - {name: Fellowship archetypes, run: npm run archetypecheck}
       - {name: Sightings and couriers (issue 446), run: npm run sightcheck}
-      - {name: First delve on the Stepping Lands, run: npm run prologuecheck:stepping}
       - {name: Companion voice (scripted companions voiced by the DM), run: npm run compvoicecheck}
       - {name: Tiered memory, run: npm run tiercheck}
 
@@ -167,6 +166,7 @@ jobs:
       - {name: Campaign seed parser and seeding, run: npm run campaigncheck}
       - {name: Free actions ruled by the DM (issue 522), run: npm run attemptcheck}
       - {name: Ways in words, run: npm run waycheck}
+      - {name: Narrator voice (mock local speech engine and no model), run: npm run ttscheck}
 
   g7:
     name: Checks 7
@@ -184,6 +184,8 @@ jobs:
       - {name: Cost report (fixture logs), run: npm run costcheck}
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}
       - {name: More turn triggers, run: npm run wakecheck}
+      - {name: First delve in every world, run: npm run prologuecheck}
+      - {name: Table fights on the map patch, run: npm run patchcheck}
 
   g8:
     name: Checks 8
@@ -198,7 +200,6 @@ jobs:
       - {name: Quest log (several quests per hero; scripted world unchanged), run: npm run questcheck}
       - {name: One-window launcher and runner resume, run: npm run upcheck}
       - {name: Hero standing orders, run: npm run orderscheck}
-      - {name: First delve, run: npm run prologuecheck}
       - {name: Challenge tool (honour duels at the table), run: npm run challengecheck}
       - {name: Action log, run: npm run actcheck}
 

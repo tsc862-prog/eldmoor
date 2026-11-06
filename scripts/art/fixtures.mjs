@@ -21,17 +21,22 @@ const GROUND={
   meadow:{ramp:['#34782f','#3a8236','#3f8a3a','#45923c','#4a9a40'],acc:['#f4e06a','#f08ab0','#f4f4f8','#6cc050'],odds:.05},
   fen:{ramp:['#3d5729','#42602c','#46622f','#4a6632'],acc:['#7a9a46','#9ab060'],odds:.05},
   swamp:{ramp:['#2a5242','#2c5646','#2f5a4a','#335f4e'],acc:['#5a8a6a','#8aa050'],odds:.04},
-  mud:{ramp:['#4f4e2c','#545330','#5b5a34','#6e6a3e'],acc:['#3e3c22','#7a7650'],odds:.04},
+  mud:{ramp:['#5e4c2c','#645230','#6c5834','#7e6a3e'],acc:['#3e3c22','#7a7650'],odds:.04},
   ash:{ramp:['#585050','#5f5652','#655c58','#6e6460','#746a64'],acc:['#4a423e','#8a807a','#7e8a52'],odds:.04},
   snow:{ramp:['#d8e0e8','#dde4ec','#e2e8ee','#e6ecf2'],acc:['#c4ced8','#ffffff'],odds:.03},
   ice:{ramp:['#aad4e2','#b4dce8','#bde2ec'],acc:['#e4f8fc','#6a98b0'],odds:.03},
   road:{ramp:['#9f8455','#a68a58','#a88c5c','#b09460'],acc:['#c8b088','#8a7048'],odds:.05},
+  lava:{ramp:['#c8401a','#f07a22','#ff9a30','#ffd04a'],acc:['#3a1c16','#fff4a0'],odds:.05},
   water:{ramp:['#2e5fb0','#3264b4','#3468b8','#3a70c4'],acc:['#6a9ce0','#8ab8f0'],odds:.04}};
-const TILE_GROUND={'tile:grass':'grass','tile:meadow':'meadow','tile:fen-grass':'fen','tile:swamp':'swamp','tile:mud':'mud','tile:ash-rock':'ash','tile:snow':'snow','tile:ice':'ice','tile:road':'road','tile:water':'water'};
+const TILE_GROUND={'tile:grass':'grass','tile:meadow':'meadow','tile:fen-grass':'fen','tile:swamp':'swamp','tile:mud':'mud','tile:ash-rock':'ash','tile:snow':'snow','tile:ice':'ice','tile:road':'road','tile:water':'water','tile:lava':'lava'};
 // Transition pairs: A side, B side and a seam colour drawn on the A side of the border (foam, a worn rim, dying grass).
 const PAIR={'grass-road':['grass','road','#2f6a2c'],'bank-water':['grass','water','#dce8f8'],'meadow-fen':['grass','fen','#3f5a30'],
-  'fen-ash':['fen','ash','#6a6640'],'ash-snow':['ash','snow','#a8b0b8'],
-  'fen-river':['fen','water','#dce8f8'],'snow-river':['snow','water','#e8f0f8'],'mud-swamp':['mud','swamp','#3e3c22']};
+  'fen-ash':['ash','fen','#6a6640'],'ash-snow':['ash','snow','#a8b0b8'],
+  'fen-river':['fen','water','#dce8f8'],'snow-river':['snow','water','#e8f0f8'],'mud-swamp':['mud','swamp','#3e3c22'],
+  'mud-fen':['mud','fen','#3f5a30'],'fen-swamp':['fen','swamp','#3e3c22'],'snow-ice':['ice','snow','#c4ced8'],'meadow-ash':['ash','grass','#4a423e'],'mud-ash':['ash','mud','#4a423e'],
+  'ash-lava':['ash','lava','#2a2422'],'road-fen':['fen','road','#3f5a30'],'road-mud':['mud','road','#3e3c22'],'road-ash':['ash','road','#4a423e'],'road-snow':['snow','road','#c4ced8'],
+  'road-swamp':['swamp','road','#3e3c22'],'fen-snow':['fen','snow','#c4ced8'],'swamp-snow':['snow','swamp','#c4ced8'],'mud-snow':['mud','snow','#c4ced8'],'ice-ash':['ice','ash','#4a423e'],'meadow-snow':['grass','snow','#c4ced8'],
+  'ice-fen':['ice','fen','#3f5a30'],'lava-snow':['snow','lava','#2a2422'],'ash-swamp':['ash','swamp','#3e3c22'],'mud-river':['mud','water','#dce8f8'],'swamp-river':['swamp','water','#dce8f8'],'meadow-swamp':['grass','swamp','#3e3c22'],'meadow-mud':['mud','grass','#3f5a30'],'road-ice':['ice','road','#c4ced8']};
 
 // Colour of ground g at pixel (x,y) of a texture repeating every p pixels.
 function ground(g,x,y,p,s){const G=GROUND[g],n=pnoise(x,y,p,8,s)*.75+pnoise(x,y,p,4,s+9)*.25,h=hh(x,y,s+3);
@@ -108,7 +113,8 @@ function tree(b,i){const im=canvas(16,16),P={
   meadow:{lit:'#5cb84e',mid:['#2f8a36','#338f3a','#2a7e31'],dark:'#1e6a28',rim:'#1a5a22',bark:['#5a3a20','#3a2414']},
   fen:{lit:'#7a9a44',mid:['#4e6e2e','#4a6a2c','#46642a'],dark:'#34502a',rim:'#2a3a1e',bark:['#4a3a28','#2e2418'],moss:'#5a7a34'},
   ash:{lit:'#8a807a',mid:['#4a423e','#3a3432'],dark:'#2a2422',rim:'#1e1a1a',bark:['#3a302c','#221c1a'],ember:'#c8401a'},
-  tundra:{lit:'#3a7a66',mid:['#1e4f44','#24584a'],dark:'#163a30',rim:'#10302a',bark:['#3a2a20','#241810'],snow:'#eef2f8'}}[b];
+  tundra:{lit:'#3a7a66',mid:['#1e4f44','#24584a'],dark:'#163a30',rim:'#10302a',bark:['#3a2a20','#241810'],snow:'#eef2f8'},
+  highland:{lit:'#3a8a74',mid:['#1c5a50','#206456'],dark:'#143e3a',rim:'#0e2e2c',bark:['#3a2a20','#241810']}}[b];
   const trunk=(x0,top,w=2)=>{for(let y=top;y<16;y++)for(let k=0;k<w;k++)put(im,x0+k,y,P.bark[k?1:0])};
   if(b==='tundra'){const cx=[7.5,6.5,8.5][i-1],tall=[11,9,12][i-1],wide=[.6,.75,.5][i-1];trunk(Math.round(cx)-1,tall+1);
     for(let y=0;y<=tall;y++){const hw=.6+y*wide,tier=y%4;for(let x=0;x<16;x++){const dx=x-cx;if(Math.abs(dx)>=hw)continue;
@@ -130,7 +136,8 @@ function rock(b,i){const im=canvas(16,16),P={
   meadow:{lit:'#b0a898',mid:'#9a9080',dark:'#6a6058',rim:'#3a3430',top:'#6cc050'},
   fen:{lit:'#8a8a70',mid:'#6a6a54',dark:'#4a4a3a',rim:'#2a2a20',top:'#7a9a46'},
   ash:{lit:'#7a706a',mid:'#4a423e',dark:'#2e2826',rim:'#1a1616',top:'#c8401a'},
-  tundra:{lit:'#a8b0b8',mid:'#7a8490',dark:'#545c68',rim:'#30363e',top:'#f8fafc'}}[b];
+  tundra:{lit:'#a8b0b8',mid:'#7a8490',dark:'#545c68',rim:'#30363e',top:'#f8fafc'},
+  highland:{lit:'#a0aab4',mid:'#7a8694',dark:'#545e6c',rim:'#30363e',top:'#5aa04a'}}[b];
   const stones=[[[8,11,4.5,3.2]],[[6,11,3.5,2.8],[10.5,12,2.5,2]],[[8,10.5,5.5,4]]][i-1];
   for(const [cx,cy,rx,ry] of stones)for(let y=0;y<16;y++)for(let x=0;x<16;x++){const dx=x+.5-cx,dy=y+.5-cy,r=(dx*dx)/(rx*rx)+(dy*dy)/(ry*ry);
     if(r>=1)continue;const top=dy<-ry*.45&&hh(x,y,b.length+i)>.35&&(b==='tundra'||b==='meadow'||b==='fen');
@@ -197,7 +204,7 @@ function landmark(kind,[w,h],s){const im=canvas(w,h),cx=w/2,cy=h/2;
   return im}
 
 // A whole tree for the canopy table (#834): an ellipse crown over a trunk, root on the 9/10 row, a translucent shadow.
-function canopy(b,i,[w,h]){const im=canvas(w,h),root=Math.round(h*.9),cx=w/2,col={meadow:'#4a9a40',fen:'#6e7e34',ash:'#4a423e',tundra:'#2e6a58'}[b];
+function canopy(b,i,[w,h]){const im=canvas(w,h),root=Math.round(h*.9),cx=w/2,col={meadow:'#4a9a40',fen:'#6e7e34',ash:'#4a423e',tundra:'#2e6a58',highland:'#2a6a5c'}[b];
   for(let y=root-4;y<root+Math.round(h*.07);y++)for(let x=Math.round(cx-w*.3);x<cx+w*.3;x++)if(((x-cx)/(w*.3))**2+((y-root)/(h*.07))**2<1)put(im,x,y,'#2a3a22');
   for(let y=Math.round(h*.35);y<=root;y++)for(let x=Math.round(cx-w*.07);x<=cx+w*.07;x++)put(im,x,y,'#5a3a20');
   for(let y=0;y<h*.7;y++)for(let x=0;x<w;x++){const dx=(x-cx)/(w*.48),dy=(y-h*.35)/(h*.35);if(dx*dx+dy*dy<1)put(im,x,y,dx*dx+dy*dy>.8?'#1e4a24':col)}
@@ -208,6 +215,7 @@ export function fixtures(man,tier=32){const out={};
     else if((m=/^autotile:([a-z]+-[a-z]+)(-corner|-inner)?$/.exec(e.id))&&PAIR[m[1]])im=piece(m[1],m[2]?m[2].slice(1):'edge',e.seed,size[0]);
     else if((m=/^prop:(tree|rock)-([a-z]+)-(\d)$/.exec(e.id)))im=upscale((m[1]==='tree'?tree:rock)(m[2],+m[3]),size[0]);
     else if((m=/^prop:canopy-([a-z]+)-(\d)$/.exec(e.id)))im=canopy(m[1],+m[2],size);
+    else if(e.kind==='portrait')im=face(e.id,size[0]);
     else if(e.kind==='sprite'&&e.frames)im=sheet(e,size);
     else if((m=/^(?:building|tile):([a-z]+)-([a-z-]+)$/.exec(e.id))&&STYLE[m[1]])im=building(m[1],m[2],size,e.seed);
     else if((m=/^landmark:([a-z-]+)$/.exec(e.id)))im=landmark(m[1],size,e.seed);
