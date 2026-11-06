@@ -230,6 +230,11 @@ export const LANDMARK={
   lair:['#5a2a1c','#3a1c16','#655c58','#4a423e','#2a2422','#c8401a','#f07a22','#ffd04a','#e8e0c8','#a8a090'],
 };
 
+// Mountain rock (#989), dark to light, from the LPC cliff colours of assets autotile:peak-*: warm stone, ash, frost for rock in cold country, snow. line: the outline.
+export const PEAKS={stone:['#2a1c1e','#3e2f2b','#4f3f36','#615043','#776553','#8f7c64','#a99878'],
+  ash:['#21161a','#2e1e1f','#3a2826','#4b3632','#5c4742','#6f5c56','#8a7a74'],
+  frost:['#262a36','#343a46','#444d57','#566170','#6b7888','#8595a8','#a6b7cc'],
+  snow:['#7f92c6','#9cb0dc','#c9daf0','#e4ecf8','#f6f9fd'],line:'#1c1216'};
 // Flat building palettes (#763): what a generated building or standing landmark may use, taken from the procedural house
 // (render/townart.js: three roof tones, two wall tones, one dark line, a door), per town style and for the crypt mouth and
 // the lair. The manifest's building recipe quantises to exactly these (post.flat, scripts/art/post-flat.mjs, no widening,
