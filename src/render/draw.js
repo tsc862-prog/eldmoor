@@ -13,11 +13,11 @@
 //   A wheel, drag or minimap click in follow mode drops to the free camera at the
 //   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
-import {W,H,LAVA} from '../world/tiles.js';
+import {W,H} from '../world/tiles.js';
 import {U as T,ART,PROC_SCALE,HEAD,followTiles} from './tile.js';
 import {OUTPOSTS} from '../world/map.js';
 import {outpostsView} from '../sim/outposts.js';
-import {LAIR,CRYPT,CRYPTS,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
+import {LAIR,CRYPT,CRYPTS,LANDMARKS,LABELS} from '../world/map.js';
 import {cryptNamed} from '../sim/crypts.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
@@ -29,7 +29,7 @@ import {bubbleVisible} from '../core/chatview.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
-import {drawCamp,drawCampLight} from './camp.js';
+import {drawCamp} from './camp.js';
 import {trafficEnts,isTraffic,trafficShadow,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
 import {farMarks,gatherFar,drawMarks,homeLane} from './lod.js'; // the whole map's marks (#729)
 import {drawMemorials} from './memorials.js';
@@ -38,15 +38,21 @@ import {getChunk,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terra
 import {createMinimap} from './minimap.js';
 import {drawWholeMap} from './wholemap.js'; // company rings and name tags in the whole-map view (#844)
 import {syncSpells,drawSpells} from './spellfx.js';
-import {TEXT,MARK,LIGHT,BOSS_PAL} from './palette.js';
+import {TEXT,MARK,BOSS_PAL} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
 import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
-import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeLight,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
+import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
 import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
-const SCENE_LIGHT=[255,232,196]; // the light under a Table scene's people at night (#471)
+import {G,gradeAt,CLOUD} from './grade.js'; // the hour's light (#979)
+import {drawCast,castFigure,castBlob} from './shadows.js';
+import {lightPass} from './lightmap.js';
+import {drawAir} from './atmos.js';
+import {drawSheen} from './sheen.js';
+import {FX} from './quality.js';
+import {skyAt} from './life.js';
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
@@ -95,18 +101,6 @@ export function centerOn(wx,wy){const z=currentZoom();freeCam(z<ZOOMS[1]?2.6:z);
 export function screenToWorld(clientX,clientY){const r=cvRef.getBoundingClientRect();
   return {x:((clientX-r.left)*cam.dpr-cam.offX)/cam.sc/T,y:((clientY-r.top)*cam.dpr-cam.offY)/cam.sc/T}}
 
-// Lava light for the night pass: one pixel per tile, each tile's share of lava in a 5x5 window,
-// scaled up with smoothing so whole lava fields glow softly. Built once (two variants: with and
-// without Kragmaw's ring, which cools while the wyrm is dead). Any world size, any number of fields.
-const glowC={};
-function lavaGlow(cooled){const k=cooled?1:0;if(glowC[k])return glowC[k];
-  const lair=LANDMARKS.find(l=>l.kind==='lair'),c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),img=x.createImageData(W,H),d=img.data;
-  const lava=(tx,ty)=>tx>=0&&ty>=0&&tx<W&&ty<H&&tiles[I(tx,ty)]===LAVA&&!(cooled&&lair&&Math.hypot(tx+.5-lair.x,ty+.5-lair.y)<=lair.r+1)?1:0;
-  const C=LIGHT.lava;
-  for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){let n=0;for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++)n+=lava(tx+i,ty+j)*(i||j?1:3);
-    if(!n)continue;const o=(ty*W+tx)*4;d[o]=C[0];d[o+1]=C[1];d[o+2]=C[2];d[o+3]=Math.min(255,n*16)}
-  x.putImageData(img,0,0);return glowC[k]=c}
-
 export function createRenderer(cv,screenEl){
   const ctx=cv.getContext('2d');cvRef=cv;
   const miniEl=document.getElementById('minimap');
@@ -115,23 +109,8 @@ export function createRenderer(cv,screenEl){
     cam.fit=Math.min(cv.width/(W*T),cv.height/(H*T));if(mini)mini.resize()}
   new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();initSceneView();
 
-  function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
-  // Night tint by the hour: dusk and dawn are saturated (plum, then rose), full night a lifted deep blue, so the ground keeps its detail.
-  const nt=[0,0,0],nc=document.createElement('canvas'),nx=nc.getContext('2d'),NR=4;
-  function nightTint(){const h=(S.gameMin/60)%24,N=LIGHT.night,Wm=h>=12?LIGHT.dusk:LIGHT.dawn;
-    let f=h>=21||h<5?1:h>=12?(h-18)/3:(7-h)/2;f=clamp(f,0,1);f=f*f*(3-2*f);
-    for(let i=0;i<3;i++)nt[i]=Math.round(Wm[i]+(N[i]-Wm[i])*f);return nt}
-  function punch(x,y,r,a){const g=nx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,'rgba(0,0,0,'+a+')');g.addColorStop(.55,'rgba(0,0,0,'+a*.55+')');g.addColorStop(1,'rgba(0,0,0,0)');nx.fillStyle=g;nx.fillRect(x-r,y-r,r*2,r*2)}
-  function nightPass(sc,dk,sel,inView){
-    const w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR);if(nc.width!==w||nc.height!==h){nc.width=w;nc.height=h}
-    const c=nightTint();nx.setTransform(1,0,0,1,0,0);nx.globalCompositeOperation='source-over';nx.clearRect(0,0,w,h);
-    nx.fillStyle='rgba('+c[0]+','+c[1]+','+c[2]+','+(Math.pow(dk/.55,.5)*LIGHT.nightA)+')';nx.fillRect(0,0,w,h);
-    nx.globalCompositeOperation='destination-out';
-    const k=sc/NR,ox=cam.offX/NR,oy=cam.offY/NR; // light radii are in world units
-    let n=0;const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;punch(x*k+ox,y*k+oy,r*k,a*Math.min(1,dk/.4))};
-    for(const m of S.mobs){if(m.alive&&!m.hidden)lit(m,17,.6,6)}
-    for(const a of S.agents){if(a.hidden||a.state==="dead")continue;if(a===sel||a.company!=null)lit(a,a===sel?48:40,.95,7);else lit(a,28,.8,7)}
-    ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(nc,0,0,w,h,0,0,cv.width,cv.height);ctx.imageSmoothingEnabled=false}
+  // The sky over the camera, eased so the light turns as weather comes on rather than jumping (#979).
+  let cloud=0;const skyNow=()=>{const c=CLOUD[skyAt(cam.camX/T,cam.camY/T)]||0;cloud+=(c-cloud)*.02;return cloud};
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
   // A thin disposition ellipse at the feet (close zoom only), the same colours as the UI.
   function dispoRing(x,y,w,d){ctx.strokeStyle=(DISP[d]||DISP.neutral).color;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
@@ -150,9 +129,6 @@ export function createRenderer(cv,screenEl){
         if(hit)continue;BOX.push(x0,y0,x1,y1);
         if(L.pl){ctx.fillStyle='rgba(8,10,20,.82)';ctx.fillRect((x0-cam.offX)/sc,(y0-1-cam.offY)/sc,(x1-x0)/sc,(y1-y0+3)/sc)}
         drawText(L.t,L.x,y,L.col,L.css);break}}}
-  // A radial light of colour c=[r,g,b] and strength a at world (x,y), radius r (lighter pass).
-  function glow(x,y,r,c,a){const g=ctx.createRadialGradient(x,y,0,x,y,r),k=c[0]+','+c[1]+','+c[2];g.addColorStop(0,'rgba('+k+','+a+')');g.addColorStop(1,'rgba('+k+',0)');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
-
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
   // pixels so neighbouring chunks never show a seam at fractional scales.
   // A still camera (the whole map, a region view, a parked free camera) draws the terrain from one canvas at the
@@ -204,6 +180,7 @@ export function createRenderer(cv,screenEl){
     if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
     drawTerrain(sc);ph(0);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
+    gradeAt((S.gameMin/60)%24,skyNow());drawCast(ctx,S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
     if(S.boss.alive&&inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle=MARK.ember;for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
@@ -244,11 +221,11 @@ export function createRenderer(cv,screenEl){
     // Pass 1 (#716): each entity's sprite (or generated sheet frame), size and x, and the shadows in one path a frame (the
     // living at full alpha, ghosts in a second path at theirs) instead of one fill per entity. Shadows now all sit under
     // every sprite, which is where they belong anyway.
-    const nE=ENTS.length;
+    const nE=ENTS.length,sunny=close&&G.sunA>.01&&FX.full; // up close what moves throws its own shape along the sun, under the contact shadow
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
     for(let i=0;i<nE;i++){const e=ENTS[i];
-      if(e.kind==='deco'||e.tree){ESPR[i]=null;continue} // drawn whole in pass 2, with its own shadow
-      if(isTraffic(e)){trafficShadow(ctx,e,Math.round(e.x*T),Math.round(e.y*T));continue} // its shadow joins the path; the sprite is drawn whole in pass 2
+      if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
+      if(isTraffic(e)){trafficShadow(ctx,e,Math.round(e.x*T),Math.round(e.y*T));if(sunny)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),6,22);continue} // its shadow joins the path; the sprite is drawn whole in pass 2
       const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',fr=e.moving?Math.floor(blink*6+e.id)%2:0;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
@@ -265,9 +242,13 @@ export function createRenderer(cv,screenEl){
     let ghosts=false;ctx.beginPath();
     for(let i=0;i<nE;i++){const e=ENTS[i];if(e.kind!=='hero'||e.state!=='ghost')continue;const px=EPX[i],py=Math.round(e.y*T),w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7);ghosts=true}
     if(ghosts){ctx.globalAlpha=.6;ctx.fill();ctx.globalAlpha=1}
+    const tf=ctx.getTransform();
+    if(sunny){ctx.globalAlpha=G.sunA*.9;
+      for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i];if(!s||e.state==='dead'||e.state==='ghost')continue;const F=EG[i],px=EPX[i],py=Math.round(e.y*T);
+        if(F)castFigure(ctx,tf,F.img,F.sx,F.sy,F.fw,F.fh,px,py,ESW[i],ESH[i],false);else{const o=worldSprite(s,true);castFigure(ctx,tf,o,0,0,o.width,o.height,px,py,ESW[i],ESH[i],e.face<0)}}
+      ctx.setTransform(tf);ctx.globalAlpha=1}
     // Pass 2: the sprites in y order, and what rides on each. A mirrored sprite sets the transform once instead of
     // save/translate/scale/restore.
-    const tf=ctx.getTransform();
     let ghostA=1; // 1, or the see-through strength of a member drawn again over the tree that stands in front of it
     const drawEnt=i=>{const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=Math.round(e.y*T),live=e.state!=='dead';
       if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);return} // critters, stalls and guards (townlife.js)
@@ -302,25 +283,9 @@ export function createRenderer(cv,screenEl){
       if(p.type==='ring'){if(!inView(p.x*T,p.y*T,96))continue;ctx.strokeStyle='rgba(255,140,40,'+p.life+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x*T,p.y*T,(1-p.life/.6)*72+8,0,7);ctx.stroke()}}
     // weather sits on the ground, so it goes under the night: fog no longer brightens midnight
     lt=performance.now();if(!cut)lifeAir(ctx,blink);lifeStats.acc+=performance.now()-lt;
-    drawWeather(ctx,S,cam,blink);ph(3);
-    // night: a blue wash, then light added back (lighter): lava fields glow, torches flicker,
-    // crypt mouths breathe a faint green, the camp fire (camp.js)
-    const dk=darkness();if(dk>0){
-      // The night is a low-resolution light map (a quarter of the screen): the wash is laid at the hour's tint, then a soft hole is cut
-      // under each company member, the followed hero and (fainter) every other hero and foe in view, so people stay in colour and
-      // the dark stays dark everywhere else. One small canvas, a handful of gradients, one scaled blit a frame.
-      nightPass(sc,dk,sel,inView);
-      ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);
-      ctx.globalCompositeOperation='lighter';
-      const lg=lavaGlow(!S.boss.alive);ctx.globalAlpha=dk*.65;ctx.imageSmoothingEnabled=true;ctx.drawImage(lg,0,0,W,H,0,0,W*T,H*T);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1;
-      const now=performance.now()/1000;
-      for(const L of LIGHTS){const r=L.big?92:28;if(!inView(L.x*T,L.y*T,r))continue;const fl=L.big?1:.86+.14*Math.sin(now*7.3+L.x*3.1)*Math.sin(now*3.1+L.y);
-        glow(L.x*T,L.y*T,r*(L.big?1:.94+.06*fl),LIGHT.torch,dk*.7*fl)}
-      for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,40))glow(x,y,26,LIGHT.crypt,dk*(.35+.1*Math.sin(now*1.3)))}
-      drawCampLight(ctx,S,dk,inView);
-      lt=performance.now();if(!cut)lifeLight(ctx,glow,dk,LIGHT);lifeStats.acc+=performance.now()-lt;
-      if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-HEAD/2,22*PROC_SCALE*.75,SCENE_LIGHT,dk*.6); // a Table scene's people keep a pool of light at night (#471)
-      ctx.globalCompositeOperation='source-over'}
+    drawWeather(ctx,S,cam,blink);drawAir(ctx,cv,cam,sc,performance.now()/1000);ph(3);
+    // the light: the hour's ambient, soft dark, flames and lava, in one multiply and a thin add (lightmap.js, #979)
+    const dk=G.dk;lt=performance.now();lightPass(ctx,cv,cam,{S,sel,sc,inView,cut});lifeStats.acc+=performance.now()-lt;
     ph(4);if(far){drawMarks(ctx,cam.dpr,dk);ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ph(2)} // the marks, timed with the entities
     drawSpells(ctx,1,close,inView,fxNow);ph(4); // spell effects in the air, over the night wash: they carry their own light (#374)
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
