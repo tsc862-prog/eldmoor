@@ -24,12 +24,16 @@ import {nearHeroes,nearMobs,LOD,heroCellsNear} from './spatial.js';
 import {held} from './scenes.js'; // the engaged of a live-clock Table scene (#518)
 import {trick as loreTrick} from './lore.js'; // a creature's tricks, learned by the agent hero it is used on (#188)
 import {inSlots} from './company.js'; // the slotted company (#588)
+import {onWorld} from './kept.js';
 
 // Per-zone target population (today's COUNTS total), a COUNTS-weighted species list for extra
 // spawns, and the road tiles mobs may drift toward.
-const NZ=ZONES.length,ZTARGET=ZONES.map(()=>0),ZTYPES=ZONES.map(()=>[]),ZROADS=ZONES.map(()=>[]);
-for(const t in COUNTS){ZTARGET[MOBS[t].z]+=COUNTS[t];for(let i=0;i<COUNTS[t];i++)ZTYPES[MOBS[t].z].push(t)}
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(tiles[I(x,y)]!==ROAD)continue;const z=zone[I(x,y)];if(x>=(ECO.roadMinX[z]||0))ZROADS[z].push({x:x+.5,y:y+.5})}
+let NZ,ZTARGET,ZTYPES,ZROADS;
+function zoneTables(){NZ=ZONES.length;ZTARGET=ZONES.map(()=>0);ZTYPES=ZONES.map(()=>[]);ZROADS=ZONES.map(()=>[]);
+  for(const t in COUNTS){ZTARGET[MOBS[t].z]+=COUNTS[t];for(let i=0;i<COUNTS[t];i++)ZTYPES[MOBS[t].z].push(t)}
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(tiles[I(x,y)]!==ROAD)continue;const z=zone[I(x,y)];if(x>=(ECO.roadMinX[z]||0))ZROADS[z].push({x:x+.5,y:y+.5})}}
+zoneTables();
+onWorld(zoneTables,()=>({mobZones:NZ,mobTargets:ZTARGET,mobTypes:ZTYPES,mobRoads:ZROADS})); // another map (#1013)
 const zoneOf=m=>MOBS[m.type].z;
 const zonePop=z=>{let n=0;for(const m of S.mobs)if(!m.gone&&!m.elite&&!m.add&&zoneOf(m)===z)n++;return n};
 
