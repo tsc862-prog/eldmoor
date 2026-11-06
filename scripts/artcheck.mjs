@@ -72,8 +72,13 @@ console.log('manifest and hooks');
   ok(!bad.length,`every id has a file per tier, e.g. ${man.assets[0].id} -> assets/${fileOf(man.assets[0].id,32)} and assets/${fileOf(man.assets[0].id,64)}`+(bad.length?': '+bad.map(a=>a.id):''));
   bad=man.assets.filter(a=>!TIERS.every(t=>sizeOf(a,t))||sizeOf(a,64)[0]!==2*sizeOf(a,32)[0]||sizeOf(a,64)[1]!==2*sizeOf(a,32)[1]);
   ok(!bad.length,`every asset has a size per tier, the 64 tier twice the 32 (${TIERS.join(', ')})`+(bad.length?': '+bad.map(a=>a.id):''));
-  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&!/^prop:canopy-/.test(a.id)&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
-  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier (a whole canopy tree, #834, is the exception)`+(bad.length?': '+bad.map(a=>a.id):''));
+  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&!/^prop:(canopy-|scenery$)/.test(a.id)&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
+  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier (a whole canopy tree, #834, and the scenery sheet are the exceptions)`+(bad.length?': '+bad.map(a=>a.id):''));
+  {const SC=await import('../src/render/scenery.js'),{ATLAS,SHEET_W,SHEET_H}=await import('../src/render/sceneryatlas.js'),{WORLDS,ACTIVE_SPEC}=await import('../src/world/spec.js'),e=man.assets.find(a=>a.id==='prop:scenery');
+    if(!ACTIVE_SPEC.scenery)ok(!SC.sceneryOn&&SC.riverPixel(0,0,0,0)===null&&SC.roadPixel(0,0,0,0)===null&&SC.tonePixel('#123456',0,0,0,0,0)==='#123456'&&SC.sceneGround(5,0,0)===5,'a world with no scenery note paints as before: every scenery entry answers at once');
+    ok(sizeOf(e,32)[0]===SHEET_W&&sizeOf(e,32)[1]===SHEET_H&&Object.values(ATLAS).every(([x,y,w,h])=>x+w<=SHEET_W&&y+h<=SHEET_H),`the scenery sheet holds every piece (${Object.keys(ATLAS).length}) inside its manifest size`);
+    const noted=Object.values(WORLDS).filter(w=>w.scenery),names=w=>(w.landmarks||[]).map(l=>l.name),inMap=(w,x,y,a=0,b=0)=>x>=0&&y>=0&&x+a<=w.size.w&&y+b<=w.size.h,ids=w=>(w.regions||[]).map(r=>r.id);
+    ok(noted.length>0&&noted.every(w=>Object.keys(w.scenery.dress||{}).every(n=>names(w).includes(n))&&Object.keys(w.scenery.wash||{}).every(r=>ids(w).includes(r))&&(w.scenery.fields||[]).every(([x,y,a,b,k])=>inMap(w,x,y,a,b)&&ATLAS[k])&&(w.scenery.clear||[]).every(([x,y])=>inMap(w,x,y))),'every scenery note names real landmarks and regions and stays on its map');}
   const {ASSET_SPRITES}=await import('../src/render/sprites.js'),sp=man.assets.filter(a=>a.kind==='sprite');
   ok(sp.length&&sp.every(a=>ASSET_SPRITES[a.id]&&a.frames.cols===3&&a.frames.rows===4),`sprite sheets: 3 frames by 4 directions (${sp.length})`);
   const hero=sp.filter(a=>/^sprite:hero-/.test(a.id));ok(hero.length&&hero.every(a=>sizeOf(a,32)[0]/3===32&&sizeOf(a,32)[1]/4===48&&sizeOf(a,64)[0]/3===64&&sizeOf(a,64)[1]/4===96),`hero frames 32x48 at the 32 tier, 64x96 at 64 (${hero.length} classes)`);

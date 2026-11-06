@@ -46,6 +46,12 @@ and `trunk.png`, all by Leana Zimmerman (Sharm), CC-BY-SA 3.0 (also GPL 3.0 and 
 LPC's at 1:1; per biome (meadow, fen, ash, tundra) they are only recoloured, and the tundra firs get a dusting of snow. Derivative
 works under CC-BY-SA 3.0. The script is `scripts/art/packcut.mjs props`.
 
+## LPC scenery sheet (#940)
+
+`prop:scenery` is one sheet of small map pieces, cut by `scripts/art/packcut-scenery.mjs`. Pebbles, tufts and small pools come from "[LPC] Terrains" (above, CC-BY-SA 3.0); the plank deck, rail and post, the brazier, barrel and brick from the LPC base
+assets (`bridges.png`, `castle_lightsources.png`, `barrel.png`, `dungeon.png`, Lanea Zimmerman (Sharm), CC-BY-SA 3.0; the castle light sources are in that set's credit file); the hay from `dungeon.png`. Pixels are at 1:1; the charred deck is a recolour. The crops, flowers, bones, stump, crate,
+standing stones, stepping stones and the stone deck are drawn in code in the same colour ramps. Derivative works under CC-BY-SA 3.0.
+
 ## LPC hero sheets
 
 `sprite:hero-<class>-<people>` (seven classes by the six peoples of `src/data/races.js`) and the class fallback sheets

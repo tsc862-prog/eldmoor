@@ -25,3 +25,4 @@
 - [LPC trees and rocks](lpctrees.md) — #834 whole canopy trees painted in chunk, redrawn over entities; cutter needs ELDMOOR_PACKS; C: disk full gotcha
 - [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
+- [Scenery](scenery.md) — #940 Vale art pass: scenery.js, spec note, smoothed river and roads, felled trees, staging
