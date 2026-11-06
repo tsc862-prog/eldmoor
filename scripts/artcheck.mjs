@@ -845,7 +845,7 @@ async function autotileProbe(){
   ok(mapHash()===m0,'the map hash never moved')}
 
 // A tiny 2D context for Node (part 8): fillRect with '#rgb[a]' / '#rrggbb[aa]' colours (alpha blended), drawImage of
-// decoded pixels ({w, h, hex}), and translate / scale / quarter-turn rotate / save / restore. Enough for townart.js.
+// decoded pixels ({w, h, hex}), whole or a source rect, and translate / scale / quarter-turn rotate / save / restore. Enough for townart.js.
 function rasterClass(){return class Raster{ // a function, so the child mode at the top can use it before this line runs
   constructor(w,h){this.w=w;this.h=h;this.px=new Uint32Array(w*h);this.m=[1,0,0,1,0,0];this.st=[];this.fillStyle='#000';this.imageSmoothingEnabled=true}
   save(){this.st.push(this.m.slice())}restore(){this.m=this.st.pop()||[1,0,0,1,0,0]}
@@ -860,10 +860,10 @@ function rasterClass(){return class Raster{ // a function, so the child mode at 
     for(let Y=Math.max(0,y0);Y<Math.min(this.h,y1);Y++)for(let X=Math.max(0,x0);X<Math.min(this.w,x1);X++){const i=Y*this.w+X,o=this.px[i];
       const or=(o>>16)&255,og=(o>>8)&255,ob=o&255,oa=o>>>24?1:0,k=oa?al:1;
       this.px[i]=(0xff000000|(Math.round(r*k+or*(1-k)*oa)<<16)|(Math.round(g*k+og*(1-k)*oa)<<8)|Math.round(b*k+ob*(1-k)*oa))>>>0}}
-  drawImage(img,dx,dy,dw,dh){const [x0,y0,x1,y1]=this.rect(dx,dy,dw,dh),[a,b,c,d,e,f]=this.m,det=a*d-b*c;
+  drawImage(img,...v){const src=v.length>4?v.slice(0,4):[0,0,img.w,img.h],[dx,dy,dw,dh]=v.slice(-4),[x0,y0,x1,y1]=this.rect(dx,dy,dw,dh),[a,b,c,d,e,f]=this.m,det=a*d-b*c;
     for(let Y=Math.max(0,y0);Y<Math.min(this.h,y1);Y++)for(let X=Math.max(0,x0);X<Math.min(this.w,x1);X++){
       const px=X+.5-e,py=Y+.5-f,ux=(d*px-c*py)/det,uy=(-b*px+a*py)/det; // back to the image's user space
-      const sx=Math.floor((ux-dx)/dw*img.w),sy=Math.floor((uy-dy)/dh*img.h);if(sx<0||sy<0||sx>=img.w||sy>=img.h)continue;
+      const sx=src[0]+Math.floor((ux-dx)/dw*src[2]),sy=src[1]+Math.floor((uy-dy)/dh*src[3]);if(sx<0||sy<0||sx>=img.w||sy>=img.h)continue;
       const hx=img.hex[sy*img.w+sx];if(hx)this.px[Y*this.w+X]=(0xff000000|parseInt(hx.slice(1),16))>>>0}}}}
 
 // Part 8, run in a child per world: every town and landmark drawn into rasters at art resolution (TILE a tile).
@@ -930,7 +930,7 @@ async function townProbe(){
   // taller than its box (the rise is the image, and the chunk tests must follow it)
   {const idx=JSON.parse(readFileSync(new URL('../assets/index.json',import.meta.url),'utf8')).assets,bad=[];let n=0;
     for(const c of CITY)for(const b of c.buildings){const a=idx[`building:lpc-${D.townStyle(c)}-${b.piece}@${RT}`];if(!a){bad.push(`${c.name}: no cut ${b.piece}`);continue}n++;
-      if(a.source!=='lpc-base'||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
+      if(!/lpc-base/.test(a.source||'')||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
       if(a.foot[0]!==b.box[2]||a.foot[1]!==b.box[3]||a.door[0]!==b.door[0]-b.box[0]||a.door[1]!==b.door[1]-b.box[1])bad.push(`${c.name}: ${a.id} cut for ${a.foot} door ${a.door}`);
       if(a.w!==b.box[2]*RT)bad.push(`${a.id}: ${a.w} wide on a ${b.box[2]} tile footprint`);
       const rise=Math.ceil(a.h/RT-b.box[3]);for(let j=1;j<=rise;j++)for(let i=0;i<b.box[2];i++){const tx=b.box[0]+i,ty=b.box[1]-j;
@@ -942,4 +942,22 @@ async function townProbe(){
     ok(d3.n>0&&!d3.out&&Math.abs(TA.pieceSpot(c,b,'flag')[1]-(top+4*U/RT))<1e-6,`a cut hall stands on its footprint and rises one tile over the wall behind it (${d3.n} pixels), and says where its flag goes`);
     lay([b.box[2]+1,b.box[3]],[0,0]);ok(same(render(),off)&&TA.pieceSpot(c,b,'flag')===null,'a cut made for another footprint is not stretched: the procedural form stays');
     A.setAssetPixels(id,null);ok(same(render(),off),'and with no cut the procedural town is back, pixel for pixel')}
+  // walls, towers, piers and plaza cut from the LPC kit (#830): credited, sized, one cut per side and none of them turned, drawn only as
+  // a whole set, and nothing of it past the ring and the shadow it throws
+  {const idx=JSON.parse(readFileSync(new URL('../assets/index.json',import.meta.url),'utf8')).assets,keys=['plaza','wall-n','wall-e','wall-s','wall-w','tower','pier','pier-tall'],kind=k=>k==='plaza'||k.startsWith('wall')?'tile':'building';
+    const size={plaza:[4,4],'wall-n':[2,1],'wall-s':[2,1],'wall-e':[1,2],'wall-w':[1,2],tower:[1,2],pier:[1,1],'pier-tall':[1,2]},bad=[],st=D.townStyle(CITY[0]),ids=k=>`${kind(k)}:lpc-${st}-${k}`;
+    for(const s of styles)for(const k of keys){const a=idx[`${kind(k)}:lpc-${s}-${k}@${RT}`];if(!a){bad.push(`no ${s} ${k}`);continue}
+      if(a.source!=='lpc-base'||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
+      if(a.w!==size[k][0]*RT||a.h!==size[k][1]*RT)bad.push(`${a.id}: ${a.w}x${a.h}`)}
+    {const sides=new Set(['n','e','s','w'].map(k=>idx[`tile:lpc-${st}-wall-${k}@${RT}`]?.sha256));if(sides.size!==4)bad.push('a side reuses another side\'s cut')}
+    ok(!bad.length,`the wall set of every style is committed, credited and sized, one cut a side`+(bad.length?': '+bad.slice(0,4).join('; '):''));
+    const col={plaza:'#101010','wall-n':'#aa0000','wall-e':'#00aa00','wall-s':'#0000aa','wall-w':'#aaaa00',tower:'#00aaaa',pier:'#aa00aa','pier-tall':'#aa00ab'};
+    const fill=k=>{const [w,h]=size[k],n=w*h*RT*RT;A.setAssetPixels(ids(k),{w:w*RT,h:h*RT,hex:new Array(n).fill(col[k])})};
+    for(const k of keys.slice(0,-1))fill(k);
+    ok(same(render(),off),'part of the wall set loaded: the WALL and FLOOR tiles stay, pixel for pixel');
+    fill('pier-tall');const r=render(),towns=CITY.filter(t=>D.townStyle(t)===st),inTown=(x,y)=>towns.some(t=>x>=t.x0&&x<t.x1+2&&y>=t.y0&&y<t.y1+2),d=diffs(r,off,inTown);
+    const c=towns[0],px=(tx,ty)=>{const k=regions.findIndex(([x0,y0,x1,y1])=>tx>=x0&&tx<x1&&ty>=y0&&ty<y1);if(k<0)return null;const [x0,y0,x1]=regions[k],v=r[k][((ty-y0)*RT+RT/2)*(x1-x0)*RT+(tx-x0)*RT+RT/2];return (v&0xffffff).toString(16).padStart(6,'0')},midy=c.y0+3;
+    ok(d.n>0&&!d.out,`the whole set paints the towns of its style and nothing past their ring and shadow (${d.n} pixels)`);
+    {const got=[px(c.x0+2,c.y1),px(c.x0,midy+1),px(c.x0+2,c.y0),px(c.x1-1,c.y1-1)];ok(got[0]==='0000aa'&&got[1]==='aaaa00'&&got[2]==='aa0000',`each side draws its own cut, unturned (${got})`)}
+    for(const k of keys)A.setAssetPixels(ids(k),null);ok(same(render(),off),'and with the set gone the procedural town is back, pixel for pixel')}
   ok(!Tr.terrainArt()&&mapHash()===m0,`${process.env.ELDMOOR_WORLD||'eldmoor'}: chunks back on the procedural grid, the map hash never moved`)}
