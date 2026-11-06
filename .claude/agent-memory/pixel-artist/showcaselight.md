@@ -6,7 +6,7 @@ metadata:
 ---
 The world's light since #979: `grade.js` (hour table, sun path), `shadows.js` (cast shadows swept from caster masks, figure silhouettes), `lightmap.js` (one quarter-res multiply: ambient, canopy shade, vignette, lights), `atmos.js` (mist, haze, fog on one sixth-res canvas under the light map), `sheen.js` (sky colour on water), `quality.js` (FX.full, Settings "Effects", `?fx=lean`).
 
-**Why these choices:** a multiply map instead of a blue wash plus `lighter` glows is what makes a fire light people and ground. Screen-blending gold over blue water reads grey (complementary colours), so sheen is plain source-over. The sun runs right, top, left so shadows always fall down the screen; a shadow falling up hides behind the art. Cast shadows are cut off crowns and roofs because `drawTree` redraws a tree in front of entities without them; depth in woods comes from the light map instead, which covers everything.
+**Why these choices:** a multiply map instead of a blue wash plus `lighter` glows is what makes a fire light people and ground. Gold over blue water reads grey, and a warm `color` blend reads as a dirt road, so sheen uses a `color` blend toward strong blue that the warm light brings down to slate. The sun runs right, top, left so shadows always fall down the screen; a shadow falling up hides behind the art. Cast shadows are cut off crowns and roofs because `drawTree` redraws a tree in front of entities without them; depth in woods comes from the light map instead, which covers everything.
 
 **How to apply:**
 - A light source calls `glow(x,y,r,rgb,a,flat)` from `lightPass`; `flat` means ground only, no bloom. Keep colours as constants: stamps cache by colour.

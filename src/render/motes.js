@@ -22,7 +22,7 @@ export function drawMotes(ctx,lit){if(F.tpx<30)return;const t=F.now,vw=F.x1-F.x0
       else{ctx.fillStyle=c>.5?'#3a3230':'#8a827c';ctx.globalAlpha=.55;ctx.fillRect(Math.round(x*T),Math.round(y*T),1.5,1)}}
     else if(bio==='tundra'){if(lit)continue;const x=F.x0+mod(a*vw+t*.35+Math.sin(t*.8+c*7)*.45,vw),y=F.y0+mod(b*vh+t*(.6+c*.5),vh);ctx.fillStyle='#f4f8ff';ctx.globalAlpha=.8;ctx.fillRect(Math.round(x*T),Math.round(y*T),c>.8?2:1,c>.8?2:1)}
     else if(fly&&i%2===0){if(!lit)continue;const x=bx+Math.sin(t*.5+c*9)*1.4+Math.sin(t*1.3+d*7)*.4,y=by+Math.cos(t*.43+d*9)*1+Math.sin(t*1.7+c*5)*.3,on=Math.sin(t*(1+c)+d*12);if(on<.15)continue;
-      const k=on*Math.min(1,G.dk/.3);ctx.fillStyle='#d8ff7a';ctx.globalAlpha=k*.22;ctx.fillRect(Math.round(x*T)-2,Math.round(y*T)-2,5,5);ctx.globalAlpha=k;ctx.fillRect(Math.round(x*T),Math.round(y*T),1.5,1.5)}
+      const k=on*Math.min(1,G.dk/.3);ctx.fillStyle='#d8ff7a';const X=Math.round(x*T),Y=Math.round(y*T);ctx.globalAlpha=k*.3;ctx.fillRect(X-1,Y,3.5,1.5);ctx.fillRect(X,Y-1,1.5,3.5);ctx.globalAlpha=k;ctx.fillRect(X,Y,1.5,1.5)}
     else if(bio==='fen'){if(lit||fly||i%4===1)continue;const cx=bx+Math.sin(t*.2+c*9)*.8,cy=by+Math.cos(t*.17+d*9)*.5; // a little cloud of gnats
       ctx.fillStyle='#1c1e14';ctx.globalAlpha=.75;for(let k=0;k<5;k++){const q=t*(3+k*.7)+k*2.1;ctx.fillRect(Math.round((cx+Math.sin(q)*.3)*T),Math.round((cy+Math.cos(q*1.2)*.2)*T),1,1)}}
     else if(i%3===0){if(lit||fly)continue;const u=mod(t*.07+d,1); // a leaf comes off near trees, turning as it falls

@@ -82,6 +82,7 @@ function data(){if(D)return D;
 // ---- the river ----
 // How wet a point is, 0 to 1: the painted water's edge is at .5. render/water.js keeps its marks on the water by it.
 export const waterLevel=(x,y)=>NOTE?at(data().water,x,y):0;
+export const farmAt=(x,y)=>!!NOTE&&!!data().farm[I(x,y)]; // a tile of a field as it was laid (render/sway.js ripples the wheat)
 // Water is the map's RIVER and BRIDGE tiles smoothed: a blur of the tile mask cut at one half keeps the line on straight reaches and
 // rounds the tile stairs, so the whole river reads as one water. Land the curve gives back to a river tile is drawn as ground; the
 // bank is a dark cut face where the water lies south of it and a pale strand where it lies north (we look down from the south).

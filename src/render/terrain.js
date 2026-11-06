@@ -12,7 +12,7 @@ import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
-import {sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery} from './scenery.js';
+import {ASSET_SCENERY,sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery} from './scenery.js';
 import {ASSET_PEAKS,peakArt,peakPixel} from './peaks.js';
 
 // Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
@@ -414,7 +414,7 @@ const chunks=new Map();
 export let chunkGen=0;
 // Whether any terrain asset is loaded (then chunks are painted at TILE, else at U). Refreshed when assets change.
 let artOn=null;
-const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_PEAKS,ASSET_CANOPY,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
+const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_PEAKS,ASSET_CANOPY,ASSET_TOWNS,ASSET_SCENERY].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
 export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
 // A tile asset arrived (or the index changed): repaint on the next request. A sprite sheet is none of the terrain's business:
 // each one used to throw every chunk away, a stall on whatever camera was up when the sheets came in (#729).
