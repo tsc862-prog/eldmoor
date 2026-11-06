@@ -72,7 +72,7 @@ export function renderDmFrame(){if(!node)return;const x=dmFrameData(),r=refs;
   {const gone=gateMissing().find(m=>m.kind==='dm');setText(r.alert,gone?'DM runner gone: the world is paused. '+whyMissing(gone)+'. Restart DM, or Start anyway in the bar over the map.':'');r.alert.hidden=!gone}
   setText(r.link,x.linkText);setCls(r.link,'mlink '+x.link);setText(r.mind,x.mind);
   const rr=runnerByKey('dm');
-  setText(r.now,x.now?'» '+x.now:(rr&&!DONE_STATE[rr.state]?'':'No DM runner: press Start DM (the world waits for it)'));setTitle(r.now,x.now);
+  setText(r.now,x.now?'» '+x.now:(x.link==='connected'||x.link==='waiting'||(rr&&!DONE_STATE[rr.state])?'':'No DM runner: press Start DM (the world waits for it)'));setTitle(r.now,x.now);
   setText(r.act,'Narrations '+x.narr+' · Levers '+x.levers+' · Scenes '+x.scenes+' today');
   setTitle(r.act,'The DM agent\'s narrations and lever pulls today against their daily limits, and staged scenes (3 a day)');
   setText(r.stg,x.staged?'Staged: '+x.staged:'');

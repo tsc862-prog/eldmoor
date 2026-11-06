@@ -8,6 +8,7 @@
 //   4. `npm run fellowship`: every member rolls, the run record counts it. 5. `npm run dm`: the DM rolls at its own point and re-reads
 //      its notes. 2b. A wait with turn_over ends the turn with no further model call, through the real /mcp route (#868). 6. A "fresh" line on stdin rolls at the next safe moment. 7. AGENT_HEAR_WAKE_MIN. 8. The report's context table.
 // Sessions go to a temporary folder (AGENT_LOGS, CLAUDE_CONFIG_DIR), never to logs/agents/ or the owner's ~/.claude.
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync} from 'node:fs';
@@ -22,7 +23,7 @@ import {ctxSection, compareMinds} from './mind-compare.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let fail = 0; const ok = (c, m) => {console.log((c ? '  ok   ' : '  FAIL ') + m); if (!c) fail++};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-session-'));
+const tmp = mkTmp('eldmoor-session-');
 
 // ---------------------------------------------------------------- 1. the rules
 console.log('the rules');
@@ -186,7 +187,8 @@ function proxy(target) {
   return new Promise(r => srv.listen(0, '127.0.0.1', () => {p.port = srv.address().port; p.url = `http://127.0.0.1:${p.port}`; r(p)}));
 }
 console.log('npm run agent on a headless world');
-const world = start(['scripts/play-headless.mjs', '--port', String(port), '--agents', '1', '--quiet', '--speed', '8', '--world', join(tmp, 'world.json')], {wait: /^\[play\] headless world at /m});
+// --watch (Table off): a level-1 hero at 8x walks into real rescue and ambush scenes, and a roll is held for a scene by design, so a mock that cannot play scene_act kept the "fresh" and the table-closed rolls waiting for the table's 2 minutes (the flake). Scenes here are the proxy's.
+const world = start(['scripts/play-headless.mjs', '--port', String(port), '--agents', '1', '--quiet', '--speed', '8', '--watch', '--world', join(tmp, 'world.json')], {wait: /^\[play\] headless world at /m});
 await world.until;
 const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
 {
@@ -205,7 +207,9 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   ok(!/session rolled/.test(run.out()) && readSess(hero.id).sessionId === sid && !oldFiles().length, 'and nothing rolls mid-scene, past the roll point or not');
   // the size stays 85k until a fresh session starts: a turn in flight as the table closes must not report the small size, or nothing is left to roll
   const since = api.calls.length; px.table = false; let small = false; api.ctx = c => {if (c.tool && !c.isResult && c.msgs <= 2) small = true; return small ? 26000 : 85000};
-  ok(await until(() => /\[session rolled: 85k tokens\]/.test(run.out())), 'the table closed, the next turn rolls: [session rolled: 85k tokens]');
+  const rolled85 = await until(() => /\[session rolled: 85k tokens\]/.test(run.out()));
+  ok(rolled85, 'the table closed, the next turn rolls: [session rolled: 85k tokens]');
+  if (!rolled85) console.log('--- runner output ---\n' + run.out().split('\n').slice(-40).join('\n') + '\n--- health ---\n' + JSON.stringify(await health(WORLD).catch(e => String(e))).slice(0, 600));
   const s2 = await until(() => {const s = readSess(hero.id); return s && s.sessionId && s.sessionId !== sid ? s : null});
   ok(s2 && s2.rolls === 1 && s2.system === orders && s2.runner && s2.runner.model === 'claude-haiku-5-5' && s2.turns >= 3, 'the session file has a new session, the same standing orders and mind, the turns counted on, one roll');
   ok(oldFiles().some(f => f.startsWith(hero.id + '-')), `the old file lies in old/: ${oldFiles().join(', ')}`);
@@ -236,8 +240,23 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   const run = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--min-gap', '0', '--heartbeat', '5', '--budget', '1'], {stdin: 'pipe', env: {...childEnv, ELDMOOR_SUPERVISED: '1', AGENT_HEAR_WAKE_MIN: '45'}});
   ok(await until(() => /\| ctx 26k \| turn \$/.test(run.out())), 'a supervised runner plays');
   run.p.stdin.write('fresh\n');
-  ok(await until(() => /\[session rolled: a fresh session was asked for\]/.test(run.out())), 'a "fresh" line rolls it at the next turn');
+  const got = await until(() => /\[session rolled: a fresh session was asked for\]/.test(run.out()));
+  ok(got, 'a "fresh" line rolls it at the next turn');
+  if (!got) console.log('--- runner output ---\n' + run.out().split('\n').slice(-40).join('\n'));
   run.p.stdin.write('stop\n'); await run.done;
+  // the order of events that looked like a lost line: a fresh session asked while a scene is open is held, never dropped, and rolls once the scene closes
+  {
+    api.ctx = () => 26000; px.table = true;
+    const r2 = start(['scripts/agent-player.mjs', '--url', px.url, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--min-gap', '0', '--heartbeat', '5', '--budget', '1'], {stdin: 'pipe', env: {...childEnv, ELDMOOR_SUPERVISED: '1'}});
+    ok(await until(() => /\| ctx 26k \| turn \$/.test(r2.out())), 'a runner plays with the table open');
+    r2.p.stdin.write('fresh\n');
+    const n = (r2.out().match(/\| ctx 26k/g) || []).length;
+    ok(await until(() => (r2.out().match(/\| ctx 26k/g) || []).length > n + 2), 'turns go on with the table open');
+    ok(!/session rolled/.test(r2.out()), 'a fresh session asked at a scene is held for it');
+    px.table = false;
+    ok(await until(() => /\[session rolled: a fresh session was asked for\]/.test(r2.out())), 'and is not lost: it rolls at the first turn after the scene');
+    r2.p.stdin.write('stop\n'); await r2.done;
+  }
   const again = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--new', '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1'], {env: {...childEnv, AGENT_MODEL: 'claude-sonnet-5-5'}});
   await again.done; const s = readSess(hero.id);
   ok(s && s.runner && s.runner.model === 'claude-haiku-5-5' && /earlier session kept/.test(again.out()), '--new sets the conversation aside and keeps the hero\'s mind');
