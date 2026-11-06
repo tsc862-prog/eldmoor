@@ -487,7 +487,7 @@ try{
     d++;r=await daily(['--date','2026-12-10','--manifest',bigM],{ART_MAX_CALLS:'800'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
     d++;const p7=P0();r=await daily(['--date','2026-12-11','--manifest',bigM],{ART_MAX_CALLS:'400'});ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
     ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$(?:2|20)\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
-    S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
+    S.deny=true;r=await daily(['--now','--date','2027-01-05','--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
 
   // --- flat outputs are rejected but kept raw; art:reprocess re-makes them offline; the credit budget
   {const dir=join(tmp,'assets3'),logP=join(tmp,'art3.log'),Q=()=>JSON.parse(readFileSync(join(dir,'queue.json'),'utf8')),last=f=>readFileSync(f,'utf8').trim().split('\n').pop();
