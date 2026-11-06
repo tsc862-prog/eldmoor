@@ -4,7 +4,7 @@
 // with the nearest open spot; camps never land on it; survey lists solid edges; every town gate reaches every other
 // by open ground. Runs the active world; with no ELDMOOR_WORLD it runs Eldmoor, then re-runs itself for the Stepping Lands.
 // Usage: npm run passablecheck
-import {spawnSync} from 'node:child_process';
+import {runWorlds} from './worlds.mjs';
 import {tiles,I,CITY,LANDMARKS,LAIR,CRYPT} from '../src/world/map.js';
 import {W,H,ROCK,TREE,WALL,RIVER,BRIDGE,PEAK,LAVA,ROAD,WALKABLE} from '../src/world/tiles.js';
 import {solidAt,solidWhy,nearestOpen,solidCounts,standAt,FOREST_CORE} from '../src/world/passable.js';
@@ -103,5 +103,5 @@ for(const c of CITY){const B=c.buildings||[];ok(B.length>=6,c.name+': has its bu
   ok(bad===0,'400 game minutes: no hero or townsperson stands still inside a building ('+bad+')')}
 console.log('solid tiles:',JSON.stringify(solidCounts()));
 // the other world, once
-if(!process.env.ELDMOOR_WORLD&&!process.env.PASSABLE_CHILD)for(const w of ['stepping','vale']){const r=spawnSync(process.execPath,[process.argv[1]],{env:{...process.env,ELDMOOR_WORLD:w,PASSABLE_CHILD:'1'},stdio:'inherit'});if(r.status)fail++}
+if(!process.env.ELDMOOR_WORLD)fail+=runWorlds('passablecheck')
 if(fail){console.log(fail+' check(s) failed');process.exit(1)}console.log('passablecheck ok');

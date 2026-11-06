@@ -13,3 +13,4 @@
 - [Passability layer](project_passability.md) — #792 passable.js, forest mask 5x5, slice 2/3 seams, camp hash move
 - [Town plans](project_town_plans.md) — #793 buildings as data, doors, spots at doors, standAt, hash move reason
 - [Wending Vale world](project_vale_world.md) — #940 slice A third world vale: ladder rule, river span, region order gotcha, hashes
+- [World-loop checks](project_world_loop_checks.md) — #940B: checks loop WORLDS via scripts/worlds.mjs; one snapshot table; rulescheck guards a world's rows
