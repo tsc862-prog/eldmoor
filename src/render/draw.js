@@ -43,6 +43,7 @@ import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.
 import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor,scenePose,sceneFallen,sceneTint} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
+import {gateEnts} from './townart.js';
 import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
 import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
@@ -216,7 +217,7 @@ export function createRenderer(cv,screenEl){
       for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
       for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
       if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
-      lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;
+      lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;if(close)gateEnts(ENTS,inView); // a gatehouse stands among the people passing it (#979)
       if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS)} // road traffic, skipped at whole-map zoom (#856)
     if(onPatch)sceneFallen(ENTS); // a foe whose last blow is still to play, or who is falling
     // whole trees (#834) are painted into the terrain chunk, under everything; one that stands in front of an entity (rooted below its feet)
@@ -230,7 +231,7 @@ export function createRenderer(cv,screenEl){
     const nE=ENTS.length,sunny=close&&G.sunA>.01&&FX.full; // up close what moves throws its own shape along the sun, under the contact shadow
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
     for(let i=0;i<nE;i++){const e=ENTS[i];EPZ[i]=null;
-      if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
+      if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree&&!e.flat)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
       if(isTraffic(e)){trafficShadow(ctx,e,Math.round(e.x*T),Math.round(e.y*T));if(sunny)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),6,22);continue} // its shadow joins the path; the sprite is drawn whole in pass 2
       const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',pz=onPatch?scenePose(e):null,mv=pz?pz.walk:e.moving,fr=mv?Math.floor(blink*6+e.id)%2:0;EPZ[i]=pz;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
@@ -279,7 +280,7 @@ export function createRenderer(cv,screenEl){
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     };
     for(let i=0;i<nE;i++){const e=ENTS[i];
-      if(e.tree){drawTree(ctx,e);if(FX.full)swayTree(ctx,tf,e); // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
+      if(e.tree||e.veil){if(e.veil)drawEnt(i);else{drawTree(ctx,e);if(FX.full)swayTree(ctx,tf,e)} // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
         for(let j=0;j<i;j++){const o=ENTS[j];if(o.tree||Math.abs(o.x-e.x)>2.4||o.y>=e.y||o.y<e.y-5||!(o===sel||(o.kind==='hero'&&inSlots(o))))continue;ghostA=.45;ctx.globalAlpha=.45;drawEnt(j);ghostA=1;ctx.globalAlpha=1}
         continue}
       drawEnt(i)}
