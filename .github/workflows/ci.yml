@@ -187,6 +187,7 @@ jobs:
       - {name: First delve in every world, run: npm run prologuecheck}
       - {name: Table fights on the map patch, run: npm run patchcheck}
       - {name: World names in text (the Vale names its own places), run: npm run worldtextcheck}
+      - {name: Switching the live map (issue 1013), run: npm run crossingcheck}
 
   g8:
     name: Checks 8

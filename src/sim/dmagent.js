@@ -70,6 +70,7 @@ import {installBestowLever,epithetView} from './epithet.js'; // bestow (#638)
 import {trafficView} from './traffic.js'; // who is on the road (#796)
 import {installSummonLever,summonView,summonedAlive,SUMMON} from './summon.js'; // summon_hero (#780)
 import {installCallLever,lastCall,musterWord,CALL} from './callto.js'; // call_to (#826)
+import {worded} from '../world/words.js'; // usage lines naming the towns and regions of the live map (#1013)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
 // ---- knobs ----
@@ -499,13 +500,13 @@ function leverRefuse(name,why,usage,reason,params,via){const D=dmState();D.stats
 export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_place:'mark_place',give_item:'give_item',take_item:'take_item',
   retire_person:'retire_npc',withdraw_hook:'withdraw_hook',set_attitude:'set_attitude',set_condition:'set_condition',price_shock:'price_shock',mark_danger:'mark_dangerous',start_event:'start_event',nudge_relation:'nudge_relation',custom_foe:'custom_foe',create_site:'create_site',summon_hero:'summon_hero',call_to:'call_to'}; // #636: every remaining lever as a flat tool
 const NEAR_FORMS='"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region';
-const FLAT_USAGE={
+const FLAT_USAGE=worded(()=>({
   post_hook:'post_hook takes: town (a town: '+CITY.map(c=>c.name).join('|')+', or "fellowship", a member or a region for the nearest board), tpl (rescue|escort|investigate|clear|relic|negotiate|hunt|deliver, or a goods job that asks for crafted or gathered goods: draughts|tonics|blade|cowl|meals|scrolls|herbs|ore|sinew|perch|rimebloom), giver? (captain|innkeeper|smith|quartermaster|priest|bard), reward? (small|fair|generous), region? (where the job leads), place? (a place or person by name or id), for? (a hero by name or id), reason',
   place_person:'place_person takes: role (peddler|hermit|drover|sellsword|minstrel|stranger), near ('+NEAR_FORMS+'), name?, faction? (concord|warband|neutral), want?, attitude? (hostile|wary|neutral|friendly), hours? (6-168), spot? (in a town: inn|smith|quartermaster|chapel|square|gate), reason',
   give_item:'give_item takes: hero (a hero by name or id), item (a quest item or token, a consumable, or a gear slot head|chest|hands|feet|main|off|trinket), by? (a person in earshot, by name or id), ilvl? (gear only, never above the hero’s level), reason',
   take_item:'take_item takes: hero (a hero by name or id), item (a quest item or token), by? (a person in earshot, by name or id), reason',
   mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reveal? (a secret a search uncovers), cache? (gold or an item hidden there), reason',
-  create_site:'create_site takes: theme (barrow|fortress|temple|mine|den|ruin), region (a region: '+ZONES.join('|')+'; or left out with near), band? (the level wanted, clamped to the region), rooms? (3-8), near? ('+NEAR_FORMS+'; the site is placed on open ground off the roads near it), name?, raid? (yes: a raid site for 5 or more), reason'};
+  create_site:'create_site takes: theme (barrow|fortress|temple|mine|den|ruin), region (a region: '+ZONES.join('|')+'; or left out with near), band? (the level wanted, clamped to the region), rooms? (3-8), near? ('+NEAR_FORMS+'; the site is placed on open ground off the roads near it), name?, raid? (yes: a raid site for 5 or more), reason'}));
 // A walkable spot between min and max tiles of c (rings outward, no dice), clear of towns, landmarks and, by gap, other places.
 function openSpot(c,min,max,gap){const R=q=>Math.round(q*10)/10,okAt=q=>!spotErr(q)&&!(gap&&(S.places||[]).some(p=>dist(p,q)<gap));
   if(min<=0&&okAt({x:R(c.x),y:R(c.y)}))return {x:R(c.x),y:R(c.y)};
@@ -750,9 +751,9 @@ function prepDone(a){const t=clean(a&&a.summary,DMA.INTENT_MAX);if(!prepActive()
   const v0=prepView();endPrep('done');dmlog('agent',null,['DM prep done ('+v0.kind+', '+v0.calls+' calls, '+v0.seconds+' s)'+(t?': '+t:'.')],{by:'dm-agent',prep:v0.kind,calls:v0.calls,seconds:v0.seconds,text:t||null},{heroes:[]});
   return {ok:true,prep:prepView(),note:'The table opens now.'}}
 // ---- seed_rumour (#637) and bestow (#638): flat lever tools like post_hook, through pullLever (caps, reserve, DM log) ----
-const RENOWN_USAGE={
+const RENOWN_USAGE=worded(()=>({
   seed_rumour:'seed_rumour takes: town (a town: '+CITY.map(c=>c.name).join('|')+') or region (a region: '+ZONES.join('|')+'), text (160 characters, as townsfolk say it), about? (a place, region, creature or person), days? (1-5), who? (innkeeper|captain|bard), reason',
-  bestow:'bestow takes: hero (a hero by name or id), title (2-24 characters: "Wightbane", "of the Ford"), why (one sentence, the DM log only), by? (a person within 7 tiles of the hero, by name or id)'};
+  bestow:'bestow takes: hero (a hero by name or id), title (2-24 characters: "Wightbane", "of the Ford"), why (one sentence, the DM log only), by? (a person within 7 tiles of the hero, by name or id)'}));
 function renownTool(tool,a){a=a&&typeof a==='object'?a:{};installRumourLever();installBestowLever();const usage=RENOWN_USAGE[tool],via={tool,usage};
   const reason=clean(tool==='bestow'?a.why||a.reason:a.reason||a.why,DMA.REASON_MAX);
   const no=(why,params)=>leverRefuse(tool,why,usage+'. The lever: '+leverUsage(tool),reason,params||{},via);

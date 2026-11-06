@@ -9,6 +9,8 @@ export const restoreKept=o=>{if(o)for(const [k,h] of KEPT)if(o[k]!==undefined)h.
 
 // A module that captured map data at import (a size, a grid, a table built from the towns) registers a rebind here; map.js
 // `setWorld` fires it after the live bindings changed (#1013). A single-map world never fires it. Render subscribes too.
-const WORLD_HOOKS=[];
-export const onWorld=fn=>{WORLD_HOOKS.push(fn)};
+// see (optional) returns what the hook keeps, by name: npm run crossingcheck compares it with a process that started on that map.
+const WORLD_HOOKS=[],WORLD_SEEN=[];
+export const onWorld=(fn,see)=>{WORLD_HOOKS.push(fn);if(see)WORLD_SEEN.push(see)};
 export const fireWorld=mapId=>{for(const fn of WORLD_HOOKS)fn(mapId)};
+export const worldCaptures=()=>Object.assign({},...WORLD_SEEN.map(f=>f()));

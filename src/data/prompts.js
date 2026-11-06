@@ -4,7 +4,7 @@
 // a hero's faction. The relay sends it with a JSON schema (structured output), so the
 // model only ever answers with a choice from the options the sim itself computed.
 
-import {WORDS} from '../world/words.js';
+import {WORDS,worded} from '../world/words.js';
 export const KINDS=['townPlan','cryptCall','fightOrFlee','say','persona','backstory','memory','chapter']; // closed set: the relay refuses any other kind
 // Fellowship writing kinds (issue #68): one-time character work, not in-the-moment decisions.
 // They use a writer's preamble instead of WORLD, a stronger model tier and a longer timeout (relay.mjs).
@@ -29,12 +29,12 @@ const WORLD=[
 // The "reason" field (issue #61): why, in the hero's own words, shown in the Mind tab.
 const REASON='"reason" is one plain sentence in your own voice saying why (under 20 words, no quotes, no numbers from the snapshot).';
 
-const KIND={
+const KIND=worded(()=>({
   townPlan:'Decision: you are in town about to set out. Pick "choice", exactly one string from snapshot.options (the hunting zones open to you). Prefer the zone matching your level; drop a zone lower only if you are hurt, poorly geared, grieving or cautious by nature. If snapshot.leadParty is true you lead a party and choose for all of you; the options already suit its weakest member. Set "crypt" true if you would answer a call to join a group for '+WORDS.crypt+' (only worthwhile when snapshot.cryptOpen is true and you are strong or oath-bound), otherwise false. '+REASON,
   cryptCall:'Decision: you are in town about to set out with your party; your party leader (snapshot.leader) chooses where you hunt, so that is not yours to decide. Set "crypt" true if you would answer a call to join a group for '+WORDS.crypt+' (worthwhile when you are strong or oath-bound), otherwise false. '+REASON,
   fightOrFlee:'Decision: you are mid-fight against a monster stronger than you and you are below half health. Pick "choice": "fight" to stand your ground or "flee" to break off and go home. Weigh your health, the monster\'s level, whether a priest or party stands with you, and your nature. Fleeing is not shameful; dying is final. "line" is a few words you shout as you decide (under 12 words, no quotes). '+REASON,
   say:'Task: write one short line your hero says aloud for the situation in snapshot.trigger (snapshot.ctx has details). Under 14 words, one sentence, no quotes, no emoji, no stage directions. Do not name specific people, monsters or items, so the line stays true if it is spoken a little later. If snapshot.fellow is present you are a member of a Fellowship: speak in snapshot.fellow.voice, let your wants, fears, quirk, memories (memory_recent, memory_long) and how you see your companions colour the line, and never say anything like snapshot.fellow.never_says. When snapshot.trigger is "table" the party is at a scene (snapshot.ctx.scene) and you are acting on it (snapshot.ctx.choice): speak to that moment. Put it in "line".',
-};
+}));
 
 // ---- Fellowship writing kinds (issue #68) ----
 // The snapshot is a fact sheet built by src/sim/persona.js or src/sim/memory.js from sim data

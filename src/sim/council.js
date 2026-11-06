@@ -51,7 +51,7 @@ export const SOLO='You ride alone: decide and act (take_adventure, go_crypt, joi
 // The whole company in shouting range of each other (#182). A party its reflexes play whole (no live agent, no runner; the headless sim) moves as one unit and is not held to it.
 const gathered=(L,C)=>!L.some(b=>!reflexMay(b))||together(L,leaderOfC(C));
 export const PROP_KINDS=['job','crypt','raid','split','break_camp','other','expel','merge','site']; // site: go down into a DM-made site together (sim/sites.js, #69; put by enter_site)
-const KIND_TEXT={job:'take a job',crypt:'go down into '+CRYPT.name+' together',raid:'muster the company against Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide',expel:'put a companion out of the company',merge:'ride together with another company',site:'go down into the place we found'};
+const KIND_TEXT={job:'take a job',get crypt(){return 'go down into '+CRYPT.name+' together'},raid:'muster the company against Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide',expel:'put a companion out of the company',merge:'ride together with another company',site:'go down into the place we found'};
 const gd=t=>({t,c:'gd'});
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 // A spoken line (#145): whitespace folded, a leading "<own name>:" / "<own name> here," dropped (the game already

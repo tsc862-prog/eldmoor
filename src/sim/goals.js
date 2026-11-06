@@ -41,6 +41,7 @@ import {hushed} from './oath.js'; // an agent hero's goal is an offered thread u
 import {oathKept,ownHit,ownTick,oathFailed} from './sworn.js';
 import {hasLinks} from './runlink.js';
 import {ev} from './notify.js';
+import {onWorld} from './kept.js';
 
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!==undefined?String(v[k]):m);
 const lc=t=>t.charAt(0).toLowerCase()+t.slice(1);
@@ -49,8 +50,10 @@ const bump=(o,k)=>{o[k]=(o[k]||0)+1};
 
 // Lowest level that hunts in zone z (from the zoneFor ladder), so goals can speak in bands.
 const bandMin=z=>{for(let l=1;l<=20;l++)if(zoneFor(l)===z)return l;return 99};
-const FAR=ZONES.indexOf(PILGRIM_ZONE)>=0?ZONES.indexOf(PILGRIM_ZONE):REGIONS.findIndex(r=>r.far), // a spec can mark its far region with far:true
-  CRYPT_Z=zoneAt(CRYPT.x,CRYPT.y);
+const farZone=()=>ZONES.indexOf(PILGRIM_ZONE)>=0?ZONES.indexOf(PILGRIM_ZONE):REGIONS.findIndex(r=>r.far), // a spec can mark its far region with far:true
+  cryptZone=()=>CRYPT?zoneAt(CRYPT.x,CRYPT.y):-1;
+let FAR=farZone(),CRYPT_Z=cryptZone();
+onWorld(()=>{FAR=farZone();CRYPT_Z=cryptZone()},()=>({goalFar:FAR,goalCryptZone:CRYPT_Z})); // another map (#1013)
 const alive=x=>x&&x.state!=='dead';
 const byId=id=>S.agents.find(x=>x.id==id); // loose: nemesis keys are strings
 

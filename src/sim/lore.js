@@ -26,6 +26,7 @@ import {moment} from './reflect.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {held} from './scenes.js';
 import {sightFor} from './weather.js';
+import {onWorld} from './kept.js';
 
 export const LORE={
   DC:12,          // the first-sight read (d20 + the better of Lore and Perception)
@@ -56,6 +57,7 @@ function describe(m){const V=m.v&&VARIANTS[m.v],B=V||BESTIARY[baseId(m.type)]||{
 // Every creature name the world uses, for hearing: [{re, key}], singular and plural, and a last-word alias when it is
 // unique ("the lurkers nearly had me"). Built once from the creature tables; never hard-coded.
 let LEX=null;
+onWorld(()=>{LEX=null},()=>{const L=lexicon();return {loreCreatures:L.c.map(x=>x.n),lorePlaces:L.p.map(x=>x.n)}}); // another map (#1013): its creatures and places
 function lexicon(){if(LEX)return LEX;const names=[],add=(n,key)=>{if(n)names.push({n:String(n),key})};
   for(const k of Object.keys(MOBS)){add(MOBS[k].name,k);add(MOBS[k].pl,k)}
   for(const k of Object.keys(VARIANTS)){add(VARIANTS[k].name,k);add(VARIANTS[k].pl,k)}

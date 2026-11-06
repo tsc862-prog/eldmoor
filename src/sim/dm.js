@@ -68,6 +68,7 @@ import {GOODS} from '../data/items.js';
 import {playerBranch} from './player-choice.js';
 import {isSolo,inSlots} from './company.js';
 import {supplyPlan,notePosted} from './supply.js'; // goods jobs: the board asks for crafted or gathered goods (#720)
+import {onWorld} from './kept.js';
 
 // ---- knobs ----
 export const K={
@@ -178,9 +179,12 @@ function beat(adv,big,...parts){if(adv.told||watched(adv)||big){line(adv,...part
 function note(adv,text){for(const b of members(adv))record(b,text)}
 
 // ---- the map: candidate points for scenes (built once, scale-safe) ----
-const ROADS=ZONES.map(()=>[]);
-for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){if(tiles[I(x,y)]!==ROAD)continue;const p={x:x+.5,y:y+.5};
-  if(CITY.some(c=>dist(p,c.gate)<K.GATE_CLEAR))continue;ROADS[zoneAt(p.x,p.y)].push(p)}
+function roadPoints(){const R=ZONES.map(()=>[]);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){if(tiles[I(x,y)]!==ROAD)continue;const p={x:x+.5,y:y+.5};
+    if(CITY.some(c=>dist(p,c.gate)<K.GATE_CLEAR))continue;R[zoneAt(p.x,p.y)].push(p)}
+  return R}
+let ROADS=roadPoints();
+onWorld(()=>{ROADS=roadPoints()},()=>({dmRoads:ROADS})); // another map (#1013)
 const safeFor=(p,fac)=>!CITY.some(c=>c.fac!==fac&&dist(p,c.gate)<K.ENEMY_GATE);
 // A point from a list: preferably 8-30 tiles from `near`, never near an enemy gate.
 function pickPt(list,near,fac){if(!list||!list.length)return null;let best=null;

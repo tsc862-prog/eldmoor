@@ -22,6 +22,7 @@ import {solidWhy} from '../world/passable.js';
 import {CLS} from '../data/classes.js';
 import {MOVES} from '../data/moves.js';
 import {S} from './state.js';
+import {onWorld} from './kept.js';
 import {rebuild} from './spatial.js';
 import {blk} from './mobs.js';
 import {condOn} from './eff.js';
@@ -77,6 +78,7 @@ function build({ox,oy,w,h,pt,dn}){const n=w*h,ok=new Uint8Array(n),see=new Uint8
   const note=[];if(water.some(x=>x))note.push('The river bounds this ground: nobody crosses its bank in a round, though a shot does.');if(slow)note.push('Swamp and snow are slow: a step there costs '+FIELD.SLOW+' of your '+POS.STEP+'.');G.note=note.join(' ');
   return G}
 const cache=new Map();
+onWorld(()=>{cache.clear()},()=>({patchGrids:cache.size})); // another map (#1013): the same numbers on other ground
 // The grid of a frozen patch: a pure function of the numbers on sc.fp, so a restored scene gets the same one back.
 export function patchGrid(P){const key=[P.ox,P.oy,P.w,P.h,P.pt.x,P.pt.y,P.dn.x,P.dn.y].join();let G=cache.get(key);if(G)return G;G=build(P);if(cache.size>=16)cache.delete(cache.keys().next().value);cache.set(key,G);return G}
 

@@ -24,6 +24,7 @@
 //   beset  {mob?, foe, since, until, chk, staged?}
 // DOM-free. Owned by ai-designer; the road net it reads is world-builder's.
 import {S,dayNo} from './state.js';
+import {onWorld} from './kept.js';
 import {tiles,I,CITY,LANDMARKS,OUTPOSTS,ZONES,zoneAt,dist} from '../world/map.js';
 import {W,H,ROAD,BRIDGE} from '../world/tiles.js';
 import {solidAt} from '../world/passable.js';
@@ -100,6 +101,7 @@ const beatThrough=(s,depth)=>{const B=flood(flood(s,depth).far,depth*2);return u
 const middleOf=l=>l.mouth?{x:l.mouth.x0+(l.mouth.w||0)/2,y:l.mouth.y0+(l.mouth.h||0)/2}:{x:l.x,y:l.y};
 
 let NET=null;
+onWorld(()=>{NET=null},()=>{const n=net();return {roadStops:n.stops,roadPosts:[...n.posts.keys()]}}); // another map (#1013): its own road net
 function net(){if(NET)return NET;const stops=[];
   const add=(name,kind,p,r)=>{const tile=roadNear(p.x,p.y,r);if(tile>=0)stops.push({name,kind,tile})};
   for(const c of CITY)add(c.name,'town',c.gate,4);

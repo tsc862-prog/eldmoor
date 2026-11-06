@@ -33,7 +33,7 @@
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
 import {worldFill} from '../world/words.js';
 import {clamp} from '../core/rng.js';
-import {keep} from './kept.js';
+import {keep,onWorld} from './kept.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
@@ -380,6 +380,7 @@ register({name:'withdraw_hook',about:'Take an open job down from a board.',param
 const livingHero=id=>{const a=S.agents.find(x=>x.id===id);return a&&a.kind==='hero'&&a.state!=='dead'&&a.state!=='ghost'?a:null};
 const FIGHT_STATES=['fight','duel','assist','raid'];
 const EPIC_NAMES=new Set([...EPICS.flat(),...BOSS_EPICS,...DG_EPICS]);
+onWorld(()=>{for(const n of EPICS.flat())EPIC_NAMES.add(n)},()=>({epicsUnnamed:EPICS.flat().filter(n=>!EPIC_NAMES.has(n))})); // another map (#1013): an epic stays an epic, so the set only grows
 const lc=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 // item text -> {kind:'quest'|'use'|'gear', id} or {err}
 function itemOf(text){const t=lc(text);if(!t)return {err:'item is required'};

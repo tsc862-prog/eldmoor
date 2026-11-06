@@ -14,6 +14,7 @@
 // homeOf(a). Nothing here hard-codes the number of races, factions or towns.
 import {rnd,pickA} from '../core/rng.js';
 import {CITY} from '../world/map.js';
+import {onWorld} from '../sim/kept.js';
 const T=f=>(CITY.find(c=>c.fac===f)||CITY[0]).name; // a faction's first town, for the cultures that name their home hall
 
 export const RACES=[
@@ -85,10 +86,11 @@ export function assignRace(a,roster=[]){
 // #433: the answer is remembered on the hero (a non-enumerable field, so saves and spreads never see it)
 // against the three fields it reads, so the hot path builds no key string; any change to town, race or
 // faction asks again.
-const townCache={};
+let townCache={},mapEpoch=0; // a switch of map (#1013) empties the cache and outdates what heroes remember
+onWorld(()=>{townCache={};mapEpoch++},()=>({homeCacheStale:Object.values(townCache).filter(t=>!CITY.includes(t)).length}));
 export function homeOf(a){
-  const m=a._home;if(m&&m.town===a.town&&m.race===a.race&&m.fac===a.fac)return m.t;
+  const m=a._home;if(m&&m.town===a.town&&m.race===a.race&&m.fac===a.fac&&m.e===mapEpoch)return m.t;
   const r=raceOf(a),k=(a.town||'')+'|'+r.id+'|'+a.fac;let t=townCache[k];
   if(!t)t=townCache[k]=(a.town&&CITY.find(c=>c.name===a.town))||CITY.find(c=>c.race===r.id)||CITY.find(c=>c.name===r.home)||CITY.find(c=>c.fac===a.fac)||CITY[0];
-  if(Object.isExtensible(a)){const v={town:a.town,race:a.race,fac:a.fac,t};if(m)a._home=v;else Object.defineProperty(a,'_home',{value:v,writable:true,enumerable:false})}
+  if(Object.isExtensible(a)){const v={town:a.town,race:a.race,fac:a.fac,t,e:mapEpoch};if(m)a._home=v;else Object.defineProperty(a,'_home',{value:v,writable:true,enumerable:false})}
   return t}
