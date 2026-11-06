@@ -121,7 +121,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     const seat = rec.seat, S = seatOf(seat), tools = Array.isArray(rec.tools) ? rec.tools.slice(0, 40) : [];
     const narration = cut(rec.narration, 600), flags = new Set(Array.isArray(rec.flags) ? rec.flags.map(String) : []);
     const failed = tools.filter(t => !t.ok).length, refused = tools.filter(t => t.refused).length;
-    if (!tools.length && !flags.has('reflection')) flags.add('empty'); // a reflection answered "none" (issue #179) is not an empty turn
+    if (!tools.length && !flags.has('reflection') && !flags.has('scene-cut')) flags.add('empty'); // a reflection answered "none" (issue #179) is not an empty turn
     if (tools.length && failed === tools.length) flags.add('refused');
     if (narration && S.narr.some(p => similar(p, narration) >= BD.REPEAT_SIM)) flags.add('repeat');
     if (narration && notEnglish(narration)) flags.add('foreign');
@@ -135,7 +135,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     sawModel(line.provider, line.model, seat);
     // detectors
     const who = rec.hero && rec.hero.name ? rec.hero.name : seat;
-    S.empty = flags.has('empty') ? S.empty + 1 : 0;
+    if (!flags.has('scene-cut')) S.empty = flags.has('empty') ? S.empty + 1 : 0;
     if (S.empty >= BD.EMPTY_RUN && (S.empty === BD.EMPTY_RUN || S.empty % 10 === 0)) anomaly({kind: 'no-tool-calls', seat, hero: rec.hero || null, severity: 'bad', text: `${who}: ${S.empty} turns in a row without a tool call (${line.provider || '?'}/${line.model || '?'})`, evidence: {run: S.empty, turn: line.turn, narration: narration.slice(0, 200)}, force: S.empty === BD.EMPTY_RUN});
     if (flags.has('repeat')) anomaly({kind: 'repeated-narration', seat, hero: rec.hero || null, text: `${who} repeats an earlier narration`, evidence: {turn: line.turn, narration: narration.slice(0, 200)}});
     if (flags.has('repeat-act')) anomaly({kind: 'repeated-act', seat, hero: rec.hero || null, text: `${who} repeats the same ${tools.filter(t => t.ok).map(t => t.name).slice(-1)[0] || 'act'} as last turn`, evidence: {turn: line.turn, tool: (tools.filter(t => t.ok).slice(-1)[0] || {}).name || null}});
