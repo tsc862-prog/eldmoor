@@ -5,6 +5,7 @@
 //   node scripts/shoot.mjs <url> <outDir> [--sizes 3440x1440,1280x800] [--run-seconds 10] [--crawl]
 // --crawl (#736): at the first size, stage the Crypt crawl (the page's ?probe=1 seam, src/ui/probe.js), time 5 s of frames
 // with the page watchdog and write crawl-<w>.png plus perf.crawl in shots.json (frame and render p50/p99/worst ms), printed too.
+// --looted (#976): at the first size, stage a crawl and clear it (same seam), pin the boss chamber and open History: looted-<w>.png.
 // Writes <outDir>/title-3440.png, default-3440.png, follow-3440.png, bottom-3440.png, default-1280.png and shots.json (names,
 // sizes, notes). A view that cannot be reached is noted in shots.json, never a crash: the job is a look, not a gate.
 // CHROME_PATH picks the browser; CI passes --no-sandbox through CHROME_NO_SANDBOX=1.
@@ -17,7 +18,7 @@ const argv = process.argv.slice(2), pos = argv.filter(a => !a.startsWith('--') &
 const flagv = n => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : null; };
 const url = pos[0], OUT = resolve(pos[1] || 'shots');
 if (!url) { console.error('usage: node scripts/shoot.mjs <url> <outDir> [--sizes WxH,WxH] [--run-seconds N]'); process.exit(2); }
-const CRAWL = argv.includes('--crawl');
+const CRAWL = argv.includes('--crawl'), LOOTED = argv.includes('--looted');
 const SIZES = (flagv('sizes') || '3440x1440,1280x800').split(',').map(s => s.split('x').map(Number)), RUN_S = Number(flagv('run-seconds') || 10);
 const CANDIDATES = [process.env.CHROME_PATH, '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser',
   'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].filter(Boolean);
@@ -73,19 +74,32 @@ async function crawl(s, w, h) {
   await s.evalJs(`(document.querySelector('.dgback') && document.querySelector('.dgback').click(), 1)`); await sleep(500);
 }
 
+// The dungeon view after a clear (#976): the looted marks, the pinned chamber's detail and the History panel.
+async function looted(s, w) {
+  await s.evalJs('window.scrollTo(0, 0)');
+  const st = JSON.parse(await s.evalJs('JSON.stringify(window.__eldmoorProbe ? window.__eldmoorProbe.stageCrawl() : {ok: false, why: "no probe seam"})') || '{}');
+  if (!st.ok) {notes.push('looted view not staged: ' + (st.why || '?')); return}
+  await s.evalJs(`(document.querySelectorAll('.ralert,.rgate').forEach(e => e.style.display = 'none'), 1)`);
+  await sleep(1000); await s.evalJs('window.__eldmoorProbe.stageLooted(), 1'); await sleep(1500);
+  await s.evalJs(`([...document.querySelectorAll('.dgroom')].pop().click(), document.querySelector('.dghbtn').click(), 1)`); await sleep(1000);
+  await s.shot(`looted-${w}`);
+  await s.evalJs(`(document.querySelector('.dgback') && document.querySelector('.dgback').click(), 1)`); await sleep(500);
+}
+
 for (const [w, h] of SIZES) {
   const s = await session(w, h);
   try {
     if (w === SIZES[0][0]) { // the title screen, once, at the first size
       await s.send('Page.navigate', {url: url.split('?')[0]}); await sleep(3000); await s.shot(`title-${w}`);
     }
-    await boot(s, withQuery(url, 'skip-title=1' + (CRAWL ? '&probe=1' : '')));
+    await boot(s, withQuery(url, 'skip-title=1' + (CRAWL || LOOTED ? '&probe=1' : '')));
     await s.shot(`default-${w}`);
     if (w === SIZES[0][0]) {
       notes.push(await s.clickText(/^Fellowship$/i) ? 'follow view clicked' : 'no Fellowship view button');
       await sleep(2500); await s.shot(`follow-${w}`);
       await s.evalJs('window.scrollTo(0, document.body.scrollHeight)'); await sleep(1000); await s.shot(`bottom-${w}`);
       if (CRAWL) await crawl(s, w, h);
+      if (LOOTED) await looted(s, w);
       notes.push(await s.evalJs(`JSON.stringify({scrollH: document.body.scrollHeight, panels: document.querySelectorAll('section.panel').length, visibleButtons: [...document.querySelectorAll('button')].filter(b => b.offsetParent !== null).length})`));
     }
   } catch (e) { notes.push(`${w}x${h} failed: ${e.message}`); console.error(e.message); }

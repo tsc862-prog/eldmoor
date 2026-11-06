@@ -16,6 +16,7 @@
 //     and a seeded room with and without the rules
 //   - without a Fellowship the abstract roll runs and a seeded background world repeats exactly
 //     (CRAWL_BASELINE_HASH=<hash from main> also asserts it equals main's)
+//   - a clear keeps what it paid on the dungeon's row (#976), through a save; an older save has none and reads fine
 // Usage: npm run crawlcheck   (CRAWLCHECK_SEED to vary)
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -372,6 +373,14 @@ if (argv[0] === '--cairn') {
     let cleared = null; for (let i = 0; i < 12 && !cleared; i++) {const M = down(CAIRN, 12); M.forEach(a => {a.gear = 6}); playOn(CAIRN, 900); if (S.dunRec[CAIRN.name].clears) cleared = M}
     sok(cleared, 'the Fellowship can clear the Cairn');
     if (cleared) sok(S.timeline.some(e => e.kind === 'crypt' && txt(e.parts).includes(CAIRN.name)), 'a first clear of the Cairn goes on the timeline');
+    if (cleared) { // what the clear paid (#976): on the dungeon's row, through a save; an older save has none and still loads
+      const row = S.dunRec[CAIRN.name], P = row.paid, want = JSON.stringify(P), n = cleared.length;
+      sok(P && P.gold >= 25 * n - 45 && P.goods['Grave Dust'] > 0 && P.goods['Marrowmend Tonic'] > 0 && P.by && Array.isArray(P.items) && P.run <= row.runs, 'the clear keeps what it paid: ' + want);
+      const snap = JSON.stringify(snapshot()); restore(JSON.parse(snap)); T.TABLE.speed = 1;
+      sok(JSON.stringify(S.dunRec[CAIRN.name].paid) === want, 'the record comes back from a save unchanged');
+      const old = JSON.parse(snap); delete old.dunRec[CAIRN.name].paid; restore(old); T.TABLE.speed = 1;
+      sok(S.dunRec[CAIRN.name].clears >= 1 && !S.dunRec[CAIRN.name].paid, 'a save from before the record loads with its clears and no payout');
+      restore(JSON.parse(snap)); T.TABLE.speed = 1}
   }
   { // side by side: the Fellowship below the Cairn, a background group in the Crypt
     const M = down(CAIRN), bg = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !SLT.companyOf(a) && a.fac === M[0].fac).slice(0, 4);
