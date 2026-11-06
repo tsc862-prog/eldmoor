@@ -180,6 +180,7 @@ export const waitingVoters=P=>P&&P.status==='open'?voters(P).filter(b=>!P.votes[
 
 // Everyone has voted (or the time is up): the leader settles it.
 function settleIfDone(P){if(P.status!=='open')return;if(voters(P).every(b=>P.votes[b.id]))resolveProp(P,'everyone voted')}
+let callHook=null;export const setCallHook=f=>{callHook=f}; // the DM's call_to (sim/callto.js) hears how a vote it opened ended
 export function resolveProp(P,why){if(!P||P.status!=='open')return P;const F=propCompany(P),L=voters(P),lead=leaderOfC(F);
   for(const b of L)if(!P.votes[b.id])P.votes[b.id]={v:reflexVote(b,P),reason:'',by:'reflex',at:Math.round(S.gameMin)};
   let yes=0,no=0;for(const b of L){const x=P.votes[b.id];if(x.v==='yes')yes++;else no++}
@@ -191,6 +192,7 @@ export function resolveProp(P,why){if(!P||P.status!=='open')return P;const F=pro
   for(const b of L){remember(b,'council','We voted on "'+P.details+'": '+(pass?'agreed':'refused')+' '+yes+'-'+no+'; I said '+P.votes[b.id].v+'.');notify(b,'The vote on "'+P.details+'" '+(pass?'passed':'failed')+' '+yes+'-'+no+'.',true)}
   if(pass)carryOut(P);else if(F&&(P.kind==='crypt'||P.kind==='raid')){F.cool=F.cool||{};F.cool[P.kind]=S.gameMin+COUNCIL.CALL_COOL}
   else if(P.kind==='merge')failPair(P);
+  if(P.src==='dm'&&callHook)callHook(F,P,pass);
   return P}
 
 // Merge (#444): two linked proposals, one in each company (P.pair is the other's id). Both must pass; if either fails, both fail.

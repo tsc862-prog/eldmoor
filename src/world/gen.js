@@ -225,7 +225,18 @@ export function buildWorld(spec){
   const world={tiles,zone,I,w,h};
   const named=k=>{const c=CITY.find(t=>t.name===k);if(c)return[c.gate.x,c.gate.y];
     const l=LANDMARKS.find(t=>t.name===k);if(l)return[l.x,l.y];
+    const ex=EXITS.find(t=>t.id===k);if(ex)return[Math.min(w-1,Math.floor(ex.x)),Math.min(h-1,Math.floor(ex.y))];
     const p=(spec.points||{})[k];if(p)return p;throw new Error('world spec: unknown road endpoint '+k)};
+  // exits (#1013): where a road leaves this map. `at` {x,y,r} is a spot; `edge` {side:N|S|E|W,from,to} is a stretch of the map's outer
+  // ring of tiles, painted road, whose middle is the spot. Plain data; nothing in the sim targets one yet.
+  const EXITS=(spec.exits||[]).map(e=>{
+    if(e.at){return{id:e.id,name:e.name,to:{...e.to},x:e.at.x,y:e.at.y,r:e.at.r===undefined?2:e.at.r,edge:null}}
+    const d=e.edge,s=String(d&&d.side).toUpperCase(),lo=Math.min(d.from,d.to),hi=Math.max(d.from,d.to),mid=(lo+hi+1)/2;
+    if(!'NSEW'.includes(s)||s.length!==1)throw new Error('world spec: exit '+e.id+' has no side');
+    const tiles2=[];for(let k=lo;k<=hi;k++)tiles2.push(s==='N'?[k,0]:s==='S'?[k,h-1]:s==='W'?[0,k]:[w-1,k]);
+    for(const [x,y] of tiles2){if(x<0||y<0||x>=w||y>=h)throw new Error('world spec: exit '+e.id+' leaves the map');tiles[I(x,y)]=ROAD}
+    const x=s==='N'||s==='S'?mid:s==='W'?.5:w-.5,y=s==='W'||s==='E'?mid:s==='N'?.5:h-.5;
+    return{id:e.id,name:e.name,to:{...e.to},x,y,r:Math.max(2,(hi-lo+1)/2),edge:{side:s,from:lo,to:hi}}});
   const ROUTES=[];
   for(const r of spec.roads||[]){
     if(Array.isArray(r)){paintPolyline(world,r);continue}
@@ -279,6 +290,6 @@ export function buildWorld(spec){
   const OUTPOSTS=(spec.outposts||[]).map(o=>({id:o.id,name:o.name,x:o.x,y:o.y,r:o.r||3.5,z:zoneAt(o.x,o.y)})); // contested outposts (#11): data only, never painted
   const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS,land,mainLand},spec); // gathering nodes (#255): an overlay list, not tiles
   return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
-    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT:CRYPTS[0]||null,CRYPTS,ROUTES,OUTPOSTS,
+    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT:CRYPTS[0]||null,CRYPTS,ROUTES,OUTPOSTS,EXITS,
     zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,solid,land,mainLand,fords,
     road:pts=>paintPolyline(world,pts)}}

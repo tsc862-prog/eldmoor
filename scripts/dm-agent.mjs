@@ -101,6 +101,7 @@ export function dmSystemPrompt(st) {
     DM_WHEN_ORDERS,
     DM_BETWEEN_ORDERS,
     DM_RENOWN_ORDERS,
+    DM_ASK_ORDERS,
     DM_PENDING_ORDERS,
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '- In narrate, npc_say, whisper, dream and table_answer: ' + NO_WORDS.trim(),
@@ -161,6 +162,9 @@ export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything 
 // Campaign seed: the notes start from the world's campaign file (docs/campaigns/<world>.md).
 // What the DM sees of the companies' life (#558): hear first, then the views; survey before placing; world_standing for the wider turns.
 export const DM_SIGHT_ORDERS = '- Listen before you act: dm_status unheard counts the lines the companies said aloud since your last hear; read hear first (what they plan, fear, ask for, joke about), then the views. fellowship_view, companies_view and heroes_near show what members carry (quest items, potions, gold), the quests they hold and what they know (carries, quests, knows): build on those, do not hand them what they already hold or warn them of what they know. A quiet turn is: hear, then one line they can hear. Before you place anything, survey {near} gives roads, landmarks and legal x,y spots that mark_place, place_person and stage_scene accept; a refusal about the ground means survey. world_standing is one read of the wider world (guild focus, rivalries, the wyrm, the Crypt, prices, conditions, the top heroes) for the turns after the companies have been served. You hear only what is said aloud in the world, never a journal, memories or thoughts.';
+// Asking a company (#826): the world never does, the DM may. withDmAskOrders adds it to an older session's prompt.
+export const DM_ASK_ORDERS = '- The world never asks a company to the Crypt or a raid; they go when they choose to. You may ask, as a deliberate act: call_to {kind: crypt|raid, company, by, text, reason} has a person near the leader (or the narrator) put it to them in the game. A company votes, a hero alone answers aloud; the answer is theirs, a no stands for 2 game days, and you ask at most once a game day. Ask when it serves their story, not to fill their day; fellowship_needs and companies_needs tell you what gathers and how your last call went (last_call).';
+export const withDmAskOrders = sys => /\bcall_to \{kind: crypt\|raid/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_ASK_ORDERS;
 // Word in town and names for deeds (#637, #638): seed_rumour and bestow. withDmRenownOrders adds it to an older session's prompt.
 export const DM_RENOWN_ORDERS = '- While you are away, the town can still speak for you: seed_rumour {town or region, text, about, days, reason} gives the innkeeper, gate captain and bard word to pass on for 1-5 days, in their own words, to heroes who talk to them or read the gate board; about is the place, creature or person it points at (they learn of it). Use it to put a lead or a warning on a company’s road before you sleep. After a deed worth a song, bestow {hero, title, why, by} gives the hero a name ("Wightbane", "of the Ford"), proclaimed by a person near them or the narrator; one at a time, sparingly, never a number. A hero who refuses the name aloud keeps no other from you.';
 export const withDmRenownOrders = sys => /\bseed_rumour \{town or region/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_RENOWN_ORDERS;
@@ -589,7 +593,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.rolled = true; log(`[dm] the seat changes mind (${was} -> ${rs.provider}): a new conversation; the notes, whens and DM log stay with the world${note ? '; ' + note : ''}`);
   }
   sess.runner = rs;
-  sess.system = withDmStageOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
+  sess.system = withDmAskOrders(withDmStageOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
   const saveSess = () => saveDmSession(sess, {url: base});
   let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;
