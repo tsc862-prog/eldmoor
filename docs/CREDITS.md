@@ -186,6 +186,7 @@ that licence (attribution), not under CC-BY-SA; the same goes for any other laye
 <!-- lpc-townsfolk:end -->
 
 The town guards `sprite:npc-guard-<people>` are composed the same way (no role of `src/data/npcs.js`: only the renderer draws them); their layers are in the list above.
+
 ## LPC creature sheets
 
 `sprite:mob-<creature>` for wolf, rimehound, boar, mudboar, spider, lurker, golem, wight and bog are cut by

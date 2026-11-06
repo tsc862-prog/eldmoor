@@ -21,6 +21,8 @@
 - [Town life](townlife.md) — #795 render-only critters/smoke/stalls/guards, deco entities, staging
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
 - [Biome ground](biomes.md) — #835 LPC fen/swamp/mud/ash/snow/ice/lava from the Terrains atlas, pair table, 3-type corners, ENOSPC note
+- [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
+- [Road figures](roadfigures.md) — #896 traffic.js draws LPC sheets for guards/travellers; restart vite after edits before shots
 - [Townsfolk sheets](townsfolk.md) — #832 npc role x people LPC sheets, npcSheetId lookup, staging shots, python3 stub trap
 - [LPC creatures](lpccreatures.md) — #831 OGA LPC creature cut, what fit and what did not, staging a creature shot
 - [LPC landmarks](lpclandmarks.md) — #836 crypt mouth and lair from LPC castlewalls/lavarock, landmark shot staging, C: full gotcha
