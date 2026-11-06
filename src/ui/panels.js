@@ -63,7 +63,7 @@ const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className
 export const hn=a=>{const s=el('span','hn f'+a.fac,styled(a));s.dataset.hid=a.id;return s};
 const meter=(cls,frac)=>{const m=el('div','meter '+cls);const i=document.createElement('i');i.style.width=clamp(frac*100,0,100)+'%';m.append(i);return m};
 // Render chronicle-style parts (strings, heroes, {t,c} spans) into a node.
-const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p)node.append(el('span',p.c||'',p.t))}};
+const parts=(node,ps)=>{for(const p of ps){if(typeof p==='string')node.append(p);else if(p&&p.kind==='hero')node.append(hn(p));else if(p){const sp=el('span',p.c||'',p.t);if(p.dg){sp.dataset.dungeon=p.dg;sp.classList.add('dgname');sp.title='Open the dungeon view';sp.setAttribute('role','button');sp.tabIndex=0}node.append(sp)}}}; // p.dg: a DM-made site's name opens its dungeon view (#642)
 // Zone index from a number or a zone name; -1 when unknown.
 const zoneIdx=z=>typeof z==='number'?z:ZONES.indexOf(z);
 
@@ -479,7 +479,7 @@ export function renderClock(){$('clock').textContent=`Day ${Math.floor(S.gameMin
 // Chronicle: render what the sim already logged, then follow new entries.
 function initChronicle(){const el_=$('log');
   const add=e=>{if(!chronicleShows(e))return;const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';
-    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} // the downed, a rescue, a mercy, a finish (#659)li.append(el('time',null,e.t));parts(li,e.parts);
+    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} li.append(el('time',null,e.t));parts(li,e.parts); // the downed, a rescue, a mercy, a finish (#659)
     keepView(el_,()=>{el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()})}; // a new line on top keeps the line being read in view (#145)
   const all=()=>{el_.replaceChildren();for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i])};all();
   setChronicleRefresh(all); // the Fellowship only filter toggles re-render from S.chronicle

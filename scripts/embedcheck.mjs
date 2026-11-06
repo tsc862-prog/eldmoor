@@ -10,6 +10,7 @@
 //   - the game side is pure: the same arguments rank the same, the save does not change, the seeded world hash is untouched
 //   - seats stay apart: a secret planted in another hero's notes never appears in a hero's search, and its vectors are not read
 // Usage: npm run embedcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {mkdtempSync, existsSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -17,7 +18,7 @@ import {join} from 'node:path';
 
 let seed = 0x5eed0553;
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
-const LOGS = mkdtempSync(join(tmpdir(), 'eldmoor-embed-')); process.env.AGENT_LOGS = LOGS;
+const LOGS = mkTmp('eldmoor-embed-'); process.env.AGENT_LOGS = LOGS;
 
 const SIM = await import('../src/sim/index.js');
 const SLT = await import('../src/sim/company.js'); // the slotted company (#588)

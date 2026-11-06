@@ -41,6 +41,7 @@
 //     redrawn or spilt answer is refused with its raw kept; raws and art:reprocess keep working; the router leaves these kinds
 //     out; a Space from before img2img stops the run with the word to push; the router runs of part 4 use the manifest without
 //     kindInit, which also proves the text recipe on these kinds still works for raws made before.
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,utimesSync,mkdirSync} from 'node:fs';
@@ -197,7 +198,7 @@ console.log('the building recipe and its gates (#763)');
   {const e=byId.get('building:stone-hall'),g=PF.styleGate(oldOut(e),pal('stone'),PF.gateOf(e));
     ok(!g.ok&&g.colors>PF.GATE.maxColors&&g.speckle>PF.GATE.maxSpeckle,`regression fixture: the old recipe gives ${g.colors} colours and ${Math.round(g.speckle*100)}% lone pixels; the gate refuses it (${g.why.join('; ')})`)}
   // art:accept: the in-game look and the style gate
-  {const dir=mkdtempSync(join(tmpdir(),'eldmoor-accept-')),date='2026-11-04',{writeIndex}=await import('./art/gen.mjs'),{recordPreview}=await import('./art/preview.mjs');
+  {const dir=mkTmp('eldmoor-accept-'),date='2026-11-04',{writeIndex}=await import('./art/gen.mjs'),{recordPreview}=await import('./art/preview.mjs');
     try{const q=QUEUE0(),ii={version:1,assets:{}},inc=join(dir,'incoming',date),put=(id,png)=>{const key=tierKey(id,32),file=fileOf(id,32),p=join(inc,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);q.incoming[key]={date,file};const sz=pngSize(png);ii.assets[key]={id,tier:32,kind:id.split(':')[0],file,w:sz.w,h:sz.h}};
       const hall=byId.get('building:stone-hall'),inn=byId.get('building:stone-inn'),auction=byId.get('building:stone-auction');
       const good=run(hall,FB.flatBuilding(PAL.FLAT.stone,sizeOf(hall,32))),gi=run(inn,FB.flatBuilding(PAL.FLAT.stone,sizeOf(inn,32)));
@@ -244,7 +245,7 @@ console.log('sprite sheets (#711, scripts/art/post-sheet.mjs)');
   ok(/sprite sheet/.test(man.kindStyle.sprite)&&!/seamless/.test(man.kindStyle.sprite),'sprite prompts carry their own style (a sheet on plain ground, not a seamless tile)')}
 
 console.log('gen.mjs and daily.mjs against a mock Hugging Face server');
-const tmp=mkdtempSync(join(tmpdir(),'eldmoor-art-'));
+const tmp=mkTmp('eldmoor-art-');
 try{
   // The mock: the Hub's provider mapping (as seen on 2026-11-02) and fal-ai image routes, with switches for refusals.
   const MOCK_TOKEN='hf_mockArtcheckToken123',MAPS={
@@ -718,12 +719,63 @@ console.log('tiers: index, loader, fallback, generation settings');
   ok(normKey('tile:grass')==='tile:grass@32'&&normKey('tile:grass#alt2')==='tile:grass@32#alt2'&&normKey('tile:grass@64#alt1')==='tile:grass@64#alt1','queue keys from before tiers read as the 32 tier');
   {const k=splitKey('tile:grass@64#alt3');ok(k.id==='tile:grass'&&k.tier===64&&k.alt===3&&keyFile('tile:grass@64#alt3')==='tile/64/grass.alt3.png','a tier key splits into id, tier and alternate; its file is <kind>/<tier>/<name>.altK.png')}
   // an old queue and index (keys without a tier) are read as the 32 tier
-  const old=mkdtempSync(join(tmpdir(),'eldmoor-oldq-'));
+  const old=mkTmp('eldmoor-oldq-');
   try{writeFileSync(join(old,'queue.json'),JSON.stringify({version:1,incoming:{'tile:grass':{date:'2026-11-03',file:'tile/grass.png'}},rejected:{'tile:mud':1},alts:{},failed:{},next:['tile:swamp']}));
     writeFileSync(join(old,'index.json'),JSON.stringify({version:1,assets:{'tile:grass':{id:'tile:grass',file:'tile/grass.png',w:32,h:32}}}));
     const q=loadQueue(old),ix=loadIndex(old);
     ok(q.incoming['tile:grass@32']&&q.incoming['tile:grass@32'].file==='tile/grass.png'&&q.rejected['tile:mud@32']===1&&q.next[0]==='tile:swamp@32'&&ix.assets['tile:grass@32'].tier===32,'the owner\'s queue and incoming index from before tiers (2026-11-03) carry over as the 32 tier')}
   finally{rmSync(old,{recursive:true,force:true})}}
+
+console.log('portrait library: pick by hash, fallback, absent (#710)');
+// The faces of kind portrait (ids portrait:<race>-<cls>-<sex>-<nn>) drawn by scripts/art/fixtures.mjs portraitFixtures, through
+// the PNG codec, installed with setAssetPixels; render/portrait.js libraryFace picks one, else the code face of #367.
+{const A=await import('../src/render/assets.js'),Pt=await import('../src/render/portrait.js'),{portraitFixtures}=await import('./art/fixtures.mjs');
+  const pid=A.parsePortraitId;
+  ok(JSON.stringify(pid('portrait:hallowan-warrior-f-03'))==='{"race":"hallowan","cls":"warrior","sex":"f","nn":3}'&&JSON.stringify(pid('portrait:townsfolk-guard-01'))==='{"race":"townsfolk","cls":"guard","sex":"","nn":1}'&&pid('tile:grass')===null&&pid('portrait:hallowan')===null,
+    'portrait ids parse as people, class (or townsfolk role), sex and number');
+  const hero=(id,name,race,cls)=>({id,name,race,cls,fac:race==='ashfolk'||race==='mirekin'||race==='thornhide'?1:0,skin:'#d8a878',hair:'#2a2020'});
+  const H1=hero(3,'Kerin','hallowan','Warrior'),H2=hero(4,'Fena','hallowan','Priest'),H3=hero(5,'Bo','tarrow','Hunter'),H4=hero(6,'Ugra','ashfolk','Rogue');
+  A.provideAssets(null,{});
+  ok([H1,H2,H3,H4].every(a=>Pt.libraryFace(a)===null)&&A.portraitAssets('hallowan').length===0,'no index (no assets/ folder): no library face, every hero draws the code face');
+  const real=loadIndex(ASSETS);A.provideAssets(real,{});
+  ok(A.portraitAssets('hallowan').length===Object.values(real.assets||{}).filter(e=>/^portrait:hallowan-/.test(e.id||'')).length,'the repo index: the listing matches its portrait entries ('+A.portraitAssets('hallowan').length+' for hallowan)');
+  A.provideAssets({assets:{'portrait:tarrow-hunter-m-01@32':{id:'portrait:tarrow-hunter-m-01',kind:'portrait',tier:32,file:'portrait/32/tarrow-hunter-m-01.png',w:64,h:64}}},{});
+  {const l=Pt.libraryFace(H3);ok(l==='portrait:tarrow-hunter-m-01'&&A.assetPixels(l)===null,'indexed but the PNG absent or not loaded: the face is picked, its pixels are null, so portrait() draws the code face')}
+  A.provideAssets(null,{});
+  const ids=['portrait:hallowan-warrior-m-01','portrait:hallowan-warrior-f-01','portrait:hallowan-warrior-f-02','portrait:hallowan-mage-f-01','portrait:ashfolk-rogue-m-01','portrait:townsfolk-guard-01'];
+  const fx=portraitFixtures(ids,64),install=list=>{for(const id of list){const im=decodePng(encodePng(fx[id]));A.setAssetPixels(id,A.pixelsOf(im.w,im.h,im.data))}};
+  ok(ids.every(id=>fx[id].w===64&&fx[id].h===64)&&new Set(ids.map(id=>Buffer.from(fx[id].data).toString('base64'))).size===ids.length,'a 64 px fixture face per id, each different');
+  install(ids);
+  const warriors=A.portraitAssets('hallowan','Warrior');
+  ok(warriors.join()==='portrait:hallowan-warrior-f-01,portrait:hallowan-warrior-f-02,portrait:hallowan-warrior-m-01'&&A.portraitAssets('hallowan').length===4&&A.portraitAssets('townsfolk','guard').length===1,'the listing per people and class, per people, and per townsfolk role, sorted');
+  const f1=Pt.libraryFace(H1);
+  ok(warriors.includes(f1),`people x class: Kerin (hallowan Warrior) gets a warrior face (${f1})`);
+  ok(A.portraitAssets('hallowan',H2.cls).length===0&&A.portraitAssets('hallowan').includes(Pt.libraryFace(H2)),`no hallowan Priest face: Fena falls back to a hallowan face (${Pt.libraryFace(H2)})`);
+  ok(Pt.libraryFace(H3)===null,'no tarrow face at all: Bo draws the code face');
+  ok(Pt.libraryFace(H4)==='portrait:ashfolk-rogue-m-01','a people with one face: that face');
+  ok(Pt.libraryFace({...H1})===f1&&Pt.libraryFace({...H1,hp:1,x:9,state:'dead'})===f1,'the pick is a pure function of id and name (other fields, a reload, a save: the same face)');
+  {const many=[];for(let i=0;i<300;i++)many.push(Pt.libraryFace(hero(i,'Hero'+i,'hallowan','Warrior')));const by=warriors.map(w=>many.filter(m=>m===w).length);
+    ok(by.every(n=>n>50),`the pick spreads over the faces available (${by.join(' / ')} of 300)`);
+    const renamed=[];for(let i=0;i<300;i++)renamed.push(Pt.libraryFace(hero(i,'Other'+i,'hallowan','Warrior')));
+    ok(renamed.filter((v,i)=>v!==many[i]).length>100,'a New World that reuses ids (new names) picks other faces ('+renamed.filter((v,i)=>v!==many[i]).length+' of 300 differ)')}
+  // index order never matters: remove and install again in reverse
+  for(const id of ids)A.setAssetPixels(id,null);install([...ids].reverse());
+  ok(Pt.libraryFace(H1)===f1&&Pt.libraryFace(H2)===Pt.libraryFace({...H2}),'installed in another order: the same faces');
+  // the frame: 5:6, never transparent, the faction backdrop, dead grey, ghost blue, deterministic
+  {const p=A.assetPixels(f1),px=Pt.libraryPixels(H1,p),dead=Pt.libraryPixels(H1,p,'dead'),gh=Pt.libraryPixels(H1,p,'ghost'),x2=Pt.libraryPixels(H1,p,'',Pt.FRAME_W*2,Pt.FRAME_H*2);
+    const rg=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+    ok(Pt.FRAME_W===Pt.PORTRAIT_W*2&&Pt.FRAME_H===Pt.PORTRAIT_H*2&&px.length===Pt.FRAME_W*Pt.FRAME_H&&x2.length===px.length*4&&px.every(v=>/^#[0-9a-f]{6}$/.test(v)),`a library face fills the ${Pt.FRAME_W}x${Pt.FRAME_H} frame (and ${Pt.FRAME_W*2}x${Pt.FRAME_H*2} on a 2x screen) with no hole`);
+    ok(JSON.stringify(Pt.libraryPixels(H1,p))===JSON.stringify(px)&&new Set(px).size>8,`deterministic, ${new Set(px).size} colours`);
+    ok(px[0]===px[1]&&px[0]!==Pt.libraryPixels(H4,p)[0],'the top of the frame is the faction backdrop (another faction, another backdrop)');
+    ok(dead.every(h=>{const [r,g,b]=rg(h);return Math.abs(r-g)<2&&b>=g&&b-g<8})&&gh.every(h=>{const [r,,b]=rg(h);return b>=r}),'fallen faces are grey and ghosts pale blue, as with the code face')}
+  ok(Pt.portraitPixels(H1).length===Pt.PORTRAIT_W*Pt.PORTRAIT_H,'the code face is still there beside the library');
+  // a partial library shrinking: remove the warrior faces, Kerin falls back to the people, then the code face
+  for(const w of warriors)A.setAssetPixels(w,null);
+  ok(Pt.libraryFace(H1)==='portrait:hallowan-mage-f-01','warrior faces removed: Kerin falls back to the one hallowan face left');
+  A.setAssetPixels('portrait:hallowan-mage-f-01',null);
+  ok(Pt.libraryFace(H1)===null&&Pt.libraryFace(H4)==='portrait:ashfolk-rogue-m-01','every hallowan face removed: the code face; other peoples keep theirs');
+  for(const id of ids)A.setAssetPixels(id,null);A.provideAssets(null,{});
+  ok([H1,H2,H3,H4].every(a=>Pt.libraryFace(a)===null),'library removed: back to the code face for everyone')}
 
 for(const [mode,title] of [['--autotile','autotile rules with fixture PNGs (slice 2)'],['--towns','towns and landmarks with fixture PNGs (slice 3)']]){console.log(title);
 for(const world of ['eldmoor','stepping']){
@@ -755,7 +807,7 @@ async function autotileProbe(){
   {let bad=0,i=0;for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];for(let py=0;py<RT;py++)for(let px=0;px<RT;px++){if(off[i++]!==parseInt(T.procPixel(t,tx,ty,(px/ART)|0,(py/ART)|0).slice(1),16))bad++}}
     ok(!bad,`no assets: the ${RT} px render is the ${U} px procedural map scaled ${ART}x, pixel for pixel`)}
   // fixtures -> PNG files and an index in a temp assets folder -> decoded -> installed
-  const fx=fixtures(man,RT),dir=mkdtempSync(join(tmpdir(),'eldmoor-fixtures-')),{mkdirSync}=await import('node:fs'),{sha256}=await import('./art/lib.mjs'),{dirname}=await import('node:path');
+  const fx=fixtures(man,RT),dir=mkTmp('eldmoor-fixtures-'),{mkdirSync}=await import('node:fs'),{sha256}=await import('./art/lib.mjs'),{dirname}=await import('node:path');
   try{const index={version:1,assets:{}};
     for(const [id,im] of Object.entries(fx)){const f=fileOf(id,RT),b=encodePng(im);mkdirSync(dirname(join(dir,f)),{recursive:true});writeFileSync(join(dir,f),b);
       index.assets[tierKey(id,RT)]={id,tier:RT,file:f,w:im.w,h:im.h,sha256:sha256(b),model:'fixture',seed:0}}
