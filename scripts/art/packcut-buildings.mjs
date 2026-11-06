@@ -68,6 +68,9 @@ export function sheet(n){if(!sheets.has(n))sheets.set(n,decodePng(fs.readFileSyn
 export const PARTS={
   slate:['house',100,132,88,56],       // the courses of the big slate panel, inside its frame
   shake:['roofs',320,1032,96,24],      // three courses of wood shakes, tiling both ways
+  slopeL:['roofs',20,76,54,36],        // the slate of a gable roof, its courses running along the ridge: the lit slope and the far one,
+  slopeR:['roofs',86,76,54,36],        // cut clear of the kit's diagonal eaves
+  ridge:['roofs',76,34,8,32],          // the ridge tiles between them
   ashlar:['castle_outside',162,97,94,31], // three courses of dressed stone
   boards:['bridges',129,129,62,47],    // three deck boards
   quoinL:['house',0,8,16,72],
@@ -171,12 +174,15 @@ function chapel(K,foot,dr,rise){const W=foot[0]*T,H=Math.round((foot[1]+rise)*T)
   // a round window over the door
   const cy=wy+8;for(let j=-4;j<=4;j++)for(let i=-4;i<=4;i++){const d=Math.hypot(i,j);if(d<=4.5)set(im,(W>>1)+i,cy+j,d>3.2?rgb(K.line):K.glass(1-(j+4)/9))}
   return {im,spots:{}}}
-function inn(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),rf=30,wy=rf-1,wh=H-wy,nx=dr[0]*T;
+function inn(K,foot,dr,rise,timberSteps){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),rf=30,wy=rf-1,wh=H-wy,nx=dr[0]*T;
   wall(im,K,0,wy,W,wh,{plinth:6});
   roof(im,K,0,0,nx+4,rf,{hip:6});roof(im,K,nx+T-4,0,W-nx-T+4,rf,{hip:6,sx:40});chimney(im,K,W-20,2,10,14);
   // the way in: the plan's door is on the street side, the north, which this view cannot see. So the roof is cut for it, and
   // the kit's steps go down from the street to the lintel of a door under the eave.
-  const x=nx+5,w=T-10;rect(im,x-1,0,w+2,T+1,K.line);lay(im,'steps',x,0,w,24,K.mason,{sx:4,bias:.2});rect(im,x,24,w,T-23,K.mason(.1));rect(im,x+2,T-5,w-4,6,K.line);lay(im,'door',x+3,T-4,w-6,5,K.door,{sy:30});
+  const x=nx+5,w=T-10;rect(im,x-1,0,w+2,T+1,K.line);
+  if(timberSteps){for(let s=0;s<24;s+=6){lay(im,'boards',x,s,w,5,K.door,{sx:8+s,bias:.12-s/70});rect(im,x,s+5,w,1,K.line)}rect(im,x,24,w,T-23,K.door(.05))}
+  else{lay(im,'steps',x,0,w,24,K.mason,{sx:4,bias:.2});rect(im,x,24,w,T-23,K.mason(.1))}
+  rect(im,x+2,T-5,w-4,6,K.line);lay(im,'door',x+3,T-4,w-6,5,K.door,{sy:30});
   plaque(im,K,'inn',(W>>1)-12,wy+6);windowAt(im,K,11,wy+7,18);windowAt(im,K,W-28,wy+7,18);
   return {im,spots:{chimney:[W-15,2]}}}
 function board(K,foot){const W=foot[0]*T,H=foot[1]*T,im=blank(W,H);
@@ -202,11 +208,19 @@ function gable(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H
   // the head of the wall: a timber frame over the plaster, a round window
   if(K.style==='stone'){rect(im,1,ey+3,W-2,2,K.trim(.3));rect(im,(W>>1)-1,ay+6,2,ey-ay-3,K.trim(.3))}
   const cy=ay+20;for(let j=-5;j<=5;j++)for(let i=-5;i<=5;i++){const d=Math.hypot(i+.5,j+.5);if(d<=5.2)set(im,(W>>1)+i,cy+j,d>3.8?rgb(K.line):K.glass(1-(j+5)/10))}
-  lay(im,K.shingle,0,0,W,ey+1,K.roof,{sy:K.shingleY,bias:-.08,at:i=>i<W/2?.12:-.2,clip:(x,y)=>y<v(x)});
+  // the slopes face east and west, so their courses run back along the ridge: laid across the view they read as brick
+  const under=(x,y)=>y<v(x);lay(im,'slopeL',0,0,W>>1,ey+1,K.roof,{sx:14,bias:.12,clip:under});lay(im,'slopeR',W>>1,0,W>>1,ey+1,K.roof,{sx:6,bias:-.2,clip:under});
   for(let x=0;x<W;x++){const y=Math.round(v(x));set(im,x,y-1,rgb(K.line));set(im,x,y,K.frame(.95));set(im,x,y+1,K.frame(.55));set(im,x,y+2,rgb(K.line));set(im,x,y+3,K.wall(0))}
-  rect(im,(W>>1)-1,0,2,ay-1,K.roof(1));rect(im,(W>>1)+1,0,1,ay-1,K.roof(.1));rect(im,0,0,W,1,K.line);rect(im,1,1,W-2,1,K.roof(.85));rect(im,0,0,1,ey,K.line);rect(im,W-1,0,1,ey,K.line);
+  lay(im,'ridge',(W>>1)-4,0,8,ay-1,K.roof,{bias:.1});rect(im,0,0,W,1,K.line);rect(im,1,1,W-2,1,K.roof(.85));rect(im,0,0,1,ey,K.line);rect(im,W-1,0,1,ey,K.line);
   door(im,K,dx,H-2,{w:24,h:36});windowAt(im,K,wx-8,H-37,20);
   return {im,spots:{}}}
+// A cottage whose door is on its north side, on a lane this view looks away from. As on the inn, the roof is cut for it: the steps go
+// down from the lane to a lintel under the eave, and the wall we can see is the back of the house, two windows.
+function laneCottage(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),rf=27,wy=rf-1,nx=dr[0]*T,x=nx+5,w=T-10,cx=W-19,sh=19;
+  wall(im,K,0,wy,W,H-wy,{plinth:6,corners:false});chimney(im,K,cx,0,10,15);roof(im,K,0,3,nx+4,rf-3,{hip:0});roof(im,K,nx+T-5,3,W-nx-T+5,rf-3,{hip:5,sx:30});
+  rect(im,x-1,0,w+2,rf,K.line);lay(im,'steps',x,1,w,sh,K.mason,{sx:4,bias:.2});rect(im,x,sh+1,w,rf-sh-1,K.mason(.1));rect(im,x+2,rf-5,w-4,5,K.line);lay(im,'door',x+3,rf-4,w-6,4,K.door,{sy:30});
+  windowAt(im,K,9,wy+9,18);windowAt(im,K,W-26,wy+9,18);
+  return {im,spots:{chimney:[cx+5,1]}}}
 // A house on the north row, as tall as the halls beside it.
 function terrace(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,H),rf=42,wy=rf-1,cx=W-24;
   wall(im,K,0,wy,W,H-wy);chimney(im,K,cx,0,10,18);roof(im,K,0,8,W,rf-8,{hip:8,sx:14});
@@ -221,7 +235,7 @@ function harbourInn(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blan
   door(im,K,dx,H-2,{w:26,h:34});plaque(im,K,'inn',dx-12,wy+1);
   for(const x of [14,44])windowAt(im,K,x,jy+9,17);butt(im,K,W-22,H-1);butt(im,K,W-36,H-1);
   return {im,spots:{chimney:[cx+5,1]}}}
-export const RECIPES={hall,auction,smithy,chapel,inn,board,'hall-long':hall,'inn-harbour':harbourInn,'house-cottage':cottage,'house-croft':croft,'house-gable':gable,'house-row':terrace};
+export const RECIPES={hall,auction,smithy,chapel,inn,board,'hall-long':hall,'inn-harbour':harbourInn,'house-cottage':cottage,'house-croft':croft,'house-gable':gable,'house-row':terrace,'house-lane':laneCottage,'inn-deck':(K,f,d,r)=>inn(K,f,d,r,true)};
 // How far a piece stands above its footprint, in tiles (the chapel from its draw box, so the spire keeps its reach). A kit row says so itself.
 export const RISE={hall:1,auction:1,smithy:1,chapel:1.5,inn:0,board:0};
 const riseOf=b=>(b.kit&&b.kit!==b.piece?TOWN_KIT[b.kit].rise:RISE[b.piece])||0;
@@ -252,7 +266,7 @@ function main(argv=process.argv.slice(2)){
   const out=o.out||path.join(ROOT,'assets'),cut=cutBuildings(),ip=path.join(ROOT,'assets','index.json'),idx=o.index?JSON.parse(fs.readFileSync(ip,'utf8')):null;
   for(const [id,{im,foot,door,spots}] of Object.entries(cut)){if(o.only&&!o.only.some(k=>id.endsWith(k)))continue;
     const file=fileOf(id,32),buf=encodePng(im);fs.mkdirSync(path.dirname(path.join(out,file)),{recursive:true});fs.writeFileSync(path.join(out,file),buf);console.log('[cut]',id,`${im.w}x${im.h}`);
-    const kitSet=(/timber/.test(id)&&!/-board$/.test(id))||/-croft$/.test(id)?LPC_ROOF_KIT:LPC_KIT;
-    if(idx)idx.assets[id+'@32']={id,kind:'building',file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:kitSet.source,license:kitSet.license,authors:kitSet.authors,url:kitSet.url,accepted:new Date().toISOString().slice(0,10),foot,door,...(Object.keys(spots).length?{spots}:{})}}
+    const kitSet=(/timber/.test(id)&&!/-board$/.test(id))||/-(croft|gable)$/.test(id)?LPC_ROOF_KIT:LPC_KIT;
+    if(idx)idx.assets[id+'@32']={id,kind:'building',file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:kitSet.source,license:kitSet.license,authors:kitSet.authors,url:kitSet.url,accepted:idx.assets[id+'@32']?.accepted||new Date().toISOString().slice(0,10),foot,door,...(Object.keys(spots).length?{spots}:{})}}
   if(idx){idx.assets=Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]));fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main();

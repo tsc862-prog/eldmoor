@@ -231,7 +231,7 @@ export function createRenderer(cv,screenEl){
       else if(e.state==='dead')s=sprite('grave'+e.fac,SPR.grave[0],{G:'#8a8a96',F:'#3a3a46',B:FAC[e.fac].dark});
       else s=heroSprite(e,ghost,fr);
       // a generated sheet (#177) for a living hero or creature, else the procedural sprite scaled to the same height
-      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob')?sheetFrame(e,dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
+      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob'||e.kind==='npc')?sheetFrame(e,e.kind==='npc'&&!e.moving?0:dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
       let F=null;if(G){F=EGF[i]||(EGF[i]={img:null,sx:0,sy:0,fw:0,fh:0});F.img=G.img;F.sx=G.sx;F.sy=G.sy;F.fw=G.fw;F.fh=G.fh} // sheetFrame hands back one shared object
       ESPR[i]=s;EG[i]=F;ESW[i]=G?G.fw/ART:s.width*PROC_SCALE;ESH[i]=G?G.fh/ART:s.height*PROC_SCALE;
       const px=EPX[i]=Math.round((e.x+homeLane(e))*T);
