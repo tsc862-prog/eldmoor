@@ -59,6 +59,39 @@ console.log('A mixed company at setup');
   init({setup: cleanSetup(a)}); const Cs = SLT.companies(); ok(Cs.length === 3 && SLT.members(Cs[0]).length === 2 && new Set(SLT.members(Cs[0]).map(h => h.fac)).size === 2 && Cs[0].hall === t, 'apart founds the mixed pair at its start town')}
 }
 
+console.log('Any town takes a company in');
+{const {playerAct} = await import('../src/sim/player.js'), {dmAct, setDmSeat} = await import('../src/sim/dmagent.js'), {takeWound} = await import('../src/sim/tend.js'), {maxHp} = await import('../src/sim/heroes.js'), {rebuild} = await import('../src/sim/spatial.js'), {dist} = await import('../src/world/map.js');
+ const own = CITY.find(c => c.fac === 0), far = CITY.find(c => c.fac === 1), act = (a, t, x) => playerAct(a.id, t, x || {});
+ const world = lore => {init({setup: cleanSetup(lore ? mixed(1025, {hall: own.name}) : defaultSetup(1025, 'eldmoor', 0))}); if (S.opening) S.opening.queue.length = 0; setDmSeat(true); return SLT.slotHeroes(SLT.slotted())};
+ const at = (L, p) => {L.forEach((a, i) => {Object.assign(a, {x: p.x + (i % 3) * .4, y: p.y + (i > 2 ? .4 : 0), state: 'hunt', hp: maxHp(a), dest: null, target: null, pq: []})}); rebuild()};
+ const L = world(true), hero = L.find(a => a.fac === 0), walker = hero;
+ at(L, {x: far.gate.x, y: far.gate.y + 3});
+ let r = act(walker, 'move_to', {target: far.name}); ok(r.ok, 'move_to the other history\'s town: ' + (r.error || r.going || 'ok'));
+ r = act(walker, 'move_to', {target: 'chapel in ' + far.name}); ok(r.ok && /chapel/.test(JSON.stringify(r)), 'move_to its chapel walks to the chapel, not the gate');
+ {const c = far.spots.chapel; at(L, {x: c.x, y: c.y}); takeWound(L[0], 'a test'); takeWound(L[1], 'a test');
+  const payer = L.find(a => a.fac === 0); payer.gold = 500; r = act(payer, 'chapel_tend', {}); if (r.error && /no wound/.test(r.error)) r = act(payer, 'chapel_tend', {who: L[0].name === payer.name ? L[1].name : L[0].name});
+  ok(r.ok, 'the chapel priest of that town tends a wound: ' + (r.error || r.result))}
+ at(L, {x: far.spots.square ? far.spots.square.x : far.gate.x, y: far.spots.square ? far.spots.square.y : far.gate.y});
+ r = act(hero, 'learn_profession', {id: 'mining'}); ok(r.ok, 'its trainers teach: ' + (r.error || r.learned));
+ r = act(hero, 'smith', {}); ok(!/friendly town/.test(r.error || ''), 'its smith works: ' + (r.error || 'ok'));
+ r = act(hero, 'craft', {recipe: 'nothing such'}); ok(!/friendly town/.test(r.error || ''), 'its workshops open');
+ r = act(hero, 'rest', {minutes: 30}); ok(r.ok, 'a hero rests there: ' + (r.error || r.resting_min));
+ hero.pq = [];
+ {const p = S.npcs.find(x => x.town === far.name && x.role === 'innkeeper') || S.npcs.find(x => x.town === far.name); at(L, {x: p.x, y: p.y + .6}); r = act(hero, 'talk', {target: p.role}); ok(r.ok && !/contempt/.test(JSON.stringify(r)), 'the townsfolk answer: ' + (r.error || String(r.answer).slice(0, 50)))}
+ {const ls = act(hero, 'lore'); ok(CITY.every(c => (ls.towns || []).includes(c.name)), 'lore lists every town')}
+ // the DM stages and summons at any town
+ const F = SLT.slotted(); F.fac = 0;
+ r = dmAct('stage_scene', {kind: 'meeting', near: 'fellowship', at: far.name, frame: 'A stranger at the square waits with a letter.', cast: {role: 'stranger', name: 'Tessel', want: 'a word'}, reason: 'test'});
+ ok(r.ok, 'stage_scene at that town: ' + (r.error || r.kind));
+ r = dmAct('summon_hero', {fac: FAC[0].name, cls: 'Rogue', level: 1, near: far.name, why: 'test'});
+ ok(r.ok, 'summon_hero inside that town, of either history: ' + (r.error || 'ok'));
+ // and with no setting everything refuses as before
+ const M = world(false), m = M[0], foeTown = CITY.find(c => c.fac !== m.fac);
+ at(M, {x: foeTown.gate.x, y: foeTown.gate.y + 16});
+ r = act(m, 'move_to', {target: foeTown.name}); ok(!r.ok && /enemy town/.test(r.error), 'no setting: an enemy town is refused as ever');
+ at(M, {x: foeTown.spots.square.x, y: foeTown.spots.square.y}); r = act(m, 'learn_profession', {id: 'mining'}); ok(!r.ok && /not a town of your side/.test(r.error), 'no setting: its trainers refuse as ever');
+}
+
 console.log('A world repeats');
 {const run = k => spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--child', k], {encoding: 'utf8', env: {...process.env, ELDMOOR_SIDES: ''}}).stdout.split(/\r?\n/).find(l => l.startsWith('SIG ')) || 'none';
  const a = run('seeded'), b = run('seeded'), c = run('lore'), d = run('lore');
