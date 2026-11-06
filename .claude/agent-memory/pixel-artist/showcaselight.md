@@ -14,3 +14,5 @@ The world's light since #979: `grade.js` (hour table, sun path), `shadows.js` (c
 - Staging at the cinema size: CSS `#screen{position:fixed;inset:0;width:100vw;height:100vh}` before measuring; the normal pane is 43% of the pixels, so full-window numbers are the worst case. Copy perfprobe with that CSS for an A/B ([[perfprobe]]).
 - Shots need a wait: LPC walls and buildings arrive after the first paint, so a too-early "before" shows the old walls. See [[previews]].
 - `rm -rf` on a scratch folder is refused by the permission layer: write to a new folder instead.
+
+Motion (#979): `water.js` (flow from a walk along the river tiles, glints, foam, wading rings; in a scenery world marks follow `waterLevel`, the painted edge, not the tiles), `sway.js` (one `gust` field; crowns are copies sheared over the chunk art, blades, wheat from `ACTIVE_SPEC.scenery.fields`), `motes.js` (stateless, kind by the biome under the mote), cloud shadows in `lightmap.js`. Warm tints on water read as a dirt road: `sheen.js` pushes it blue instead. There is no ffmpeg on the box; an APNG can be packed from PNGs by rewrapping IDAT chunks.
