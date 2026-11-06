@@ -31,6 +31,9 @@ DM-only. The heroes never read this; reveal it through narrate, npc_say, hooks, 
 - **Concord Fellowship (Highgate or Cairnmoot)**: Highgate starts farthest and has the letter that was never answered; Cairnmoot starts on the Greywater with the ford and the missing caravan. Speak in formal, dry terms. tags: concord, adapt
 - **Warband Fellowship (Grimhold or Murkstead)**: Grimhold hears the salt-song's missing verse; Murkstead hears about the quiet trade with Cairnmoot. Speak bluntly. Neither knows Hesper; she finds them. tags: warband, adapt
 
+## Prologue
+- **The first delve**: The company's first dungeon is a small one near its hall: read `first_delve` in dm_status for the place. Keep it small and human, a chore that turns out to be real. Hint at the campaign's premise through one object or sight below, no more: this is where they learn each other's voices, and the world's real danger comes after.
+
 ## Secrets
 - **The Cairns Are a Calendar**: They were set so each lit cairn marks one stage of a pilgrim's walk; dark cairns mean pilgrims are still walking and not arriving. Where: Hesper's ledger (a Lore roll), or a mystery mark at a Lowmark waymark. tags: cairns, reveal
 - **The Compact Has Four Pages**: One page in each home town. Highgate: debts; Cairnmoot: the route; Grimhold: the salt-song; Murkstead: the names of those who never returned. Where: a gate captain's secret, revealed by a staged social scene. tags: compact, towns

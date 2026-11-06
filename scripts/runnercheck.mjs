@@ -11,6 +11,7 @@
 //      hard stops by itself (stdin closes).
 //   4. The real relay script on a spare port: off by default, on with --runners.
 // Usage: npm run runnercheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {EventEmitter} from 'node:events';
 import {spawn} from 'node:child_process';
@@ -73,7 +74,7 @@ console.log('start requests');
 // ---------------------------------------------------------------- 2. routes, fake children
 console.log('runner routes (fake children)');
 {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
+  const tmp = mkTmp('eldmoor-runnercheck-');
   const heroes = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(id => ({id, name: 'H' + id, alive: true}));
   let dmSeat = true, dmPrep = null; // the game's DM seat (#66): a DM runner starts only while it is open; dmPrep: the page's prep report (#733)
   const be = {call: async () => ({ok: true}), dmCall: async t => t === 'table_call' ? {ok: true, call: {id: 1, kind: 'frame', seconds_left: 8}} : {ok: true}, narrate() {}, info: () => ({connected: true, heroes, dm: dmSeat, ...(dmPrep ? {dmPrep} : {})})}; // a frame call waits for the DM's voice (#682)
@@ -479,7 +480,7 @@ console.log('a slow page: late answers kept for the retry, held waits, page busy
 // ---------------------------------------------------------------- 2b. company runners (#460), fake children
 console.log('company runners (fake children, #460)');
 {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-co-'));
+  const tmp = mkTmp('eldmoor-runnercheck-co-');
   const heroes = [{id: 1, name: 'Ann', alive: true, company: 7, companyName: '', size: 2, lead: true}, {id: 2, name: 'Bo', alive: true, company: 7, companyName: '', size: 2, lead: false}, {id: 3, name: 'Cy', alive: true, company: 8, companyName: 'Cy', size: 1}];
   const c = checkStart({kind: 'company', company: 7}, heroes), byHero = checkStart({kind: 'company', hero: 2}, heroes);
   ok(c.req && c.req.key === 'company:7' && c.req.company === 7 && c.req.budget === 2 && c.req.maxTurns === null && /Ann and Bo/.test(c.req.name), 'a company runner: key company:<id>, $2.00, no turn cap, named for its members');
@@ -532,7 +533,7 @@ console.log('company runners (fake children, #460)');
 // ---------------------------------------------------------------- 2c. budget stops (#807), fake children
 console.log('budget stops (fake children, #807)');
 {
-  const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-bud-'));
+  const tmp = mkTmp('eldmoor-runnercheck-bud-');
   const heroes = [{id: 1, name: 'Ann', alive: true, company: 7, size: 2, lead: true}, {id: 2, name: 'Bo', alive: true, company: 7, size: 2}, {id: 3, name: 'Cy', alive: true, company: 8, size: 1}, {id: 5, name: 'Fi', alive: true, company: 12, size: 2, lead: true}, {id: 6, name: 'Gu', alive: true, company: 12, size: 2}, {id: 9, name: 'Ivo', alive: true, company: 13, size: 1}, {id: 11, name: 'Kit', alive: true, company: 14, size: 1}];
   const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes, dm: true, worldId: 'w1'})};
   const kids = [];
@@ -643,7 +644,7 @@ console.log('budget stops (fake children, #807)');
 }
 
 // ---------------------------------------------------------------- 3. end to end
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-runnercheck-'));
+const tmp = mkTmp('eldmoor-runnercheck-');
 const mock = await startMockOllama();
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: mock.url, RELAY_RUNNERS: '', AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // pacing (issue #126) kept short
 const procs = [];

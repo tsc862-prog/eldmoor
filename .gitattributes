@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.png binary
 *.cmd text eol=crlf
+# Agent memory indexes only ever gain lines: keep both sides of a merge.
+.claude/agent-memory/**/MEMORY.md merge=union
