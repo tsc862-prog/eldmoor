@@ -1,14 +1,14 @@
 ---
 name: nightly-mock-scenes
-description: #822 nightly run reflex-scenes cause - mock-tools never answers a forced scene, so every scene went to reflex; mock-table fixes it; stuck-state reading
+description: #822 nightly run - why it failed: mock-tools answered no scene, then agent hunt crossed the river to deadly prey, wiped the Fellowship, runner left and no supervisor brought it back
 metadata:
   type: project
 ---
 
-The nightly run (`scripts/nightly-run.mjs`, mock Ollama) failed `reflex-scenes` on every run since it began (x66 on 2026-11-04, x36 on 2026-11-05). Cause: `mock-tools:1b` has no branch for a forced scene answer (`format.properties.option`), so it returned a tool call or prose, the runner said "N answers were not one of ..." and the table fell to reflex (report: 83 scenes, 0 agent turns, 339 reflex). Not a #868 regression and not a game fault.
+Three layers, found one after the other; each hid the next.
 
-**Fix:** `mock-table:1b` in `scripts/mock-ollama.mjs` plays like mock-tools but answers a scene with a legal option (press, listen, speak, else the first) and a line carrying its name and a counter (a near-copy of another member's line is refused by #571). The nightly run uses it. A local run with mock-tools also ends early ("5 failed or empty turns in a row" after the scene misses), so mock-tools is not a fit for any long scene-heavy run.
+1. `mock-tools:1b` has no branch for a forced scene answer, so every scene went to reflex. `mock-table:1b` fixed that (it answers with a legal option). Keep mock-tools untouched: localcheck counts its calls.
+2. Real game bug: `pickPrey` (agent `hunt` with no prey) had no clear line and no region limit, though the tool says "where you stand" and #794 says no prey without a clear line. A level 2-3 hero on the Thornvale bank picked a Fen Lurker or Hoarfell creature it saw across the river and walked round by the bridge to it. It wiped the 5 mock members by day 2, and the owner's own logs have L1 heroes slain by Rimehound, Mudback Boar, Fen Lurker. `feared` only counts after a first sight, so a first pick is never stopped by the threat read.
+3. Harness gap: a Fellowship runner exits when its last member dies; in the game `adopt` in runners.mjs starts it again for the recruits, but nightly-run.mjs had no supervisor, so the remaining 56 minutes measured seats nobody played: on 2026-11-06, all 309 reflex table turns, all reflex-scenes and stuck-state came after the runner left at minute 4 (link "none"); before it, 0 reflex, 0 missed. nightly-run now restarts it (only when every member ended dead).
 
-**How to apply:** a check that needs members to act at the table needs a mock that answers the option schema; keep mock-tools untouched (localcheck counts its calls).
-
-stuck-state in the nightly report: see the PR for the measured split between the town-edge hunt hole (#903) and mock minds that only wait.
+**How to apply:** read an anomaly count with the digest's `link` beside it before blaming the table: `link: none` means no runner. A short run hides this; the wipe decides everything after it. A priming `pickPrey` call in a test records a sight and changes the next pick (feared), so repro through `hunt` and `step`.

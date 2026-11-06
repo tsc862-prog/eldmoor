@@ -85,8 +85,8 @@ export async function startMockOllama({embed = false} = {}) {
         const en = body.format && body.format.properties && body.format.properties.option && body.format.properties.option.enum;
         if (en) {
           const who = ((msgs[0] && msgs[0].content || '').match(/^You are (\w+)/) || [])[1] || 'Someone', pick = (body.model === 'mock-crypt:1b' ? ['heal', 'stabilize', 'potion', 'press', 'strike', 'listen', 'speak'] : ['press', 'listen', 'speak']).find(o => en.includes(o)) || en[0]; // mock-crypt stays alive a little longer: it heals and stabilizes before it strikes
-          seen.tableScene = (seen.tableScene || 0) + 1;
-          return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: pick, line: `${who} says: ${MOCK_TABLE_LINES[seen.tableScene % MOCK_TABLE_LINES.length]}`})}});
+          const n = seen.tableScene = (seen.tableScene || 0) + 1; // three tokens of its own: a fight of 12 rounds comes round the short list, and the table refuses a line 80% alike (refused-calls would measure the mock, #822)
+          return send(200, {...done, message: {role: 'assistant', content: JSON.stringify({option: pick, line: `${who} says: ${MOCK_TABLE_LINES[n % MOCK_TABLE_LINES.length]} ${n + 100}-${n + 1000}-${n + 2000}`})}});
         }
         // a free turn: look, set out to hunt, then wait (mock-tools only rests, so its company never leaves town and stuck-state and idle would measure the mock)
         const k = after.filter(m => m.role === 'assistant').length, walk = [['status'], ['hunt', body.model === 'mock-crypt:1b' && !/"level":[12],/.test(String((after.find(m => m.role === 'tool') || {}).content || '')) ? {count: 4} : {count: 2, where: 'Thornvale'}], ['wait', {minutes: 30}]];
