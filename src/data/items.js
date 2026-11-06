@@ -147,7 +147,14 @@ export const USES={
   'Spit-Roast Perch':  {kind:'ration',heal:.25,price:7, lvl:1, drop:0,craft:true,buff:{stat:'speed',v:.03,mins:60},flavour:'A river perch turned over the coals until the skin crackles. Quick hands at supper.'},
   'Fenmire Eel Stew':  {kind:'ration',heal:.35,price:18,lvl:6, drop:0,craft:true,buff:{stat:'defense',v:.04,mins:120},flavour:'Eel, fen moss and patience. The fen-folk swear it keeps the damp out of the bones.'},
   'Tarn Whitefish Chowder':{kind:'ration',heal:.45,price:32,lvl:12,drop:0,craft:true,buff:{stat:'health',v:.06,mins:180},flavour:'Thick with whitefish and salt, scalding in a tin cup. Lasts the whole of a cold watch.'},
-  'Hoarfell Survey Chart':{kind:'map',reveal:'region',price:40,lvl:12,drop:0,craft:true,flavour:'Ink on scraped hide: the safe fords, the thin ice and the old cairns of the Hoarfell, drawn by someone who walked them.'}};
+  'Hoarfell Survey Chart':{kind:'map',reveal:'region',price:40,lvl:12,drop:0,craft:true,flavour:'Ink on scraped hide: the safe fords, the thin ice and the old cairns of the Hoarfell, drawn by someone who walked them.'},
+  // Bands 1 and 4 (issue #718), same rules as the rows above.
+  'Fenwater Salve':    {kind:'potion', heal:.45,price:20,lvl:6, tier:0,drop:0,craft:true,flavour:'Redroot pounded into fen-water until it runs green; thin stuff, but it closes a cut by morning.'},
+  'Wightbone Philtre': {kind:'potion', heal:.8, price:110,lvl:18,tier:0,drop:0,craft:true,flavour:'Tarn wight marrow ground fine and cut with rimebloom. It tastes of a cold cellar and brings a hero back from the edge.'},
+  'Hearthbloom Fish Pie':{kind:'ration',heal:.3,price:20,lvl:4,drop:0,craft:true,buff:{stat:'crit',v:.02,mins:90},flavour:'Perch baked in a crust with hearthbloom petals. The first bite makes the eye sharper.'},
+  "Tarn Hunter's Feast":{kind:'ration',heal:.6,price:80,lvl:16,drop:0,craft:true,buff:{stat:'health',v:.08,mins:240},flavour:'Whitefish, eel and bloom in one pot, the meal a Hoarfell hunter saves for a long winter march.'},
+  'Scroll of the Brief Ward':{kind:'scroll',effect:'ward',ward:.15,price:20,lvl:3,drop:0,craft:true,flavour:'A hurried ward in cheap ink; it holds only a moment, but a moment is sometimes enough.'},
+  'Scroll of the Unbroken Line':{kind:'scroll',effect:'ward',ward:.35,price:60,lvl:16,drop:0,craft:true,flavour:'Grave dust in the ink and a line that never lifts from the page; blows slide off the reader like rain.'}};
 // What a consumable does, as tooltip lines [css, text] (src/ui/panels.js prints them like gear stats).
 export function useLines(id){const U=USES[id],o=[];if(!U)return o;
   if(U.heal)o.push(['ar','Heals '+Math.round(U.heal*100)+'% of max health'+(U.kind==='bandage'?', out of combat':U.kind==='ration'?', at camp':'')]);
@@ -177,4 +184,9 @@ export const CRAFT_GEAR={
   'Bogiron Handguard':{slot:'hands',ilvl:10,quality:'fine',material:'Bogiron'},
   'Ashsteel Cuirass': {slot:'chest',ilvl:17,quality:'rare',material:'Ashsteel'},
   'Wolfhide Cowl':    {slot:'head', ilvl:4, quality:'fine',material:'Wolfhide'},
-  'Hoarfrost Greatcoat':{slot:'chest',ilvl:18,quality:'rare',material:'Hoarfrost'}};
+  'Hoarfrost Greatcoat':{slot:'chest',ilvl:18,quality:'rare',material:'Hoarfrost'},
+  // Bands 1 and 4 (issue #718)
+  'Mireforged Greaves':{slot:'feet',ilvl:8,quality:'fine',material:'Mireforged'},
+  'Rimesteel Greatblade':{slot:'main',ilvl:20,quality:'rare',material:'Rimesteel'},
+  'Boarhide Buckler': {slot:'off', ilvl:7, quality:'fine',material:'Boarhide'},
+  'Shagmane Hood':    {slot:'head',ilvl:20,quality:'rare',material:'Shagmane'}};

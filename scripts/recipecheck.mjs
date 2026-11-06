@@ -28,14 +28,14 @@ const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  
 console.log('\nEldmoor recipecheck\n');
 const crafts = PROF_IDS.filter(i => PROF[i].kind === 'craft');
 ok(crafts.length === 5, 'five crafting professions');
-ok(RECIPES.length === 15 && new Set(RECIPES.map(r => r.id)).size === 15, 'fifteen recipes with unique ids');
-ok(crafts.every(p => recipesOf(p).length === 3), 'three recipes per crafting profession');
+ok(RECIPES.length === 25 && new Set(RECIPES.map(r => r.id)).size === 25, 'twenty-five recipes with unique ids');
+ok(crafts.every(p => recipesOf(p).length === 5), 'five recipes per crafting profession');
 ok(RECIPES.every(r => crafts.includes(r.prof)), 'every recipe belongs to a crafting profession');
 ok(RECIPES.every(r => Number.isInteger(r.band) && r.band >= 0 && r.band <= 4), 'every band is 0-4');
 ok(crafts.every(p => recipesOf(p).some(r => r.band === 0)), 'every profession has a recipe a beginner (band 0) can make');
 ok(crafts.every(p => recipesOf(p).some(r => r.band >= 3)), 'every profession has an expert recipe (band 3 or more)');
-ok(crafts.every(p => new Set(recipesOf(p).map(r => r.band)).size === 3), 'the three recipes of a profession sit in three different bands');
-ok(crafts.every(p => recipesFor(p, skillBand(1)).length >= 1 && recipesFor(p, skillBand(100)).length === 3), 'skill 1 can craft, skill 100 can craft all');
+ok(crafts.every(p => new Set(recipesOf(p).map(r => r.band)).size === 5), 'the five recipes of a profession sit in bands 0 to 4');
+ok(crafts.every(p => recipesFor(p, skillBand(1)).length >= 1 && recipesFor(p, skillBand(100)).length === 5), 'skill 1 can craft, skill 100 can craft all');
 const inputOk = i => (GOODS[i.id] || MATERIALS[i.id]) && Number.isInteger(i.n) && i.n >= 1 && i.n <= 6;
 ok(RECIPES.every(r => r.inputs.length >= 1 && r.inputs.length <= 3 && r.inputs.every(inputOk)), 'every input is a GOODS or MATERIALS id with a count of 1-6');
 ok(RECIPES.every(r => Number.isInteger(r.gold) && r.gold >= 1), 'every recipe costs gold (a sink)');

@@ -21,7 +21,7 @@ const GROUND={
   meadow:{ramp:['#34782f','#3a8236','#3f8a3a','#45923c','#4a9a40'],acc:['#f4e06a','#f08ab0','#f4f4f8','#6cc050'],odds:.05},
   fen:{ramp:['#3d5729','#42602c','#46622f','#4a6632'],acc:['#7a9a46','#9ab060'],odds:.05},
   swamp:{ramp:['#2a5242','#2c5646','#2f5a4a','#335f4e'],acc:['#5a8a6a','#8aa050'],odds:.04},
-  mud:{ramp:['#4f4e2c','#545330','#5b5a34','#6e6a3e'],acc:['#3e3c22','#7a7650'],odds:.04},
+  mud:{ramp:['#5e4c2c','#645230','#6c5834','#7e6a3e'],acc:['#3e3c22','#7a7650'],odds:.04},
   ash:{ramp:['#585050','#5f5652','#655c58','#6e6460','#746a64'],acc:['#4a423e','#8a807a','#7e8a52'],odds:.04},
   snow:{ramp:['#d8e0e8','#dde4ec','#e2e8ee','#e6ecf2'],acc:['#c4ced8','#ffffff'],odds:.03},
   ice:{ramp:['#aad4e2','#b4dce8','#bde2ec'],acc:['#e4f8fc','#6a98b0'],odds:.03},
@@ -211,6 +211,27 @@ export function fixtures(man,tier=32){const out={};
     else if((m=/^landmark:([a-z-]+)$/.exec(e.id)))im=landmark(m[1],size,e.seed);
     if(im&&im.w===size[0]&&im.h===size[1])out[e.id]=im}
   return out}
+
+// Portrait library fixtures (#710): a head-and-shoulders face per id (portrait:<race>-<cls>-<sex>-<nn>), size x size on a
+// transparent ground, lit from the top left with a one-pixel outline. Skin, hair and garment come from the id's hash, so
+// different ids look different and a check can tell which face was picked. Never written under assets/.
+// portraitFixtures(ids, size=64) -> {id: {w, h, data}}.
+const PSKIN=['#f0c8a0','#d8a878','#b07a50','#8a9a7a','#a8b0b8','#c89a7a'],PHAIR=['#2a2020','#6a4a2a','#c8a050','#e8e4d8','#4a5a7a','#8a2a1a'],
+  PCLOTH=['#5b8ff2','#c84a3a','#4a9a40','#8a5ac8','#c8a040','#3a7a8a'];
+const strHash=s=>{let h=7;for(let i=0;i<s.length;i++)h=(Math.imul(h,33)+s.charCodeAt(i))|0;return h};
+function face(id,N){const im=canvas(N,N),s=strHash(id),k=N/64,pk=(arr,salt)=>arr[Math.floor(hh(s,salt,11)*arr.length)];
+  const skin=pk(PSKIN,1),hair=pk(PHAIR,2),cloth=pk(PCLOTH,3),shade=c=>{const [r,g,b]=rgb(c);return '#'+[r,g,b].map(v=>Math.round(v*.7).toString(16).padStart(2,'0')).join('')};
+  const inHead=(x,y)=>((x-32)/14)**2+((y-28)/17)**2<1,inBody=(x,y)=>y>=46&&Math.abs(x-32)<10+(y-46)*1.6,inHair=(x,y)=>inHead(x,y+3)&&y<20+hh(s,x>>2,5)*4;
+  const at=(X,Y)=>{const x=(X+.5)/k,y=(Y+.5)/k;
+    if(inHair(x,y))return x<30?hair:shade(hair);
+    if(inHead(x,y)){if(Math.abs(y-28)<1.5&&(Math.abs(x-26)<1.5||Math.abs(x-38)<1.5))return '#1a1218';if(Math.abs(y-37)<1&&Math.abs(x-32)<4)return shade(shade(skin));return x+y<58?skin:shade(skin)}
+    if(y>=43&&y<46&&Math.abs(x-32)<5)return shade(skin);
+    if(inBody(x,y))return x<32?cloth:shade(cloth);return null};
+  for(let Y=0;Y<N;Y++)for(let X=0;X<N;X++)put(im,X,Y,at(X,Y));
+  const op=new Uint8Array(im.data);for(let Y=0;Y<N;Y++)for(let X=0;X<N;X++){if(op[(Y*N+X)*4+3])continue; // outline every empty pixel next to the figure
+    if([[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>{const x=X+dx,y=Y+dy;return x>=0&&y>=0&&x<N&&y<N&&op[(y*N+x)*4+3]}))put(im,X,Y,'#100c16')}
+  return im}
+export function portraitFixtures(ids,size=64){const out={};for(const id of ids)out[id]=face(id,size);return out}
 
 // A fixture inbox for art:review (#712): pure data, the artcheck writes it to a temp folder.
 // -> {queue: assets/queue.json, files: [relative path under the assets folder], accepted: [keys already in the index]}
