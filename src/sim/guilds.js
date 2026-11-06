@@ -135,7 +135,7 @@ export const randomGuild=f=>{const l=livingGuilds().filter(g=>g.fac===f);return 
 
 // ---- agent choice (#954): guild_join and guild_found, called from player.js at a town ----
 export function guildJoinFor(a,name){
-  if(a.guild)return {ok:false,why:'You already wear <'+a.guild.tag+'> '+a.guild.name+'. Guilds are not left by tool; your standing in it is yours to live with.'};
+  if(a.guild)return {ok:false,why:'You already wear <'+a.guild.tag+'> '+a.guild.name+'. guild_leave lets you go, and you would carry the memory of it.'};
   if(a.lvl<JOIN_LVL)return {ok:false,why:'A guild roll is signed at level '+JOIN_LVL+' or above; you are level '+a.lvl+'.'};
   const sizes=new Map();for(const x of S.agents)if(x.guild&&alive(x))sizes.set(x.guild,(sizes.get(x.guild)||0)+1);
   const cand=livingGuilds().filter(x=>x.fac===a.fac&&(sizes.get(x)||0)<CAP);
@@ -156,3 +156,22 @@ export function guildFoundFor(a){
   const g=newGuild(a.fac,a);for(const m of [a,...mates])enroll(m,g,'Raised a banner with comrades: ');
   stats().founded++;log(a,' raises a banner with ',...names(mates.map(m=>m.name)),': ',tagTxt(g),'.');
   return {ok:true,founded:'<'+g.tag+'> '+g.name,with:mates.map(m=>m.name)}}
+
+// ---- leaving (#954 follow-up): a choice is reversible. Words and the roll only; bonds and grudges stay as they are. ----
+export function guildLeaveFor(a){
+  const g=a.guild;if(!g)return {ok:false,why:'You wear no guild.'};
+  a.guild=null;a.guildLeftAt=S.gameMin;record(a,'Struck my name from the roll of ',tagTxt(g),'.');
+  log(a,' leaves ',tagTxt(g),'.');
+  return {ok:true,left:'<'+g.tag+'> '+g.name,note:'Its Crypt parties and rivals are no longer yours; you may sign another roll or raise a banner.'}}
+
+// ---- a word at the gate (#954 follow-up): hints that open guilds exist, for a level-3+ unguilded hero in town; words only, nothing is joined. ----
+export const HINT_DAYS=3;
+export function guildWord(a){
+  if(a.guild||a.lvl<JOIN_LVL)return null;
+  if(a.guildHintAt!=null&&S.gameMin-a.guildHintAt<HINT_DAYS*DAY)return null;
+  const sizes=new Map();for(const x of S.agents)if(x.guild&&alive(x))sizes.set(x.guild,(sizes.get(x)||0)+1);
+  const open=livingGuilds().filter(x=>x.fac===a.fac&&(sizes.get(x)||0)<CAP);
+  if(!open.length)return null;
+  a.guildHintAt=S.gameMin;
+  const names=open.slice(0,3).map(x=>'<'+x.tag+'> '+x.name).join(', ');
+  return 'The gate captain says banners of your side still take new names on their rolls: '+names+'. A blade of your standing could sign one (guild_join), or raise its own with two comrades (guild_found).'}
