@@ -1,4 +1,4 @@
-# Campaign seed: The Wending Vale (144x60)
+# Campaign seed: The Wending Vale (184x60)
 
 DM-only. The heroes never read this; reveal it through narrate, npc_say, hooks, staged scenes and marks. One river, two banks, three crossings: the story is about who holds the water, and what holding it costs. Everything starts on the Fellowship's road. Townsfolk names are rolled; roles are canon. Tone: grounded, a little grit, dry humour. The river is not evil and nobody is simply wrong; every faction is half right and late. Death is permanent, so let a warning be fair before a danger is real.
 
