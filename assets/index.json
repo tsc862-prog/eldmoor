@@ -4713,6 +4713,96 @@
         "Leana Zimmerman (Sharm)"
       ],
       "accepted": "2026-11-04"
+    },
+    "prop:canopy-highland-1@32": {
+      "id": "prop:canopy-highland-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-highland-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "c79050e2ad476ef78cf363fa6d91c2034258bcfbaf1c4035bfca7e57bc609201",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:canopy-highland-2@32": {
+      "id": "prop:canopy-highland-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-highland-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "bd7c9e0e1e8ea6f041297f9aaba855a085bd8dd7f3e2692a90bbc2a2b3337d7d",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:canopy-highland-3@32": {
+      "id": "prop:canopy-highland-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-highland-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "6fd20291034f4ca98fe86da58a8d0efa3f9561e6ac6d751a7df867e4167f1530",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:rock-highland-1@32": {
+      "id": "prop:rock-highland-1",
+      "kind": "prop",
+      "file": "prop/32/rock-highland-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "3ff2bcf4b7aa30dafc32774ceb029247258f80b92d09f1fca543ac4c49ac9258",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:rock-highland-2@32": {
+      "id": "prop:rock-highland-2",
+      "kind": "prop",
+      "file": "prop/32/rock-highland-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "7538e45bb4f25c9ac19b5daaa6c4ae02028c7d0924dc57f37f6cf9747b3ffecf",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
+    },
+    "prop:rock-highland-3@32": {
+      "id": "prop:rock-highland-3",
+      "kind": "prop",
+      "file": "prop/32/rock-highland-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "e91427d67ee3e3e96a7069f83a562148ec75f1d8cb9827fbfa3c5605ea0fd9f7",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-06"
     }
   }
 }
