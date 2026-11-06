@@ -13,7 +13,7 @@ export const MAP_KEYS=[
   'npcs','npcNews','rumours','notices','sightings','traffic','weather',
   'encounters','encNext','nodes','outposts','sites','graves','statues',
   'adventures','bounties','dmT','dmHookT','dmSeen','dmRemnants','supply','supplyAt', // the scripted DM's boards and what they ask of this map's towns
-  'zoneLastHero','worldEvent','eco','raidOn','raidT','pvpT',
+  'zoneLastHero','worldEvent','eco','raidOn','raidName','raidT','pvpT',
   'parties','recruits',                                     // with the heroes in no company, who freeze too
 ];
 // Crosses with the company: heroes in a company go where it goes (those in none leave S.agents and freeze with their map).

@@ -27,6 +27,7 @@ import {nearHeroes,nearMobs} from './spatial.js';
 import {held} from './scenes.js';
 import {sightFor} from './weather.js';
 import {onWorld} from './kept.js';
+import {clearLine} from './path.js';
 
 export const LORE={
   DC:12,          // the first-sight read (d20 + the better of Lore and Perception)
@@ -238,11 +239,13 @@ export function roadsLine(a){if(!learner(a)||!a.lore)return null;const P=a.lore.
 export function preyKey(a,name){const s=clean(name,60).toLowerCase().replace(/^(an?|the)\s+/,'');if(!s)return null;const L=loreOf(a);
   for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e))continue;const n=keyName(key).toLowerCase(),p=keyPlural(key).toLowerCase();if(s===n||s===p||s===n.replace(/^the /,''))return key}
   return null}
-// hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear).
-export function pickPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y));let best=null,bs=1e9;
+// hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear). The tool says "where
+// you stand" (#822): with no clear line (#794) it is not prey, and with no prey named neither is one in another region, or a level 3
+// hunter on the bank of the river walks round by the bridge to a Hoarfell creature it saw across the water. What comes at the hero always counts.
+export function pickPrey(a,cmd){const z=zoneAt(a.x,a.y),R=9*sightFor(a,z);let best=null,bs=1e9;
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a)||held(m))continue; // held in a scene (#518)
-    if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(m.target!==a&&feared(a,m))continue;
-    const d=dist(a,m);if(d>R)continue;const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
+    if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(m.target!==a&&(feared(a,m)||zoneAt(m.x,m.y)!==z))continue;
+    const d=dist(a,m);if(d>R||(m.target!==a&&!clearLine(a,m)))continue;const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
   if(best)sight(a,best);return best}
 
 // ---- what people say (a townsperson's advice, the gate's rumour of a job) ----

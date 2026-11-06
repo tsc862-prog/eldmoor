@@ -52,5 +52,17 @@ export const noOthers=()=>!!(S.setup&&S.setup.others==='none');
 export const loreSides=()=>!!(S.setup&&S.setup.sides==='lore');
 export const sameSide=(a,b)=>loreSides()||a.fac===b.fac; // may these two stand together? Everyone may, in a lore world
 export const ownTown=(c,a)=>loreSides()||c.fac===a.fac; // does this town take hero a in? Any town does, in a lore world
+// A hero who rides with a company: a member, an agent hero, a companion or a hire. In a lore world sides never reach them.
+export const inCompany=a=>a.company!=null||!!a.player||a.companion!=null||!!a.hire;
+const companyFac=a=>{const C=(S.companies||[]).find(c=>c.id===a.company);return C?C.fac:a.fac};
+// Will these two come to blows unasked? As ever with no setting. In a lore world the background keeps its sides among itself, two companies have none,
+// and the one foe a company has is one the DM brought: a summoned hero of the other fac from the company's own (a summon of its fac is a friend).
+export function foeOf(a,b){if(!loreSides())return a.fac!==b.fac;const ca=inCompany(a),cb=inCompany(b);
+  if(ca&&cb)return false;if(!ca&&!cb)return a.fac!==b.fac;
+  const m=ca?a:b,o=ca?b:a;return !!o.summoned&&o.fac!==companyFac(m)}
+// The side a raider fights under: its fac, or in a lore world (#1025) the side the company's muster took, so a mixed company raids as one.
+export const raidSide=a=>a.raidSide!=null?a.raidSide:a.fac;
+export const mayFight=(a,b)=>foeOf(a,b)||(loreSides()&&!!b.summoned); // an agent may also turn on anyone the DM brought
+export const sidesOff=(a,b)=>loreSides()&&(inCompany(a)||inCompany(b)); // no grudge, nemesis or honour between these two
 export const dayNo=()=>Math.floor(S.gameMin/1440)+1; // game day, 1-based (the UI shows D4 03:12 with it)
 export const clockStr=()=>{const m=Math.floor(S.gameMin)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};

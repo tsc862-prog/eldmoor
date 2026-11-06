@@ -12,7 +12,7 @@
 // section below, #588). slotted() names the company that has them (null when there is none); read membership with
 // inSlots(a), slotKeyOf(a) and partySlotted(p). Saves carry only S.companies / a.company / p.company (the old
 // S.fellowship, a.fellow, a.fellowRole and p.fellow accessors are gone; save.js migrates v6 saves that stored them).
-import {S,clockStr,loreSides} from './state.js';
+import {S,clockStr,loreSides,sameSide} from './state.js';
 import {keep} from './kept.js';
 import {swornOf,hushOath} from './oath.js'; // only a sworn oath is an open thread (#800)
 import {homeOf} from '../data/races.js';
@@ -95,7 +95,7 @@ export function newCompany(o){const lead=o.lead;return {id:o.id!=null?o.id:seqNe
   founded:Math.round(S.gameMin),day:day(),log:[],past:[],npcs:[],seq:0}}
 // Why a hero may not ride with C, or null.
 export function refuseJoin(C,a){if(!C)return 'No such company.';if(!alive(a))return 'That hero is not alive.';
-  if(C.ids.includes(a.id))return a.name+' already rides with it.';if(a.fac!==C.fac)return a.name+' is of the other faction; a company is of one faction.';
+  if(C.ids.includes(a.id))return a.name+' already rides with it.';if(!sameSide(a,C))return a.name+' is of the other faction; a company is of one faction.';
   if(C.ids.length>=PARTY.MAX)return 'A company holds at most '+PARTY.MAX+' heroes.';return null}
 // Point a hero at C without touching C.ids (the five-slot Fellowship keeps its ids in slot order itself).
 export function attach(C,a){const old=companyOf(a);if(old&&old!==C)leaveCompany(a);a.company=C.id;linkHero(a);return a}
@@ -116,7 +116,7 @@ export function leaveCompany(a,o={}){const C=companyOf(a);if(a&&a.company!=null)
   if(!C.ids.length&&!o.keep)dissolveCompany(C);return C}
 // B rides on as part of A (data only). Refused across factions or past the hero cap.
 export function mergeCompanies(A,B){if(!A||!B||A===B)return {ok:false,error:'Two companies are needed.'};
-  if(A.fac!==B.fac)return {ok:false,error:'A company is of one faction.'};
+  if(!sameSide(A,B))return {ok:false,error:'A company is of one faction.'};
   if(A.ids.length+B.ids.length>PARTY.MAX)return {ok:false,error:'Together they would be '+(A.ids.length+B.ids.length)+'; a company holds at most '+PARTY.MAX+'.'};
   for(const id of B.ids.slice()){const a=byId(id);if(a){a.company=A.id;linkHero(a)}if(!A.ids.includes(id))A.ids.push(id)}
   A.past=A.past.concat(B.past||[]);for(const n of B.npcs||[])if(!A.npcs.includes(n))A.npcs.push(n);
