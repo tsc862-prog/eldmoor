@@ -52,7 +52,7 @@ export function buyListing(a,l,n=1){const L=listings(),i=L.indexOf(l);if(i<0)ret
   a.gold-=cost;const fee=Math.floor(cost*TRADE.FEE),s=heroById(l.seller);if(alive(s))s.gold+=cost-fee;
   if(l.kind==='gear')addGear(a,l.item);else{addGood(a,l.good,n)}
   l.n-=n;if(l.kind==='gear'||l.n<=0)L.splice(i,1);
-  const t=T();t.sold++;t.gold+=cost;t.fees+=fee;t[l.kind]++;note(l,a,n,cost);
+  const t=T();t.sold++;t.gold+=cost;t.fees+=fee;t[l.kind==='gear'?'gear':'goods']++;note(l,a,n,cost);
   record(a,'Bought ',{t:nameOf(l)+(n>1?' x'+n:''),c:'gd'},' from '+l.sname+' for '+cost+'g.');
   if(alive(s))record(s,'Sold ',{t:nameOf(l)+(n>1?' x'+n:''),c:'gd'},' to ',a,' for '+(cost-fee)+'g.');
   return {ok:true,what:nameOf(l),n,cost,seller:l.sname,gold:a.gold,item:l.kind==='gear'?l.item:null}}
