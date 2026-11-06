@@ -3,6 +3,7 @@
 // raids need level 14+ heroes from one faction, 5+ of them or 4 with average gear score 9+; respawn 300s after a kill.
 import {rnd,ri,pickA} from '../core/rng.js';
 import {dist} from '../world/map.js';
+import {hasLair} from './lair.js';
 import {BOSSES,phaseOf} from '../data/bosses.js';
 import {S} from './state.js';
 import {log,fac} from './chronicle.js';
@@ -26,7 +27,8 @@ export const raidSized=c=>c.length>=RAID_FULL||c.length>=4&&c.reduce((t,a)=>t+a.
 // Runs the template's phases, signature moves and enrage; Kragmaw has one phase, one breath and no enrage,
 // so this plays exactly the fight the rebalance tuned. Adds are declared by templates but spawned by the crawl rework.
 const tplOf=boss=>BOSSES[boss.tpl||'kragmaw'];
-export function updBoss(dt){const boss=S.boss,agents=S.agents,T=tplOf(boss);
+export function updBoss(dt){if(!hasLair())return; // a map with no lair keeps a dormant record: it must not wake (#1013)
+  const boss=S.boss,agents=S.agents,T=tplOf(boss);
   if(!boss.alive){boss.respawn-=dt;if(boss.respawn<=0){boss.alive=true;boss.hp=boss.maxhp;boss.dmg=[0,0];log({t:T.name,c:'gd'},T.wake)}return}
   const eng=agents.filter(a=>a.state==='raid'&&dist(a,boss)<5);
   if(!eng.length){boss.t=0;boss.hp=Math.min(boss.maxhp,boss.hp+boss.maxhp*.08*dt);if(boss.hp>=boss.maxhp)boss.dmg=[0,0];return}

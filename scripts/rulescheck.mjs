@@ -14,6 +14,7 @@
 //  10. workflows (#597): every .github/workflows/*.yml passes the strict line check in scripts/workflow-lint.mjs (a comma in an unquoted flow-mapping step name made ci.yml invalid and the PR BLOCKED with no failure).
 //  11. map captures (#1013): a module-scope value built from the live map is rebound by an onWorld hook, or listed in the allowlist's "mapCaptures" with a reason (scripts/mapcapture.mjs).
 //  9. every world of WORLDS has its rows (epic #940 slice B): a snapshot row, a campaign file, fauna per region, a first delve per town, its places in docs/LORE.md.
+//  12. bare reads (#1013): a map may have no dungeon and no lair, so CRYPT and LAIR are read through sim/crypts.js and sim/lair.js; what reads them itself is counted in the allowlist's "bareReads" (file -> {n, why}), as name literals are.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
 import {mkTmp} from './tmp.mjs';
 import {readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync, mkdirSync} from 'node:fs';
@@ -241,6 +242,25 @@ console.log('\nmap captures: what a module built from the live map at load is re
   w('src/sim/good.js', "import {CITY} from '../world/map.js';\nimport {W} from '../world/tiles.js';\nimport {onWorld} from './kept.js';\nconst read=()=>CITY[0];\nconst shadow=W=>W+1;\nconst calm=shadow(2);\nlet size=W*2;\nonWorld(()=>{size=W*2});\n");
   const got = scan({root: dir}), bad = got.filter(s => !s.rebound).map(s => s.name).sort().join(' ');
   ok(bad === 'again memo names size tab', 'a planted capture, memo and second-hand table are caught, the lawful forms pass (' + bad + ')');
+}
+
+// ---- 12. no read of a dungeon or a lair that may not be there (#1013) ----
+console.log('\nbare reads: a map may have no dungeon and no lair, so CRYPT and LAIR are read through sim/crypts.js and sim/lair.js');
+{
+  const {bareReads} = await import(pathToFileURL(join(ROOT, 'scripts/mapcapture.mjs')).href);
+  const allow = ALLOW.bareReads || {}, found = bareReads();
+  const over = [...found].filter(([f, l]) => l.length > ((allow[f] || {}).n || 0)).map(([f, l]) => `${f}: ${l.length} (${(allow[f] || {}).n || 0} allowed), lines ${l.join(', ')}`);
+  ok(over.length === 0, [...found.values()].reduce((t, l) => t + l.length, 0) + ' bare reads of CRYPT or LAIR, each on the allowlist' + (over.length ? '\n    ' + over.join('\n    ') + '\n    (use a reader in sim/crypts.js or sim/lair.js; a read behind a guard of its own goes in the allowlist\'s "bareReads" with a reason)' : ''));
+  const stale = Object.keys(allow).filter(f => (found.get(f) || []).length < allow[f].n).map(f => `${f}: ${(found.get(f) || []).length} now, ${allow[f].n} listed`);
+  ok(stale.length === 0, 'the allowlist counts no read that is gone' + (stale.length ? ': ' + stale.join(', ') : ''));
+  const nowhy = Object.keys(allow).filter(f => !allow[f].why);
+  ok(nowhy.length === 0, 'every allowed read says why' + (nowhy.length ? ': ' + nowhy.join(', ') : ''));
+  const dir = mkTmp('eldmoor-bare-'), w = (f, s) => {mkdirSync(dirname(join(dir, f)), {recursive: true}); writeFileSync(join(dir, f), s)};
+  w('src/sim/bad.js', "import {CRYPT,LAIR,dist} from '../world/map.js';\nexport const a=()=>CRYPT.name;\nexport const b=p=>dist(p,LAIR);\nexport const c=x=>(x||CRYPT).x;\n");
+  w('src/sim/good.js', "import {CRYPT,LAIR} from '../world/map.js';\nimport {RIV} from './x.js';\nexport const a=D=>D===CRYPT;\nexport const b=()=>!!LAIR;\nexport const c=x=>x||CRYPT;\nexport const d=CRYPT=>CRYPT.name;\nexport const e=()=>RIV.CRYPT;\n");
+  w('src/sim/crypts.js', "import {CRYPT} from '../world/map.js';\nexport const n=()=>CRYPT.name;\n");
+  const got = bareReads({root: dir});
+  ok([...got.keys()].join() === 'src/sim/bad.js' && got.get('src/sim/bad.js').length === 3, 'a planted read is caught, a test of it, a local of the name and the reader pass');
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');

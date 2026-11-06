@@ -39,7 +39,8 @@
 //             No dice are added on any path.
 // State is plain data on C.camp (ids only), saved with the world.
 import {rnd,ri,hash} from '../core/rng.js';
-import {CITY,LAIR,CRYPTS,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
+import {CITY,CRYPTS,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
+import {nearLair} from './lair.js';
 import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
 import {solidAt,standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
@@ -113,7 +114,7 @@ const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!
 function safe(x,y){if(!open(x,y))return false;
   for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(!open(x+dx,y+dy))return false;
   for(const c of CITY)if(x>=c.x0-CAMP.TOWN_MIN&&x<=c.x1+CAMP.TOWN_MIN&&y>=c.y0-CAMP.TOWN_MIN&&y<=c.y1+CAMP.TOWN_MIN)return false;
-  if(dist({x,y},LAIR)<CAMP.LAIR_MIN||CRYPTS.some(D=>dist({x,y},D)<CAMP.LAIR_MIN))return false;
+  if(nearLair({x,y},CAMP.LAIR_MIN)||CRYPTS.some(D=>dist({x,y},D)<CAMP.LAIR_MIN))return false;
   return true}
 // Nearest safe open ground to (x,y), by rings; null if none within 10 tiles.
 export function campSpot(x,y){for(let r=0;r<=10;r++)for(let k=0;k<Math.max(1,r*6);k++){const ang=k/Math.max(1,r*6)*Math.PI*2,px=Math.floor(x+Math.cos(ang)*r)+.5,py=Math.floor(y+Math.sin(ang)*r)+.5;if(safe(px,py))return {x:px,y:py}}return null}

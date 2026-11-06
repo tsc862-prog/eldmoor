@@ -37,7 +37,8 @@ import {notify} from './notify.js';
 import './company.js'; // load order: keep the module graph as before (an import cycle runs through table.js and staged.js)
 import {companyOf,companyById,companies,members,isSolo,campaign as clog,slotted} from './company.js';
 import {musterCrypt,yieldCrypt} from './dungeon.js';
-import {entryOf,cryptNamed,cryptFor,cryptCtx,cryptOfCtx} from './crypts.js';
+import {entryOf,cryptNamed,cryptFor,cryptCtx,cryptOfCtx,cryptName,hasCrypt,NO_CRYPT} from './crypts.js';
+import {hasLair,NO_LAIR} from './lair.js';
 import {reflexMay,ownerHeld,hasLinks} from './runlink.js';
 import {record} from './history.js';
 import {wounded} from './wounds.js';
@@ -52,7 +53,7 @@ export const SOLO='You ride alone: decide and act (take_adventure, go_crypt, joi
 // The whole company in shouting range of each other (#182). A party its reflexes play whole (no live agent, no runner; the headless sim) moves as one unit and is not held to it.
 const gathered=(L,C)=>!L.some(b=>!reflexMay(b))||together(L,leaderOfC(C));
 export const PROP_KINDS=['job','crypt','raid','split','break_camp','other','expel','merge','site']; // site: go down into a DM-made site together (sim/sites.js, #69; put by enter_site)
-const KIND_TEXT={job:'take a job',get crypt(){return 'go down into '+CRYPT.name+' together'},raid:'muster the company against Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide',expel:'put a companion out of the company',merge:'ride together with another company',site:'go down into the place we found'};
+const KIND_TEXT={job:'take a job',get crypt(){return 'go down into '+cryptName()+' together'},raid:'muster the company against Kragmaw',split:'split up for a while',break_camp:'break camp and move on',other:'decide',expel:'put a companion out of the company',merge:'ride together with another company',site:'go down into the place we found'};
 const gd=t=>({t,c:'gd'});
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
 // A spoken line (#145): whitespace folded, a leading "<own name>:" / "<own name> here," dropped (the game already
@@ -140,6 +141,8 @@ function jobRefusal(F,id){const h=(S.adventures||[]).find(x=>x.id===id&&x.phase=
 export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return 'Only a member of a company can put something to the party.';
   if(!PROP_KINDS.includes(kind))return 'Kind must be one of: '+PROP_KINDS.join(', ')+'.';
   if(isSolo(F)&&kind!=='break_camp')return SOLO;
+  if(kind==='crypt'&&!hasCrypt())return NO_CRYPT; // a map may hold neither (#1013)
+  if(kind==='raid'&&!hasLair())return NO_LAIR;
   const D=kind==='crypt'?(o.dun&&cryptNamed(o.dun))||cryptFor(a):CRYPT,what=kind==='crypt'?'go down into '+D.name+' together':KIND_TEXT[kind]; // which dungeon (#891): the one named, else the one that fits
   if(kind==='site'&&o.site==null)return 'Put a site to the party with enter_site {site}: it names the place.';
   if(kind==='break_camp'&&!(F.camp&&F.camp.phase))return 'There is no camp to break: the '+word(F)+' is not camped. Go on with move_to'+(leaderOfC(F)===a&&!isSolo(F)?' or lead_to':'')+'.';

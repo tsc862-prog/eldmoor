@@ -107,3 +107,4 @@
 - [Several dungeons #891](multi_dungeon.md) — CRYPTS, crypts.js one reader, first dungeon writes nothing, cryptFor, entry, a room's blows must fit its rounds
 - [Guild choice #954](guild_choice.md) — hasLinks gate in guilds open(); guild_join/guild_found tools
 - [Opening job fit #1016](opening_job_fit.md) — jobbar.js level bar; opening names a fitting job; job proposals refused up front; hosted-only
+- [No lair #1013](no_lair.md) — readers crypts.js/lair.js, rule 12, dormant boss, boot words, TESTBARE fixtures, errors hidden as sentences

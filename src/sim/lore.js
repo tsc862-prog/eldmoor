@@ -16,7 +16,8 @@
 //   key: a MOBS key, a VARIANTS key (site foes), or 'n:'+name for a named elite or an adventure's named foe.
 import {S} from './state.js';
 import {hash} from '../core/rng.js';
-import {ZONES,REGIONS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,LANDMARKS,zoneAt,dist} from '../world/map.js';
+import {hasCrypt,cryptTitle,cryptIf,cryptBand} from './crypts.js';
 import {homeOf} from '../data/races.js';
 import {MOBS,ELITES} from '../data/mobs.js';
 import {BESTIARY,VARIANTS,NAMED_KITS,ABILITIES,baseId} from '../data/bestiary.js';
@@ -70,7 +71,7 @@ function lexicon(){if(LEX)return LEX;const names=[],add=(n,key)=>{if(n)names.pus
   LEX={c:names.map(x=>({n:x.n,key:x.key,re:new RegExp('\\b'+esc(x.n)+'\\b','i')})),
     p:placeNames().map(n=>({n,re:new RegExp('\\b'+esc(n)+'\\b','i')}))};
   return LEX}
-const placeNames=()=>[...ZONES,...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).filter((n,i,A)=>A.indexOf(n)===i).sort((x,y)=>y.length-x.length);
+const placeNames=()=>[...ZONES,...LANDMARKS.map(l=>l.name),cryptTitle()].filter(Boolean).filter((n,i,A)=>A.indexOf(n)===i).sort((x,y)=>y.length-x.length);
 const keyName=key=>key.startsWith('n:')?key.slice(2):VARIANTS[key]?VARIANTS[key].name:MOBS[key]?MOBS[key].name:key;
 const keyPlural=key=>key.startsWith('n:')?key.slice(2):VARIANTS[key]?VARIANTS[key].pl:MOBS[key]?MOBS[key].pl:key;
 
@@ -167,12 +168,12 @@ export function learnJob(a,h){if(!learner(a)||!h)return 0;let n=0;if(h.zone!=nul
   const d=h.data,nm=d&&d.place;if(!nm)return n;
   const p=dmPlaces().find(x=>x.name===nm&&(d.x==null||(x.x===d.x&&x.y===d.y)))||dmPlaces().find(x=>x.name===nm);
   if(markOk(p)){if(learnMark(a,p,'told'))n++;return n}
-  const lm=LANDMARKS.find(l=>l.name===nm)||(CRYPT&&CRYPT.name===nm?CRYPT:null);if(lm&&learnPlace(a,lm.name,'told'))n++;return n}
+  const lm=LANDMARKS.find(l=>l.name===nm)||cryptIf(n=>n===nm);if(lm&&learnPlace(a,lm.name,'told'))n++;return n}
 // The sign at a dungeon stair (#448): read on first sight; to a hero below the region's band it marks the place dangerous.
-const green=a=>{const b=REGIONS[zoneAt(CRYPT.x,CRYPT.y)]&&REGIONS[zoneAt(CRYPT.x,CRYPT.y)].band;return !!b&&a.lvl<b[0]};
+const green=a=>{const b=cryptBand();return !!b&&a.lvl<b[0]};
 function readSign(a,l){if(!l.sign||!learner(a))return;ev(a,l.sign);const p=loreOf(a).p[l.name];if(p&&!p.warned&&green(a))p.warned=clean('a sign at the stair: "Those who went below were tried blades; you are not."',LORE.SNIP)}
 // The gate captain's word to a green blade about the Crypt (sim/player.js talk), or null.
-export function captainWarning(a){if(!learner(a)||!CRYPT||!green(a))return null;const l=LANDMARKS.find(x=>x.kind==='crypt');return l&&l.captain||null}
+export function captainWarning(a){if(!learner(a)||!hasCrypt()||!green(a))return null;const l=LANDMARKS.find(x=>x.kind==='crypt');return l&&l.captain||null}
 // Every step for an agent hero (watch() in sim/player.js): the region it stands in, landmarks in sight, its quest.
 export function visit(a){if(!learner(a))return;const z=zoneAt(a.x,a.y);if(a.loreZ!==z){a.loreZ=z;if(ZONES[z]&&learnPlace(a,ZONES[z],'been'))ev(a,'You come into '+ZONES[z]+' for the first time.');else if(ZONES[z])place(a,ZONES[z],'been')}
   const R=12*sightFor(a,z);for(const l of LANDMARKS)if(dist(a,l)<=R+(l.r||1)&&learnPlace(a,l.name,'seen')){ev(a,'You see '+l.name+' with your own eyes.');readSign(a,l)}

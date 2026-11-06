@@ -19,7 +19,8 @@
 //   C.prologue {row, site, phase:'intro'|'descend'|'below'|'out', town, ids?, end?:'clear'|'left'|'off'}   gone when the delve is over
 //   q.pro      on an opening in S.opening.queue: this opening has been looked at, so nothing is raised twice
 //   site.prologue  the row's id: its ruin stays on the map; site.xp its share of a site's XP; its loot is plain and it has no epic
-import {CITY,CRYPT,zoneAt} from '../world/map.js';
+import {CITY,zoneAt} from '../world/map.js';
+import {cryptName} from './crypts.js';
 import {onMainLand} from '../world/passable.js';
 import {clearLine} from './path.js';
 import {hash} from '../core/rng.js';
@@ -49,7 +50,7 @@ const living=a=>!!a&&a.kind==='hero'&&a.state!=='dead';
 const memOf=C=>(C===slotted()?slotHeroes(C):members(C).filter(a=>!a.hire)).filter(living);
 const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1];
 const rowOf=id=>PROLOGUES.find(r=>r.id===id)||null;
-const fill=(t,P)=>String(t).replace(/\{town\}/g,P.town).replace(/\{crypt\}/g,CRYPT?CRYPT.name:'the deep places');
+const fill=(t,P)=>String(t).replace(/\{town\}/g,P.town).replace(/\{crypt\}/g,cryptName());
 const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
 const words=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.t||'').join('');
 

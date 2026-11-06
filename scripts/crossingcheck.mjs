@@ -6,6 +6,8 @@
 //      of the old map is left in them; back again they equal the start, byte for byte.
 //   4. what acts on the live map follows it: the spatial index, homes, node and outpost state, and a world built after a switch
 //      plays exactly as a world built in a fresh process.
+//   5. a map with no lair and no dungeon plays: a whole game day through npm run sim's path, and with a host a company, a camp, votes,
+//      a site crawl, a first delve, every read tool of a hero and of the DM, and the orders such a map cannot carry refused in words.
 // The pack, the unpack and the crossing are later slices. Usage: npm run crossingcheck
 import {spawnSync} from 'node:child_process';
 import {readFileSync, writeFileSync, readdirSync} from 'node:fs';
@@ -110,6 +112,115 @@ if (mode === '--hop') { // start here, go to every map, come back
   process.exit(fail ? 1 : 0);
 }
 
+if (mode === '--bare') { // a map with no lair and no dungeon, played as the only map of the world (ELDMOOR_WORLD=testbare)
+  const {SIM, M, run} = await sim();
+  const {S, init, snapshot, restore, markPlayer, playerAct, dmAct, setDmSeat, setRunnerLinks, setReflexAck, defaultSetup, cleanSetup} = SIM;
+  const CO = await import('../src/sim/company.js'), CN = await import('../src/sim/council.js'), T = await import('../src/sim/table.js'), L = await import('../src/sim/levers.js');
+  const {PLAYER_TOOLS} = await import('../src/data/player-tools.js'), {DM_TOOLS} = await import('../src/data/dm-tools.js');
+  const {NO_CRYPT} = await import('../src/sim/crypts.js'), {NO_LAIR} = await import('../src/sim/lair.js');
+  const {WORDS} = await import('../src/world/words.js');
+  // A thrown TypeError comes back from both doors as a sentence: these are the sentences a read of nothing leaves.
+  const BROKE = /did not understand that|DM tool failed|Cannot read|is not a function|is not iterable/;
+  const shown = r => JSON.stringify(r, (k, v) => typeof v === 'function' ? undefined : v);
+  const act = (a, tool, args) => {a.playRate = []; return playerAct(a.id, tool, args || {})};
+  const refused = (r, words, m) => ok(r && r.ok === false && !BROKE.test(shown(r)) && (!words || r.error.includes(words)), m + ': ' + (r && r.error));
+  const hosted = () => {T.TABLE.mode = 'auto'; T.TABLE.speed = 1; T.TABLE.drop = null; setRunnerLinks(() => 'none'); setReflexAck(() => true)};
+  const words = ps => (ps || []).map(p => typeof p === 'string' ? p : p && (p.t != null ? p.t : p.name)).join('');
+  const clearText = () => [...S.chronicle, ...(S.timeline || [])].map(e => words(e.parts)).join('\n');
+
+  console.log('\na map with no lair and no dungeon');
+  ok(!M.LAIR && !M.CRYPT && M.CRYPTS.length === 0, 'the fixture has neither');
+  ok(!/undefined/.test(JSON.stringify([PLAYER_TOOLS, DM_TOOLS, {...WORDS, town: 0}])), 'the tools and the world\'s words read whole, with no dungeon or lair to name');
+
+  reseed(); hosted(); init();
+  const F = CO.slotted(), mem = CO.members(F), lead = CN.leaderOfC(F);
+  ok(F && mem.length === 5 && mem.every(a => a.player) && !S.boss.alive, 'a company stands in its hall and the boss record is dormant');
+
+  console.log('what a hero can read');
+  {
+    const bad = [];
+    for (const t of PLAYER_TOOLS) if (!t.act) {const r = act(lead, t.name, {}); if (BROKE.test(shown(r))) bad.push(t.name + ': ' + (r.error || '').slice(0, 120))}
+    ok(!bad.length, PLAYER_TOOLS.filter(t => !t.act).length + ' read tools answer without tripping' + (bad.length ? '\n    ' + bad.join('\n    ') : ''));
+    const look = act(lead, 'look'), jobs = act(lead, 'list_jobs');
+    ok(look.ok !== false && !BROKE.test(shown(look)), 'look answers');
+    ok(jobs.ok !== false && !BROKE.test(shown(jobs)), 'list_jobs answers');
+  }
+  console.log('what the map cannot carry is refused in words');
+  {
+    refused(act(lead, 'propose', {kind: 'crypt'}), NO_CRYPT, 'propose crypt');
+    refused(act(lead, 'propose', {kind: 'crypt', dungeon: 'the sunken crypt'}), NO_CRYPT, 'propose crypt, by name');
+    refused(act(lead, 'propose', {kind: 'raid'}), NO_LAIR, 'propose raid');
+    ok(CN.propose(lead, 'crypt', 'down') === NO_CRYPT && CN.propose(lead, 'raid', 'up') === NO_LAIR, 'and at the council\'s own door');
+    ok(CN.askCompany(F, 'crypt', {src: 'dm', caller: 'A voice', details: 'go'}) === NO_CRYPT, 'askCompany with no dungeon answers the same');
+    refused(act(mem[1], 'go_crypt'), null, 'go_crypt in a company');
+    refused(act(mem[1], 'join_raid'), null, 'join_raid in a company');
+    const solo = S.agents.find(a => a.state !== 'dead' && !CO.companyOf(a)); markPlayer(solo, true);
+    ok(solo.player && CO.isSolo(CO.companyOf(solo)), solo.name + ' rides alone');
+    refused(act(solo, 'go_crypt'), NO_CRYPT, 'go_crypt alone');
+    refused(act(solo, 'go_crypt', {dungeon: 'the barrow', force: 'yes'}), NO_CRYPT, 'go_crypt to a name');
+    refused(act(solo, 'join_raid'), NO_LAIR, 'join_raid alone');
+    refused(act(solo, 'propose', {kind: 'crypt'}), NO_CRYPT, 'propose crypt alone');
+    refused(act(lead, 'move_to', {target: 'the crypt'}), null, 'move_to the crypt');
+    const nearby = (S.npcs || []).find(p => p.role === 'captain' && p.fac === lead.fac);
+    if (nearby) {lead.x = nearby.x; lead.y = nearby.y; const r = act(lead, 'talk', {target: nearby.name, text: 'Where is the crypt?'}); ok(r.ok !== false && !BROKE.test(shown(r)), 'the gate captain is asked of the crypt and answers: ' + shown(r).slice(0, 110))}
+  }
+  console.log('what the DM can read and call');
+  {
+    setDmSeat(true);
+    const bad = []; for (const t of DM_TOOLS) if (!t.act) {const r = dmAct(t.name, {}); if (BROKE.test(shown(r))) bad.push(t.name + ': ' + (r.error || '').slice(0, 120))}
+    ok(!bad.length, DM_TOOLS.filter(t => !t.act).length + ' DM reads answer without tripping' + (bad.length ? '\n    ' + bad.join('\n    ') : ''));
+    const w = dmAct('world_standing'); ok(w.ok && w.boss === null && w.crypt && w.crypt.name === null, 'world_standing says there is neither');
+    const by = {by: 'dm-agent', reason: 'a test'};
+    for (const kind of ['crypt', 'raid']) {const r = L.pull('call_to', {kind, company: F.id}, by); ok(!r.ok && /this map has no/.test(r.reason || r.error || ''), 'call_to ' + kind + ' is refused: ' + (r.reason || r.error))}
+  }
+  console.log('a company plays a whole game day on it');
+  {
+    const day0 = S.gameMin; let camps = 0, votes = 0, opened = 0;
+    for (const a of mem) {a.x = lead.x; a.y = lead.y}
+    const sayIt = act(lead, 'propose', {kind: 'other', details: 'We hold the ford tonight.'}); ok(sayIt.ok, 'the leader puts something to the vote');
+    const P = F.props.find(q => q.kind === 'other');
+    for (let i = 0; S.gameMin - day0 < 1440 && i < 12 * 60 * 60; i++) { // a table holds the clock while it plays
+      SIM.step(1 / 60);
+      if (F.camp && F.camp.phase) camps++;
+      if (T.openScenes().length) opened++;
+      if (P.status !== 'open') votes = 1;
+      if (i === 40 * 60 && !(F.camp && F.camp.phase)) {const c = mem[0]; for (const a of mem) if (a.state !== 'dead') {a.x = c.x; a.y = c.y} act(CN.leaderOfC(F), 'rest', {hours: 3})}
+    }
+    ok(S.gameMin - day0 >= 1439, 'a full game day passed (' + Math.round(S.gameMin - day0) + ' game minutes)');
+    ok(votes === 1, 'the vote settled: ' + P.status + ', ' + P.result);
+    ok(camps > 0, 'the company made camp (' + camps + ' ticks at a fire), ' + opened + ' ticks at a table');
+    ok(!S.boss.alive && !S.raidOn.some(Boolean), 'the boss stayed dormant and nobody mustered');
+    const text = clearText(); ok(!/undefined/.test(text), 'nothing in the chronicle or timeline reads "undefined"');
+    ok(!/stirs again|sleeps in its lair|lair lies empty|sleeps untouched/.test(text), 'nobody is told of a lair that is not here');
+  }
+  console.log('a save of it');
+  {
+    const a = JSON.stringify(snapshot()), snap = JSON.parse(a);
+    ok(!('CRYPT' in snap), 'the save holds no dungeon');
+    restore(snap); ok(JSON.stringify(snapshot()) === a, 'it restores to the same world'); run(5); ok(true, 'and plays on');
+  }
+  console.log('a site is the map\'s only dungeon');
+  {
+    reseed(); hosted(); init({fellowship: false}); const b = S.agents.find(x => x.state !== 'dead'); markPlayer(b, true);
+    const by = {by: 'dm-agent', reason: 'a test'}, r0 = L.pull('create_site', {theme: 'barrow', region: 0, rooms: 3}, by);
+    ok(r0.ok, 'the DM raises one: ' + shown(r0.effect || r0.reason).slice(0, 80));
+    const st = S.sites.list[0]; b.x = st.x; b.y = st.y + 1; b.state = 'hunt'; b.lvl = 12; b.hp = 9999; SIM.step(1 / 60);
+    const r = act(b, 'enter_site', {site: st.id}); ok(r.ok, 'a solo goes down: ' + shown(r).slice(0, 110));
+    let inside = false, shut = false;
+    for (let i = 0; i < 3000 * 60 && !shut; i++) {SIM.step(1 / 60); if (st.group) inside = true; else if (inside) shut = true; if (b.state === 'dead') break}
+    ok(inside, 'the crawl ran on a map with no dungeon'); ok(shut || b.state === 'dead', 'and ended: ' + (st.state || st.phase || 'done'));
+  }
+  console.log('the first delve');
+  {
+    reseed(); hosted(); init({setup: cleanSetup({...defaultSetup(7, 'testbare', 0)})});
+    const C = CO.slotted(); let began = false, done = false;
+    for (let i = 0; i < 200000 && !done; i++) {SIM.step(1 / 60); if (C.prologue) began = true; else if (began) done = true}
+    ok(began, 'a setup world on this map opens at a first delve'); ok(done, 'and comes home from it');
+    const lines = (C.log || []).map(e => words(e.parts)).join('\n'); ok(!/undefined/.test(lines + clearText()), 'its words read whole');
+  }
+  process.exit(fail ? 1 : 0);
+}
+
 // ---- 1. every key is placed ----
 console.log('\nEldmoor crossingcheck\n');
 console.log('every key of S is per map, with the company or campaign-wide (sim/atlas.js)');
@@ -155,6 +266,18 @@ for (const id of Object.keys(WORLDS)) {
   const r = spawnSync(process.execPath, [HERE, '--hop', all], {env: env(id), encoding: 'utf8'});
   process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
   ok(r.status === 0, `from ${id}: every hop holds`);
+}
+// ---- 5. a map with no lair and no dungeon plays ----
+console.log('\na game day through npm run sim\'s path');
+for (const [id, extra, what] of [['testbare', {}, 'no lair, no dungeon'], ['testbare', {ELDMOOR_OTHERS: 'none'}, 'and nobody else on it'], ['testcellar', {}, 'a dungeon and no lair'], ['testden', {}, 'a lair and no dungeon']]) {
+  const r = spawnSync(process.execPath, [join(ROOT, 'scripts/headless.mjs'), '4'], {env: {...env(id), ...extra}, encoding: 'utf8'}), out = r.stdout || '';
+  ok(r.status === 0, `${what}: npm run sim plays 4 minutes, a whole game day` + (r.status ? ': ' + (r.stderr || '').trim().slice(-500) : ''));
+  ok((id === 'testden' || /Kragmaw alive: false/.test(out)) && !/undefined/.test(out), `${what}: ${id === 'testden' ? 'the' : 'a dormant'} boss, and the summary reads whole`);
+}
+{
+  const r = spawnSync(process.execPath, [HERE, '--bare'], {env: env('testbare'), encoding: 'utf8'});
+  process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
+  ok(r.status === 0, 'the fixture holds with a host');
 }
 console.log(fail ? `\n${fail} FAILED` : '\ncrossingcheck ok');
 process.exit(fail ? 1 : 0);
