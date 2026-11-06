@@ -175,6 +175,28 @@ console.log('Raids');
  init({setup: cleanSetup(defaultSetup(1025, 'eldmoor', 0))}); if (S.opening) S.opening.queue.length = 0; const {joinRaid} = await import('../src/sim/boss.js'), a = SLT.slotHeroes(SLT.slotted())[0]; S.raidOn[a.fac] = true;
  ok(joinRaid(a) && a.raid, 'no setting: joinRaid falls in as ever'); a.raid = false; a.state = 'hunt'; S.raidOn[a.fac] = false}
 
+console.log('Words');
+{const {playerAct} = await import('../src/sim/player.js'), {PLAYER_TOOLS, toolsFor, TOOL_NAMES} = await import('../src/data/player-tools.js'), {ordersFor, ORDERS_FULL, ORDERS_SHORT, withSituationOrders} = await import('./orders.mjs'), {dmAct, setDmSeat} = await import('../src/sim/dmagent.js'), {systemPrompt} = await import('./agent-player.mjs'), {dmSystemPrompt} = await import('./dm-agent.mjs'), {rebuild} = await import('../src/sim/spatial.js');
+ const SIDE = /your side|your faction|other faction|enemy-faction|your own faction|any faction|faction/i, txt = L => JSON.stringify(L.map(t => [t.desc, t.args]));
+ ok(toolsFor(null) === PLAYER_TOOLS && toolsFor(undefined) === PLAYER_TOOLS, 'with sides the tool table is the same object: nothing added');
+ ok(toolsFor('lore').map(t => t.name).join() === TOOL_NAMES.join() && txt(toolsFor('lore')).length < txt(PLAYER_TOOLS).length, 'lore: the same tools, in fewer words');
+ {const left = toolsFor('lore').filter(t => SIDE.test(JSON.stringify([t.desc, t.args]))).map(t => t.name); ok(!left.length, 'lore: no tool speaks of sides: ' + left.join())}
+ ok(ordersFor(ORDERS_FULL, null) === ORDERS_FULL && ordersFor(ORDERS_SHORT, undefined) === ORDERS_SHORT, 'with sides the orders are the same text');
+ ok(!/your faction/.test(ordersFor(ORDERS_FULL, 'lore')) && !/go_crypt and join_raid/.test(ordersFor(ORDERS_FULL, 'lore')), 'lore: the orders speak of no faction and no muster');
+ ok(withSituationOrders(withSituationOrders('base', false, 'lore'), false, 'lore').includes('Honour among friends') && !withSituationOrders('base', false).includes('Honour among friends'), 'the orders survive a resume');
+ const base = {name: 'Ana', level: 1, people: 'Ashfolk', cls: 'Warrior', faction: 'Warband', home: 'Grimhold', traits: [], oath: '', origin: ''};
+ ok(/Warrior of the Warband/.test(systemPrompt(base)) && !/of the Warband/.test(systemPrompt({...base, sides: 'lore'})) && /Honour among friends/.test(systemPrompt({...base, sides: 'lore'})), 'systemPrompt: the hero is of no side');
+ ok(/two factions/.test(dmSystemPrompt({})) && !/two factions/.test(dmSystemPrompt({sides: 'lore: x'})) && /peoples and history/.test(dmSystemPrompt({sides: 'lore: x'})), 'dmSystemPrompt: the DM is told');
+ init({setup: cleanSetup(mixed(1025))}); if (S.opening) S.opening.queue.length = 0; setDmSeat(true); const L = SLT.slotHeroes(SLT.slotted()), a = L[0], other = L.find(b => b.fac !== a.fac);
+ Object.assign(other, {x: a.x + 1, y: a.y}); rebuild();
+ const st = playerAct(a.id, 'status'); ok(st.sides === 'lore', 'status carries the setting for the runner');
+ ok(/summon_hero/.test(dmAct('dm_status').sides || ''), 'dm_status tells the DM where its antagonists come from');
+ {const r = playerAct(a.id, 'inspect', {target: other.name}), s = JSON.stringify(r); ok(r.ok && !/your side|other side/.test(s), 'inspect names no side: ' + s.slice(0, 90))}
+ {const r = playerAct(a.id, 'look'), s = JSON.stringify(r); ok(!/your side|other side/.test(s), 'look names no side')}
+ {const r = playerAct(a.id, 'earshot'), s = JSON.stringify(r); ok(!/other side/.test(s), 'earshot names no side')}
+ init({setup: cleanSetup(defaultSetup(1025, 'eldmoor', 0))}); if (S.opening) S.opening.queue.length = 0; setDmSeat(true); {const b = SLT.slotHeroes(SLT.slotted())[0]; ok(!('sides' in playerAct(b.id, 'status')) && !('sides' in dmAct('dm_status')), 'with sides status and dm_status carry nothing new')}
+}
+
 console.log('A world repeats');
 {const run = k => spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--child', k], {encoding: 'utf8', env: {...process.env, ELDMOOR_SIDES: ''}}).stdout.split(/\r?\n/).find(l => l.startsWith('SIG ')) || 'none';
  const a = run('seeded'), b = run('seeded'), c = run('lore'), d = run('lore');

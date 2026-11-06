@@ -106,4 +106,5 @@
 - [Map rebind #1013](map_rebind.md) — onWorld hooks, worded() tables, WORDS.world stays, atlas tables, mapKey, capture lint, no-lair gap
 - [Several dungeons #891](multi_dungeon.md) — CRYPTS, crypts.js one reader, first dungeon writes nothing, cryptFor, entry, a room's blows must fit its rounds
 - [Guild choice #954](guild_choice.md) — hasLinks gate in guilds open(); guild_join/guild_found tools
+- [Sides as lore #1025](sides_lore.md) — loreSides gates: sameSide, ownTown, foeOf, mayFight, sidesOff, raidSide; fac stays, others stays separate
 - [Opening job fit #1016](opening_job_fit.md) — jobbar.js level bar; opening names a fitting job; job proposals refused up front; hosted-only
