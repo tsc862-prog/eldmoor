@@ -26,7 +26,8 @@
 // the campaign-log entry and fallen count it had read, and the day's oaths and lessons since; C.fireQ {mode, at, ...}: one waiting.
 import {S} from './state.js';
 import {swornOf,oathSaid} from './oath.js'; // only a spoken oath is talk for the fire (#800)
-import {CRYPT,ZONES} from '../world/map.js';
+import {ZONES} from '../world/map.js';
+import {cryptOfHero} from './crypts.js';
 import {hash} from '../core/rng.js';
 import {maxHp} from './heroes.js';
 import {notify} from './notify.js';
@@ -96,7 +97,7 @@ const AIR=['The fire cracks and settles; beyond its light the dark is very still
 const ok=(C,L)=>FIRE.ON&&hasLinks()&&tableOn()&&L.length>=2&&agentsDecide(L);
 function hereAt(C,q){const L=memOf(C).filter(living);
   if(q.mode==='camp'){const g=campOf(C);if(!g||g.phase!=='rest')return false;const H=L.filter(a=>a.state==='camp'&&g.ids.includes(a.id));return H.length>=2?H:false}
-  const ids=(q.ids||[]).map(byId).filter(living);if(ids.some(a=>FIGHTING.includes(a.state)||a.raid)||(CRYPT.group&&CRYPT.group.mem.some(a=>ids.includes(a))))return null; // not yet: still in it
+  const ids=(q.ids||[]).map(byId).filter(living);if(ids.some(a=>FIGHTING.includes(a.state)||a.raid)||ids.some(cryptOfHero))return null; // not yet: still in it
   const an=ids.find(a=>a.id===q.anchor&&!a.hidden)||ids.find(a=>!a.hidden);if(!an)return false;const H=ids.filter(b=>b===an||inRange(an,b));return H.length>=2?H:false}
 function openFire(C,q,H){const skip=memOf(C).filter(a=>!H.includes(a)).map(a=>a.id),F=fireOf(C),gm=Math.round(S.gameMin);
   if(q.mode==='camp'){const T=topicsOf(C,H),big=T.some(t=>t.big),g=campOf(C),zn=g?ZONES[g.zone]||'the wilds':'the wilds',rounds=big?FIRE.BIG:FIRE.STD;

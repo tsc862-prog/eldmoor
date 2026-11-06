@@ -11,7 +11,7 @@
 //   detail for a chamber or a foe (roomDetail: name, type, state, foes, what happened there), the History panel
 //   (historyOf: who entered, which chambers fell to them, who fell where; kept for the session on this side, as the sim
 //   keeps only totals), and the minimap's mark (dungeonSite).
-// Read-only on the sim: reads CRYPT.group and its crawl (sim/crawl.js), S.table and slotted().crawl.
+// Read-only on the sim: reads each dungeon's group and its crawl (sim/crawl.js), S.table and slotted().crawl.
 // Raid slice (#85): a lair landmark (kind 'lair') opens the raid arena in the same frame (render/raidview.js): the boss with
 //   its HP, phase and breath, the raiders where they stand, adds, who broke off or fell, a raider list on the bar, hover and
 //   click detail and a raid history; the minimap marks the lair.
@@ -21,7 +21,8 @@
 //   the same crawl as the Crypt's), its state when nobody is inside (hidden, found, cleared, collapsed, grown), a company
 //   gathering at its mouth, and the room kinds in the detail. Every dungeon is tracked by its key (keyOf: the Crypt's name,
 //   'site:<id>' for a site); a site is looked up fresh from S.sites each frame, so a restored save shows the live one.
-import {CRYPT,LANDMARKS} from '../world/map.js';
+import {CRYPT,CRYPTS,LANDMARKS} from '../world/map.js';
+import {cryptNamed,cryptOfCtx} from '../sim/crypts.js';
 import {buildInterior} from '../world/interior.js';
 import {S} from '../sim/state.js';
 import {companyById,slotted,members} from '../sim/company.js';
@@ -38,17 +39,16 @@ import {isArena,arenaOf,raidState,raidDetail,raidRows,raidHistory,drawArena,aren
 let root=null,cv=null,ctx=null,nameEl=null,statEl=null,listEl=null,tipEl=null,pinEl=null,histEl=null,histBtn=null,site=null,open=false,inited=false,sig='';
 let fit=null,hov={room:-1,foe:null,key:null,x:0,y:0},pin=-1,histOpen=false,tipSig='',topPx=-1,barPx=-1; // fit: where the last frame put the interior (for pointer maths)
 const roomsOf=s=>(s&&s.rooms)||[];
-const live=s=>!!(CRYPT&&s&&s.name===CRYPT.name);
 // A DM-made site (sim/sites.js): an entry of S.sites.list (id, theme, band, rooms, group); landmarks have a kind instead.
 export const isSite=s=>!!(s&&s.id!=null&&s.theme&&Array.isArray(s.band)&&!s.kind);
 const fresh=s=>isSite(s)?siteById(s.id)||s:s;
 export const keyOf=s=>isSite(s)?'site:'+s.id:s&&s.name;
-// The group inside a dungeon: a site's own, else the Crypt's.
-export const groupOf=s=>isSite(s)?s.group||null:live(s)?CRYPT.group:null;
+// The group inside a dungeon: a site's own, else the spec dungeon's of that name (#891).
+export const groupOf=s=>{if(isSite(s))return s.group||null;const D=s&&cryptNamed(s.name);return D?D.group:null};
 export const dungeonGroup=s=>groupOf(fresh(s)); // the same, for a dungeon object held across frames (a site is looked up again)
 const interiorOf=s=>isSite(s)?siteInterior(s):buildInterior(s);
-// The dungeon a Table scene plays in: the site its context names, else the Sunken Crypt.
-export const dungeonOf=sc=>{const id=sc&&sc.ctx&&sc.ctx.site;return id!=null?siteById(id)||null:CRYPT};
+// The dungeon a Table scene plays in: the site its context names, else the spec dungeon it names (none: the first).
+export const dungeonOf=sc=>{const id=sc&&sc.ctx&&sc.ctx.site;return id!=null?siteById(id)||null:cryptOfCtx(sc&&sc.ctx)};
 const who=(g,cr)=>{const C=coOf(cr||g.crawl);return g.name||(C&&C.name)||whoG(g)};
 const whoG=g=>g.name||(g.guild?'<'+g.guild.tag+'> '+g.guild.name:'A group');
 
@@ -82,9 +82,9 @@ function track1(key,g,n){const cr=g&&g.crawl;let w=watches.get(key);
   const end=k?END[k]:w.end==='clear'?'clear':w.end==='wiped'?'wiped':w.end==='retreat'?(w.driven?'driven':'withdrawn'):null;
   if(end)lastRun[key]={end,i:end==='clear'?n:w.i,who:w.who,day:w.day};closeRun(key,n,end);watches.delete(key)}
 export function trackCrawl(){
-  if(CRYPT)track1(CRYPT.name,CRYPT.group,roomsOf(CRYPT).length);
+  for(const D of CRYPTS)track1(D.name,D.group,roomsOf(D).length);
   const L=S.sites&&S.sites.list;if(L)for(let i=0;i<L.length;i++){const s=L[i];if(s.group||watches.size)track1('site:'+s.id,s.group,s.rooms.length)}
-  if(watches.size>(CRYPT&&watches.has(CRYPT.name)?1:0))for(const [k,w] of watches){if(k===(CRYPT&&CRYPT.name))continue; // a site gone from the list (a new world): close its run
+  if(watches.size)for(const [k,w] of watches){if(cryptNamed(k))continue; // a site gone from the list (a new world): close its run
     const id=+k.slice(5);if(!siteById(id))track1(k,null,w.n||0)}}
 const curOf=s=>curs.get(keyOf(s))||null;
 const runsOf=s=>{const k=keyOf(s);return runs.filter(r=>r.site===k)};
@@ -125,11 +125,11 @@ export function stateOf(s0=site||CRYPT){const s=fresh(s0),rooms=roomsOf(s),n=roo
       else if(cr.gap>0&&!cr.foes)st.status='The way on is open: '+who(g)+' head for '+room.name+'.';
       else{const left=cr.foes?cr.foes.filter(f=>f.hp>0).length:0,R=room.rounds||2;
         st.round='ROUND '+Math.min(R,cr.rd+1)+'/'+R;st.status='Room '+(cr.i+1)+' of '+n+': '+room.name+' · round '+Math.min(R,cr.rd+1)+'/'+R+(cr.foes?' · '+left+(left===1?' foe stands':' foes stand'):'')}}}
-  else{const L=lastRun[keyOf(s)],C=slotted()&&slotted().crawl;
+  else{const L=lastRun[keyOf(s)],C0=slotted()&&slotted().crawl,C=C0&&C0.by?C0.by[s.name]:C0;
     if(isSite(s)&&(s.state==='cleared'||s.state==='collapsed'||!L))siteQuiet(s,st,L);
     else if(L){const at=rooms[Math.min(L.i,n-1)];for(let i=0;i<Math.min(L.i,n);i++)st.cleared[i]=true;
       st.status='Quiet. Last run (day '+L.day+'): '+L.who+(L.end==='clear'?' cleared every chamber.':L.end==='wiped'?' were lost in '+(at?at.name:'the dark')+'.':(L.end==='driven'?' were driven back from ':' withdrew from ')+(at?at.name:'the dark')+'.');st.last=L}
-    else if(live(s)&&C&&C.runs)st.status='Quiet. The Fellowship has gone down '+C.runs+(C.runs===1?' time':' times')+': '+C.clears+' cleared, '+(C.driven+C.withdrawn)+' turned back, '+C.wipes+' lost.';
+    else if(cryptNamed(s.name)&&C&&C.runs)st.status='Quiet. The Fellowship has gone down '+C.runs+(C.runs===1?' time':' times')+': '+C.clears+' cleared, '+(C.driven+C.withdrawn)+' turned back, '+C.wipes+' lost.';
     else st.status='Quiet. No one is inside.'}
   if(cr&&cr.foes&&!cr.end&&g.tSite&&cr.foes.length){st.foes=cr.foes;st.foeRoom=cr.i;st.foeText=foeSummary(cr.foes)}
   if(cr&&g.tSite){st.crawl=cr;st.dkey=keyOf(s);st.roomSpec=rooms[cr.i]||null;st.scene=crawlScene(s,cr)} // for render/crawlview.js (#742)

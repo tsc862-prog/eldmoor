@@ -25,7 +25,8 @@
 //   S.table.calls [{id, kind, about, legal?, who?, t, done, by, text, pick}] while a staged scene is open
 import {S,clockStr,dayNo} from './state.js';
 import {keep} from './kept.js';
-import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,zoneAt,dist} from '../world/map.js';
+import {cryptOfHero} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {BESTIARY} from '../data/bestiary.js';
@@ -45,6 +46,7 @@ import {remember} from './memory.js';
 import {notify} from './notify.js';
 import {CAP as CHAT_CAP,BUBBLE} from './chat.js';
 import {TABLE,openScene,tableOn,setSceneKind,setStageHooks,kindHooks,callSeen,callLeft} from './table.js';
+import {edgeOf,EDGE_NAMES} from './patch.js'; // the edge a staged foe comes from (#746)
 import {setProps} from './props.js';
 import {findScene} from './scenes.js'; // a staged scene may sit beside another company's (#518)
 import {heard,tableLive,fillWhy,lateWhy} from './dmreflex.js'; // the DM's reflexes fill a call it leaves unanswered (#561)
@@ -320,7 +322,8 @@ export function stageScene(a,o={}){a=a&&typeof a==='object'?{...a}:{};delete a._
     C.dc=9+Math.ceil(P.avg/2)}
   G.seq=rid;today().n++;if(!nearAny(at))today().nw=(today().nw||0)+1;if(cmp){const c=today().c||(today().c={});c[cmp.id]=(c[cmp.id]||0)+1}G.stats.staged++;
   const title=clean(a.title,STAGE.TITLE_MAX)||defaultTitle(kind,C);
-  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},...(cmp&&!cmp.slots?{company:cmp.id}:{}),at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(o.minutes||(kind==='vision'?C.hours*60:town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN))),phase:'waiting',...(kind==='vision'?{trig:W.hero?'rest':'place'}:{}),scene:null,result:null,
+  const edge=fightKind(kind)?edgeOf(a.edge):null;if(given(a.edge)&&!edge)notes.push('edge is for an elite or ambush, and one of '+EDGE_NAMES.join(', ')+'; it was left out');
+  const rec={id:rid,kind,title,frame,reason,near:{hero:W.hero?W.hero.id:null,label},...(edge?{edge}:{}),...(cmp&&!cmp.slots?{company:cmp.id}:{}),at:{x:at.x,y:at.y},z,lvl,cast:C,labels,born:Math.round(S.gameMin),until:Math.round(S.gameMin+(o.minutes||(kind==='vision'?C.hours*60:town?STAGE.TOWN_WAIT_MIN:STAGE.WAIT_MIN))),phase:'waiting',...(kind==='vision'?{trig:W.hero?'rest':'place'}:{}),scene:null,result:null,
     ...(setId?{setting:setId}:{}),...(town?{town:town.name,spot}:{})};
   const where=whereLine(label,z,town,setId);if(ignored.length)notes.push('choices must map to the legal actions: '+STAGE_ACTS[kind].join(', '));
   G.cur=rec;
@@ -380,7 +383,7 @@ const resting=b=>b.state==='camp'||b.state==='town'&&Array.isArray(b.pq)&&!!b.pq
 // The member a vision takes now, or null: never while one of them fights, raids or is in the Crypt; staged near a member, when one
 // rests (a camp, a rest at an inn); staged at a place, when one stands there.
 function visionMet(rec){const L=recMem(rec).filter(b=>living(b)&&!b.hidden);if(!L.length)return null;
-  if(L.some(b=>VBUSY.has(b.state)||b.raid||(CRYPT.group&&CRYPT.group.mem.includes(b))))return null;
+  if(L.some(b=>VBUSY.has(b.state)||b.raid||cryptOfHero(b)))return null;
   return rec.trig==='rest'?L.find(resting)||null:L.find(b=>dist(b,rec.at)<=STAGE.MEET_R)||null}
 
 // ---- once per step, before the Table triggers (sim/table.js tableTick): walk, meet, expire ----
@@ -416,7 +419,7 @@ function meet(rec,a){const G=S.staged,F=slotted(),fight=rec.kind==='elite'||rec.
   LOG('frame',['Staged ',gd(rec.kind),' meets '+coName(recCo(rec))+': ',gd(rec.title),' ('+a.name+' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+').'],{staged:rec.id,kind:rec.kind,met:a.id});
   if(!tableOn()){finish(rec,null,'played out in the world (Table mode is off)');return false}
   rec.phase='open';
-  const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{}),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),dcUp:0,tally:{}};
+  const ctx={staged:rec.id,by:'dm-agent',labels:rec.labels,cast:castLine(rec),...(rec.setting?{setting:rec.setting}:{}),...(rec.town?{town:rec.town}:{}),...(fight?{mob:rec.cast.mobs.find(id=>liveMob(mobOf(id))),mobs:rec.cast.mobs.slice()}:{}),...(rec.cast.npc!=null?{npc:rec.cast.npc}:{}),...(rec.edge?{edge:rec.edge}:{}),dcUp:0,tally:{}};
   const pre={ids:(rec.kind==='vision'?recMem(rec).filter(b=>living(b)&&!b.hidden&&(b===a||inRange(a,b))):recMem(rec)).map(b=>b.id)};say(pre,rec.frame,NARRATOR); // a vision: only those it takes see it (#639) // the frame reaches the members as narration (#123), before any line of the scene
   ctx.anchor=a.id; // an everyone-at-once scene takes the members within shouting range of the one they met (#182)
   {const K=kindHooks(rec.kind);if(K&&K.stagedCtx)Object.assign(ctx,K.stagedCtx(rec,recMem(rec).filter(living)),{staged:rec.id})} // an interrogation's truth, lie and resolve (sim/interrogate.js, #431 slice 3)
