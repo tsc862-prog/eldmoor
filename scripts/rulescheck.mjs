@@ -12,10 +12,11 @@
 //     checked-out (merged) tree holds docs/patchnotes/<PR>.md, unless the PR carries the label no-notes. The PR number
 //     comes from --pr N or PR_NUMBER (CI); the label is read live with gh (GH_TOKEN), so adding it and re-running works.
 //  10. workflows (#597): every .github/workflows/*.yml passes the strict line check in scripts/workflow-lint.mjs (a comma in an unquoted flow-mapping step name made ci.yml invalid and the PR BLOCKED with no failure).
+//  11. map captures (#1013): a module-scope value built from the live map is rebound by an onWorld hook, or listed in the allowlist's "mapCaptures" with a reason (scripts/mapcapture.mjs).
 //  9. every world of WORLDS has its rows (epic #940 slice B): a snapshot row, a campaign file, fauna per region, a first delve per town, its places in docs/LORE.md.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
 import {mkTmp} from './tmp.mjs';
-import {readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync} from 'node:fs';
+import {readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync, mkdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, dirname, resolve, relative, sep} from 'node:path';
@@ -218,6 +219,28 @@ console.log('\nworkflows: every .github/workflows/*.yml is valid for GitHub');
   ok(bad.length === 1 && bad[0].line === 2, 'a comma in an unquoted flow-mapping step name is caught, with its line (the PR #597 break)');
   ok(lintWorkflow('steps:\n  - {name: "Foo (a, b)", run: npm run x}\n  - {name: Foo (a; b), run: npm run x}\n').length === 0, 'a quoted name with a comma, and a name without one, pass');
   ok(lintWorkflow('steps:\n  - {name: Foo, run: npm run x\n').length === 1, 'an unclosed flow-mapping step is caught');
+}
+
+// ---- 11. module-scope values built from the map (#1013) ----
+console.log('\nmap captures: what a module built from the live map at load is rebound by an onWorld hook');
+{
+  const {scan} = await import(pathToFileURL(join(ROOT, 'scripts/mapcapture.mjs')).href);
+  const allow = ALLOW.mapCaptures || {}, stop = Object.keys(allow), sites = scan({stop});
+  const name = s => s.file + '#' + s.name, loose = sites.filter(s => !s.rebound && !allow[name(s)]), known = new Set(sites.map(name));
+  ok(loose.length === 0, sites.filter(s => s.rebound).length + ' captures rebound, ' + stop.length + ' allowed' + (loose.length ? '\n    ' + loose.map(s => `${s.file}:${s.line} ${s.name} (${s.kind})`).join('\n    ') + '\n    (rebuild it in an onWorld hook from sim/kept.js, read the live binding inside a function, go through worded() for text, or list it under "mapCaptures" with the reason)' : ''));
+  const stale = stop.filter(k => !known.has(k));
+  ok(stale.length === 0, 'the allowlist has no capture that is gone' + (stale.length ? ': ' + stale.join(', ') : ''));
+  // the guard must fire on a planted capture and stay quiet on the lawful forms
+  const dir = mkTmp('eldmoor-mapcap-'), w = (f, s) => {mkdirSync(dirname(join(dir, f)), {recursive: true}); writeFileSync(join(dir, f), s)};
+  w('src/world/map.js', 'export let CITY=[],ZONES=[];\nexport const dist=(a,b)=>0;\n');
+  w('src/world/tiles.js', 'export let W=1,H=1;\n');
+  w('src/world/spec.js', 'export const ACTIVE_SPEC={};\n');
+  w('src/data/mobs.js', 'export const MOBS={},COUNTS={},ELITES=[],ECO={};\n'); w('src/data/items.js', 'export const EPICS=[];\n'); w('src/core/x.js', ''); w('src/sim/state.js', 'export const S={};\n');
+  w('src/sim/kept.js', 'export const onWorld=f=>f;\n');
+  w('src/sim/bad.js', "import {CITY,ZONES} from '../world/map.js';\nimport {W} from '../world/tiles.js';\nconst names=CITY.map(c=>c.name);\nconst size=W*2;\nconst build=()=>ZONES.map(()=>[]);\nconst tab=build();\nlet memo=null;\nexport const m=()=>memo||(memo=CITY[0]);\nconst again=names.length;\n");
+  w('src/sim/good.js', "import {CITY} from '../world/map.js';\nimport {W} from '../world/tiles.js';\nimport {onWorld} from './kept.js';\nconst read=()=>CITY[0];\nconst shadow=W=>W+1;\nconst calm=shadow(2);\nlet size=W*2;\nonWorld(()=>{size=W*2});\n");
+  const got = scan({root: dir}), bad = got.filter(s => !s.rebound).map(s => s.name).sort().join(' ');
+  ok(bad === 'again memo names size tab', 'a planted capture, memo and second-hand table are caught, the lawful forms pass (' + bad + ')');
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');
