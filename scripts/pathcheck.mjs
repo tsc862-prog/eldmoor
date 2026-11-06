@@ -143,5 +143,5 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
   ok(A.sig===B.sig,'a seeded run repeats')}
 
 console.log('plans',pathStats.plans,'worst search',pathStats.peak,'nodes');
-if(!process.env.ELDMOOR_WORLD&&!process.env.PATH_CHILD){const r=spawnSync(process.execPath,[process.argv[1]],{env:{...process.env,ELDMOOR_WORLD:'stepping',PATH_CHILD:'1'},stdio:'inherit'});if(r.status)fail++}
+if(!process.env.ELDMOOR_WORLD&&!process.env.PATH_CHILD)for(const w of ['stepping','vale']){const r=spawnSync(process.execPath,[process.argv[1]],{env:{...process.env,ELDMOOR_WORLD:w,PATH_CHILD:'1'},stdio:'inherit'});if(r.status)fail++}
 if(fail){console.log(fail+' check(s) failed');process.exit(1)}console.log('pathcheck ok');
