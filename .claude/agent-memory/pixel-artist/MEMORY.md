@@ -40,3 +40,4 @@
 - [Scenery](scenery.md) — #940 Vale art pass: scenery.js, spec note, smoothed river and roads, felled trees, staging
 - [Vale stack](valestack.md) — #980 ten PRs as one branch: merge order, shadow-pass trap, stacked PRs after landing
 - [Vale at scale](valescale.md) — #979 great kit, notch outlines, ground shapes, wyrm sheet, the onAssets repaint race
+- [GPU frames](gpuframes.md) — #979 final: real-GPU numbers, chunk stalls were the problem, staging a setup world for a probe
