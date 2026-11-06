@@ -14,7 +14,7 @@
 //   C.calls {d (game day), n (calls that day), no (game minute of the last decline), last:{kind, by, line, gm, day, answer:
 //            open|accepted|declined|unanswered, prop?, until? (a solo's question lapses then)}}
 // DOM-free, no RNG (the scripted line is picked by a hash of ids). Owned by brain-builder.
-import {S,dayNo,clockStr} from './state.js';
+import {S,dayNo,clockStr,loreSides,sameSide} from './state.js';
 import {CITY,CRYPT,CRYPTS,dist} from '../world/map.js';
 import {cryptFor,cryptOfHero} from './crypts.js'; // which dungeon a call, a hero or a group is about (#891)
 import {FAC} from '../data/factions.js';
@@ -57,7 +57,7 @@ const hoursLeft=m=>Math.max(1,Math.ceil(m/60));
 // The person who asks when the DM names nobody: in town the gate captain if in earshot, else the nearest townsperson of the
 // company's side (or nobody's) in earshot; anywhere else nobody, and the narrator says it.
 function townVoice(C,lead){if(!inTown(lead))return null;
-  const L=people().filter(p=>Number.isFinite(p.x)&&dist(p,lead)<=CALL.EAR&&(p.fac==null||p.fac<0||p.fac===C.fac));
+  const L=people().filter(p=>Number.isFinite(p.x)&&dist(p,lead)<=CALL.EAR&&(p.fac==null||p.fac<0||sameSide(p,C)));
   return L.sort((x,y)=>(y.role==='captain'?1:0)-(x.role==='captain'?1:0)||dist(x,lead)-dist(y,lead)||x.id-y.id)[0]||null}
 
 function logAnswer(C,L,how){const n=label(C),w=placeWord(L.kind,L.dun),again=' Not asked again for '+CALL.AGAIN_DAYS+' game days.';
@@ -82,6 +82,7 @@ export function callRefusal(C,kind){const n=label(C),r=settle(C),M=members(C);
   const g=M.find(a=>cryptOfHero(a));if(g)return g.name+' is in '+cryptOfHero(g).name;
   const b=M.find(a=>BUSY.includes(a.state)||a.raid);if(b)return b.name+' of '+n+(b.state==='raid'||b.raid?' is in a raid':b.state==='dungeon'?' is in '+(cryptOfHero(b)||CRYPT).name:b.state==='downed'?' is down':' is in a fight');
   if(isSolo(C)){const a=M[0];if((a.pq||[]).some(c=>c.kind==='crypt'))return a.name+' is already on the way to '+dunOf(C).name;
+    if(kind==='raid'&&loreSides())return a.name+' rides alone, and a raid here is a company\'s own: there is no muster to fall in with';
     if(kind==='raid'&&!S.raidOn[a.fac])return a.name+' rides alone and can only fall in with a muster that is out, and none of the '+FAC[a.fac].name+' is'}
   return null}
 
@@ -94,7 +95,7 @@ const CALL_LEVER={name:'call_to',about:'Put the Crypt or a raid to a company, in
     if(p.by!=null){const q=personBy(p.by),L=leaderOfC(C);if(!q)return 'no such person (by)';if(!L||!Number.isFinite(q.x)||dist(q,L)>CALL.EAR)return (q.name||'they')+' is not within '+CALL.EAR+' tiles of '+(L?L.name:'the leader')+' (earshot)'}
     return null},
   apply(p){const C=companyById(p.company),L=leaderOfC(C),solo=isSolo(C),D=dunOf(C),q=p.by!=null?personBy(p.by):townVoice(C,L),who=q?full(q):'The narrator';
-    const T=CALL_LINES[p.kind][solo?'solo':'company'],line=clean(p.text,CALL.TEXT_MAX)||T[hashN(C.id+':'+dayNo())%T.length].replace('{crypt}',D.name).replace('{fac}',FAC[C.fac].name);
+    const T=CALL_LINES[p.kind][solo?'solo':'company'],line=clean(p.text,CALL.TEXT_MAX)||T[hashN(C.id+':'+dayNo())%T.length].replace('{crypt}',D.name).replace('{fac}',loreSides()?'brave':FAC[C.fac].name);
     // spoken: to those in earshot of the person (or of the leader, for the narrator) and the leader, as bestow says a name
     const e={t:clockStr(),d:dayNo(),from:q?{kind:'npc',id:q.id,name:q.name,fac:q.fac}:NARRATOR,text:line,trigger:q?'npc':'dm',dm:true};
     const at=q||L,hs=S.agents.filter(b=>living(b)&&!b.hidden&&(b===L||dist(b,at)<=HEAR));
@@ -130,7 +131,8 @@ export function lastCall(C){const r=settle(C),L=r&&r.last;if(!L)return null;cons
 // What the DM knows of the Crypt and the muster for this company: a line, or null. Never a hero's prompt; passing it on is the DM's choice.
 const YOURS=' Yours to know, not theirs: they learn of it only if you pass it on (call_to, a rumour, a person).';
 export function musterWord(C,quiet){const M=members(C);if(C.wait&&(C.wait.crypt||C.wait.raid))return null;if(M.some(a=>cryptOfHero(a)))return null;
-  if(S.boss.alive&&S.raidOn[C.fac]&&!M.some(a=>a.raid))return 'The '+FAC[C.fac].name+' muster is out against Kragmaw.'+YOURS;
-  const G=CRYPTS.find(D=>D.group&&D.group.phase==='gather'&&D.group.fac===C.fac);
+  const lore=loreSides(); // no faction muster or group reaches a company in a lore world (#1025)
+  if(!lore&&S.boss.alive&&S.raidOn[C.fac]&&!M.some(a=>a.raid))return 'The '+FAC[C.fac].name+' muster is out against Kragmaw.'+YOURS;
+  const G=!lore&&CRYPTS.find(D=>D.group&&D.group.phase==='gather'&&D.group.fac===C.fac);
   if(G)return 'A background group of the '+FAC[C.fac].name+' gathers at '+G.name+'.'+YOURS;
   const D=dunOf(C);return quiet&&!D.group?D.name+' stands free.'+YOURS:null}

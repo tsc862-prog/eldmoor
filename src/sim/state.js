@@ -55,6 +55,8 @@ const companyFac=a=>{const C=(S.companies||[]).find(c=>c.id===a.company);return 
 export function foeOf(a,b){if(!loreSides())return a.fac!==b.fac;const ca=inCompany(a),cb=inCompany(b);
   if(ca&&cb)return false;if(!ca&&!cb)return a.fac!==b.fac;
   const m=ca?a:b,o=ca?b:a;return !!o.summoned&&o.fac!==companyFac(m)}
+// The side a raider fights under: its fac, or in a lore world (#1025) the side the company's muster took, so a mixed company raids as one.
+export const raidSide=a=>a.raidSide!=null?a.raidSide:a.fac;
 export const mayFight=(a,b)=>foeOf(a,b)||(loreSides()&&!!b.summoned); // an agent may also turn on anyone the DM brought
 export const sidesOff=(a,b)=>loreSides()&&(inCompany(a)||inCompany(b)); // no grudge, nemesis or honour between these two
 export const dayNo=()=>Math.floor(S.gameMin/1440)+1; // game day, 1-based (the UI shows D4 03:12 with it)

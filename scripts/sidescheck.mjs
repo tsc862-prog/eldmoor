@@ -139,6 +139,42 @@ console.log('Between sides');
   ok(S.agents.filter(a => a.goal && inCompany(a) && (a.goal.type === 'rival' || a.goal.type === 'avengeHero')).every(a => a.goal.aside || a.goal.offered), 'no company hero is sworn against a hero')}
 }
 
+console.log('Raids');
+{const {playerAct} = await import('../src/sim/player.js'), {joinRaid, raidCheck, updBoss} = await import('../src/sim/boss.js'), {musterWord, lastCall} = await import('../src/sim/callto.js'), {raidSide, inCompany} = await import('../src/sim/state.js'), {maxHp, gainXp} = await import('../src/sim/heroes.js'), {seedLevel} = await import('../src/sim/heroes.js'), {TABLE} = await import('../src/sim/table.js'), {pull} = await import('../src/sim/levers.js'), {rebuild} = await import('../src/sim/spatial.js');
+ const chron = () => S.chronicle.slice(0, 30).flatMap(e => e.parts.map(p => typeof p === 'string' ? p : p && (p.name || p.t) || '')).join(' ');
+ init({setup: cleanSetup(mixed(1025))}); if (S.opening) S.opening.queue.length = 0; TABLE.mode = 'off';
+ const F = SLT.slotted(), L = SLT.slotHeroes(F), f = F.fac;
+ for (const a of L) {seedLevel(a, 14); Object.assign(a, {x: L[0].x, y: L[0].y, state: 'hunt', hp: maxHp(a), gear: 12, dest: null, target: null, pq: []})} rebuild();
+ S.raidOn[f] = S.raidOn[1 - f] = true; // a background muster is out, of both histories
+ ok(!joinRaid(L[0]) && !L[0].raid, 'joinRaid: no muster to fall in with');
+ ok(!/muster is out/.test(musterWord(F, false) || ''), 'musterWord: no faction muster reaches a company');
+ S.raidOn[0] = S.raidOn[1] = false;
+ {const r = playerAct(L[0].id, 'join_raid', {}); ok(!r.ok, 'join_raid is refused: ' + r.error)}
+ // the company's own raid: its vote passed
+ (F.wait || (F.wait = {})).raid = S.gameMin + 600; (F.accept || (F.accept = {})).raid = S.gameMin + 600; for (const a of L) a.raidOk = true; S.raidT = 0;
+ raidCheck(.1);
+ ok(L.every(a => a.raid && a.state === 'raid') && S.raidOn[f], 'the company musters whole, both histories in it');
+ ok(L.every(a => raidSide(a) === f), 'all five fight under one side');
+ ok(S.agents.filter(a => a.raid && !inCompany(a)).length === 0, 'no background hero joins a company\'s raid');
+ ok(chron().includes(F.name + ' musters') || chron().includes(F.name), 'the Chronicle names the company, not a faction: ' + chron().slice(0, 80));
+ raidCheck(.1); ok(L.every(a => a.raid), 'the raid holds while its side stands');
+ const g0 = L.map(a => a.gold); S.boss.hp = 1; S.boss.dmg = [0, 0]; S.boss.dmg[f] = 5000; for (const a of L) {a.x = S.boss.x + 1; a.y = S.boss.y + 1}
+ S.boss.hp = 0; updBoss(.1);
+ ok(!S.boss.alive && L.every((a, i) => a.gold > g0[i]), 'Kragmaw falls and all five are paid, whatever their history');
+ ok(chron().split(' ').join('').includes(F.name.split(' ').join('') + 'slew'), 'the Chronicle says the company slew it');
+ for (const a of L) {a.raid = false; a.state = 'hunt'}
+ S.raidOn[f] = false;
+ // a background muster never drafts a company
+ init({setup: cleanSetup(mixed(1025))}); if (S.opening) S.opening.queue.length = 0; TABLE.mode = 'off'; const M = SLT.slotHeroes(SLT.slotted());
+ for (const a of M) {seedLevel(a, 15); a.gear = 12}
+ for (const a of S.agents) if (!inCompany(a) && a.state !== 'dead') {seedLevel(a, 15); a.gear = 12}
+ let drafted = 0, bgRaid = 0; for (let i = 0; i < 1200; i++) {step(1); if (M.some(a => a.raid)) drafted++; if (S.agents.some(a => a.raid && !inCompany(a))) bgRaid++}
+ ok(drafted === 0, 'a company is never drafted into a muster'); ok(bgRaid > 0, 'while the background raids among itself');
+}
+{ // no setting: as ever
+ init({setup: cleanSetup(defaultSetup(1025, 'eldmoor', 0))}); if (S.opening) S.opening.queue.length = 0; const {joinRaid} = await import('../src/sim/boss.js'), a = SLT.slotHeroes(SLT.slotted())[0]; S.raidOn[a.fac] = true;
+ ok(joinRaid(a) && a.raid, 'no setting: joinRaid falls in as ever'); a.raid = false; a.state = 'hunt'; S.raidOn[a.fac] = false}
+
 console.log('A world repeats');
 {const run = k => spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--child', k], {encoding: 'utf8', env: {...process.env, ELDMOOR_SIDES: ''}}).stdout.split(/\r?\n/).find(l => l.startsWith('SIG ')) || 'none';
  const a = run('seeded'), b = run('seeded'), c = run('lore'), d = run('lore');
