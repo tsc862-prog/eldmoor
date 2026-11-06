@@ -77,6 +77,7 @@ import {lookInvites,sellsBest} from './invite.js'; // tools nothing else invites
 const ENGLISH='Not said: speak in English. Everyone in '+WORDS.world+' speaks English; say it again in English.'; // #126
 import {spokenLine,partySay,partyRead,propose,castVote,propById,openProps,noProposal,leaderFor,splitOff,followLead,makeMeeting,hearNote,soloCrypt,greenWarn} from './council.js';
 import {joinRaid} from './boss.js'; // a solo's join_raid (#826)
+import {callFor,callAnswered,callTaken} from './callto.js'; // a question put to a solo (#826)
 import {SIGHT,writeSighting,sightingLines,postNotice,noticesAt} from './sightings.js';
 import {outOfRange,sendCourier,notTold,NOT_TOLD,nameList,REACH,openPlans} from './reach.js';
 import {invite as offerInvite,accept as offerAccept,decline as offerDecline,askToJoin,leaveForGood,companionsView} from './offers.js'; // invite, accept, decline; join_party toward agent heroes (#442)
@@ -1324,9 +1325,14 @@ const T={
     const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // the danger edge holds as for any walk (#465)
     if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label}];if(!g.stopped)a.pq.push({kind:'crypt',join:forceYes(join),label:D.name,...cryptCtx(D)});if(a.state==='follow')a.state='hunt';a.dest=null;
     const r={ok:true,going:p.label,note:g.stopped?'You stop short of the mouth.':'You walk to the mouth and go down'+(forceYes(join)?', with the group gathering there if one has room':'')+'. Every chamber is a scene at the table, and you are alone in them.'};
-    const w=greenWarn(companyOf(a),'crypt',D);if(w)r.warning=w.trim();if(p.warn)r.warning=(r.warning?r.warning+' ':'')+p.warn;if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;return r},
+    const w=greenWarn(companyOf(a),'crypt',D);if(w)r.warning=w.trim();if(p.warn)r.warning=(r.warning?r.warning+' ':'')+p.warn;if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;callTaken(a,'crypt');return r},
   join_raid(a){soloOrder(a,'raid');need(S.boss.alive,'Kragmaw is not in its lair now.');need(S.raidOn[a.fac],'Nobody of your people is raiding Kragmaw now. You can only fall in with a muster that is out; the town criers tell of them (read_chronicle).');
-    const w=greenWarn(companyOf(a),'raid');joinRaid(a);return {ok:true,joined:'the raid on Kragmaw',note:'You ride for the lair with the muster. You break off when badly hurt; until then the raid is your whole order.',...(w?{warning:w.trim()}:{})}},
+    const w=greenWarn(companyOf(a),'raid');joinRaid(a);callTaken(a,'raid');return {ok:true,joined:'the raid on Kragmaw',note:'You ride for the lair with the muster. You break off when badly hurt; until then the raid is your whole order.',...(w?{warning:w.trim()}:{})}},
+  // #826: someone in the world asked a solo; the answer is said aloud, and a yes is the order itself
+  answer_call(a,{answer,line}){const L=callFor(a),v=String(answer||'').trim().toLowerCase();need(L,'Nobody is waiting on an answer from you. A company answers with vote.');
+    need(v==='accept'||v==='decline','answer is accept or decline.');need(String(line||'').trim(),'Say it aloud: line is what you answer, in your own words.');const kind=L.kind;T.say(a,{text:line});
+    if(v==='decline'){callAnswered(a,false,'said no aloud');return {ok:true,answered:'declined',note:'You turned it down. Nothing is owed.'}}
+    const r=kind==='crypt'?T.go_crypt(a,{force:'yes',...(L.dun?{dungeon:L.dun}:{})}):T.join_raid(a);callAnswered(a,true,'said yes aloud');return {...r,answered:'accepted'}},
   examine:(a,x)=>examineView(a,x||{},sightOf(a)), // #525: a closer look at a marked place, landmark or sign; read only
   search(a,x){need(['hunt','town','travel','follow','camp'].includes(a.state),'You cannot search now ('+a.state+'). Not in a fight, a dungeon or on the road home.');
     const r=searchAct(a,x||{},sightOf(a));if(r.ok===false)return r;
