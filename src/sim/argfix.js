@@ -21,15 +21,15 @@ export function cleanArgs(tool, args) {
   for (const k of Object.keys(spec)) {
     if (!Object.hasOwn(args, k)) continue;
     const v = args[k], t = spec[k].type;
-    if (v === null || v === undefined) {set(k, undefined); continue}
-    if (t === 'string') {if (typeof v === 'object' || typeof v === 'function' || typeof v === 'symbol') set(k, undefined)}
+    if (v === undefined) continue;
+    const word = t === 'string' || t === 'integer' || t === 'number';
+    if (v === null) {if (word) set(k, undefined); continue} // null is "left out" for a word or a number; a shape is read by its tool
+    if (t === 'string') {if (Array.isArray(v) || (typeof v === 'object' && !(Number.isFinite(v.x) && Number.isFinite(v.y))) || typeof v === 'function' || typeof v === 'symbol') set(k, undefined)} // a point {x, y} is kept: near and at read it
     else if (t === 'integer' || t === 'number') {
-      if (typeof v === 'object' || typeof v === 'boolean' || typeof v === 'function') set(k, undefined);
+      if (typeof v === 'object' || typeof v === 'function') set(k, undefined);
       else if (typeof v === 'string') {if (/^\s*[-+]?(\d|\.\d)/.test(v) && !Number.isFinite(Number(v))) set(k, undefined)} // "1e999"
       else if (typeof v === 'number') {if (!Number.isFinite(v)) set(k, undefined); else if (t === 'integer' && !Number.isInteger(v)) set(k, Math.trunc(v))}
-    } else if (t === 'array') {if (!Array.isArray(v) && typeof v !== 'string') set(k, undefined)} // a string is kept: tags "a, b" are split by the tool
-    else if (t === 'object') {if (!PLAIN(v) && typeof v !== 'string') set(k, undefined)} // a string is kept: the tool reads JSON text
-    else if (t === 'boolean') {if (typeof v === 'object') set(k, undefined)}
+    } // arrays, objects and booleans are validated by the tool itself (a cast that is not an object is refused there)
   }
   return out || args;
 }

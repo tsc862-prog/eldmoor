@@ -144,7 +144,7 @@ export function propose(a,kind,details,o={}){const F=companyOf(a);if(!F)return '
   if(o.caller)P.caller=clean(o.caller,60); // asked by someone in the world (askCompany): they are named, not the leader
   if(away.length)P.absent=away.map(b=>b.id);
   if(kind==='split'&&o.where)P.meet={where:clean(o.where,60),hours:o.hours}; // the plan to meet again, recorded if the split passes
-  if(o.job!=null)P.job=Number(o.job);
+  if(o.job!=null&&Number.isFinite(Number(o.job)))P.job=Number(o.job); // a job id that is not a number is no job
   if(o.site!=null)P.site=o.site;
   if(ex)Object.assign(P,ex.fields);
   (F.props||(F.props=[])).unshift(P);if(F.props.length>COUNCIL.PROPS_MAX)F.props.pop();

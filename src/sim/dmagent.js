@@ -187,7 +187,7 @@ export const dmTurnVer=()=>S.dmAgent&&S.dmAgent.tv||0;
 // A Fellowship member badly hurt out in the field near the pull: the DM does not pile on.
 export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object')return null;
   if(name==='set_condition'&&!DANGER_CONDS.includes(p.kind))return null;
-  if(name==='start_event'){const ev=EVENTS[p.kind];if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
+  if(name==='start_event'){const ev=Object.hasOwn(EVENTS,p.kind)?EVENTS[p.kind]:undefined;if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
   const at=p.at&&typeof p.at==='object'&&Number.isFinite(Number(p.at.x))?{x:Number(p.at.x),y:Number(p.at.y)}:null,z=p.region!=null?regionIdx(p.region):at?zoneAt(at.x,at.y):null;
   const fs=focuses(),five=new Set(slotHeroes(slotted())),coOf=a=>fs.find(f=>f.ids.has(a.id)),who=a=>{if(five.has(a))return ' of the Fellowship';const f=coOf(a);return f&&f.members.length>1?' of '+(f.company.name||'a company'):' (riding alone)'};
   const L=[...slotHeroes(slotted()),...fs.flatMap(f=>f.members).filter(a=>!five.has(a))]; // the Fellowship as before, then every other company's members (#450)
