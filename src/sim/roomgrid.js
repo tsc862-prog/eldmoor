@@ -1,8 +1,8 @@
 // The room grid (#744, slice 2 of #140's named positions): tiles underneath, names on top. A crawl room has a small grid of its
 // own, the chamber's box in the dungeon's interior (world/interior.js, world/siteinterior.js); everyone in the room stands on one
 // tile of it. Agents speak in spots and relations ("hold the doorway", "beside Kerin", "toward the stair"), the game turns that
-// into a tile, and they read the room back in words. No rule reads a position yet (#745): nothing here rolls a die or touches
-// the sim's RNG, and it is all pure over plain data.
+// into a tile, and they read the room back in words. The rules that read a position live in sim/geometry.js (#745): nothing here
+// rolls a die or touches the sim's RNG, and it is all pure over plain data.
 //   roomSpots(m, i, spec?)   the named spots of chamber i of interior m in world tiles (feet): {stair, back, front, flankL, flankR,
 //                            cover, den} each {id, x, y, u, v}, own (a room's own spots), {ax, ay} (the unit step from the way in
 //                            toward the den), {px, py} (across it, toward flankR), half, len, coverName, coverWord. Cached.
@@ -14,6 +14,7 @@
 //   goSpot, goBeside         the same for an act that implies a move (spotFor, the reflexes).
 //   roomWords(R, canMove)    the room in a few short sentences, no coordinates; moveNames(R) the spots one may name.
 //   spotAt(G, x, y), spotWord(G, id)   the spot a tile belongs to, and its name in the agents' words.
+//   aimTile(R, text)         a spot, a companion or a foe by name -> its tile {x, y, word} or {error}: where a blast is aimed (#745).
 // R is the room as one member sees it: {G, cr, me (hero id), mates: [{id, name, down}], foes: [{key, name}]}, the living only.
 import {IT} from '../world/interior.js';
 
@@ -63,6 +64,7 @@ export function roomSpots(m,i,spec){const key=m.seed+':'+(m.theme||'')+':'+m.w+'
 const gridCache=new WeakMap(); // interior -> {room key: grid}
 const I=(G,x,y)=>y*G.w+x;
 const on=(G,x,y)=>x>=0&&y>=0&&x<G.w&&y<G.h&&!!G.ok[I(G,x,y)];
+export const gridOn=on;
 const d2=(x,y,X,Y)=>(x-X)*(x-X)+(y-Y)*(y-Y);
 // The free tile nearest (x, y), lowest index on a tie; (x, y) itself when the room is full.
 function nearFree(G,used,x,y){let b=-1,bd=1e9;for(let k=0;k<G.w*G.h;k++){if(!G.ok[k]||used.has(k))continue;const X=k%G.w,Y=(k-X)/G.w,d=d2(X,Y,x,y);if(d<bd){bd=d;b=k}}
@@ -93,7 +95,7 @@ function occ(R){const taken=new Set(),block=new Set(),P=R.cr.pos,G=R.G;
   for(const f of R.foes)if(P[f.key]){const k=I(G,P[f.key].x,P[f.key].y);taken.add(k);block.add(k)}
   return {taken,block}}
 const N8=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-function bfs(G,x,y,block){const D=new Int16Array(G.w*G.h).fill(-1);if(x<0||y<0||x>=G.w||y>=G.h)return D;const q=[[x,y]];D[I(G,x,y)]=0;
+export function bfs(G,x,y,block){const D=new Int16Array(G.w*G.h).fill(-1);if(x<0||y<0||x>=G.w||y>=G.h)return D;const q=[[x,y]];D[I(G,x,y)]=0;
   for(let h=0;h<q.length;h++){const [X,Y]=q[h],d=D[I(G,X,Y)];for(const [dx,dy] of N8){const a=X+dx,b=Y+dy;if(!on(G,a,b))continue;const k=I(G,a,b);if(D[k]>=0||block.has(k))continue;D[k]=d+1;q.push([a,b])}}
   return D}
 // As near (tx, ty) as the round allows: the free tile within POS.STEP steps that is fewest steps from it. short: too far, or held.
@@ -148,9 +150,13 @@ export function resolveMove(R,text){const t=String(text==null?'':text).trim().sl
   if(bx===p.x&&by===p.y)return {error:'The way '+m[2]+' is blocked. You may move to: '+moveNames(R).join(', ')+'.'};
   return moved(R,{x:bx,y:by})}
 
+// Where a blast lands: what the words name, with no walk at all.
+export function aimTile(R,text){const t=String(text==null?'':text).trim().slice(0,80),e=entity(R,norm(t).replace(LEAD,'')),at=tileOf(R,e);
+  return at?{x:at.x,y:at.y,word:'You aim at '+(e.spot?theWord(R.G,e.spot):t)+'.'}:{error:'Cannot aim at "'+t+'". Name a spot, a companion or a foe.'}}
+
 // ---- the room in words ----
 const tiles=n=>n===1?'1 tile':n+' tiles';
-function cheb(a,b){return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))}
+export function cheb(a,b){return Math.max(Math.abs(a.x-b.x),Math.abs(a.y-b.y))}
 // The direction from one tile to another, facing the den.
 function dirWord(G,a,b){const dx=b.x-a.x,dy=b.y-a.y,f=dx*G.ax+dy*G.ay,s=dx*G.px+dy*G.py,F=Math.abs(f),T=Math.abs(s);
   return T<F*.5?(f>0?'ahead':'behind you'):F<T*.5?(s>0?'to your right':'to your left'):(f>0?'ahead':'behind you')+' to the '+(s>0?'right':'left')}
