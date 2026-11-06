@@ -183,6 +183,7 @@ jobs:
       - {name: Cost report (fixture logs), run: npm run costcheck}
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}
       - {name: More turn triggers, run: npm run wakecheck}
+      - {name: Table fights on the map patch, run: npm run patchcheck}
       - {name: First delve in the Wending Vale, run: npm run prologuecheck:vale}
 
   g8:

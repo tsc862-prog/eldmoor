@@ -1518,6 +1518,7 @@ ok(C.propById(pid3).status === 'open' && SIM.decisionsWaiting().some(d => d.a ==
 unasked.delete(RB.id); step(1 / 60); PP = C.propById(pid3);
 ok(PP.status !== 'open' && PP.votes[RB.id].by === 'reflex', `the owner resumes: its reflexes vote at once (${PP.result})`);
 link(RB, 'waiting');
+RB.x = RA.x + 1; RB.y = RA.y; // beside the proposer: a vote counts only those within a shout (#182), and the roads moved the others off
 pr = act(RA, 'propose', {kind: 'other', details: 'Mend the nets'});
 const pid4 = Number(String(pr.proposal).match(/#(\d+)/)[1]);
 const v = act(RB, 'vote', {proposal_id: pid4, vote: 'no', reason: 'We have rope.'});

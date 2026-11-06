@@ -1239,6 +1239,22 @@ console.log('the DM prepares the table');
   crew[1].raid=false;crew[2].state='dead';rv.trackRaid();st=dv.refreshDungeon();
   ok(st.gone.some(g=>g.why==='broke'&&g.id===crew[1].id)&&st.gone.some(g=>g.why==='fell'&&g.id===crew[2].id)&&st.falls.length===1&&/1 broke off/.test(st.status)&&/1 fell/.test(st.status),'raid arena: who broke off and who fell ('+st.status+')');
   ok(lis().some(li=>li.classList.contains('lost')&&li.textContent.includes(crew[2].name))&&lis().some(li=>/fled/.test(li.textContent)),'raid arena: the bar marks the fled and the fallen');
+  // a raider at zero HP (sim/downed.js clears a.raid): down in the lair, not fled; then dead (a fall) or up again (lived)
+  const lay=(a,dn)=>{a.state='downed';a.raid=false;a.hp=0;a.down=dn};lay(crew[3],{s:1,f:2,stable:false});rv.trackRaid();st=dv.refreshDungeon();
+  ok(st.down.length===1&&st.down[0].id===crew[3].id&&st.down[0].here&&!st.gone.some(g=>g.id===crew[3].id)&&/1 down/.test(st.status)&&/1 broke off/.test(st.status),'raid arena: a downed raider lies in the lair, not among the fled ('+st.status+')');
+  ok(st.down[0].s===1&&st.down[0].f===2&&/1 of 3 saves made, 2 of 3 failed/.test(rv.raidDetail(crew[3].id,st).stateText)&&lis().some(li=>li.classList.contains('down')&&/\(down\)/.test(li.textContent)&&li.textContent.includes(crew[3].name)),'raid arena: its saves in the detail and its row on the bar');
+  ok(st.down[0].reach&&/reach of Cinder Breath/.test(rv.raidDetail(crew[3].id,st).notes.join(' ')),'raid arena: the breath’s reach over the downed is named');
+  select(crew[3]);uiFast();ok([...$('hero').querySelectorAll('.dglink')].some(b=>/raid/i.test(b.textContent)&&b.dataset.dungeon===L.name),'raid arena: the hero card of a downed raider still has View the raid');
+  crew[3].state='dead';rv.trackRaid();st=dv.refreshDungeon();ok(!st.down.length&&st.falls.some(q=>q.id===crew[3].id)&&/2 fell/.test(st.status),'raid arena: a downed raider who dies is a fall ('+st.status+')');
+  crew[3].state=was[3].state;delete crew[3].down;
+  lay(crew[4],{s:0,f:0,stable:true});rv.trackRaid();st=dv.refreshDungeon();ok(st.down.length===1&&st.down[0].stable&&lis().some(li=>/\(stable\)/.test(li.textContent)),'raid arena: a stable raider reads stable');
+  crew[4].state='town';crew[4].hp=10;delete crew[4].down;rv.trackRaid();st=dv.refreshDungeon();ok(st.gone.some(g=>g.why==='rose'&&g.id===crew[4].id)&&!st.falls.some(q=>q.id===crew[4].id)&&lis().some(li=>/\(up\)/.test(li.textContent)),'raid arena: a downed raider who gets up lived');
+  // adds on the bar, a boss's phase marks (Kragmaw has none), and a boss scene opens the arena as a crawl opens the dungeon
+  const add=S.mobs.find(x=>x.alive&&!x.hidden),ax={x:add.x,y:add.y};add.x=L.x+1;add.y=L.y+1;st=dv.refreshDungeon();ok(st.adds.some(q=>q.e===add)&&lis().some(li=>li.classList.contains('add')),'raid arena: an add has its row on the bar');add.x=ax.x;add.y=ax.y;
+  ok(st.boss.marks.length===0,'raid arena: Kragmaw’s one phase leaves its bar unmarked');B.tpl='vesk';st=dv.refreshDungeon();ok(st.boss.marks.join()==='0.55,0.2','raid arena: a template’s later phases mark the bar ('+st.boss.marks.join()+')');B.tpl='kragmaw';st=dv.refreshDungeon();
+  {const sv=await import('../src/render/sceneview.js'),sp=sv.sceneSpec({kind:'boss',ids:crew.map(a=>a.id),ctx:{},title:'Kragmaw',beats:[]});ok(sp&&sp.mode==='dungeon'&&sp.dungeon===L,'raid arena: a boss scene opens the arena, not the outdoor cut');
+    const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),keepT=S.table,sp0=T.TABLE.speed;S.table={id:9085,kind:'boss',title:'Kragmaw',frame:['The lair shakes.'],ids:crew.slice(0,2).map(a=>a.id),i:0,phase:'turn',t:0,acts:{},ctx:{},pause:true,at:0,rd:1,beats:[]};TB.renderTable(1);
+    ok([...$('tbanner').querySelectorAll('[data-dungeon]')].some(b=>b.dataset.dungeon===L.name&&/raid/i.test(b.textContent)),'raid arena: the Table banner of a boss scene has View the raid');S.table=keepT;TB.renderTable(1);T.TABLE.speed=sp0}
   // the hero card of a raider has View the raid; the timeline's raid lines have Inside
   crew[2].state=was[2].state;select(crew[0]);uiFast();const link=[...$('hero').querySelectorAll('.dglink')].find(b=>/raid/i.test(b.textContent));
   ok(!!link&&link.dataset.dungeon===L.name,'raid arena: the hero card of a raider has View the raid');
@@ -1280,6 +1296,41 @@ console.log('the DM prepares the table');
   ok(!sv.sceneOpen()&&box().hidden&&!$('screen').classList.contains('scopen'),'scene maps: Back to world closes it, and it stays closed for that scene');
   sv.openSceneView();ok(sv.sceneOpen(),'scene maps: it opens again by hand');S.table=null;sv.sceneTick(FOL);
   ok(!sv.sceneOpen(),'scene maps: the view returns to the world when the scene ends');
+  // a fight on the map patch (#746): the cut frames sc.fp, the ground is marked, the round plays as beats; no sc.fp leaves the old cut alone
+  {const {openPatch,patchGrid}=await import('../src/sim/patch.js'),{TABLE}=await import('../src/sim/table.js'),{SCENE}=await import('../src/render/palette.js'),{MOBS}=await import('../src/data/mobs.js');
+    const mob=S.mobs.find(m=>m.alive&&!m.hidden&&!m.elite&&MOBS[m.type]),mobWas={x:mob.x,y:mob.y,alive:mob.alive,hp:mob.hp};mob.x=m0.x+2;mob.y=m0.y-1;
+    const drawn=()=>{const c={image:0};return {c,ctx:new Proxy({},{get:(o,k)=>k in o?o[k]:k==='drawImage'?()=>{c.image++}:()=>{},set:(o,k,v)=>{o[k]=v;return true}})}},cam={dpr:1,sc:8,offX:0,offY:0},t0=1000;
+    // no sc.fp: the cut is what it was, and nothing is drawn on the ground
+    const plain=scene('ambush','Ambush',{mobs:[mob.id],anchor:m0.id});S.table=plain;sv.sceneTick(FOL,t0);let c0=sv.sceneCut();
+    const ents=mem.concat([mob]),xs=ents.map(e=>e.x),ys=ents.map(e=>e.y),bw=Math.max(...xs,m0.x)-Math.min(...xs,m0.x),bh=Math.max(...ys,m0.y)-Math.min(...ys,m0.y);
+    ok(!!c0&&c0.patch===null&&c0.w===Math.max(18,bw+9)&&c0.h===Math.max(11,bh+7)&&c0.cx===(Math.max(...xs)+Math.min(...xs))/2&&c0.cy===(Math.max(...ys)+Math.min(...ys))/2-.4,'patch: a scene with no sc.fp keeps the old cut ('+(c0&&c0.w)+'x'+(c0&&c0.h)+' tiles, no patch)');
+    {const d=drawn();sv.drawSceneRings(d.ctx,cam,c0);ok(d.c.image===0&&sv.scenePose(m0)===null&&sv.sceneQueue().length===0,'patch: no sc.fp, no ground marks and no poses')}
+    S.table=null;sv.sceneTick(FOL,t0);
+    // with sc.fp: the patch at scene scale
+    const sc=scene('ambush','Ambush',{mobs:[mob.id],anchor:m0.id});ok(openPatch(sc,mem,[mob],{x:m0.x,y:m0.y},f=>f.name||MOBS[f.type].name),'patch: the fight opens on a patch');
+    const fp=sc.fp,G=patchGrid(fp),stood=ents.map(e=>[e.x,e.y]);S.table=sc;sv.sceneTick(FOL,t0);const c1=sv.sceneCut();
+    ok(!!c1&&c1.patch===fp&&c1.w===fp.w+2&&c1.h===fp.h+2.5&&c1.cx-c1.w/2<=fp.ox&&c1.cx+c1.w/2>=fp.ox+fp.w&&c1.cy-c1.h/2<=fp.oy&&c1.cy+c1.h/2>=fp.oy+fp.h,'patch: sceneCut frames the patch with a small margin ('+(c1&&c1.w)+'x'+(c1&&c1.h)+' tiles for '+fp.w+'x'+fp.h+')');
+    {const far=mem[mem.length-1],was=far.x;far.x=fp.ox+fp.w+2.5;const c2=sv.sceneCut();ok(c2.w>c1.w&&c2.cx+c2.w/2>=far.x+.5&&c2.members.includes(far),'patch: the frame grows for one who stands outside the patch ('+c2.w+' tiles)');far.x=was;sv.sceneTick(FOL,t0)}
+    {const d=drawn();sv.drawSceneRings(d.ctx,cam,c1);const L=sv.patchLayer(G);ok(d.c.image===1&&L===sv.patchLayer(G)&&L.width===fp.w*64&&L.height===fp.h*64,'patch: the ground marks are one cached layer, one tile in 64 texels, drawn under the sprites');
+      ok(['grid','gridHi','patchEdge','cover','slow','hitHero','hitFoe'].every(k=>typeof SCENE[k]==='string')&&G.cost.length===fp.w*fp.h,'patch: the marks are palette tokens')}
+    // walking: a tile the sim wrote is walked to, not jumped; the world is never written
+    const P=sv.scenePose(m0),x0=m0.x,tick=(t,n=1,d=.05)=>{for(let i=0;i<n;i++){t+=d;sv.sceneTick(FOL,t)}return t};
+    ok(!!P&&P.x===m0.x&&P.y===m0.y,'patch: everyone starts where they stand');
+    m0.x=x0-2;let t=tick(t0,1);ok(P.x<x0&&P.x>x0-2&&P.walk,'patch: a tile move is eased (shown at '+(x0-P.x).toFixed(2)+' of 2)');t=tick(t,14);ok(P.x===m0.x&&!P.walk,'patch: and arrives');
+    // a strike: the lunge, the number held back until it lands, the foe falling after its killing blow
+    const hp=mob.hp;sc.beats.push({id:m0.id,name:m0.name,k:'strike',res:'d20 20+4=24 vs AC 12 (a natural 20): hit for 9',by:'agent',roll:{die:20,mod:4,total:24,vs:12,hit:true,crit:true,dmg:9,target:fp.foes[0].name,down:false}});mob.hp=hp-9;
+    t=tick(t,3);const F=sv.scenePose(mob);ok(sv.sceneQueue().join()==='strike'&&F.show===hp&&Math.hypot(P.x-m0.x,P.y-m0.y)>.05,'patch: a strike joins the queue, its HP held back, the striker lunges');
+    t=tick(t,6);ok(F.show===hp-9&&F.flash>0,'patch: the blow lands with a flash');t=tick(t,12);ok(sv.sceneQueue().length===0&&P.x===m0.x,'patch: and the striker is back on its tile');
+    sc.beats.push({id:'foe',name:fp.foes[0].name,k:'attack',res:'d20 1+2=3 vs AC 14 (a natural 1): missed',by:'foe',roll:{die:1,mod:2,total:3,vs:14,hit:false,crit:false,dmg:0,target:m0.name,down:false}});t=tick(t,12);
+    ok(F.tilt!==0,'patch: a foe’s natural 1 is a stumble');t=tick(t,16);
+    sc.beats.push({id:m0.id,name:m0.name,k:'strike',res:'hit',by:'agent',roll:{die:12,mod:4,total:16,vs:12,hit:true,crit:false,dmg:hp-9,target:fp.foes[0].name,down:true}});mob.hp=0;mob.alive=false;t=tick(t,1);
+    const fell=[];sv.sceneFallen(fell);ok(fell.includes(mob)&&F.fade===1,'patch: a slain foe stays drawn until its killing blow lands');t=tick(t,26);fell.length=0;sv.sceneFallen(fell);ok(!fell.includes(mob)&&F.fade===0,'patch: and falls away after it');
+    // at 8x the beats are skipped; a cold gap replays nothing
+    TABLE.speed=8;sc.beats.push({id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'});m0.x=x0;t=tick(t,1);ok(sv.sceneQueue().length===0&&P.x===m0.x,'patch: at 8x the beats are skipped and everyone snaps to their tile');TABLE.speed=1;
+    sc.beats.push({id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'});t=tick(t,1,5);ok(sv.sceneQueue().length===0,'patch: after a gap nothing is replayed');
+    // the last beats play out after the scene has gone, then the view closes
+    sc.beats.push({id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'},{id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'});t=tick(t,1);S.table=null;sv.sceneTick(FOL,t);ok(sv.sceneOpen()&&!!sv.sceneCut().patch,'patch: the view holds while the last beats play');t=tick(t,30);ok(!sv.sceneOpen()&&sv.scenePose(m0)===null,'patch: and returns to the world once they have');
+    Object.assign(mob,mobWas);ents.forEach((e,i)=>{if(e!==mob&&e!==m0&&(e.x!==stood[i][0]||e.y!==stood[i][1]))ok(false,'patch: the view moved '+e.name)})}
   // a staged meeting in town: a room in a generated setting, with the person and the party
   const c=CITY[0];mem.forEach((a,k)=>{a.x=c.gate.x-1+k*.8;a.y=c.gate.y});
   const npc={id:++S.uid,kind:'npc',wander:true,role:'innkeeper',fac:c.fac,name:'Mara',title:'Innkeeper',x:c.gate.x+1,y:c.gate.y-1,state:'post',att:[],met:{}};S.wanderers=(S.wanderers||[]).concat([npc]);

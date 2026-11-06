@@ -29,6 +29,8 @@ import {dmlog} from './dmlog.js';
 import {USES} from '../data/items.js';
 import {invOf,useItem,venomOn,take} from './inv.js';
 import {isDown,downHit,finisher} from './downed.js'; // a foe and the downed (#654)
+import {GEO} from './geometry.js';
+import {foeStep,foeReaches,foeTargets,blowMods,closed,freeOwed} from './patch.js'; // a fight on the open map (#746): who a foe reaches, and what the ground does to its blow
 
 export const TR={
   ROUNDS:3,   // rounds of an honour duel (challenge.js) at most; a fight at the table plays until it is decided (#875)
@@ -72,7 +74,7 @@ export function flushRolls(sc){const L=sc.rl;if(!L||!L.length)return;sc.rl=[];co
 
 // ---- a member's strike, with its roll ----
 // The structured roll waits on sc.rr until table.js take() puts it on the member's beat (beat.roll).
-export function memberStrike(sc,a,f){const R=roll(a,f);
+export function memberStrike(sc,a,f,mod=0){const R=roll(a,f,mod);
   if(!R.hit){note(sc,a.name,name(f),R,0);sc.rr=rollData(R,0,name(f));return rollText(R)+': missed'}
   const h=f.hp,o=R.crit?{crit:1}:undefined;strike(a,f,o);const dmg=Math.max(0,Math.round(h-f.hp)),down=f.kind==='boss'?!f.alive:f.kind==='hero'?f.state==='dead':!f.alive;
   note(sc,a.name,name(f),R,dmg,down?'down':null);sc.rr=rollData(R,dmg,name(f),down);return rollText(R)+': hit for '+dmg+(down?', and it falls':'')}
@@ -92,6 +94,7 @@ function useOn(sc,a,id,lo){const U=USES[id];if(!U||U.craft)return undefined;
   if(U.kind==='antidote')return venomOn(a)||condOn(a,'poison')?a:undefined;
   if(U.kind==='scroll'){if(U.effect==='recall')return RECALL_FROM.includes(a.state)&&!(sc.rd!=null&&condOn(a,'root'))?a:undefined;return a.wardT>0?undefined:a}
   return undefined}
+export const useTarget=(sc,a,k,lo)=>{const id=useItemOf(a,k);return id?useOn(sc,a,id,lo)||null:null}; // who a pack item would go to: the tiles ask (#746)
 const pctOf=b=>Math.round(b.hp/maxHp(b)*100);
 function useText(a,id,on){const U=USES[id];
   if(U.kind==='potion')return 'Use '+id+' on '+(on===a?'yourself':on.name)+' ('+pctOf(on)+'%; heals '+Math.round(U.heal*100)+'%)';
@@ -125,13 +128,15 @@ export function foeTurn(sc,fs,L){const out=[];
     if(condOn(f,'stun')){const b=stunCheck(sc,f,nm);out.push(b);if(b.k==='stunned')continue} // a stun is checked on its holder's turn (#296)
     if(f.kind==='hero'&&f.state!=='dead'&&f.hp<maxHp(f)*TR.YIELD*tm(f,'flee')){yieldHero(f,L);sc.end='yield';out.push(beat(nm,'yield','Yields and breaks off',null));note(sc,nm,'the fight',null,0,'yields');break}
     if(f.kind==='mob'&&fs.length===1&&!f.elite&&!f.fledOnce&&!condOn(f,'root')&&(blk(f).beh||{}).flee&&f.hp<f.maxhp*blk(f).beh.flee){f.fledOnce=true;f.fled=2.5;sc.end='fled';out.push(beat(nm,'flee','Breaks away and runs',null));note(sc,nm,'the fight',null,0,'flees');break} // a rooted beast cannot run
-    const live=L.filter(b=>b.state!=='dead'&&b.hp>0);
-    {const dt=downTarget(f,L,live);if(dt){out.push(downBlow(sc,f,dt,nm));continue}} // #654: a finisher, or nobody else standing
+    const live=L.filter(b=>b.state!=='dead'&&b.hp>0),G=!!sc.fp;if(G)foeStep(sc,f); // on the open map it walks first (#746)
+    {const dt=downTarget(f,L,live);if(dt&&(!G||foeReaches(sc,f,dt))){out.push(downBlow(sc,f,dt,nm));continue}} // #654: a finisher, or nobody else standing
     if(!live.length)break;
-    if(f.kind==='boss'){out.push(...bossTurn(sc,f,live));continue}
-    const t=targetOf(f,live),rooted=condOn(f,'root'),R=roll(f,t,rooted?-COND.ROOT_HIT:0),wd=condOn(t,'ward')?' (warded)':'';let res,rd;
+    const T=G?foeTargets(sc,f,live):live;
+    if(f.kind==='boss'){out.push(...bossTurn(sc,f,live,T));continue}
+    if(!T.length){closed(sc);out.push(beat(nm,'close','Closes in',condOn(f,'root')?'rooted: nobody in reach':'nobody in reach yet'));note(sc,nm,'the party',null,0,'closes in');continue}
+    const t=targetOf(f,T),m=G?blowMods(sc,f,t):{adj:0,mul:1},rooted=condOn(f,'root'),R=roll(f,t,(rooted?-COND.ROOT_HIT:0)+m.adj),wd=condOn(t,'ward')?' (warded)':'';let res,rd;
     if(!R.hit){res=rollText(R)+': missed'+(rooted?' (rooted)':'');note(sc,nm,t.name,R,0);rd=rollData(R,0,t.name)}
-    else{const dmg=f.kind==='hero'?heroBlow(f,t,R.crit):mobBlow(f,t,R.crit?1.5:1);const down=t.state==='dead';
+    else{const dmg=f.kind==='hero'?heroBlow(f,t,R.crit,m.mul):mobBlow(f,t,(R.crit?1.5:1)*m.mul);const down=t.state==='dead';
       res=rollText(R)+': hit for '+dmg+wd+(down?'; '+t.name+' falls':isDown(t)?'; '+t.name+' goes down':'');note(sc,nm,t.name,R,dmg,down?'down':wd?'warded':null);rd=rollData(R,dmg,t.name,down);if(down)(sc.fell||(sc.fell=[])).push(t.id)
       else{const c=trickCond(sc,f,t,dmg);if(c)res+='; '+c}}
     out.push(beat(nm,'attack','Strikes at '+t.name+(f.target===t?' (drawn)':''),res,rd))}
@@ -223,13 +228,23 @@ function runOff(g,L){if(g.kind==='hero'){yieldHero(g,L);return}g.fledOnce=true;g
 // The member it has drawn (guard, a taunt, the one it was already fighting), else the lowest share of HP in reach.
 function targetOf(f,L){const d=f.target&&L.includes(f.target)?f.target:null;if(d)return d;
   let lo=null;for(const b of L)if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo)||(b.hp/maxHp(b)===lo.hp/maxHp(lo)&&b.id<lo.id))lo=b;return lo}
-function heroBlow(f,t,crit){const h=t.hp;strike(f,t,crit?{crit:1}:undefined);return Math.max(0,Math.round(h-Math.max(0,t.hp)))}
+function heroBlow(f,t,crit,mul=1){const h=t.hp;strike(f,t,crit||mul!==1?{...(crit?{crit:1}:{}),...(mul!==1?{mul}:{})}:undefined);return Math.max(0,Math.round(h-Math.max(0,t.hp)))}
+// The free blows owed on the open map (#746): each foe a member stepped out of the reach of strikes once, at GEO.FREE, on its roll against that member.
+export function freeBlows(sc){const out=[];for(const {f,t} of freeOwed(sc)){const nm=name(f),R=roll(f,t);let res,rd;
+    if(!R.hit){res=rollText(R)+': missed';note(sc,nm,t.name,R,0,'free blow');rd=rollData(R,0,t.name)}
+    else{const dmg=f.kind==='boss'?bossClaw(f,t,GEO.FREE):f.kind==='hero'?heroBlow(f,t,R.crit,GEO.FREE):mobBlow(f,t,(R.crit?1.5:1)*GEO.FREE),down=t.state==='dead';if(down)(sc.fell||(sc.fell=[])).push(t.id);
+      res=rollText(R)+': hit for '+dmg+(down?'; '+t.name+' falls':isDown(t)?'; '+t.name+' goes down':'');note(sc,nm,t.name,R,dmg,'free blow');rd=rollData(R,dmg,t.name,down)}
+    out.push(beat(nm,'free','A free blow at '+t.name+' stepping away',res,rd))}
+  return out}
+// One claw at a share of its force, as bossTurn's blow.
+function bossClaw(f,t,mul){const T=BOSSES[f.tpl||'kragmaw'],d=Math.round((T.attack.dmg[0]+rnd()*T.attack.dmg[1])*mul*dmgTaken(t));t.hp-=d;actHurt(t,f,d);if(t.hp<=0)agentDie(t,f);return d}
 function yieldHero(f,L){for(const b of L)if(b.target===f&&['duel','assist'].includes(b.state)){b.state='hunt';b.target=null}if(f.state!=='dead')goHome(f)}
 // Kragmaw: one claw a round at a random raider in the fight (the template's blow), and the breath on its own timer
 // (seconds, run down by one claw's cooldown a round), on everyone in its radius with no roll, as in real time.
-function bossTurn(sc,f,L){const T=BOSSES[f.tpl||'kragmaw'],out=[],A=T.abilities&&T.abilities[0];
-  const t=pickA(L),R=roll(f,t);
-  if(!R.hit){out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': missed',rollData(R,0,t.name)));note(sc,f.name,t.name,R,0)}
+function bossTurn(sc,f,L,reach=L){const T=BOSSES[f.tpl||'kragmaw'],out=[],A=T.abilities&&T.abilities[0];
+  const t=reach.length?pickA(reach):null,R=t?roll(f,t):null; // on the open map (#746) the claw only finds who stands in its reach
+  if(!t)out.push(beat(f.name,'close','Rears over the raid','nobody in reach of its claws'));
+  else if(!R.hit){out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': missed',rollData(R,0,t.name)));note(sc,f.name,t.name,R,0)}
   else{let d=Math.round((T.attack.dmg[0]+rnd()*T.attack.dmg[1])*(R.crit?1.5:1)*dmgTaken(t));t.hp-=d;actHurt(t,f,d);let down=t.hp<=0;if(down){agentDie(t,f);down=t.state==='dead';if(down)(sc.fell||(sc.fell=[])).push(t.id)}
     out.push(beat(f.name,'attack','Claws at '+t.name,rollText(R)+': hit for '+d+(down?'; '+t.name+' falls':isDown(t)?'; '+t.name+' goes down':''),rollData(R,d,t.name,down)));note(sc,f.name,t.name,R,d,down?'down':null)}
   if(A){if(sc.br==null)sc.br=f.breath!=null?f.breath:A.cd;sc.br-=T.attack.cd;

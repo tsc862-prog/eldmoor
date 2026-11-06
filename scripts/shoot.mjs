@@ -2,10 +2,11 @@
 // served build (CI: `vite preview`; locally any URL). Opens the title screen, boots the game, dismisses the setup page and the
 // start gate by clicking buttons by their text, runs the world briefly at 8x, then captures views at 3440x1440 (the owner's
 // screen) and one at 1280x800 for layout sanity. Needs no key, no relay, no network beyond the URL.
-//   node scripts/shoot.mjs <url> <outDir> [--sizes 3440x1440,1280x800] [--run-seconds 10] [--crawl]
+//   node scripts/shoot.mjs <url> <outDir> [--sizes 3440x1440,1280x800] [--run-seconds 10] [--crawl] [--raid]
 // --crawl (#736): at the first size, stage the Crypt crawl (the page's ?probe=1 seam, src/ui/probe.js), time 5 s of frames
 // with the page watchdog and write crawl-<w>.png plus perf.crawl in shots.json (frame and render p50/p99/worst ms), printed too.
 // --looted (#976): at the first size, stage a crawl and clear it (same seam), pin the boss chamber and open History: looted-<w>.png.
+// --raid (#85): the same at the raid arena (stageRaid: a raid at the lair, one raider downed): raid-<w>.png, raid-slain-<w>.png and perf.raid.
 // Writes <outDir>/title-3440.png, default-3440.png, follow-3440.png, bottom-3440.png, default-1280.png and shots.json (names,
 // sizes, notes). A view that cannot be reached is noted in shots.json, never a crash: the job is a look, not a gate.
 // CHROME_PATH picks the browser; CI passes --no-sandbox through CHROME_NO_SANDBOX=1.
@@ -18,7 +19,7 @@ const argv = process.argv.slice(2), pos = argv.filter(a => !a.startsWith('--') &
 const flagv = n => { const i = argv.indexOf('--' + n); return i >= 0 ? argv[i + 1] : null; };
 const url = pos[0], OUT = resolve(pos[1] || 'shots');
 if (!url) { console.error('usage: node scripts/shoot.mjs <url> <outDir> [--sizes WxH,WxH] [--run-seconds N]'); process.exit(2); }
-const CRAWL = argv.includes('--crawl'), LOOTED = argv.includes('--looted');
+const CRAWL = argv.includes('--crawl'), LOOTED = argv.includes('--looted'), RAID = argv.includes('--raid');
 const SIZES = (flagv('sizes') || '3440x1440,1280x800').split(',').map(s => s.split('x').map(Number)), RUN_S = Number(flagv('run-seconds') || 10);
 const CANDIDATES = [process.env.CHROME_PATH, '/usr/bin/google-chrome', '/usr/bin/google-chrome-stable', '/usr/bin/chromium', '/usr/bin/chromium-browser',
   'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].filter(Boolean);
@@ -60,17 +61,18 @@ async function boot(s, startUrl) {
 }
 
 // The dungeon view's frame cost (#736): the watchdog's own samples (sim + render + panels a frame, render alone), 5 s at rest.
-async function crawl(s, w, h) {
+async function crawl(s, w, h, what = 'crawl') {
   await s.evalJs('window.scrollTo(0, 0)');
-  const st = await s.evalJs('JSON.stringify(window.__eldmoorProbe ? window.__eldmoorProbe.stageCrawl() : {ok: false, why: "no probe seam"})');
-  const staged = JSON.parse(st || '{}'); if (!staged.ok) {notes.push('crawl not staged: ' + (staged.why || '?')); return}
+  const st = await s.evalJs(`JSON.stringify(window.__eldmoorProbe ? window.__eldmoorProbe.${what === 'raid' ? 'stageRaid' : 'stageCrawl'}() : {ok: false, why: "no probe seam"})`);
+  const staged = JSON.parse(st || '{}'); if (!staged.ok) {notes.push(what + ' not staged: ' + (staged.why || '?')); return}
   await s.evalJs(`(document.querySelectorAll('.ralert,.rgate').forEach(e => e.style.display = 'none'), 1)`);
   await sleep(1500); await s.evalJs('window.__eldmoorProbe.clearSamples(), 1'); await sleep(5000);
   const f = JSON.parse(await s.evalJs('JSON.stringify(window.__eldmoorProbe.frameSamples())'));
   const q = (a, p) => {const b = a.slice().sort((x, y) => x - y); return b.length ? Math.round(b[Math.min(b.length - 1, Math.floor(b.length * p))] * 10) / 10 : null};
-  perf.crawl = {size: `${w}x${h}`, frames: f.n, frameP50: q(f.total, .5), frameP99: q(f.total, .99), frameWorst: q(f.total, 1), renderP50: q(f.render, .5), renderP99: q(f.render, .99), renderWorst: q(f.render, 1)};
-  console.log(`dungeon view at ${w}x${h}: ${f.n} frames, frame p50 ${perf.crawl.frameP50} ms, p99 ${perf.crawl.frameP99} ms, worst ${perf.crawl.frameWorst} ms (render worst ${perf.crawl.renderWorst} ms)`);
-  await s.shot(`crawl-${w}`);
+  perf[what] = {size: `${w}x${h}`, frames: f.n, frameP50: q(f.total, .5), frameP99: q(f.total, .99), frameWorst: q(f.total, 1), renderP50: q(f.render, .5), renderP99: q(f.render, .99), renderWorst: q(f.render, 1)};
+  console.log(`${what} view at ${w}x${h}: ${f.n} frames, frame p50 ${perf[what].frameP50} ms, p99 ${perf[what].frameP99} ms, worst ${perf[what].frameWorst} ms (render worst ${perf[what].renderWorst} ms)`);
+  await s.shot(`${what}-${w}`);
+  if (what === 'raid') { await s.evalJs('window.__eldmoorProbe.stageSlain(), 1'); await sleep(800); await s.shot(`raid-slain-${w}`); }
   await s.evalJs(`(document.querySelector('.dgback') && document.querySelector('.dgback').click(), 1)`); await sleep(500);
 }
 
@@ -92,7 +94,7 @@ for (const [w, h] of SIZES) {
     if (w === SIZES[0][0]) { // the title screen, once, at the first size
       await s.send('Page.navigate', {url: url.split('?')[0]}); await sleep(3000); await s.shot(`title-${w}`);
     }
-    await boot(s, withQuery(url, 'skip-title=1' + (CRAWL || LOOTED ? '&probe=1' : '')));
+    await boot(s, withQuery(url, 'skip-title=1' + (CRAWL || LOOTED || RAID ? '&probe=1' : '')));
     await s.shot(`default-${w}`);
     if (w === SIZES[0][0]) {
       notes.push(await s.clickText(/^Fellowship$/i) ? 'follow view clicked' : 'no Fellowship view button');
@@ -100,6 +102,7 @@ for (const [w, h] of SIZES) {
       await s.evalJs('window.scrollTo(0, document.body.scrollHeight)'); await sleep(1000); await s.shot(`bottom-${w}`);
       if (CRAWL) await crawl(s, w, h);
       if (LOOTED) await looted(s, w);
+      if (RAID) await crawl(s, w, h, 'raid');
       notes.push(await s.evalJs(`JSON.stringify({scrollH: document.body.scrollHeight, panels: document.querySelectorAll('section.panel').length, visibleButtons: [...document.querySelectorAll('button')].filter(b => b.offsetParent !== null).length})`));
     }
   } catch (e) { notes.push(`${w}x${h} failed: ${e.message}`); console.error(e.message); }

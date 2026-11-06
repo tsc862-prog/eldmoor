@@ -382,12 +382,9 @@ function planFor(tx,ty){const k=ty*W+tx;if(k===planKey)return plan;planKey=k;
 // Final colour of art pixel (ax,ay) (0..TILE-1) of tile (tx,ty) of type t, before the shade: prop, transition piece,
 // then the blend and the texel (the base tile, road and water assets, else the procedural texel scaled up).
 const HALF=TILE>>1;
-// A massif's foot follows the tile grid, so with a scenery note the cliffs are read a few pixels off, slowly wandering: their outline bends and the steps of the tiles go.
-function warpedPeak(tx,ty,ax,ay){const X=tx*TILE+ax,Y=ty*TILE+ay,u=X+Math.round((vnoise(X/44,Y/44,271)-.5)*22),v=Y+Math.round((vnoise(X/44,Y/44,273)-.5)*22),ux=Math.max(0,Math.min(W*TILE-1,u)),vy=Math.max(0,Math.min(H*TILE-1,v));
-  return peakPixel((ux/TILE)|0,(vy/TILE)|0,ux%TILE,vy%TILE)}
 let soilKind=-1; // the kind of ground pixel() last drew by shape, or -1
-export function pixel(t,tx,ty,ax,ay){const P=planFor(tx,ty),pr=P.prop,mt=peakArt(); // mt: mountains are cliffs (peaks.js) over the biome's ground
-  if(mt){const c=sceneryOn?warpedPeak(tx,ty,ax,ay):peakPixel(tx,ty,ax,ay);if(c)return c}
+export function pixel(t,tx,ty,ax,ay){const P=planFor(tx,ty),pr=P.prop,mt=peakArt(); // mt: mountains are the height field of peaks.js over the biome's ground
+  if(mt){const c=peakPixel(tx,ty,ax,ay);if(c)return c}
   if(pr){const c=pr.A.hex[(ay%pr.A.h)*pr.A.w+ax%pr.A.w];if(c)return c}
   soilKind=-1;if(sceneryOn&&(t!==TREE||!(pr&&pr.kind!=='tree'))&&t!==FLOOR&&t!==WALL){const s=soilAt(tx,ty,ax,ay);if(s>=0&&(t!==PEAK||mt)){soilKind=s;return soilEdge(artTexel(s,tx,ty,ax,ay),s,tx,ty,ax,ay)}} // the ground as shapes: no tile edge near a border
   if(pr&&pr.kind==='tree')return artTexel(pr.ground,tx,ty,ax,ay);
@@ -404,7 +401,7 @@ export const procPixel=(t,tx,ty,px,py)=>blendPixel(t,tx,ty,px,py,0,0,false);
 export function shade(t,tx,ty,px,py){
   if(t===PEAK)return isPeak(tx,ty+1)||py<14||peakArt()?1:.82;
   if(t===WALL||t===FLOOR)return 1;
-  if(peakArt())return 1; // the cliffs have their own dark foot
+  if(peakArt())return 1; // the mountains shade themselves and cast their own shadow
   let k=1;if(py<3&&isPeak(tx,ty-1))k=.72+py*.08;if(px<2&&isPeak(tx-1,ty))k=Math.min(k,.8+px*.08);return k}
 
 // ---- chunks ----
@@ -484,7 +481,7 @@ export function buildTerrain(){
 
 // A world with a scenery note (render/scenery.js): the river as one smooth water, its land edges as plain ground with no tile-shaped
 // bank piece, the meadow flowers as drifts rather than flower tiles, and the region's ground tone over it all.
-function scenePixel(t,tx,ty,ax,ay){const w=riverPixel(tx,ty,ax,ay)||roadPixel(tx,ty,ax,ay);if(w)return w;
+function scenePixel(t,tx,ty,ax,ay){const w=peakArt()&&peakPixel(tx,ty,ax,ay)?null:riverPixel(tx,ty,ax,ay)||roadPixel(tx,ty,ax,ay);if(w)return w; // a peak rising over the tile north of it stands in front of the river there
   const g=sceneGround(t,tx,ty);soilKind=-1;const c=pixel(g,tx,ty,ax,ay);return tonePixel(c,soilKind>=0?soilKind:g,tx,ty,ax,ay)}
 
 // Towns and landmarks (walls, gate, buildings, banners, graves, crypt mouths, the lair): render/townart.js draws them in
