@@ -3,6 +3,7 @@
 // instead of a glow floating over a dark picture. After the multiply the flames themselves are added on top, thinly, with the lava, which glows at
 // all hours. One small canvas, a handful of stamps from cached sprites (no gradient made per light), two full-screen blits.
 import {W,H,LAVA,TREE,WALL,PEAK} from '../world/tiles.js';
+import {peakArt} from './peaks.js';
 import {tiles,I,LANDMARKS,LIGHTS,CITY} from '../world/map.js';
 import {vnoise} from '../core/rng.js';
 import {U as T,HEAD,PROC_SCALE} from './tile.js';
@@ -46,7 +47,7 @@ function buildShade(){shade=mk(W*SH,H*SH);const x=shade.getContext('2d'),m=mk(W*
   for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];
     if(t===TREE){const a=canopy?treeAnchor(tx,ty):null;if(a){blob(a.x,a.y-.1,1.5,.75,.34);blob(a.x+.25,a.y-1.1,1.2,1,.1)}else if(!canopy)blob(tx+.5,ty+.9,.8,.5,.3)}
     else if(t===WALL){if(ty+1<H&&tiles[I(tx,ty+1)]!==WALL){o.fillStyle='rgba(10,12,36,.34)';o.fillRect(tx*SH,(ty+1)*SH,SH,SH*.6)}}
-    else if(t===PEAK&&ty+1<H&&tiles[I(tx,ty+1)]!==PEAK){o.fillStyle='rgba(10,12,36,.3)';o.fillRect(tx*SH,(ty+1)*SH,SH,SH*.8)}}
+    else if(t===PEAK&&!peakArt()&&ty+1<H&&tiles[I(tx,ty+1)]!==PEAK){o.fillStyle='rgba(10,12,36,.3)';o.fillRect(tx*SH,(ty+1)*SH,SH,SH*.8)}}
   for(const c of CITY)for(const b of c.buildings||[]){if(b.piece==='board')continue;const [bx,by,bw,bh]=b.box;o.fillStyle='rgba(10,12,36,.34)';o.fillRect((bx-.1)*SH,(by+bh)*SH,(bw+.2)*SH,SH*.7)}
   x.fillStyle='#fff';x.fillRect(0,0,W*SH,H*SH);
   // the mottling: a pixel per two tiles, smoothed by the scale
