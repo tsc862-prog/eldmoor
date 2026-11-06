@@ -355,6 +355,7 @@ function anchorAt(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return null;const k=ty*W+tx
 // Paint the trees that reach chunk tiles x0..x1 by y0..y1 (crowns overhang: a tree rooted up to two rows below or a column aside counts).
 function paintCanopy(c,x0,y0,x1,y1){for(let ty=y0;ty<Math.min(H,y1+3);ty++)for(let tx=Math.max(0,x0-2);tx<Math.min(W,x1+2);tx++){const a=anchorAt(tx,ty);if(a)c.drawImage(a.im,a.ax,a.ay,a.w,a.h)}}
 export const drawTree=(c,a)=>c.drawImage(a.im,a.ax,a.ay,a.w,a.h);
+export const treeAnchor=anchorAt; // the whole tree standing on tile (tx,ty), or null: shadows.js and lightmap.js read where trees are
 // The trees standing in front of something at (x,y) tiles (its feet): rooted below it, close enough for a crown or a crown over a crown
 // to reach it. Pushed into out once each per frame (stamp), for draw.js to sort among the entities and redraw over them.
 export function treesNear(x,y,out,stamp){if(!canopyOn)return;const cx=Math.floor(x),cy=Math.floor(y);

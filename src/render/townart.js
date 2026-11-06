@@ -58,6 +58,9 @@ const standBox=(b,img)=>{const h=imgH(img);return [b.box[0],b.box[1]+b.box[3]-h,
 export function pieceSpot(c,b,name){const img=lpcImage(c,b),s=img&&(assetEntry(lpcId(c,b)).spots||{})[name];if(!s)return null;
   const q=standBox(b,img);return [q[0]*U+s[0]*U/TILE,q[1]*U+s[1]*U/TILE]}
 
+// The cut image of building b and its box in tiles, or null: the light (shadows.js, townlife.js windows) reads what stands where.
+export function buildingArt(c,b){const img=lpcImage(c,b);return img?{img,box:standBox(b,img),id:lpcId(c,b)}:null}
+
 // ---- walls, towers, gate and plaza cut from the LPC kits (#830, scripts/art/packcut-walls.mjs) ----
 // A set per style, drawn only when all of it is loaded (else the WALL and FLOOR tiles as ever). Nothing here is turned: each side of
 // the wall is its own cut, because a top-down tile turned by quarter turns puts its face on the wrong side and its light behind it.

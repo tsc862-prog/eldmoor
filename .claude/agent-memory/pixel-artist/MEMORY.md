@@ -36,5 +36,6 @@
 - [LPC town buildings](lpcbuildings.md) — #833 cutter, rise rule, north-door inn, shared Vite port trap
 - [Town walls and plaza](lpcwalls.md) — #830 LPC walls per side, towers, shadows, LPC Roofs shakes, vite restart trap
 - [Kit rows and houses](lpchouses.md) — plan `kit` rows, houses out of TOWN_PIECES, palisade wall set, streets through the plaza
+- [Showcase light](showcaselight.md) — #979 grade, cast shadows, multiply light map, air, sheen, effects switch; staging at full window
 - [Scenery](scenery.md) — #940 Vale art pass: scenery.js, spec note, smoothed river and roads, felled trees, staging
 - [Vale stack](valestack.md) — #980 ten PRs as one branch: merge order, shadow-pass trap, stacked PRs after landing
