@@ -10,6 +10,8 @@
 //   castle_outside   ashlar courses (the stone style's wall)
 //   bridges.png      deck boards (the timber style's wall) and posts
 //   signs.png        the INN and sword plaques, the frame the auction house's coin sits in
+//   roofs.png        (the LPC Roofs set, lpc-roofs) wood shakes, the timber style's roof: the base kit has only slate, and slate
+//                    courses in rust read as red brick
 // Every part is recoloured to its role in palette.js TOWN.<style>: a part's own light to dark runs along the role's ramp, so
 // the LPC shading and texture stay and the colours are the town's. Light from the top left.
 //
@@ -34,27 +36,33 @@ import {townStyle} from '../../src/data/townart.js';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','..');
 const T=32;
+const LPC_ROOFS=path.join(ROOT,'assets','packs','lpc-roofs','lpc-roofs-v2');
 export const LPC_KIT={source:'lpc-base',license:'CC-BY-SA 3.0',authors:['Leana Zimmerman (Sharm)','Daniel Armstrong (HughSpectrum)'],
   url:'https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles'};
+// A piece with wood shakes on it owes the LPC Roofs set as well.
+export const LPC_ROOF_KIT={source:'lpc-base, lpc-roofs',license:'CC-BY-SA 3.0',
+  authors:[...LPC_KIT.authors,'bluecarrot16','Lanea Zimmerman (Sharm)','Michele Bucelli (Buch)','Casper Nilsson','Xenodora','keith karnage','NaRNeRZz','Talon (Talosaurus)'],
+  url:LPC_KIT.url+' https://opengameart.org/content/lpc-roofs'};
 
 // ---- pixels ----
-const rgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
-const blank=(w,h)=>({w,h,data:new Uint8Array(w*h*4)});
-const get=(im,x,y)=>{const o=(y*im.w+x)*4;return [im.data[o],im.data[o+1],im.data[o+2],im.data[o+3]]};
-function set(im,x,y,c){if(x<0||y<0||x>=im.w||y>=im.h)return;const o=(y*im.w+x)*4;im.data[o]=c[0];im.data[o+1]=c[1];im.data[o+2]=c[2];im.data[o+3]=255}
-const rect=(im,x,y,w,h,c)=>{const k=typeof c==='string'?rgb(c):c;for(let j=0;j<h;j++)for(let i=0;i<w;i++)set(im,x+i,y+j,k)};
-const lum=p=>p[0]*.3+p[1]*.59+p[2]*.11;
+export const rgb=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
+export const blank=(w,h)=>({w,h,data:new Uint8Array(w*h*4)});
+export const get=(im,x,y)=>{const o=(y*im.w+x)*4;return [im.data[o],im.data[o+1],im.data[o+2],im.data[o+3]]};
+export function set(im,x,y,c){if(x<0||y<0||x>=im.w||y>=im.h)return;const o=(y*im.w+x)*4;im.data[o]=c[0];im.data[o+1]=c[1];im.data[o+2]=c[2];im.data[o+3]=255}
+export const rect=(im,x,y,w,h,c)=>{const k=typeof c==='string'?rgb(c):c;for(let j=0;j<h;j++)for(let i=0;i<w;i++)set(im,x+i,y+j,k)};
+export const lum=p=>p[0]*.3+p[1]*.59+p[2]*.11;
 const mix=(a,b,t)=>a.map((v,i)=>Math.round(v+(b[i]-v)*t));
 // A ramp from dark to light as a function of t in 0..1, in `steps` flat bands: pixel art stays banded after a recolour.
-function ramp(cols,steps=6){const c=cols.map(rgb);return t=>{const q=Math.round(Math.max(0,Math.min(1,t))*(steps-1))/(steps-1)*(c.length-1),i=Math.min(c.length-2,Math.floor(q));return mix(c[i],c[i+1],q-i)}}
-const down=(h,k=.6)=>'#'+rgb(h).map(v=>Math.round(v*k).toString(16).padStart(2,'0')).join('');
+export function ramp(cols,steps=6){const c=cols.map(rgb);return t=>{const q=Math.round(Math.max(0,Math.min(1,t))*(steps-1))/(steps-1)*(c.length-1),i=Math.min(c.length-2,Math.floor(q));return mix(c[i],c[i+1],q-i)}}
+export const down=(h,k=.6)=>'#'+rgb(h).map(v=>Math.round(v*k).toString(16).padStart(2,'0')).join('');
 
 // ---- the kit ----
 const sheets=new Map();
-function sheet(n){if(!sheets.has(n))sheets.set(n,decodePng(fs.readFileSync(path.join(LPC_TILES,n+'.png'))));return sheets.get(n)}
+export function sheet(n){if(!sheets.has(n))sheets.set(n,decodePng(fs.readFileSync(path.join(n==='roofs'?LPC_ROOFS:LPC_TILES,n+'.png'))));return sheets.get(n)}
 // A part: a rect of a sheet, its light range measured once so a crop of it keeps the part's own shading.
 export const PARTS={
   slate:['house',100,132,88,56],       // the courses of the big slate panel, inside its frame
+  shake:['roofs',320,1032,96,24],      // three courses of wood shakes, tiling both ways
   ashlar:['castle_outside',162,97,94,31], // three courses of dressed stone
   boards:['bridges',129,129,62,47],    // three deck boards
   quoinL:['house',0,8,16,72],
@@ -74,15 +82,15 @@ function lightOf(name){if(range.has(name))return range.get(name);const [s,x,y,w,
   v.sort((a,b)=>a-b);const r=[v[Math.floor(v.length*.02)],v[Math.floor(v.length*.98)]];range.set(name,r);return r}
 // Lay part `name` at dx,dy (over w x h, tiled when larger than the part, cropped when smaller), along ramp R. o.sx,o.sy start
 // inside the part, o.bias lifts or darkens, o.at(x, y) adds a bias per pixel, o.pick(pixel) keeps only some pixels.
-function lay(dst,name,dx,dy,w,h,R,o={}){const [s,x,y,pw,ph]=PARTS[name],im=sheet(s),[lo,hi]=lightOf(name),sx=o.sx||0,sy=o.sy||0;
+export function lay(dst,name,dx,dy,w,h,R,o={}){const [s,x,y,pw,ph]=PARTS[name],im=sheet(s),[lo,hi]=lightOf(name),sx=o.sx||0,sy=o.sy||0;
   w=w??pw;h=h??ph;
   for(let j=0;j<h;j++)for(let i=0;i<w;i++){const p=get(im,x+(sx+i)%pw,y+(sy+j)%ph);if(p[3]<128)continue;if(o.pick&&!o.pick(p))continue;
     if(o.clip&&!o.clip(dx+i,dy+j))continue;
     set(dst,dx+i,dy+j,R((lum(p)-lo)/(hi-lo||1)+(o.bias||0)+(o.at?o.at(i,j):0)))}}
 
 // ---- a town style's parts ----
-function kit(style){const P=TOWN[style],line=MARK.outline||'#14101c';
-  return {style,P,line,
+export function kit(style){const P=TOWN[style],line=MARK.outline||'#14101c';
+  return {style,P,line,shingle:style==='timber'?'shake':'slate',shingleY:style==='timber'?0:7,
     roof:ramp([down(P.roof[2],.7),P.roof[2],P.roof[1],P.roof[0]],7),
     wall:style==='stone'?ramp([P.wall[2],P.wall[1],P.wall[0]],5):ramp([down(P.wall[2],.8),P.wall[2],P.wall[1],P.wall[0]],6),
     mason:ramp([...P.stone].reverse(),6),
@@ -95,7 +103,7 @@ function kit(style){const P=TOWN[style],line=MARK.outline||'#14101c';
 // ---- building blocks ----
 // A roof seen from the south: the kit's courses, narrowing towards the ridge at the hip ends, lit from the top left.
 function roof(im,K,x,y,w,h,{hip=10,sx=0}={}){const edge=j=>Math.round(hip*(1-j/(h-1)));
-  lay(im,'slate',x,y,w,h,K.roof,{sx,sy:7,bias:-.12,at:(i,j)=>.28*(1-j/h)-(i>w*.72?.2:0)+(i<w*.12?.08:0),clip:(px,py)=>{const j=py-y,i=px-x,e=edge(j);return i>=e&&i<w-e}});
+  lay(im,K.shingle,x,y,w,h,K.roof,{sx,sy:K.shingleY,bias:-.12,at:(i,j)=>.28*(1-j/h)-(i>w*.72?.2:0)+(i<w*.12?.08:0),clip:(px,py)=>{const j=py-y,i=px-x,e=edge(j);return i>=e&&i<w-e}});
   for(let j=0;j<h;j++){const e=edge(j);set(im,x+e,y+j,rgb(K.line));set(im,x+w-e-1,y+j,rgb(K.line));set(im,x+e+1,y+j,K.roof(.85));set(im,x+w-e-2,y+j,K.roof(.1))}
   const e0=edge(0);rect(im,x+e0,y,w-2*e0,1,K.line);rect(im,x+e0+1,y+1,w-2*e0-2,2,K.roof(1));rect(im,x+e0+1,y+3,w-2*e0-2,1,K.roof(.15));
   rect(im,x,y+h-2,w,1,K.roof(.05));rect(im,x,y+h-1,w,1,K.line)}
@@ -149,7 +157,7 @@ function smithy(K,foot,dr,rise){const W=foot[0]*T,H=(foot[1]+rise)*T,im=blank(W,
   return {im,spots:{chimney:[23,1]}}}
 function chapel(K,foot,dr,rise){const W=foot[0]*T,H=Math.round((foot[1]+rise)*T),im=blank(W,H),sp=56,wy=sp-2;
   wall(im,K,1,wy,W-2,H-wy,{corners:false,plinth:6});
-  for(let j=0;j<sp;j++){const hw=Math.round(1+(W/2-2)*(j/sp));lay(im,'slate',(W>>1)-hw,j,2*hw,1,K.roof,{sy:j,sx:hw,bias:-.1,at:i=>i<hw?.22:-.22});set(im,(W>>1)-hw-1,j,rgb(K.line));set(im,(W>>1)+hw,j,rgb(K.line))}
+  for(let j=0;j<sp;j++){const hw=Math.round(1+(W/2-2)*(j/sp));lay(im,K.shingle,(W>>1)-hw,j,2*hw,1,K.roof,{sy:j,sx:hw,bias:-.1,at:i=>i<hw?.22:-.22});set(im,(W>>1)-hw-1,j,rgb(K.line));set(im,(W>>1)+hw,j,rgb(K.line))}
   rect(im,0,sp-3,W,1,K.roof(.1));rect(im,0,sp-2,W,1,K.line);
   rect(im,(W>>1)-1,0,2,6,K.gold(.6));rect(im,(W>>1)-3,2,6,2,K.gold(.6));
   door(im,K,W>>1,H-2,{w:20,h:34});
@@ -200,6 +208,7 @@ function main(argv=process.argv.slice(2)){
   const out=o.out||path.join(ROOT,'assets'),cut=cutBuildings(),ip=path.join(ROOT,'assets','index.json'),idx=o.index?JSON.parse(fs.readFileSync(ip,'utf8')):null;
   for(const [id,{im,foot,door,spots}] of Object.entries(cut)){if(o.only&&!o.only.some(k=>id.endsWith(k)))continue;
     const file=fileOf(id,32),buf=encodePng(im);fs.mkdirSync(path.dirname(path.join(out,file)),{recursive:true});fs.writeFileSync(path.join(out,file),buf);console.log('[cut]',id,`${im.w}x${im.h}`);
-    if(idx)idx.assets[id+'@32']={id,kind:'building',file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:LPC_KIT.source,license:LPC_KIT.license,authors:LPC_KIT.authors,url:LPC_KIT.url,accepted:new Date().toISOString().slice(0,10),foot,door,...(Object.keys(spots).length?{spots}:{})}}
+    const kitSet=/timber/.test(id)&&!/-board$/.test(id)?LPC_ROOF_KIT:LPC_KIT;
+    if(idx)idx.assets[id+'@32']={id,kind:'building',file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:kitSet.source,license:kitSet.license,authors:kitSet.authors,url:kitSet.url,accepted:new Date().toISOString().slice(0,10),foot,door,...(Object.keys(spots).length?{spots}:{})}}
   if(idx){idx.assets=Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]));fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main();
