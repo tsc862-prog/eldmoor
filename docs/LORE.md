@@ -444,7 +444,11 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
   - **The Reed Sump**: a flooded stair-foot choked with dead reeds; Tomb Skitters under the water-mat.
   - **The Salt-Bone Hall**: shelves crusted white with fen salt; a Crypt Shambler and a Bone Archer.
   - **The Mere-Warden's Seat**: a round pool with a stone chair in it; the boss room. **Mere-Warden Hask** (a Grave Warden, pitched for the 4-9 band though the species starts at level 7; deliberate, he is a named exception) keeps the watch while the fen rises, with a Tomb Skitter at his feet.
-- **The Hollow Cairn** (level 8-13, Cairnwold): placeholder second dungeon. Only the entrance exists today; it has no group runs, boss fight or loot. Its warden, **The Cairn-Warden**, is reserved for the future dungeon.
+- **The Hollow Cairn** (level 8-13, Cairnwold): the second dungeon of the Stepping Lands, a barrow cut into the Cairnwold hills (#717); groups go down it since #891, tried blades of level 10 and up among the background. Four chambers, as data on the landmark; creatures are the Crypt species. The rooms are written, but a group can only go down the world's first dungeon until the engine learns a second (see the issue).
+  - **The Cold Throat**: a low passage of fitted stones that breathes out cold; Tomb Skitters on the walls.
+  - **The Ring of Heaped Stones**: a round hall of man-high burial heaps; two Crypt Shamblers and a Bone Archer.
+  - **The Hall of Unlit Lamps**: rows of dead stone lamps; two Bone Archers and a Grave Warden behind the last row.
+  - **The Cairn-Warden's Door**: the boss room, a great slab standing open. **The Cairn-Warden** (a Grave Warden, pitched above the party; a named exception like Mere-Warden Hask) keeps the door against the living and the dead, with a Crypt Shambler at its heel.
 - **Brask Ironhorn, the Ram-King of the Cairnwold** (Cairnwold elite, level 15, kin Tundra Shaghorn): a crag-ram with one horn snapped and the other grown into his own shoulder. Placeholder.
 - **Whitemaw, the Snow-Hound of Rimeholt** (Rimeholt elite, level 21, kin Rimehound): a pale, silent hound that hunts at the edge of sight. Placeholder.
 - The other elites of the Stepping Lands are the Eldmoor four (Hollowfang in Lowmark, Old Mother Sedge in Sedgewater, Scoriath in Cinderreach, Ulfryn Coldmarrow in Palereach), re-levelled to their regions. Brinereach and Thornteeth are towns there (see the town table and entries above).

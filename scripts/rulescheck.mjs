@@ -14,7 +14,7 @@
 //  9. every world of WORLDS has its rows (epic #940 slice B): a snapshot row, a campaign file, fauna per region, a first delve per town, its places in docs/LORE.md.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
 import {mkTmp} from './tmp.mjs';
-import {readFileSync, readdirSync, existsSync, mkdtempSync} from 'node:fs';
+import {readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, dirname, resolve, relative, sep} from 'node:path';
@@ -98,17 +98,25 @@ else {
   let t = a.status === 0 ? spawnSync('tar', ['-x'], {cwd: dir, input: a.stdout, maxBuffer: 1 << 30}) : null;
   if (!t || t.status !== 0) ok(false, 'could not read ' + ref + ' (git archive failed: ' + String(a.stderr || (t && t.stderr)).trim().slice(0, 200) + '); run `git fetch origin main`');
   else {
+    // the extract is ES modules whatever the temp dir's own package.json says (tmp.mjs writes commonjs into logs/tmp; without this every table read as new)
+    writeFileSync(join(dir, 'package.json'), '{"type":"module"}\n');
     const allow = ALLOW.tables || {};
+    const newOnes = [];
     for (const [id, file, pick] of TABLES) {
       let head, base;
       try {head = keysOf(pick(await import(pathToFileURL(join(ROOT, file)).href)))} catch (e) {ok(false, id + ' loads on this branch: ' + e.message); continue}
-      try {base = keysOf(pick(await import(pathToFileURL(join(dir, file)).href)))} catch {base = null}
-      if (!base) {ok(true, id + ' is new (nothing to compare)'); continue}
+      let baseMod = null, baseErr = null;
+      try {baseMod = await import(pathToFileURL(join(dir, file)).href)} catch (e) {baseErr = e}
+      if (baseErr && existsSync(join(dir, file))) {ok(false, id + ' cannot be read from ' + ref + ' although ' + file + ' exists there (' + String(baseErr.message).slice(0, 120) + '); the append-only guard would be off'); continue}
+      base = baseMod ? keysOf(pick(baseMod)) : null;
+      if (!base) {ok(true, id + ' is new (nothing to compare)'); newOnes.push(id); continue}
+      if (base.length === 0) {ok(false, id + ' reads empty on ' + ref + '; the append-only guard would compare nothing'); continue}
       if (!head) {ok(false, id + ' is gone from this branch'); continue}
       const bad = [], al = new Set(allow[id] || []);
       base.forEach((k, i) => {if (head[i] !== k && !al.has(k)) bad.push(`row ${i}: '${k}' on ${ref}, '${head[i]}' here`)});
       ok(bad.length === 0, `${id}: ${base.length} existing rows keep their place (${head.length} now)` + (bad.length ? '\n    ' + bad.slice(0, 8).join('\n    ') + (bad.length > 8 ? `\n    ... ${bad.length - 8} more` : '') + '\n    (append new rows at the end; a coordinated rename goes in the allowlist "tables")' : ''));
     }
+    ok(newOnes.length < TABLES.length, 'the guard compares tables (' + (TABLES.length - newOnes.length) + ' of ' + TABLES.length + ' read from ' + ref + '; new: ' + (newOnes.join(', ') || 'none') + ')');
   }
 }
 
