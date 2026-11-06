@@ -201,11 +201,18 @@ function landmark(kind,[w,h],s){const im=canvas(w,h),cx=w/2,cy=h/2;
     put(im,x,y,d<R*.18?(hh(x>>1,y>>1,s)>.6?'#ffd04a':'#c8a040'):crack?(hh(x,y,s)>.5?'#f07a22':'#c8401a'):d>R-2&&!path?'#2a2422':hh(x>>2,y>>2,s+3)>.97?'#e8e0c8':path?'#4a423e':n>.66?'#655c58':n>.33?'#4a423e':'#3a1c16')}
   return im}
 
+// A whole tree for the canopy table (#834): an ellipse crown over a trunk, root on the 9/10 row, a translucent shadow.
+function canopy(b,i,[w,h]){const im=canvas(w,h),root=Math.round(h*.9),cx=w/2,col={meadow:'#4a9a40',fen:'#6e7e34',ash:'#4a423e',tundra:'#2e6a58'}[b];
+  for(let y=root-4;y<root+Math.round(h*.07);y++)for(let x=Math.round(cx-w*.3);x<cx+w*.3;x++)if(((x-cx)/(w*.3))**2+((y-root)/(h*.07))**2<1)put(im,x,y,'#2a3a22');
+  for(let y=Math.round(h*.35);y<=root;y++)for(let x=Math.round(cx-w*.07);x<=cx+w*.07;x++)put(im,x,y,'#5a3a20');
+  for(let y=0;y<h*.7;y++)for(let x=0;x<w;x++){const dx=(x-cx)/(w*.48),dy=(y-h*.35)/(h*.35);if(dx*dx+dy*dy<1)put(im,x,y,dx*dx+dy*dy>.8?'#1e4a24':col)}
+  void i;return im}
 export function fixtures(man,tier=32){const out={};
   for(const e of man.assets||[]){let m,im=null;const size=(e.sizes&&e.sizes[tier])||e.size;if(!size)continue;
     if(TILE_GROUND[e.id])im=baseTile(e.id,size,e.seed);
     else if((m=/^autotile:([a-z]+-[a-z]+)(-corner|-inner)?$/.exec(e.id))&&PAIR[m[1]])im=piece(m[1],m[2]?m[2].slice(1):'edge',e.seed,size[0]);
     else if((m=/^prop:(tree|rock)-([a-z]+)-(\d)$/.exec(e.id)))im=upscale((m[1]==='tree'?tree:rock)(m[2],+m[3]),size[0]);
+    else if((m=/^prop:canopy-([a-z]+)-(\d)$/.exec(e.id)))im=canopy(m[1],+m[2],size);
     else if(e.kind==='sprite'&&e.frames)im=sheet(e,size);
     else if((m=/^(?:building|tile):([a-z]+)-([a-z-]+)$/.exec(e.id))&&STYLE[m[1]])im=building(m[1],m[2],size,e.seed);
     else if((m=/^landmark:([a-z-]+)$/.exec(e.id)))im=landmark(m[1],size,e.seed);

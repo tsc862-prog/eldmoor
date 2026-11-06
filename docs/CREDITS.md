@@ -9,7 +9,7 @@ by `npm run art:packs` into `assets/packs/<set>/`, which is gitignored: only the
 
 | Set | Author | Licence | Link | Used |
 | --- | --- | --- | --- | --- |
-| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions |
+| Liberated Pixel Cup base assets | Leana Zimmerman (Sharm), Stephen Challener (Redshrike), Charles Sanchez (CharlesGabriel), Manuel Riecke (MrBeast), Daniel Armstrong (HughSpectrum) and others, see its CREDITS.TXT | CC-BY-SA 3.0 or GPL 3.0 (Sharm's and Redshrike's also OGA-BY 3.0) | https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles | grass, dirt road and water ground, their transitions, rocks and whole trees |
 | Universal LPC Spritesheet Character Generator (layers) | per layer, below | CC-BY-SA 3.0 (each layer also offered under the licences listed below) | https://github.com/sanderfrenken/Universal-LPC-Spritesheet-Character-Generator | the hero sheets (seven classes by six peoples) |
 | Ninja Adventure | pixel-boy | CC0 1.0 | https://pixel-boy.itch.io/ninja-adventure-asset-pack | not fetched (itch needs a browser click) |
 | Kenney Tiny Town, Tiny Dungeon, Roguelike/RPG pack | Kenney (kenney.nl) | CC0 1.0 | https://kenney.nl/assets | reviewed, not used (does not fit) |
@@ -38,6 +38,13 @@ ZaPaper, billknye, William Thompson, caeles, Redshrike, Bertram and RayaneFLX.
 The mountains (`autotile:peak-stone`, `autotile:peak-ash`, `autotile:peak-snow`) are cut by `scripts/art/packcut-peaks.mjs` from `tiles/mountains.png` of the LPC
 base assets (Lanea Zimmerman (Sharm), CC-BY-SA 3.0, above) and recoloured; the snow on them is the Snow block of "[LPC] Terrains" (above). The standing peaks are
 reshaped from the sheet's cliff face. Being adapted from CC-BY-SA art, they are offered under CC-BY-SA 3.0.
+
+## LPC rocks and trees
+
+`prop:rock-<biome>-1..3` are cut from `rock.png` and `prop:canopy-<biome>-1..3` (whole trees: crown over trunk and ground shadow) from `treetop.png`
+and `trunk.png`, all by Leana Zimmerman (Sharm), CC-BY-SA 3.0 (also GPL 3.0 and OGA-BY 3.0), from the same base assets. Pixels are
+LPC's at 1:1; per biome (meadow, fen, ash, tundra) they are only recoloured, and the tundra firs get a dusting of snow. Derivative
+works under CC-BY-SA 3.0. The script is `scripts/art/packcut.mjs props`.
 
 ## LPC hero sheets
 

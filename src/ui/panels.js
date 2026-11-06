@@ -47,6 +47,7 @@ import {companyOf,inSlots,slotted} from '../sim/company.js'; // the dock's short
 import {patch,keepView,keyOf,initStable} from './stable.js'; // update in place, keep scroll (#145) // with a Fellowship, AI/Agent buttons only on members unless Developer is on (#94)
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 import {downView,downText,downTitle,flashOf,pips,downKind,DOWN_BADGE} from './downview.js'; // the downed (#659)
+import {siteById} from '../sim/sites.js'; // a DM-made site's record, for the activity line (#917)
 import {threadText} from '../sim/oath.js'; // an unsworn thread, in words (#800)
 
 const $=id=>document.getElementById(id);
@@ -87,7 +88,9 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'follow':return a.party?`Following ${a.party.leader.name}'s party in ${zn}`:'Following the party';
     case 'camp':return a.playDoing||'Resting at camp';
     case 'regroup':return 'Pulling back after a skirmish';
-    case 'dungeon':return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`;}return ''}
+    case 'dungeon':{const s=a.siteIn!=null?siteById(a.siteIn):null; // a DM-made site names itself, never the Crypt (#917)
+      if(a.siteIn!=null){const n=s?s.name:'a hidden place',t=s&&s.boss?(s.bossTitle?s.boss+', '+s.bossTitle:s.boss):'';if(s&&s.raid)return a.hidden?`Raiding ${n}${t?', fighting toward '+t:''}`:`Gathering a raid at ${n}`;return a.hidden?`Inside ${n}${t?', fighting toward '+t:''}`:`Gathering a group at ${n}`}
+      return a.hidden?`Inside ${CRYPT.name}, fighting toward ${CRYPT.boss}`:`Gathering a group at ${CRYPT.name}`}}return ''}
 
 // ---- hero dossier ----
 const TABS=[['stats','Stats'],['quests','Quests'],['log','Log'],['combat','Combat'],['bio','Bio'],['memory','Memory'],['gear','Gear'],['inv','Pack'],['party','Party'],['chat','Chat'],['mind','Mind'],['agent','Agent']];
@@ -479,7 +482,7 @@ export function renderClock(){$('clock').textContent=`Day ${Math.floor(S.gameMin
 // Chronicle: render what the sim already logged, then follow new entries.
 function initChronicle(){const el_=$('log');
   const add=e=>{if(!chronicleShows(e))return;const li=document.createElement('li');if(e.parts[0]&&e.parts[0].c==='nar')li.className='nar';
-    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} // the downed, a rescue, a mercy, a finish (#659)li.append(el('time',null,e.t));parts(li,e.parts);
+    else{const dk=downKind(e.parts.map(p=>typeof p==='string'?p:p&&p.kind==='hero'?p.name:p&&p.t||'').join(''));if(dk)li.className='dk-'+dk} li.append(el('time',null,e.t));parts(li,e.parts); // the downed, a rescue, a mercy, a finish (#659)
     keepView(el_,()=>{el_.prepend(li);while(el_.children.length>90)el_.lastChild.remove()})}; // a new line on top keeps the line being read in view (#145)
   const all=()=>{el_.replaceChildren();for(let i=S.chronicle.length-1;i>=0;i--)add(S.chronicle[i])};all();
   setChronicleRefresh(all); // the Fellowship only filter toggles re-render from S.chronicle

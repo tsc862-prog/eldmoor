@@ -4530,6 +4530,366 @@
         "Leana Zimmerman (Sharm)"
       ],
       "accepted": "2026-11-04"
+    },
+    "prop:canopy-ash-1@32": {
+      "id": "prop:canopy-ash-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-ash-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "caf8c389414fe27886ff8f2059f6ce6c6bf53dbdb1776700bd4a290b75f2bfe0",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-ash-2@32": {
+      "id": "prop:canopy-ash-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-ash-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "4c8f02d7e70f8d697de4ecda9e988ed4b27f52d03a9b455de9dcc6ff0d31baac",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-ash-3@32": {
+      "id": "prop:canopy-ash-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-ash-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "7570e2c7b222c1ba21a0d85bdf01ab9e62796b6ce6a7d14a8a477e11b9453968",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-fen-1@32": {
+      "id": "prop:canopy-fen-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-fen-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "396d6a1a022f28451e166727e8fa5e7362c8448b745df0eadf68bf6acdb3f5d2",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-fen-2@32": {
+      "id": "prop:canopy-fen-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-fen-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "15be7e4f622d52f79d2ea3514c43ffba1136d2cd8fc3b5456724097da66f1667",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-fen-3@32": {
+      "id": "prop:canopy-fen-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-fen-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "902a6bb22c7399b0dd1cedf533714b789dfcc9d2d5be04cca973650ce5d90418",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-meadow-1@32": {
+      "id": "prop:canopy-meadow-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-meadow-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "c2c8ca99f5e1817241397cc7dc2b4a3d05333c86a126aa1b3b2cc0506c7c8e19",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-meadow-2@32": {
+      "id": "prop:canopy-meadow-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-meadow-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "e21f03f647cbe3e04f9a3b0dbb3bada756e01fb879d8dfed25342ef56094ada7",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-meadow-3@32": {
+      "id": "prop:canopy-meadow-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-meadow-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "d863cec88649ca21574ebd6aba8f03661b3e64c21f62e29c89fa4a06311494ee",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-tundra-1@32": {
+      "id": "prop:canopy-tundra-1",
+      "kind": "prop",
+      "file": "prop/32/canopy-tundra-1.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "e100b255d44ab2a3d9e8136fe7ced8df6bcfd292318bfeea0a6c6577bdeb4ac8",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-tundra-2@32": {
+      "id": "prop:canopy-tundra-2",
+      "kind": "prop",
+      "file": "prop/32/canopy-tundra-2.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "449f422c4c055f8ce7940f6159d8637f12b7a118c3d6d63cf6251ae5ee732678",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:canopy-tundra-3@32": {
+      "id": "prop:canopy-tundra-3",
+      "kind": "prop",
+      "file": "prop/32/canopy-tundra-3.png",
+      "w": 96,
+      "h": 120,
+      "sha256": "e100b255d44ab2a3d9e8136fe7ced8df6bcfd292318bfeea0a6c6577bdeb4ac8",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-ash-1@32": {
+      "id": "prop:rock-ash-1",
+      "kind": "prop",
+      "file": "prop/32/rock-ash-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "87e3f5aef32aebea15e44d0e3bee36e452f32901fd2e4a0330bb23724828f256",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-ash-2@32": {
+      "id": "prop:rock-ash-2",
+      "kind": "prop",
+      "file": "prop/32/rock-ash-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "0aa2b9b7a9aeb2951279d85f2851c2034aa4175bffe4a7f026b8f9e03b1340b0",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-ash-3@32": {
+      "id": "prop:rock-ash-3",
+      "kind": "prop",
+      "file": "prop/32/rock-ash-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "3d8d1e7abe06f9ab972e24d26ea9b41ac13c61da584f42ed964d1d3f2d7949bd",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-fen-1@32": {
+      "id": "prop:rock-fen-1",
+      "kind": "prop",
+      "file": "prop/32/rock-fen-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "6f0975ea1389d11a365fdf9ea25b69dc8d7c7c3c1f722992d21b5638a675c026",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-fen-2@32": {
+      "id": "prop:rock-fen-2",
+      "kind": "prop",
+      "file": "prop/32/rock-fen-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "7688969334f44233e91c354ad92d652aa5e302b0145b7b6cc8105525f0c7e6c3",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-fen-3@32": {
+      "id": "prop:rock-fen-3",
+      "kind": "prop",
+      "file": "prop/32/rock-fen-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "2623d5771eed87edf174e580fe100aebe2e5a53517d16d9cf5779292aeb9dc8a",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-meadow-1@32": {
+      "id": "prop:rock-meadow-1",
+      "kind": "prop",
+      "file": "prop/32/rock-meadow-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "c10805cc49222cc3e20627e28f84df6d776a1cd3f6eafcda78f33fdbdfc6885a",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-meadow-2@32": {
+      "id": "prop:rock-meadow-2",
+      "kind": "prop",
+      "file": "prop/32/rock-meadow-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "3c739145f9b102d8a0d92af9d92df05a5a2a991f37371643b8e3fcf3ad3dbb38",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-meadow-3@32": {
+      "id": "prop:rock-meadow-3",
+      "kind": "prop",
+      "file": "prop/32/rock-meadow-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "c6b704bd8b51679189fd0bf2af7df77d512eb3c8bfc885a1ce043655aea3f94c",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-tundra-1@32": {
+      "id": "prop:rock-tundra-1",
+      "kind": "prop",
+      "file": "prop/32/rock-tundra-1.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "de0d6f4a1f55ce1d5823040985306b437bea2dba588c2d542d4e28e6c64cd411",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-tundra-2@32": {
+      "id": "prop:rock-tundra-2",
+      "kind": "prop",
+      "file": "prop/32/rock-tundra-2.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "fbc5071c4a08f83cba5bf435910f8b53a02669e074635ee7a0a14d82df811adc",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
+    },
+    "prop:rock-tundra-3@32": {
+      "id": "prop:rock-tundra-3",
+      "kind": "prop",
+      "file": "prop/32/rock-tundra-3.png",
+      "w": 32,
+      "h": 32,
+      "sha256": "278cbaa723b4c54b74bdc275daa189b9c2ba915adf14af70ad16565ba9f923ea",
+      "tier": 32,
+      "source": "lpc-base",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Leana Zimmerman (Sharm)"
+      ],
+      "accepted": "2026-11-04"
     }
   }
 }

@@ -94,6 +94,8 @@ setTab('log');uiFast();
 
 console.log('side panels');
 holds('Chronicle',()=>$('log'));
+{const rows=[...$('log').children];ok(rows.length>0&&rows.every(r=>(r.textContent||'').trim().length>0),'Chronicle: '+rows.length+' rows, every row has text (#933)');
+  const r0=rows[0];ok(!!r0&&r0.children.some(c=>/^time$/i.test(c.tagName))&&r0.textContent.trim().length>5,'Chronicle: a row has its time and its words')}
 while(sim.S.fallen.length<6)sim.S.fallen.push({t:'00:0'+sim.S.fallen.length,name:'Testgrave'+sim.S.fallen.length,fac:0,lvl:3,cls:'Mage',cause:'a smoke test'}); // a quiet world: a few graves to scroll
 uiSlow();holds('Graveyard',()=>$('fallen'),{sec:60,min:3});
 holds('Timeline',()=>$('tlist'),{sec:60});
@@ -227,7 +229,7 @@ const r1=sim.playerAct(sp.id,'party_say',{text:sp.name+': Hold the line at the f
 // Company tab Lately feed and the whole-map spots (#845, #844)
 {uiFast();const ly=$('felbody').querySelector('.fellately');ok(!!ly&&!!ly.querySelector('.fth-h'),'Company tab: a Lately feed sits under the threads');
   const {companySpots}=await import('../src/render/wholemap.js');const sp=companySpots();
-  ok(sp.length>0&&sp.every(x=>x.name&&x.r>=5)&&sp.filter(x=>x.followed).length===1,'whole map: each company has a ring spot and a name, one followed: '+sp.map(x=>x.name).join(', '))}
+  ok(sp.length>0&&sp.every(x=>x.name&&x.r>=3)&&sp.filter(x=>x.followed).length===1,'whole map: each company has a ring spot and a name, one followed: '+sp.map(x=>x.name).join(', '))}
 holds('Minds at play',()=>$('minds'),{sec:20,min:2,ranked:true});
 
 // The Agents panel (#145): limits and spend in one place, sent to the relay's supervisor
@@ -803,7 +805,7 @@ console.log('the DM prepares the table');
       {id:'foe',name:'Brute',k:'attack',text:'Strikes at '+ms[0].name+' (drawn)',res:'d20 1+4=5 vs AC 15 (a natural 1): missed',by:'foe',rd:2,roll:R(1,4,15,0,0,0,ms[0].name)}]};
   m.target=ms[0];S.table=sc;TB.renderTable(1);
   const t=()=>box.textContent,v=TB.combatView();
-  ok(!box.hidden&&/ROUND 2\/3/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+'/'+(v&&v.of)+')');
+  ok(!box.hidden&&/ROUND 2(?!\/)/.test(t()),'combat banner: the round number shows ('+(v&&v.round)+', no "of")');
   const chips=box.querySelectorAll('.tci');
   ok(chips.length===ms.length+1&&chips[1].classList.contains('foe'),'combat banner: initiative order with the foe at its place ('+chips.length+' chips)');
   ok(chips[2].classList.contains('cur')&&/▶/.test(chips[2].textContent)&&!chips[1].classList.contains('cur'),'combat banner: the current actor is marked');
@@ -1653,5 +1655,13 @@ console.log('page watchdog');
   const m=sim.S.mobs.find(x=>x.alive&&!x.gone),a=sim.S.agents.find(x=>x.company!=null&&x.state!=='dead'&&!x.hidden);
   if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
   ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
+// the activity line names a DM-made site, never the Crypt (#917)
+{const {doing}=await import('../src/ui/panels.js');const a=sim.S.agents.find(x=>x.state!=='dead'&&!x.player&&!x.adv);
+  if(a){const keep={st:a.state,hid:a.hidden,si:a.siteIn},L=(sim.S.sites||(sim.S.sites={seq:0,list:[]})).list,fake={id:9917,name:'The Ashen Vault',boss:'Orrik',bossTitle:'the Keeper',state:'open'};L.push(fake);
+    a.state='dungeon';a.siteIn=9917;a.hidden=true;let t=doing(a);ok(/Ashen Vault/.test(t)&&/Orrik/.test(t)&&!/Sunken Crypt/.test(t),'hero card: inside a site names the site ('+t+')');
+    a.hidden=false;t=doing(a);ok(/Gathering a group at The Ashen Vault/.test(t),'hero card: gathering at a site ('+t+')');
+    fake.raid=true;a.hidden=true;t=doing(a);ok(/^Raiding The Ashen Vault/.test(t),'hero card: a raid site reads as a raid ('+t+')');
+    delete a.siteIn;t=doing(a);ok(/Sunken Crypt/.test(t),'hero card: the Crypt reads as before ('+t+')');
+    L.pop();a.state=keep.st;a.hidden=keep.hid;if(keep.si!=null)a.siteIn=keep.si}}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

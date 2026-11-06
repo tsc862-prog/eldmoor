@@ -41,6 +41,7 @@
 //     redrawn or spilt answer is refused with its raw kept; raws and art:reprocess keep working; the router leaves these kinds
 //     out; a Space from before img2img stops the run with the word to push; the router runs of part 4 use the manifest without
 //     kindInit, which also proves the text recipe on these kinds still works for raws made before.
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync,writeFileSync,readFileSync,existsSync,rmSync,readdirSync,utimesSync,mkdirSync} from 'node:fs';
@@ -71,8 +72,8 @@ console.log('manifest and hooks');
   ok(!bad.length,`every id has a file per tier, e.g. ${man.assets[0].id} -> assets/${fileOf(man.assets[0].id,32)} and assets/${fileOf(man.assets[0].id,64)}`+(bad.length?': '+bad.map(a=>a.id):''));
   bad=man.assets.filter(a=>!TIERS.every(t=>sizeOf(a,t))||sizeOf(a,64)[0]!==2*sizeOf(a,32)[0]||sizeOf(a,64)[1]!==2*sizeOf(a,32)[1]);
   ok(!bad.length,`every asset has a size per tier, the 64 tier twice the 32 (${TIERS.join(', ')})`+(bad.length?': '+bad.map(a=>a.id):''));
-  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
-  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier`+(bad.length?': '+bad.map(a=>a.id):''));
+  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&!/^prop:canopy-/.test(a.id)&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
+  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier (a whole canopy tree, #834, is the exception)`+(bad.length?': '+bad.map(a=>a.id):''));
   const {ASSET_SPRITES}=await import('../src/render/sprites.js'),sp=man.assets.filter(a=>a.kind==='sprite');
   ok(sp.length&&sp.every(a=>ASSET_SPRITES[a.id]&&a.frames.cols===3&&a.frames.rows===4),`sprite sheets: 3 frames by 4 directions (${sp.length})`);
   const hero=sp.filter(a=>/^sprite:hero-/.test(a.id));ok(hero.length&&hero.every(a=>sizeOf(a,32)[0]/3===32&&sizeOf(a,32)[1]/4===48&&sizeOf(a,64)[0]/3===64&&sizeOf(a,64)[1]/4===96),`hero frames 32x48 at the 32 tier, 64x96 at 64 (${hero.length} classes)`);
@@ -197,7 +198,7 @@ console.log('the building recipe and its gates (#763)');
   {const e=byId.get('building:stone-hall'),g=PF.styleGate(oldOut(e),pal('stone'),PF.gateOf(e));
     ok(!g.ok&&g.colors>PF.GATE.maxColors&&g.speckle>PF.GATE.maxSpeckle,`regression fixture: the old recipe gives ${g.colors} colours and ${Math.round(g.speckle*100)}% lone pixels; the gate refuses it (${g.why.join('; ')})`)}
   // art:accept: the in-game look and the style gate
-  {const dir=mkdtempSync(join(tmpdir(),'eldmoor-accept-')),date='2026-11-04',{writeIndex}=await import('./art/gen.mjs'),{recordPreview}=await import('./art/preview.mjs');
+  {const dir=mkTmp('eldmoor-accept-'),date='2026-11-04',{writeIndex}=await import('./art/gen.mjs'),{recordPreview}=await import('./art/preview.mjs');
     try{const q=QUEUE0(),ii={version:1,assets:{}},inc=join(dir,'incoming',date),put=(id,png)=>{const key=tierKey(id,32),file=fileOf(id,32),p=join(inc,file);mkdirSync(dirname(p),{recursive:true});writeFileSync(p,png);q.incoming[key]={date,file};const sz=pngSize(png);ii.assets[key]={id,tier:32,kind:id.split(':')[0],file,w:sz.w,h:sz.h}};
       const hall=byId.get('building:stone-hall'),inn=byId.get('building:stone-inn'),auction=byId.get('building:stone-auction');
       const good=run(hall,FB.flatBuilding(PAL.FLAT.stone,sizeOf(hall,32))),gi=run(inn,FB.flatBuilding(PAL.FLAT.stone,sizeOf(inn,32)));
@@ -244,7 +245,7 @@ console.log('sprite sheets (#711, scripts/art/post-sheet.mjs)');
   ok(/sprite sheet/.test(man.kindStyle.sprite)&&!/seamless/.test(man.kindStyle.sprite),'sprite prompts carry their own style (a sheet on plain ground, not a seamless tile)')}
 
 console.log('gen.mjs and daily.mjs against a mock Hugging Face server');
-const tmp=mkdtempSync(join(tmpdir(),'eldmoor-art-'));
+const tmp=mkTmp('eldmoor-art-');
 try{
   // The mock: the Hub's provider mapping (as seen on 2026-11-02) and fal-ai image routes, with switches for refusals.
   const MOCK_TOKEN='hf_mockArtcheckToken123',MAPS={
@@ -724,7 +725,7 @@ console.log('tiers: index, loader, fallback, generation settings');
   ok(normKey('tile:grass')==='tile:grass@32'&&normKey('tile:grass#alt2')==='tile:grass@32#alt2'&&normKey('tile:grass@64#alt1')==='tile:grass@64#alt1','queue keys from before tiers read as the 32 tier');
   {const k=splitKey('tile:grass@64#alt3');ok(k.id==='tile:grass'&&k.tier===64&&k.alt===3&&keyFile('tile:grass@64#alt3')==='tile/64/grass.alt3.png','a tier key splits into id, tier and alternate; its file is <kind>/<tier>/<name>.altK.png')}
   // an old queue and index (keys without a tier) are read as the 32 tier
-  const old=mkdtempSync(join(tmpdir(),'eldmoor-oldq-'));
+  const old=mkTmp('eldmoor-oldq-');
   try{writeFileSync(join(old,'queue.json'),JSON.stringify({version:1,incoming:{'tile:grass':{date:'2026-11-03',file:'tile/grass.png'}},rejected:{'tile:mud':1},alts:{},failed:{},next:['tile:swamp']}));
     writeFileSync(join(old,'index.json'),JSON.stringify({version:1,assets:{'tile:grass':{id:'tile:grass',file:'tile/grass.png',w:32,h:32}}}));
     const q=loadQueue(old),ix=loadIndex(old);
@@ -812,7 +813,7 @@ async function autotileProbe(){
   {let bad=0,i=0;for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];for(let py=0;py<RT;py++)for(let px=0;px<RT;px++){if(off[i++]!==parseInt(T.procPixel(t,tx,ty,(px/ART)|0,(py/ART)|0).slice(1),16))bad++}}
     ok(!bad,`no assets: the ${RT} px render is the ${U} px procedural map scaled ${ART}x, pixel for pixel`)}
   // fixtures -> PNG files and an index in a temp assets folder -> decoded -> installed
-  const fx=fixtures(man,RT),dir=mkdtempSync(join(tmpdir(),'eldmoor-fixtures-')),{mkdirSync}=await import('node:fs'),{sha256}=await import('./art/lib.mjs'),{dirname}=await import('node:path');
+  const fx=fixtures(man,RT),dir=mkTmp('eldmoor-fixtures-'),{mkdirSync}=await import('node:fs'),{sha256}=await import('./art/lib.mjs'),{dirname}=await import('node:path');
   try{const index={version:1,assets:{}};
     for(const [id,im] of Object.entries(fx)){const f=fileOf(id,RT),b=encodePng(im);mkdirSync(dirname(join(dir,f)),{recursive:true});writeFileSync(join(dir,f),b);
       index.assets[tierKey(id,RT)]={id,tier:RT,file:f,w:im.w,h:im.h,sha256:sha256(b),model:'fixture',seed:0}}
