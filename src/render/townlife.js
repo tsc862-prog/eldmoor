@@ -21,6 +21,8 @@ import {MARK} from './palette.js';
 import {hash} from '../core/rng.js';
 import {F,frame,inTiles,skyAt,WET,WIND,ramp,lamps} from './life.js';
 import {critterEnts,drawRoostBirds} from './critters.js';
+import {pieceSpot} from './townart.js';
+import {onAssets} from './assets.js';
 import {trackSteps,drawFootprints} from './footprints.js';
 
 const OPPOSITE={E:'W',W:'E',N:'S',S:'N'};
@@ -29,14 +31,20 @@ const GOODS=[['#c8402a','#e8b038','#7a9a3a'],['#4a7ab0','#e8e0c8','#a04a8a'],['#
 
 // ---- the plan of a town, built once (the tiles do not change) ----
 const LAY=new Map();
+// Chimneys and the hall's flag, where the town's art has them: an image cut from the LPC kits says so (#833), and it may arrive
+// after the plan was made, so these alone are looked up again when the assets change.
+function roofSpots(L){const c=L.c;L.chim.length=0;L.flag=null;
+  for(const b of c.buildings){const [bx,by]=b.draw||b.box,at=n=>pieceSpot(c,b,n);
+    if(b.piece==='smithy'){const s=at('chimney');L.chim.push({x:s?s[0]:bx*T+12,y:s?s[1]:by*T+1,kind:'forge',hours:(npcRole('smith')||{}).hours||[6,21]})}
+    else if(b.piece==='inn'){const s=at('chimney');L.chim.push({x:s?s[0]:bx*T+38,y:s?s[1]:by*T+1,kind:'hearth'})}
+    if(b.piece==='hall'){const s=at('flag');L.flag=s?{x:s[0],y:s[1]}:{x:(bx+(b.draw?b.draw[2]:b.box[2])/2)*T,y:by*T+3}}}}
+onAssets(()=>{for(const L of LAY.values())roofSpots(L)});
 function layout(c,ci){let L=LAY.get(c);if(L)return L;
   L={c,ci,chim:[],doors:[],stalls:[],guards:[],flag:null};
   const open=(x,y)=>x>c.x0&&x<c.x1&&y>c.y0&&y<c.y1&&!solidAt(x,y);
   const doorSet=c.buildings.map(b=>b.door);
-  for(const b of c.buildings){const [dx,dy]=b.door,[bx,by]=b.draw||b.box;
-    if(b.piece==='smithy')L.chim.push({x:bx*T+12,y:by*T+1,kind:'forge',hours:(npcRole('smith')||{}).hours||[6,21]});
-    else if(b.piece==='inn')L.chim.push({x:bx*T+38,y:by*T+1,kind:'hearth'});
-    if(b.piece==='hall')L.flag={x:(bx+(b.draw?b.draw[2]:b.box[2])/2)*T,y:by*T+3};
+  roofSpots(L);
+  for(const b of c.buildings){const [dx,dy]=b.door;
     if(b.piece!=='board')L.doors.push({x:(dx+.5)*T+(b.piece==='smithy'?-2:0),y:(dy+1)*T,forge:b.piece==='smithy',w:b.box[2]})}
   // stalls: two tiles wide, with the rows above and below clear, away from doors and the gate lane
   const gate=c.gateTiles,gx=gate[0][0],gy=gate[0][1],cand=[];
