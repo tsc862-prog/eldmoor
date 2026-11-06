@@ -11,6 +11,7 @@
 //   rules     a runner cannot write another seat's turn (#123), key-shaped text never reaches a file, files
 //             rotate by size, and the watch changes nothing in the world (same state with and without it)
 // No model, no network beyond 127.0.0.1, nothing written under logs/ (a temporary folder). Usage: npm run behaviorcheck.
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {mkdtempSync, rmSync, readFileSync, writeFileSync, existsSync, readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -22,7 +23,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 let seed = 0x5eed4129;
 const reseed = s => {seed = s >>> 0};
 Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
-const ROOT = mkdtempSync(join(tmpdir(), 'eldmoor-behavior-')); process.env.AGENT_LOGS = ROOT; process.env.BEHAVIOR_DIR = join(ROOT, 'behavior');
+const ROOT = mkTmp('eldmoor-behavior-'); process.env.AGENT_LOGS = ROOT; process.env.BEHAVIOR_DIR = join(ROOT, 'behavior');
 
 const SIM = await import('../src/sim/index.js');
 const SLT = await import('../src/sim/company.js'); // the slotted company (#588)
@@ -261,7 +262,7 @@ ok(/## Cost/.test(md) && /Turns by wake reason/.test(md) && rep.cost && rep.cost
   const rm = writeReport(join(ROOT, 'minds'), 'mock'), mmd = readFileSync(rm.file, 'utf8'), sec = (mmd.split('## Mind comparison')[1] || '').split('## World')[0];
   const rowOf = n => (sec.split('\n').find(l => l.startsWith('| ' + n + ' |')) || '').split('|').slice(1, -1).map(s => s.trim());
   const ann = rowOf('Ann'), bo = rowOf('Bo'), cy = rowOf('Cy');
-  ok(/## Mind comparison/.test(mmd) && ann.length === 24 && bo.length === 24 && cy.length === 24, 'report has a Mind comparison table with a row per member (#280)');
+  ok(/## Mind comparison/.test(mmd) && ann.length === 26 && bo.length === 26 && cy.length === 26, 'report has a Mind comparison table with a row per member (#280)');
   ok(ann[2] === 'ollama/qwen2.5:14b' && ann[3] === '10' && ann[4] === '2' && ann[5] === '1' && ann[6] === '1', `Ann on qwen: 10 turns (unnamed lines named from the digests), 2 empty, 1 failed, 1 Table answer: ${ann.slice(2, 7).join(' ')}`);
   ok(ann[7] === '-' && ann[8] === '-' && ann[9] === '-' && ann[12] === '-', 'a member with no decisions shows "-", not zero');
   ok(/2 by anthropic\/claude-haiku-5-5 \(1 failed\)/.test(ann[10]) && !sec.split('\n').some(l => l.startsWith('| Ann | tank | anthropic')), 'the relay writing Ann\'s sheet is folded into her row, not shown as her mind');
@@ -364,7 +365,40 @@ ok(/## Cost/.test(md) && /Turns by wake reason/.test(md) && rep.cost && rep.cost
   ok(/predate #541/.test(mdo), 'report on old digests says the counters are missing instead of showing zeros');
 }
 
-// ---- 6e. the DM spoke for a member (issue #750): each cut is a dm-spoke-for anomaly on the dm seat, one line per quiet window, counted per DM model ----
+// ---- 6e. errand-unacted (issue #727): a town-errand aim let go without talk, list_jobs, buy, sell or earshot ----
+{
+  const IN = await import('../src/sim/intent.js');
+  const w = makeWatch(), recs = []; const tick = () => {for (const o of w.tick()) recs.push(o)};
+  const h = A, home = homeOf(h); h.x = home.ah.x; h.y = home.ah.y; h.state = 'town'; h.target = null; h.hp = maxHp(h);
+  S.gameMin += 1; tick(); // baseline
+  const adv = min => {for (let m = 0; m < min; m += 10) {S.gameMin += 10; IN.intentWatch(h); tick()}};
+  const errs = () => recs.filter(r => r.kind === 'anomaly' && r.rec.kind === 'errand-unacted' && r.rec.hero && r.rec.hero.id === h.id);
+  IN.setIntent(h, {goal: 'Ask the innkeeper for news of the Crypt', why: 'the way'}, {kind: 'wait', errand: 'ask', town: home.name}); adv(30);
+  IN.endIntent(h, 'gave up'); adv(10);
+  ok(errs().length === 1 && errs()[0].rec.evidence.errand === 'ask' && errs()[0].rec.evidence.ended === 'done' && !/Crypt/.test(JSON.stringify(errs()[0].rec)), `an errand aim held in town and let go untouched: errand-unacted, with the errand word only (${errs()[0] && errs()[0].rec.text})`);
+  IN.setIntent(h, {goal: 'Buy potions and ask for directions', why: 'the road'}, {kind: 'wait', errand: 'ask', town: home.name}); adv(20); IN.errandTool(h, 'talk');
+  IN.setIntent(h, {goal: 'Sell the pelts', why: 'coin'}, {kind: 'wait', errand: 'buy', town: home.name}); adv(20);
+  ok(errs().length === 1, 'an errand acted on (talk) raises nothing when it is replaced');
+  IN.setIntent(h, {goal: 'Hunt boars in the fields', why: 'coin'}, null); adv(10);
+  ok(errs().length === 2 && errs()[1].rec.evidence.ended === 'replaced', 'an errand replaced before it was run: flagged as replaced');
+  IN.setIntent(h, {goal: 'Rest and recover at the inn', why: 'hurt'}, {kind: 'wait', errand: 'rest', town: home.name}); adv(20); IN.endIntent(h, 'rested'); adv(10);
+  h.state = 'hunt'; IN.setIntent(h, {goal: 'Find out what lurks in the woods', why: 'curious'}, null); adv(20); IN.endIntent(h, 'x'); adv(10);
+  ok(errs().length === 2, 'a rest errand, and an errand never held in town, raise nothing');
+  h.state = 'town'; IN.setIntent(h, {goal: 'Ask the smith about the road', why: 'the way'}, {kind: 'wait', errand: 'ask', town: home.name}); adv(150);
+  ok(errs().length === 2 && IN.aimState(h) === 'stale', 'an errand gone stale but still held (#790) is not judged yet: it can still be run');
+  IN.endIntent(h, 'x'); adv(10); ok(errs().length === 3 && errs()[2].rec.evidence.ended === 'done', 'and it is flagged when it ends unrun');
+  h.state = 'town';
+  // the report counts it per mind in the Mind comparison, beside no-aim
+  const dirE = join(ROOT, 'errand'), {mkdirSync: mk4} = await import('node:fs'); mk4(dirE, {recursive: true});
+  const bl = behaviorLog({root: dirE, world: 'er', log: () => {}});
+  bl.turn({seat: 'hero:' + h.id, hero: {id: h.id, name: h.name}, provider: 'openai', model: 'gpt-6-luna', turn: 1, tools: [{name: 'intent', ok: true}], narration: 'x', seconds: 3});
+  for (const o of recs) bl.ingest(o.kind, o.rec);
+  const mde = readFileSync(writeReport(dirE, 'er').file, 'utf8');
+  ok(/errand-unacted/.test(mde) && /\| no-aim \| errand unacted \|/.test(mde), 'report: errand-unacted among the anomalies, and no-aim and errand unacted columns in the Mind comparison');
+  ok(new RegExp('\\| openai/gpt-6-luna \\|[^\\n]*\\| \\d+ \\| 1 \\|\\n').test(mde), 'report: the errand counted on the mind that played it (openai/gpt-6-luna)');
+}
+
+// ---- 6f. the DM spoke for a member (issue #750): each cut is a dm-spoke-for anomaly on the dm seat, one line per quiet window, counted per DM model ----
 {const {dmlog} = await import('../src/sim/dmlog.js'), w = makeWatch({dmLink: () => 'connected'}), r = []; w.tick();
   const D = S.dmAgent || {}; const turns0 = D.turns; D.turns = [{id: 1, model: 'claude-haiku-5-5', provider: 'anthropic'}]; S.dmAgent = D;
   dmlog('agent', null, ['Narrator (at the table): The fire sinks low.'], {by: 'dm-agent', voice: 'narrate', text: 'The fire sinks low.', spoke_for: 'Ulgug'}, {heroes: []});

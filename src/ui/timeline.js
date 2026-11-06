@@ -4,7 +4,7 @@
 // the delegated click handler. Cheap: one pass over at most 200 entries.
 import {S} from '../sim/index.js';
 import {patch,keyOf} from './stable.js'; // update in place, keep scroll (#145)
-import {LAIR,CRYPT} from '../world/map.js';
+import {LAIR,CRYPT,CRYPTS} from '../world/map.js';
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 import {downTimeline,DOWN_BADGE} from './downview.js'; // downings, stabilizes and revivals from the heroes' Logs (#659)
 
@@ -13,8 +13,8 @@ const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className
 
 // Filters by kind. Hero-facing events, boss and raid events, deaths.
 // Downed (#659): downings, stabilizes, revivals (and, with #657, mercies and finishes) read from the heroes' Logs, and deaths.
-export const FILTERS=[['all','All',null],['heroes','Heroes',['level','oath','swore','crypt','elite','title']],['bosses','Bosses',['boss','raid']],['downs','Downed',['down','stable','up','mercy','finish','death']],['deaths','Deaths',['death']]];
-const BADGE={boss:'BOSS',raid:'RAID',crypt:'CRYPT',level:'LVL',death:'DEATH',elite:'ELITE',oath:'OATH',swore:'OATH',rival:'RIVAL',guild:'GUILD',title:'TITLE',...DOWN_BADGE};
+export const FILTERS=[['all','All',null],['heroes','Heroes',['level','oath','swore','crypt','elite','title','site']],['bosses','Bosses',['boss','raid']],['downs','Downed',['down','stable','up','mercy','finish','death']],['deaths','Deaths',['death']]];
+const BADGE={boss:'BOSS',raid:'RAID',crypt:'CRYPT',site:'SITE',level:'LVL',death:'DEATH',elite:'ELITE',oath:'OATH',swore:'OATH',rival:'RIVAL',guild:'GUILD',title:'TITLE',...DOWN_BADGE};
 let filter='all',seen=-1,seenTop=null,box=null,list=null;
 
 export const dayOf=e=>Math.floor((e.gameMin||0)/1440)+1;
@@ -41,7 +41,7 @@ function fill(list,tl){
     const li=el('li','tl tl-'+e.kind);li.setAttribute('data-k',keyOf(e.src||e));
     li.append(el('time',null,'D'+dayOf(e)+' '+e.t),el('span','badge b-'+e.kind,BADGE[e.kind]||e.kind.toUpperCase()));
     const t=el('span','tx');partsTo(t,e.parts);li.append(t);
-    const inside=(e.kind==='raid'||e.kind==='boss')&&LAIR?LAIR.name:e.kind==='crypt'&&CRYPT?CRYPT.name:null; // Inside: the raid arena or the dungeon view (#85)
+    const inside=e.site!=null?'site:'+e.site:(e.kind==='raid'||e.kind==='boss')&&LAIR?LAIR.name:e.kind==='crypt'&&CRYPT?(CRYPTS.find(D=>(e.parts||[]).some(p=>p&&p.t===D.name))||CRYPT).name:null; // Inside: the raid arena or the dungeon view (#85); a DM-made site's entry carries its id (#642)
     if(inside){const b=el('button','dglink','Inside ▸');b.type='button';b.dataset.dungeon=inside;b.title=e.kind==='crypt'?'Open the dungeon view':'Open the raid arena';li.append(' ',b)}
     list.append(li);n++}
   if(!n)list.append(el('li','dm','Nothing of note yet.'))}

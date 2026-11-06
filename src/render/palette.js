@@ -205,6 +205,12 @@ export const TOWN={
   timber:{roof:['#b0583c','#8a3a28','#5a2418'],wall:['#7a5a3e','#5a3e2a','#3a281c'],trim:['#2a2420','#141012'],
     stone:['#6a6266','#4a4448','#332e32','#1a1618'],glass:['#ffb060','#c8601a'],door:['#3a2414','#1e140c'],gold:['#c8c4bc','#7a7672'],moss:['#6a7a3a','#4a5a2a']},
 };
+// The town's ground and wall tops (#830), dark to light: the plaza's flagstones and the walks on the walls. A table of its own,
+// because the manifest quantises generated buildings to everything in TOWN.<style>.
+export const TOWN_GROUND={
+  stone:{plaza:['#6e685e','#8e887c','#a49e90','#b4aea0','#c4beb0'],walk:['#4a4652','#5e5a66','#726e7a','#868290']},
+  timber:{plaza:['#3a3230','#524844','#625852','#70665e','#7e746a'],walk:['#262226','#343034','#433e42','#524c50']},
+};
 export const LANDMARK={
   crypt:['#78748a','#5a5668','#4a4652','#2e2a34','#0a0810','#7ad0a0','#c8ffd8','#e8e4d8','#5a8a44'],
   lair:['#5a2a1c','#3a1c16','#655c58','#4a423e','#2a2422','#c8401a','#f07a22','#ffd04a','#e8e0c8','#a8a090'],

@@ -31,7 +31,10 @@ import {invOf,useItem,venomOn,take} from './inv.js';
 import {isDown,downHit,finisher} from './downed.js'; // a foe and the downed (#654)
 
 export const TR={
-  ROUNDS:3,   // rounds a combat scene plays at most; then the fight goes on in the world (HP and cooldowns carry over)
+  ROUNDS:3,   // rounds of an honour duel (challenge.js) at most; a fight at the table plays until it is decided (#875)
+  ROUNDS_MAX:12,       // hard cap on a combat scene's rounds, a guard against loops; then the fight goes on in the world (HP and cooldowns carry over)
+  BOSS_ROUNDS_MAX:16,  // Kragmaw's own cap
+  STALL:3,             // rounds in a row with no HP change on either side close the scene
   HIT:3,      // attack bonus: d20 + HIT + level/2 (crawl.js FOE_HIT) against 10 + Defense x 20
   REACH:9,    // tiles from the foe within which a member is in the fight (a strike from farther only closes in)
   YIELD:.3,   // a duellist yields below this share of its max HP, times its flee trait (pvp duel rule)
@@ -65,7 +68,7 @@ const lineOf=r=>r.kind==='death'?r.by+' fights for breath (death save d20 '+r.di
 // Fold the scene's rolls into one DM log entry, a sentence per round (kind 'table': not an adventure roll, so it opens no
 // check scene; one entry a scene keeps the capped DM log readable).
 export function flushRolls(sc){const L=sc.rl;if(!L||!L.length)return;sc.rl=[];const rs=[...new Set(L.map(r=>r.rd))];
-  dmlog('table',null,[sc.title+': '+rs.map(n=>'round '+n+': '+L.filter(r=>r.rd===n).map(lineOf).join('; ')).join('. ')+'.'],{scene:sc.id,kind:sc.kind,rounds:sc.rd||1,sceneType:'fight',by:'scripted',rolls:L},{heroes:sc.ids.slice()})}
+  dmlog('table',null,[sc.title+': '+rs.map(n=>'round '+n+': '+L.filter(r=>r.rd===n).map(lineOf).join('; ')).join('. ')+'.'],{scene:sc.id,kind:sc.kind,rounds:sc.rd||1,...(sc.capped?{capped:sc.capped}:{}),sceneType:'fight',by:'scripted',rolls:L},{heroes:sc.ids.slice()})}
 
 // ---- a member's strike, with its roll ----
 // The structured roll waits on sc.rr until table.js take() puts it on the member's beat (beat.roll).
