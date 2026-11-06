@@ -12,19 +12,21 @@ import {U as T} from './tile.js';
 import {treeAnchor,chunkGen} from './terrain.js';
 import {buildingArt} from './townart.js';
 import {G} from './grade.js';
+import {peakArt,peakFaces,peakDirty,FACE} from './peaks.js';
 
-const SK=10; // shadow pixels a tile
+const SK=FACE; // shadow pixels a tile
 const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
 const CW=W*SK,CHT=H*SK;
-let bands=null,cover=null,work=null,out=null,gen=-1,key=-1,castAt=0;
+let bands=null,cover=null,work=null,out=null,gen=-1,key=-1,castAt=0,peakStale=false,peakBox=null;
+const FACE_A=.95; // how far a mountain face turned from the sun takes the shade
 // Caster masks, built once per set of terrain art.
-function build(){if(!bands){bands={trunk:mk(CW,CHT),crown:mk(CW,CHT),wall:mk(CW,CHT),house:mk(CW,CHT),peak:mk(CW,CHT)};cover=mk(CW,CHT);work=mk(CW,CHT);out=mk(CW,CHT)}
+function build(){if(!bands){bands={trunk:mk(CW,CHT),crown:mk(CW,CHT),wall:mk(CW,CHT),house:mk(CW,CHT),peak:mk(CW,CHT),tall:mk(CW,CHT),east:mk(CW,CHT),west:mk(CW,CHT)};cover=mk(CW,CHT);work=mk(CW,CHT);out=mk(CW,CHT)}
   const x=n=>bands[n].getContext('2d'),tr=x('trunk'),cr=x('crown'),wl=x('wall'),ho=x('house'),pk=x('peak'),cv=cover.getContext('2d');
   for(const c of [tr,cr,wl,ho,pk,cv]){c.clearRect(0,0,CW,CHT);c.fillStyle='#000'}
-  let canopy=false;
+  let canopy=false;const art=peakArt();
   for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];
     if(t===WALL){wl.fillRect(tx*SK,ty*SK,SK,SK);cv.fillRect(tx*SK,ty*SK,SK,SK)}
-    else if(t===PEAK){pk.fillRect(tx*SK,ty*SK,SK,SK);cv.fillRect(tx*SK,ty*SK,SK,SK)}
+    else if(t===PEAK&&!art){pk.fillRect(tx*SK,ty*SK,SK,SK);cv.fillRect(tx*SK,ty*SK,SK,SK)} // with the art on, the mountains' own outline comes as they are painted (peakMasks)
     else if(t===TREE){const a=treeAnchor(tx,ty);
       if(a){canopy=true;const px=a.x*SK,py=a.y*SK;tr.fillRect(px-SK*.14,py-SK*.1,SK*.28,SK*.2);
         cr.beginPath();cr.ellipse(px,py,SK*1.15,SK*.8,0,0,7);cr.fill();
@@ -34,23 +36,30 @@ function build(){if(!bands){bands={trunk:mk(CW,CHT),crown:mk(CW,CHT),wall:mk(CW,
   for(const c of CITY)for(const b of c.buildings||[]){if(b.piece==='board')continue;const [bx,by,bw,bh]=b.box,art=buildingArt(c,b);
     if(art){ho.save();ho.beginPath();ho.rect(bx*SK,by*SK,bw*SK,bh*SK);ho.clip();ho.drawImage(art.img,art.box[0]*SK,art.box[1]*SK,art.box[2]*SK,art.box[3]*SK);ho.restore()}else ho.fillRect(bx*SK,by*SK,bw*SK,bh*SK); // the art's own outline: a spire or a well has clear corners in its box
     if(art)cv.drawImage(art.img,art.box[0]*SK,art.box[1]*SK,art.box[2]*SK,art.box[3]*SK);else{const q=b.draw||b.box;cv.fillRect(q[0]*SK,q[1]*SK,q[2]*SK,q[3]*SK)}}
-  gen=chunkGen;key=-1}
+  gen=chunkGen;key=-1;if(art)peakMasks([0,0,CW,CHT])}
+// What of the mountains has been painted, into the masks: their outline casts and covers, the tall of them casts farther, and their faces take the sun.
+function peakMasks(b){const f=peakFaces(),w=b[2]-b[0],h=b[3]-b[1],im=new ImageData(w,h),d=im.data;
+  const up=(src,c)=>{for(let y=0,o=3;y<h;y++){let i=(b[1]+y)*CW+b[0];for(let x=0;x<w;x++,o+=4)d[o]=src[i++]}c.getContext('2d').putImageData(im,b[0],b[1])};
+  up(f.mask,bands.peak);up(f.tall,bands.tall);up(f.east,bands.east);up(f.west,bands.west);
+  cover.getContext('2d').drawImage(bands.peak,b[0],b[1],w,h,b[0],b[1],w,h)}
 // One band swept along the sun from height h0 to h1 (tiles), added to the shadow.
 function sweep(o,m,h0,h1,dx,dy){const wx=work.getContext('2d');wx.globalCompositeOperation='copy';wx.drawImage(m,dx*h0,dy*h0);wx.globalCompositeOperation='source-over';
   const span=h1-h0,step=1.6/Math.max(.2,Math.hypot(dx,dy));let c=step;while(c<span){const d=Math.min(c,span-c);wx.drawImage(work,dx*d,dy*d);c+=d}
   o.drawImage(work,0,0)}
 function cast(){const o=out.getContext('2d'),L=G.len*SK,dx=G.sx*L,dy=G.sy*L;
   o.globalCompositeOperation='source-over';o.clearRect(0,0,CW,CHT);
-  sweep(o,bands.trunk,0,1.1,dx,dy);sweep(o,bands.crown,.95,2.3,dx,dy);sweep(o,bands.wall,0,.9,dx,dy);sweep(o,bands.house,0,1.7,dx,dy);sweep(o,bands.peak,0,1.3,dx,dy);
+  sweep(o,bands.trunk,0,1.1,dx,dy);sweep(o,bands.crown,.95,2.3,dx,dy);sweep(o,bands.wall,0,.9,dx,dy);sweep(o,bands.house,0,1.7,dx,dy);sweep(o,bands.peak,0,1.3,dx,dy);sweep(o,bands.tall,1.2,2.8,dx,dy);
   // a soft edge, then off the art of what casts
   const wx=work.getContext('2d');wx.globalCompositeOperation='copy';wx.filter='blur(1.2px)';wx.drawImage(out,0,0);wx.filter='none';wx.globalCompositeOperation='source-over';
   o.globalCompositeOperation='copy';o.drawImage(work,0,0);
   o.globalCompositeOperation='destination-out';o.drawImage(cover,0,0);
+  o.globalCompositeOperation='source-over';o.globalAlpha=FACE_A*Math.abs(G.sx);o.imageSmoothingEnabled=true;o.drawImage(G.sx>0?bands.east:bands.west,0,0);o.globalAlpha=1; // the mountain faces turned from the sun: east ones at dusk, west at dawn
   o.globalCompositeOperation='source-in';o.fillStyle=`rgb(${G.shade[0]|0},${G.shade[1]|0},${G.shade[2]|0})`;o.fillRect(0,0,CW,CHT);o.globalCompositeOperation='source-over'}
 // Draw the cast shadows over the terrain; ctx is in the world transform.
 export function drawCast(ctx,gameMin){if(G.sunA<.01)return;if(!bands||gen!==chunkGen)build();
   // every three game minutes, and no oftener than four times a real second however fast the world runs
-  const k=Math.floor(gameMin/3),t=performance.now();if(k!==key&&(key<0||t-castAt>250)){key=k;castAt=t;cast()}
+  const k=Math.floor(gameMin/3),t=performance.now(),pd=peakDirty();if(pd){if(peakStale){peakBox[0]=Math.min(peakBox[0],pd[0]);peakBox[1]=Math.min(peakBox[1],pd[1]);peakBox[2]=Math.max(peakBox[2],pd[2]);peakBox[3]=Math.max(peakBox[3],pd[3])}else{peakBox=pd;peakStale=true}}
+  if((k!==key||peakStale)&&(key<0||t-castAt>250)){if(peakStale){peakMasks(peakBox);peakStale=false}key=k;castAt=t;cast()}
   ctx.globalAlpha=G.sunA;ctx.imageSmoothingEnabled=true;ctx.drawImage(out,0,0,CW,CHT,0,0,W*T,H*T);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1}
 
 // The art of what casts, at shadow scale, for others that lie on the ground (sheen.js).

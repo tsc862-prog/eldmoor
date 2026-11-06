@@ -843,6 +843,9 @@ button.tbtn.danger{border-color:var(--red)}
 .dgview.raid .dghbtn{color:#ffb060;border-color:#6a3a20}
 .dgroom.raider::before{content:'';display:inline-block;width:7px;height:7px;margin-right:4px;background:var(--cc,var(--dim));box-shadow:1px 1px 0 #05060c}
 .dgroom.raider.lost{text-decoration:line-through;text-decoration-thickness:1px}
+.dgroom.raider.down{color:var(--amber)}
+.dgroom.raider.add{color:var(--red)}
+.dgroom.raider.add::before{background:var(--red)}
 .dglink{font-family:var(--px);font-size:7px;padding:3px 6px;margin-left:4px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer;vertical-align:middle}
 .dghbtn{font-family:var(--px);font-size:7px;padding:5px 7px;min-height:26px;background:#1a1d2c;color:#9ae0b8;border:1px solid #3a5a4a;cursor:pointer}
 .dghbtn[aria-expanded=true]{color:var(--gold);border-color:var(--gold)}
@@ -1049,7 +1052,7 @@ html:has(body.cinema),body.cinema{overflow:hidden}
 body.cinema .shell{visibility:hidden}
 body.cinema .screen{visibility:visible;position:fixed;inset:0;z-index:30;width:auto;height:auto!important;max-width:none;aspect-ratio:auto;border:0;box-shadow:none;cursor:default;background:#000}
 body.cinema.cinidle .screen{cursor:none}
-body.cinema .hint,body.cinema .minimap{display:none}
+body.cinema .hint,body.cinema .minimap,body.cinema .nwbar{display:none} /* the run gate says the same over the map; the page bar sat on top of it */
 body.cinema #holdbar{bottom:72px!important}
 body.cinema .tbanner{background:rgba(8,10,20,.78);border-color:rgba(120,130,170,.35);box-shadow:none}
 .cinema{position:absolute;inset:0;z-index:4;pointer-events:none}
@@ -1058,6 +1061,8 @@ body.cinema .tbanner{background:rgba(8,10,20,.78);border-color:rgba(120,130,170,
 .cinc{font-family:var(--px);font-size:9px;color:var(--ink);font-variant-numeric:tabular-nums}
 .cinz{margin-top:3px;font-size:17px;line-height:1;color:#c8cce0}
 .screen.scopen .cinclock{right:auto;left:12px}
+.cinshade{position:absolute;left:0;right:0;bottom:0;height:calc(150px * var(--uiz));background:linear-gradient(to top,rgba(6,7,14,.82),rgba(6,7,14,.62) 55%,rgba(6,7,14,0));opacity:0;transition:opacity .7s ease}
+.cinshade.on{opacity:1}
 .cincap{position:absolute;left:0;right:0;bottom:60px;display:flex;flex-direction:column;align-items:center;gap:4px;padding:0 24px;text-align:center}
 .cinsight{font-family:var(--px);font-size:9px;line-height:1.5;color:var(--gold);text-shadow:2px 2px 0 #000;padding:3px 8px;background:rgba(8,10,20,.42)}
 .cinsight[hidden]{display:none}
@@ -1067,7 +1072,7 @@ body.cinema .tbanner{background:rgba(8,10,20,.78);border-color:rgba(120,130,170,
 .cinw{color:var(--gold)}
 @keyframes cinin{from{opacity:0}to{opacity:1}}
 @keyframes cinout{to{opacity:0}}
-.screen.scopen .cincap{display:none}
+.screen.scopen .cincap,.screen.scopen .cinshade{display:none}
 .cinplates{position:absolute;left:12px;right:12px;bottom:8px;display:flex;justify-content:center;gap:6px;min-width:0}
 .cinp{flex:0 1 220px;min-width:0;height:40px;display:flex;align-items:center;gap:6px;padding:2px 8px 2px 6px;background:rgba(8,10,20,.5);border:1px solid rgba(150,160,200,.22);box-shadow:none;color:var(--ink);font-family:var(--mono);font-size:19px;text-transform:none;letter-spacing:0;pointer-events:auto;cursor:pointer}
 .cinp:hover,.cinp:focus-visible{background:rgba(8,10,20,.72);border-color:rgba(242,193,78,.7);outline:none}
@@ -1088,7 +1093,7 @@ body.cinema .tbanner{background:rgba(8,10,20,.78);border-color:rgba(120,130,170,
 .screen.scopen .cinbar{top:52px}
 body.cinema .scview.scout .dgbar{display:none}
 body.cinema .screen.scopen .tbanner:not(.tlive){bottom:auto;max-height:calc(100% - 110px)}
-.screen.dgopen .cinplates,.screen.dgopen .cincap,.screen.dgopen .cinz,.screen.scin .cinplates,.screen.scin .cincap,.screen.scin .cinz{display:none}
+.screen.dgopen .cinplates,.screen.dgopen .cincap,.screen.dgopen .cinshade,.screen.dgopen .cinz,.screen.scin .cinplates,.screen.scin .cincap,.screen.scin .cinshade,.screen.scin .cinz{display:none}
 @media (max-width:700px){.cinf,.cins{display:none}.cinp{height:30px;padding:2px 5px;font-size:16px}.cinl{font-size:19px}.cincap{bottom:46px;padding:0 16px}.cinplates{left:8px;right:8px;gap:3px}}
 
 /* Setup: the chosen map beside its fields (ui/setup.js worldCard) */

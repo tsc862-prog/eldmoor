@@ -53,6 +53,7 @@ export function localRec(r) {
   if (r.broke) flags.push('breaker'); if (r.throttled) flags.push('throttled'); // ended early (issue #467)
   if (r.aimDropped) flags.push('stale-aim-dropped'); // a forced answer's aim copied a finished one word for word: not set (issue #727)
   if (r.tableRest) flags.push('table-rest'); // a wait at the table ended the turn (issue #868)
+  if (r.sceneJump && !r.tools) flags.push('scene-cut'); // cut by its scene before any call: not an empty turn (issue #515)
   if (r.sceneJump) flags.push('scene-jump'); // the hero's scene opened mid-turn and was answered first (issue #515)
   return {tools: (r.calls || []).map(c => ({name: c.name, ok: c.ok, ...(c.ok ? {} : {error: c.error}), ...(c.refused ? {refused: true} : {})})), narration: r.narration || '', seconds: +(r.ms / 1000).toFixed(1), tokensIn: r.in, ...(r.cached ? {tokensCached: r.cached} : {}), tokensOut: r.out, cost: r.cost || 0, ...(r.sceneS && r.sceneS.length ? {sceneS: r.sceneS} : {}), flags};
 }

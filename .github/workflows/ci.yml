@@ -183,6 +183,7 @@ jobs:
       - {name: Semantic memory search (mock Ollama embeddings), run: npm run embedcheck}
       - {name: More turn triggers, run: npm run wakecheck}
       - {name: First delve in every world, run: npm run prologuecheck}
+      - {name: Table fights on the map patch, run: npm run patchcheck}
 
   g8:
     name: Checks 8
