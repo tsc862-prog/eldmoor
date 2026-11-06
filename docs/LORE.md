@@ -467,12 +467,12 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 
 | Town | Faction | People | Notes |
 | --- | --- | --- | --- |
-| Aldermere | Concord | Hallowan | Alder-shaded home town in the north-west, first of the Concord towns on the Wend. |
-| Gullstrand | Concord | Skerrin | A gull-loud harbour town just south of Aldermere, at the river's mouth. |
-| Hawkstead | Concord | Tarrow | A falconers' upland market on the north bank, road to the Kestrel Barrow and the ford. |
-| Brandhold | Warband | Ashfolk | Brand-marked home town in the south-west, first of the Warband towns. |
-| Stiltmere | Warband | Mirekin | A stilted fen town in Sallowfen, road to the Sallow Vaults. |
-| Hornridge | Warband | Thornhide | A horn-and-bone ridge-town on the south bank, road to the ford. |
+| Aldermere | Concord | Hallowan | Alder-shaded home town in the north-west, first of the Concord towns on the Wend. A market green inside the walls, the forge and halls fronting a paved lane, the inn on the green's west edge. |
+| Gullstrand | Concord | Skerrin | A gull-loud harbour town just south of Aldermere, at the river's mouth. Its gate faces the water: a street climbs from the quay and jetty to a lane under the halls. |
+| Hawkstead | Concord | Tarrow | A falconers' upland market on the north bank, road to the Kestrel Barrow and the ford. Built on terraces, the chapel on the hall's shoulder and a stair up the middle. |
+| Brandhold | Warband | Ashfolk | Brand-marked home town in the south-west, first of the Warband towns. A forge town with its gate in the north wall and one straight street to the yard before the inn. |
+| Stiltmere | Warband | Mirekin | A stilted fen town in Sallowfen, road to the Sallow Vaults. Wide and loose, its buildings standing apart along planked lanes. |
+| Hornridge | Warband | Thornhide | A horn-and-bone ridge-town on the south bank, road to the ford. A hold on a long slope, gate at the top and two terraces down to the inn. |
 
 - **The Wend**: the one river of the vale; the name is the vale's too, the Wending Vale. **The Low Bridge, the Weirgate ford, the High Bridge**: its three crossings, west to east.
 - **The Drowned Weir** (dungeon, level 7+ entry, south bank beside the Weirgate ford): the great delve, five chambers, a flooded sluice-works of green stone. Boss **Weir-Warden Orsk** (a Grave Warden of the old weir-keepers, named exception like Mere-Warden Hask). Chambers: **The Sluice Stair**, **The Millrace Gallery**, **The Weighing Hall**, **The Flooded Granary**, **The Weir-Warden's Chair**.
@@ -483,6 +483,42 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 - **Kragmaw's Lair** (Rimecrown, level 20): the same wyrm and raid as Eldmoor, here at the river's head.
 - **Greymane, the Pack-Father of the Hawkwold** (elite, Hawkwold, wolf): a grey wolf grown huge on the uplands' flocks. **Thornback, the Boar-King of the Greywood** (elite, Greywood, mud-boar): a tusked boar with a back like a hedge.
 - **First delves of the Vale** (`src/data/prologues.js`, one a home town, each about level 2, plain loot): **the Drowned Millhouse** (Aldermere, ruin, keeper **Miller Quill**, a frightened miller run by river-thieves), **the Gull Cliff Den** (Gullstrand, den, keeper **Old Brine**, a sea-wolf mother), **the Herders' Cairn** (Hawkstead, barrow, keeper **Shepherd Wick**, an old herder counting lost sheep), **the Cold Forge** (Brandhold, mine, keeper **Slagmaster Brok**, a self-crowned smith), **the Salt Pans** (Stiltmere, ruin, keeper **Boil-Master Garr**, a short-weight smuggler) and **the Bone Pit** (Hornridge, den, keeper **Mother Rattle**, a goat-fat she-beast). Campaign seed: `docs/campaigns/vale.md`.
+- **Grimbrand, the Kiln-Golem of the Ashenfold** (elite, Ashenfold, level 17, golem kin): the last kiln-tender's guardian, gone wild when there was nobody left to tend. Slag-grey, cracked along the ribs, and one arm is still a bellows that wheezes before it swings. It walks the ash-fields between the old kilns as if still making its rounds.
+- Dungeon boss chambers run longer at the table: the Kestrel Mews 3 rounds; the Weir-Warden's Chair, the Cold Store and the Kiln Heart 4 each.
+
+#### Creatures of the Vale
+Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names and trade goods (goods in `VALE_GOODS`, Vale-only). Kin is the Eldmoor creature a species borrows its build and look from.
+
+| Creature | Region | Levels | Drops | Quest | Kin |
+| --- | --- | --- | --- | --- | --- |
+| Strand Wolf | Wendmouth | 1-3 | Strandpelt | Wolves on the Strand | Timber Wolf |
+| Reed Boar | Wendmouth | 2-4 | Reed-Tusk | Tusks from the Reeds | Bristleback Boar |
+| Dyke Weaver | Wendmouth | 3-5 | Dyke Silk | Sweep the Dykes | Webspinner |
+| Sallow Bogling | Sallowfen | 2-4 | Sallow Moss | Boglings in the Willows | Bogling |
+| Sallow Hog | Sallowfen | 3-6 | Willow Hide | Hides from the Flats | Mudback Boar |
+| Eel Lurker | Sallowfen | 5-8 | Eel Venom | Venom for the Stilt-Healers | Fen Lurker |
+| Heath Wolf | Hawkwold | 2-4 | Heath Pelt | Wolves on the Heath | Timber Wolf |
+| Crag Boar | Hawkwold | 3-5 | Crag Tusk | Tusks from the Crags | Bristleback Boar |
+| Windhound | Hawkwold | 4-7 | Gale Sinew | Windhounds on the Ridge | Rimehound |
+| Oak Weaver | Greywood | 6-8 | Oak Silk | Webs in the Old Wood | Webspinner |
+| Thicket Boar | Greywood | 7-10 | Thicket Hide | Hides from the Thicket | Mudback Boar |
+| Grey Stalker | Greywood | 9-11 | Greywood Fur | Stalkers of the Greywood | Timber Wolf |
+| Ash Weaver | Ashenfold | 10-12 | Ash Silk | Webs in the Ash | Webspinner |
+| Slag Golem | Ashenfold | 11-14 | Slag Core | Cores from the Slag | Cinder Golem |
+| Ember Hound | Ashenfold | 12-15 | Ember Fur | Hounds of the Old Kilns | Timber Wolf |
+| Squall Wolf | Rimecrown | 14-16 | Squall Pelt | Wolves in the Squall | Timber Wolf |
+| Crown Hound | Rimecrown | 15-18 | Crown Rime | Howls on the Crown | Rimehound |
+| Crown Wight | Rimecrown | 17-20 | Crown Marrow | What the Crown Keeps | Tarn Wight |
+
+- **Wendmouth**: the strand wolves are salt-matted and bold, and the reed boars root up the dykes the farmers swear they mended last spring. Dyke weavers hang their webs between the sluice-posts, which is a nuisance to everyone but the flies.
+- **Sallowfen**: boglings and hogs share the willow-flats in an uneasy truce; the eel lurkers are another matter. The Stilt-Healers of Stiltmere pay well for the venom and ask nobody how it was got.
+- **Hawkwold**: the heath wolves follow the flocks up the slopes, the crag boars hold the broken ground, and windhounds run the ridge-tops so lean and fast that the falconers say the hawks give way to them.
+- **Greywood**: the old wood is quiet in the wrong places. Oak weavers spin across the deer-paths, the thicket boars live in the hedge-tangles, and the grey stalkers wait where the trees go dark.
+- **Ashenfold**: whatever the kilns burned, the fold has not forgotten it. Slag golems wander the cold floors with the patience of things nobody told to stop, and the ember hounds still den in the warm brick.
+- **Rimecrown**: the squall wolves hunt inside the storm, crown hounds answer them from the snow, and what the crown wights leave is sold as marrow. As in Hoarfell, nobody in Hornridge asks what it is for.
+- Elites of the Vale: Hollowfang (Wendmouth), Old Mother Sedge (Sallowfen), Greymane (Hawkwold, level 9), Thornback (Greywood), Grimbrand (Ashenfold, level 17) and Ulfryn Coldmarrow (Rimecrown) all stalk their regions; Hollowfang, Old Mother Sedge and Ulfryn Coldmarrow are the Eldmoor elites re-used and re-levelled, as in the Stepping Lands, the other three are the Vale's own.
+- Name check (2026-11-05): no clash found in LORE.md or the repo; Grimbrand shares only the "brand" sound with Brandhold and the Brandwright Kiln, which suits it (the kiln-tender's guardian). No changes made to fauna.js.
+
 - Name notes: Greywood stands beside Eldmoor's Greywater and Stepping's Greyreach by sound only; the town Wendmere of the test fixture shares the Wend root and stays reserved and unused.
 
 ### Test fixtures (not canon)

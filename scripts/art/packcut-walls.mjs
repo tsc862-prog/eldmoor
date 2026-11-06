@@ -15,6 +15,10 @@
 //   castle_outside        ashlar courses (faces)
 //   castlewalls           the round tower, the dentil band under the battlements
 //
+// The palisade (a spec town's `wall: 'palisade'`): the same set and sizes in timber, for a town that would not raise stone. The kit has
+// no stakes or log walls, so they are laid from its deck boards (bridges.png), each stake a board stood on end, sharpened; the
+// blockhouses that stand for towers and piers wear the LPC Roofs shakes; the plaza is plank decking on the same boards.
+//
 // Assets: tile:lpc-<style>-plaza (a 4x4 tile patch), tile:lpc-<style>-wall-<n|e|s|w> (two tiles long), and
 // building:lpc-<style>-tower / -pier / -pier-tall. No manifest row, `source` and `license` on the entry. townart.js draws the set
 // only when all of it is loaded, else the WALL and FLOOR tiles as ever.
@@ -23,10 +27,10 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {encodePng} from './png.mjs';
 import {sha256,fileOf} from './lib.mjs';
-import {TOWN_GROUND} from '../../src/render/palette.js';
+import {TOWN_GROUND,PALISADE} from '../../src/render/palette.js';
 import {TOWN_STYLES} from '../../src/data/townart.js';
 import {hash} from '../../src/core/rng.js';
-import {LPC_KIT,PARTS,blank,get,kit,lay,lum,ramp,rect,rgb,set,sheet} from './packcut-buildings.mjs';
+import {LPC_KIT,LPC_ROOF_KIT,PARTS,blank,get,kit,lay,lum,ramp,rect,rgb,set,sheet} from './packcut-buildings.mjs';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','..');
 const T=32;
@@ -107,15 +111,56 @@ function pier(K,h){const W=T,top=20,H=top+h,im=blank(W,H);rect(im,0,0,W,top,K.wa
   rect(im,0,0,1,H,K.line);rect(im,W-1,0,1,H,K.line);
   if(h>30){rect(im,15,top+10,2,10,K.line);rect(im,14,top+14,4,2,K.line)}return im}
 
+// ---- the palisade ----
+const palKit=()=>{const K=kit('timber');return {...K,log:ramp(PALISADE.log,6),deck:ramp(PALISADE.deck,5)}};
+// A board stood on end: the light across the stake from the kit's grain along the board, lit on its left.
+const [BX,BY,BW]=[129,129,62];
+function stake(im,K,x,y,w,h,{tip=5,bias=0,seed=0}={}){const s=sheet('bridges');
+  for(let j=0;j<h;j++){const cut=j<tip?Math.ceil((tip-j)*(w/2)/tip):0;
+    for(let i=cut;i<w-cut;i++){const p=get(s,BX+(j+seed*11)%BW,BY+2+(i*2+seed*5)%12),g=(lum(p)-90)/150;
+      set(im,x+i,y+j,K.log(.34+g*.5+bias+(i<w*.35?.14:i>w*.68?-.2:0)))}
+    if(cut>0||j===0){set(im,x+cut-1,y+j,rgb(K.line));set(im,x+w-cut,y+j,rgb(K.line))}
+    set(im,x+cut,y+j,cut?rgb(K.line):K.log(.75+bias));if(!cut){set(im,x-1,y+j,rgb(K.line))}}}
+// A run of stakes along the top of a box, their heads uneven like hand-cut timber.
+function stakes(im,K,x,y,w,h,o={}){for(let s=0,n=0;s<w;s+=8,n++){const d=Math.floor(hash(n,3,o.seed||5)*3);stake(im,K,x+s,y+d,8,h-d,{seed:n,...o})}}
+// The plank walk behind the stakes, boards across it.
+const deck=(im,K,x,y,w,h,sx=0)=>lay(im,'boards',x,y,w,h,K.deck,{sx,bias:-.05});
+// A stake's end seen from above: a sharpened log, lit from the top left.
+function logEnd(im,K,x,y,d){const r=d/2;for(let j=0;j<d;j++)for(let i=0;i<d;i++){const u=i+.5-r,v=j+.5-r,q=Math.hypot(u,v);if(q>r)continue;set(im,x+i,y+j,q>r-1.1?rgb(K.line):K.log(.62-(u+v)/(d*1.3)-q/(r*5)))}}
+function palS(K){const im=blank(LEN,T);deck(im,K,0,0,LEN,10);rect(im,0,0,LEN,1,K.line);stakes(im,K,0,3,LEN,28);rect(im,0,13,LEN,2,K.log(.1));rect(im,0,13,LEN,1,K.log(.55));rect(im,0,31,LEN,1,K.line);return im}
+function palN(K){const im=blank(LEN,T);stakes(im,K,0,0,LEN,19,{bias:-.2,tip:4});rect(im,0,9,LEN,2,K.log(.05));rect(im,0,9,LEN,1,K.log(.4));
+  rect(im,0,18,LEN,1,K.line);deck(im,K,0,19,LEN,11,20);rect(im,0,30,LEN,1,K.deck(0));rect(im,0,31,LEN,1,K.line);return im}
+const palSide=(K,x0,flip)=>{const im=blank(T,LEN);deck(im,K,0,0,T,LEN,flip?30:9);
+  const edge=flip?0:T-1;rect(im,edge,0,1,LEN,K.line);rect(im,flip?1:T-2,0,1,LEN,K.deck(.1));
+  rect(im,x0-(flip?2:-2),0,10,LEN,K.line);for(let y=0;y<LEN;y+=8)logEnd(im,K,x0+(hash(y,1,9)<.5?0:1),y,9);
+  if(!flip)for(let y=0;y<LEN;y+=8)rect(im,x0+10,y+1,2,6,K.deck(0)); // the stakes' shadow, on the walk to their right
+  return im};
+const palW=K=>palSide(K,0,false),palE=K=>palSide(K,T-10,true);
+// A blockhouse: a shake roof over a log wall h pixels deep, corner posts, an arrow slit where it stands tall enough.
+function block(K,H){const W=T,rf=19,im=blank(W,H);lay(im,'boards',1,rf,W-2,H-rf,K.log,{bias:-.06,at:i=>i>W*.7?-.18:.04});
+  for(const x of [1,W-5]){rect(im,x,rf,4,H-rf,K.log(.3));rect(im,x,rf,1,H-rf,K.log(.7));rect(im,x+3,rf,1,H-rf,K.log(.02))}
+  rect(im,0,rf,1,H-rf,K.line);rect(im,W-1,rf,1,H-rf,K.line);rect(im,0,H-1,W,1,K.line);rect(im,1,rf,W-2,2,K.log(0));
+  const e=j=>Math.round(9*(1-j/(rf-1)));lay(im,'shake',0,0,W,rf,K.roof,{bias:-.1,at:(i,j)=>.24*(1-j/rf)-(i>W*.66?.2:0),clip:(x,y)=>x>=e(y)&&x<W-e(y)});
+  for(let j=0;j<rf;j++){set(im,e(j),j,rgb(K.line));set(im,W-e(j)-1,j,rgb(K.line))}rect(im,e(0),0,W-2*e(0),1,K.line);rect(im,0,rf-1,W,1,K.line);
+  if(H>40){rect(im,15,rf+13,2,11,K.line);rect(im,13,rf+17,6,2,K.line)}return im}
+// Plank decking: rows of boards, each with its own start and butt joints, wrapping at the patch's edge.
+function planks(w,h,K,seed){const W=w*T,H=h*T,im=blank(W,H);
+  for(let y=0,r=0;y<H;y+=16,r++){lay(im,'boards',0,y,W,16,K.deck,{sx:Math.floor(hash(r,1,seed)*62),sy:(r%3)*16,bias:(hash(r,2,seed)-.5)*.16});
+    rect(im,0,y,W,1,K.deck(0));for(const x of [0,Math.floor(40+hash(r,3,seed)*50)]){rect(im,x,y,1,16,K.deck(0));rect(im,x+1,y+1,1,15,K.deck(.85))}}
+  return im}
+const PALISADE_PIECES={plaza:K=>planks(4,4,K,23),'wall-n':palN,'wall-e':palE,'wall-s':palS,'wall-w':palW,tower:K=>block(K,2*T),pier:K=>block(K,T),'pier-tall':K=>block(K,2*T)};
+
 const PIECES={plaza:K=>flags(4,4,K.plaza,17),'wall-n':wallN,'wall-e':wallE,'wall-s':wallS,'wall-w':wallW,tower,pier:K=>pier(K,T-20),'pier-tall':K=>pier(K,2*T-20)};
 const idOf=(style,k)=>`${k==='plaza'||k.startsWith('wall')?'tile':'building'}:lpc-${style}-${k}`;
-export function cutWalls(){const out={};for(const style of Object.keys(TOWN_STYLES)){const K=kitOf(style);for(const [k,f] of Object.entries(PIECES))out[idOf(style,k)]=f(K)}return out}
+export function cutWalls(){const out={};for(const style of Object.keys(TOWN_STYLES)){const K=kitOf(style);for(const [k,f] of Object.entries(PIECES))out[idOf(style,k)]=f(K)}
+  const K=palKit();for(const [k,f] of Object.entries(PALISADE_PIECES))out[idOf('palisade',k)]=f(K);return out}
 
 function main(argv=process.argv.slice(2)){
   const o={};for(let i=0;i<argv.length;i++){if(argv[i]==='--out')o.out=argv[++i];else if(argv[i]==='--index')o.index=true}
   const out=o.out||path.join(ROOT,'assets'),ip=path.join(ROOT,'assets','index.json'),idx=o.index?JSON.parse(fs.readFileSync(ip,'utf8')):null;
   for(const [id,im] of Object.entries(cutWalls())){const file=fileOf(id,32),buf=encodePng(im);
     fs.mkdirSync(path.dirname(path.join(out,file)),{recursive:true});fs.writeFileSync(path.join(out,file),buf);console.log('[cut]',id,`${im.w}x${im.h}`);
-    if(idx)idx.assets[id+'@32']={id,kind:id.split(':')[0],file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:LPC_KIT.source,license:LPC_KIT.license,authors:LPC_KIT.authors,url:LPC_KIT.url,accepted:new Date().toISOString().slice(0,10)}}
+    const by=/^building:lpc-palisade/.test(id)?LPC_ROOF_KIT:LPC_KIT;
+    if(idx)idx.assets[id+'@32']={id,kind:id.split(':')[0],file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:by.source,license:by.license,authors:by.authors,url:by.url,accepted:new Date().toISOString().slice(0,10)}}
   if(idx){idx.assets=Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]));fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main();

@@ -4,7 +4,7 @@
 // checks; a new world needs only a row in scripts/world-snapshots.mjs.
 // Usage: npm run worldcheck
 // If you changed a map on purpose, paste the new hashes into scripts/world-snapshots.mjs.
-import {ELDMOOR, TESTWORLD, STEPPING, WORLDS} from '../src/world/spec.js';
+import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS, TOWN_KIT} from '../src/world/spec.js';
 import {buildWorld} from '../src/world/gen.js';
 import {RACES} from '../src/data/races.js';
 import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
@@ -133,6 +133,17 @@ for (const [id, spec] of Object.entries(WORLDS)) {
     const bad = buildWorld({...spec, regions: spec.regions.map((r, i) => i === 1 ? {...r, band: [r.band[0] + spec.ladder.step + 3, r.band[1] + spec.ladder.step + 3]} : r)});
     if (!ladderBreaks(bad, spec.ladder.step).breaks.length) {console.error(`FAIL: ${tag}: the ladder check missed a region lifted ${spec.ladder.step + 3} levels`); fail++}
   }
+  }
+  // town plans (epic #940 slice C): a spec town's own buildings keep the art kit's footprints and doors, rise only over the wall or another
+  // building, and stay inside their walls (the LPC cutter, scripts/art/packcut-buildings.mjs, cuts one shape per style and kit row).
+  // Held for every town of every world whose spec gives it buildings.
+  for (const c of w.CITY) {
+    if (!(spec.towns.find(t => t.name === c.name) || {}).buildings) continue;
+    const at = (x, y) => c.buildings.some(b => x >= b.box[0] && x < b.box[0] + b.box[2] && y >= b.box[1] && y < b.box[1] + b.box[3]);
+    for (const b of c.buildings) {const k = TOWN_KIT[b.kit], [bx, by, bw, bh] = b.box;
+      if (!k || bw !== k.foot[0] || bh !== k.foot[1] || b.door[0] - bx !== k.door[0] || b.door[1] - by !== k.door[1]) {console.error(`FAIL: ${tag} ${c.name}: ${b.piece} does not keep the kit's footprint and door`); fail++}
+      if (bx <= c.x0 || by <= c.y0 || bx + bw - 1 >= c.x1 || by + bh - 1 >= c.y1) {console.error(`FAIL: ${tag} ${c.name}: ${b.piece} is not inside the walls`); fail++}
+      if (k) for (let j = 1; j <= k.rise; j++) for (let i = 0; i < bw; i++) if (by - j > c.y0 && !at(bx + i, by - j)) {console.error(`FAIL: ${tag} ${c.name}: ${b.piece} would rise over walkable ground at ${bx + i},${by - j}`); fail++}}
   }
   const onMain = (x, y) => w.land[w.I(Math.floor(x), Math.floor(y))] === w.mainLand;
   for (const c of w.CITY) if (!onMain(c.gate.x, c.gate.y)) {console.error(`FAIL: ${tag} town ${c.name} is not on the main land`); fail++}
