@@ -52,6 +52,7 @@ import {buildSetting} from '../world/interior.js';
 import {drawSetting,bubble,answerMark} from './interior.js';
 import {texel} from './terrain.js';
 import {openDungeon,closeDungeon,dungeonOpen,dungeonOf,dungeonGroup,isSite} from './dungeonview.js';
+import {isArena,lairs} from './raidview.js';
 import {biomeOfZone,SCENE,MARK,TEXT} from './palette.js';
 import {classColor,DISP} from '../core/colors.js';
 import {sceneHead} from '../core/scenehead.js';
@@ -96,6 +97,7 @@ export function sceneSpec(sc=S.table){if(!sc)return null;
   const members=sc.ids.map(byId).filter(Boolean),cast=castOf(sc),an=anchorOf(sc,members);
   if(sc.ctx&&sc.ctx.site!=null){const D=dungeonOf(sc); // a DM-made site's crawl (#642): the dungeon view with the site's own interior
     return D?{mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:D.name,dungeon:D}:null}
+  if(sc.kind==='boss'){const L=lairs()[0];if(L)return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:L.name,dungeon:L}} // the raid arena (#85)
   if(DUNGEON_KINDS.has(sc.kind)){const D=dungeonOf(sc);return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:D?D.name:'the Crypt',dungeon:D}}
   const c=sc.ctx||{},town=(c.town&&CITY.find(t=>t.name===c.town))||(an?townAt(an.x,an.y):null),z=an?zoneAt(an.x,an.y):-1;
   // indoors: in a town, or wherever the DM named a room (stage_scene setting, #431 slice 2: a house by the road)
@@ -116,7 +118,7 @@ export const sceneAuto=()=>auto;
 export function setSceneAuto(on){auto=!!on;try{localStorage.setItem(KEY,auto?'auto':'off')}catch(_){}syncBtn()}
 
 // Does the watcher follow this scene's Fellowship? (Follow Fellowship, or following one of the members.)
-const follows=(cam,sc)=>!!cam&&(cam.view==='fellow'||(!!cam.sel&&(sc.ids.includes(cam.sel.id)||(cam.view==='follow'&&inSlots(cam.sel)))));
+const follows=(cam,sc)=>!!cam&&(cam.view==='fellow'||cam.view==='cinema'||(!!cam.sel&&(sc.ids.includes(cam.sel.id)||(cam.view==='follow'&&inSlots(cam.sel)))));
 
 export function openSceneView(sc=S.table){const sp=sceneSpec(sc);if(!sp)return false;
   if(sp.mode==='dungeon'){autoDg=true;dgShut=false;dgAt=sp.dungeon||CRYPT;return openDungeon(dgAt)}
@@ -144,7 +146,7 @@ export function sceneTick(cam,now=clock()){const sc=S.table;
   if(!sc)seenId=null;
   if(open){if(!sc||sc.id!==openId){if(!playHolds(now))closeSceneView(false)}else{spec=sceneSpec(sc);track(sc);const scr=document.getElementById('screen');if(scr&&spec)scr.classList.toggle('scin',spec.mode==='indoor')}} // a fight's last beats play out first (#746)
   if(open&&spec&&spec.mode==='outdoor')playTick(sc,now);
-  if(autoDg){const site=isSite(dgAt),g=dungeonGroup(dgAt||CRYPT),inside=!!(g&&g.mem&&(site?g.mem.length:g.mem.some(a=>inSlots(a)))); // a site: while its group is inside
+  if(autoDg){const site=isSite(dgAt),ar=isArena(dgAt),g=ar?null:dungeonGroup(dgAt||CRYPT),inside=ar?!!(sc&&sc.kind==='boss')||S.raidOn.some(Boolean):!!(g&&g.mem&&(site?g.mem.length:g.mem.some(a=>inSlots(a)))); // a site: while its group is inside; the arena: while the raid lasts
     if(!dungeonOpen()&&inside)dgShut=true; // Back to world during the crawl: not again until it is over
     if(!inside){if(dungeonOpen())closeDungeon();autoDg=false;dgShut=false;dgAt=null}}
   if(speaker&&clock()-speaker.t>SPEAK_S)speaker=null}
@@ -317,6 +319,7 @@ export function drawSceneMarks(ctx,cam,cut,now){const sc=cam.sc;
   const s=cut.speaker;if(s&&s.e&&live(s.e)&&!(s.e.bubble&&s.e.bubble.life>0)){const e=s.e,hero=e.kind==='hero',p=at(e);
     bubble(ctx,p.x*T,p.y*T-HEAD-1,hero?e.name.toUpperCase():'['+(e.name||'?')+']',hero&&inSlots(e)?classColor(e.cls):e.kind==='mob'||hero?DISP.hostile.color:DISP.neutral.color,s.text,cam.dpr,sc,Math.min(1,(SPEAK_S-(clock()-s.t))/.6))}
   if(cut.patch)drawPops(ctx,cam,now); // last of the world marks: a word-pop floats over the chips and bubbles, never under them
+  if(cam.director)return; // the cinema view shows the whole picture (#979)
   // screen space: dim outside the cut, a thin gold frame with corner brackets
   ctx.setTransform(1,0,0,1,0,0);const cv=ctx.canvas,x0=Math.round((cut.cx-cut.w/2)*T*sc+cam.offX),y0=Math.round((cut.cy-cut.h/2)*T*sc+cam.offY),x1=Math.round((cut.cx+cut.w/2)*T*sc+cam.offX),y1=Math.round((cut.cy+cut.h/2)*T*sc+cam.offY);
   ctx.fillStyle=SCENE.dim;if(y0>0)ctx.fillRect(0,0,cv.width,y0);if(y1<cv.height)ctx.fillRect(0,y1,cv.width,cv.height-y1);if(x0>0)ctx.fillRect(0,Math.max(0,y0),x0,Math.min(cv.height,y1)-Math.max(0,y0));if(x1<cv.width)ctx.fillRect(x1,Math.max(0,y0),cv.width-x1,Math.min(cv.height,y1)-Math.max(0,y0));

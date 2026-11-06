@@ -5,7 +5,7 @@
 // crashed (budget, a stop, a crash: the supervisor drops its claims) or one that let a member go (#563) pauses at once; a
 // warm-up that failed while its runner plays on counts as active. The banner offers Restart per seat and Start anyway
 // (Resume anyway once the world has run): an override for the seats as they are, until the next change.
-// Required seats: each living Fellowship member (always agent-played, #148) and the DM seat when the DM agent is
+// Required seats: each living agent-played member of any company, a company of one included (#148), and the DM seat when the DM agent is
 // chosen. A seat counts as connected when its link, from the relay's claims (ui/player-bridge.js), is 'connected' or
 // 'waiting'. While any seat is missing, ctl.held is true: main.js does not step the sim and the speed buttons cannot
 // unpause. ctl.speed keeps the owner's wish, so when the last seat connects the world resumes by itself, and a world the
@@ -35,7 +35,7 @@ import {S,dmSeatOn,setDmSeat,beginPrep,endPrep,prepTick,prepView,prepActive,open
 import {runnerFor,runnerByKey,allRunners,relayUp,runnersEnabled,ollamaBusy,reasonOf,watchRunners,DONE_STATE,leftOf,budgetText,startCost,anotherText,costNote,restartRunner,sessionInfo,NO_SESSION} from './runners.js';
 import {agentLink,dmLink,bridgeStatus,agentReady,dmReady} from './player-bridge.js';
 import {ctl} from './controls.js';
-import {inSlots} from '../sim/company.js'; // the slotted company (#588)
+import {inSlots,companyOf} from '../sim/company.js'; // the slotted company (#588)
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -68,7 +68,7 @@ export function ensureDmSeat(){if(probe||!S.agents||!S.agents.length)return fals
 const seatRunner=s=>{if(s.kind==='dm')return runnerByKey('dm');const r=runnerFor(s.a);if(r)return r;const a=s.a;
   return allRunners().slice().reverse().find(x=>DONE_STATE[x.state]&&(x.key==='hero:'+a.id||Array.isArray(x.heroes)&&x.heroes.includes(a.id)||x.kind==='fellowship'&&inSlots(a)))||null};
 export function seats(){const out=[];
-  for(const a of S.agents)if(inSlots(a)&&a.player&&a.state!=='dead')out.push({key:'hero:'+a.id,kind:'hero',hero:a.id,name:a.name,a,link:linkOf(a),ready:readyOf(a)});
+  for(const a of S.agents)if(companyOf(a)&&!a.hire&&a.player&&a.state!=='dead')out.push({key:'hero:'+a.id,kind:'hero',hero:a.id,name:a.name,a,link:linkOf(a),ready:readyOf(a)});
   if(dmSeatOn())out.push({key:'dm',kind:'dm',name:'DM',link:dmOf(),ready:dmReadyOf()});
   return out}
 
@@ -85,7 +85,7 @@ export function whyMissing(s){
   if(r&&r.state==='starting')return 'starting…';
   if(r&&r.state==='stopping')return 'stopping…';
   if(r&&!DONE_STATE[r.state]){if(s.a&&ollamaBusy(s.a))return 'Ollama is busy or loading its model';return 'runner is up, waiting for it to claim'}
-  if(r&&r.state==='stopped')return reasonOf(r,s.a||null);
+  if(r&&r.state==='stopped')return (s.a&&s.a.succeeds!=null?'came to take a fallen hero\'s place; ':'')+reasonOf(r,s.a||null);
   if(!probe&&!runnersEnabled()&&relayUp())return 'runners are off on the relay (start it with --runners)';
   return 'no runner'}
 
@@ -152,11 +152,14 @@ function paint(){const box=$('rgate');if(!box)return;
 
 // Start anyway (#222): waive the wait for every seat that holds the world now.
 export function startAnyway(){if(prepping&&!missing.length){endPrep('anyway');prepping=false}for(const m of missing)anyway.set(m.key,m.live?'live':'missing');checkAt=0;sig=null;checkRunGate(Date.now())}
+// The owner said go on without this seat: until its runner comes back its member's reflexes may decide (a Table scene, a vote), as the button says.
+export const seatWaived=a=>!!a&&anyway.has('hero:'+a.id);
 export const gatePrep=()=>prepping?prepView():null; // the smoke check and the panels
 
 // Start all: one Fellowship runner for the members, the DM runner for the DM, only where a seat is missing.
 export async function startAllMissing(start){
-  const fel=missing.some(m=>m.kind==='hero'),dm=missing.some(m=>m.kind==='dm'),r=runnerByKey('fellowship');
+  const fel=missing.some(m=>m.kind==='hero'&&inSlots(m.a)),dm=missing.some(m=>m.kind==='dm'),r=runnerByKey('fellowship');
+  for(const m of missing)if(m.kind==='hero'&&!inSlots(m.a))await start('hero',m.hero); // a member of another company, a solo: its own runner
   if(fel){if(r&&!DONE_STATE[r.state])await restartRunner('fellowship');else await start('fellowship')} // one still finishing a member is restarted, not refused as running
   if(dm)await start('dm')}
 

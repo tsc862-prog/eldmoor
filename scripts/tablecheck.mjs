@@ -293,6 +293,42 @@ if (process.argv[2] === '--arrival') {
   SIM.setRunnerLinks(null); const d3 = SLT.slotHeroes(SLT.slotted()).find(x => x !== live && SLT.slotKeyOf(x) !== 'tank'), s3 = SLT.slotKeyOf(d3);
   HE.fall(d3, 'a third test'); step(1 / 60);
   ok(SLT.slotted().slots[s3] != null && !(SLT.slotted().arrivals || []).length && !S.table, 'with no host (npm run sim) the seat is refilled at once, no scene');
+  const {onLog} = await import('../src/sim/chronicle.js');
+  // A whole company falls, in a world with a host: the recruits come at once, in a full world and in one with no others. The first has
+  // nobody to greet it, the next table waits for its runner, and the company fills up again, every recruit agent-played.
+  for (const others of ['full', 'none']) {
+    init({fac: 0, ...(others === 'none' ? {others} : {})}); delete S.opening; const LK = {}, F = SLT.slotted(), W = SLT.slotHeroes(F), fallen = W.map(x => x.id); W.forEach(x => {LK[x.id] = 'connected'});
+    SIM.setRunnerLinks(x => LK[x.id] || 'none'); setDmSeat(false); T.TABLE.speed = 1; T.TABLE.mode = 'auto'; for (const x of W) {x.state = 'town'; x.dest = null}
+    const said = []; onLog(e => said.push(txt(e)));
+    for (const x of W) HE.fall(x, 'a test of the whole company');
+    let g = 0; while (!SLT.slotHeroes(F).length && g++ < 30) step(1 / 60);
+    const first = SLT.slotHeroes(F)[0];
+    ok(first && g < 30 && first.player && fallen.includes(first.succeeds) && first.lvl === 1, `${others}: the last member fell and a recruit stands in ${g} steps, not after ${A.ARRIVE.WAIT_DAYS} game days, agent-played, level 1, naming whom it follows (${first && first.name})`);
+    ok(first && !S.table && first.state === 'town' && (F.arrivals || []).length === 4 && said.some(t => t.includes('fell to the last')), `${others}: nobody is left to greet the first: no scene, the Chronicle says so, and four more wait`);
+    ok(first && (first.playEv || []).some(e => /nobody of the old company is left/.test(e.text)), `${others}: the first is told so in words`);
+    for (let k = 0; k < 40; k++) step(1 / 60);
+    ok(!S.table && (F.arrivals || []).length === 4, `${others}: the next table waits while the first newcomer has no runner`);
+    let seats = 1, scenes = 0; g = 0; if (first) LK[first.id] = 'connected';
+    while (g++ < 6000 && (F.arrivals || []).length + (S.table ? 1 : 0)) {for (const x of SLT.slotHeroes(F)) {LK[x.id] = 'connected'; if (!S.table) {x.state = 'town'; x.dest = null; x.pq = []}}
+      const sc = S.table; if (sc && sc.kind === 'arrival' && !sc.seen) {sc.seen = 1; scenes++}
+      if (sc) for (const x of SLT.slotHeroes(F)) if (sc.ids.includes(x.id) && !sc.acts[x.id]) P.playerAct(x.id, 'scene_act', {option: 'greet'});
+      step(1 / 60); seats = SLT.slotHeroes(F).length}
+    const all = SLT.slotHeroes(F);
+    ok(seats === 5 && scenes === 4 && all.every(x => x.player && fallen.includes(x.succeeds)) && new Set(all.map(x => x.succeeds)).size === 5, `${others}: the company carries on: five places filled, four arrival scenes, each agent-played in one fallen member's place (${all.map(x => x.name)})`);
+  }
+  // Any other company: one heir, and the seats still waiting go with it. Nothing is lost with the company, whether they fall one by one or in one tick.
+  for (const how of ['in turn', 'at once']) {
+    init({setup: SIM.cleanSetup(SIM.applyPreset('pairs-and-solo', SIM.defaultSetup(771, 'eldmoor', 0)))}); delete S.opening;
+    const C2 = S.companies.find(c => c.ids.length === 2), L = F_.members(C2), LK = {}; L.forEach(x => {LK[x.id] = 'connected'}); SIM.setRunnerLinks(x => LK[x.id] || 'none'); T.TABLE.speed = 1; T.TABLE.mode = 'auto';
+    const n0 = S.recruits.length, solo = () => S.companies.find(c => c.id !== C2.id && c.ids.some(id => {const h = byId(id); return h && L.some(x => x.id === h.succeeds)}));
+    for (const x of L) x.state = 'hunt'; HE.fall(L[0], 'a test'); if (how === 'in turn') step(1 / 60); HE.fall(L[1], 'a test'); step(1 / 60); // out in the field, so the first seat is still waiting
+    const N = solo(), heirs = S.agents.filter(x => L.some(y => y.id === x.succeeds));
+    ok(N && heirs.length === 1 && heirs[0].player && !S.companies.includes(C2) && (N.arrivals || []).length === 1, `${how}: a company of two falls: one heir in a company of its own, and the other seat waits there (${heirs.map(x => x.name)}, ${(N && N.arrivals || []).length} waiting)`);
+    const h = heirs[0]; LK[h.id] = 'connected'; let g = 0;
+    while (g++ < 6000 && N && (N.arrivals || []).length + (S.table ? 1 : 0) + (S.opening ? 1 : 0)) {const sc = S.table; h.state = sc ? h.state : 'town'; if (sc) for (const x of F_.members(N)) if (sc.ids.includes(x.id) && !sc.acts[x.id]) P.playerAct(x.id, 'scene_act', {option: sc.kind === 'arrival' ? 'greet' : 'listen'}); step(1 / 60)}
+    const r = N && F_.members(N).find(x => x !== h);
+    ok(r && r.player && L.some(y => y.id === r.succeeds) && r.cls !== undefined, `${how}: the heir's company takes the recruit in at the table, agent-played (${r && r.name})`);
+  }
   console.log(fail ? 'ARRIVAL FAILED ' + fail : 'ARRIVAL OK'); process.exit(fail ? 1 : 0);
 }
 
