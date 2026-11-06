@@ -16,7 +16,7 @@ import {CLS} from '../data/classes.js';
 import {rollTraits,tm,traitPhrase} from '../data/traits.js';
 import {MOBS} from '../data/mobs.js';
 import {EPICS,GOODS,price} from '../data/items.js';
-import {S,clockStr,noOthers} from './state.js';
+import {S,clockStr,noOthers,sidesOff,raidSide} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
 import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,leaveParty,regroup,steerClear} from './party.js';
@@ -159,9 +159,9 @@ export function slay(a,killer,o){o=o||{};
   bondEvent(a,'died',[killer]);
   for(const x of nearHeroes(a.x,a.y,10))if(x!==a&&x.state!=='dead'&&((a.guild&&x.guild===a.guild)||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
   if(killer.kind==='hero'&&o.bled){log(a,' ',lv,' bled out in ',ZONES[zoneAt(a.x,a.y)],', left where ',killer,' struck them down.');
-    S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild).forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name});
+    S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild).forEach(x=>{if(!sidesOff(x,killer)&&(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party)))x.nemesis[killer.id]=a.name});
     inheritGrudge(a,killer);fall(a,'bled out after '+killer.name+' struck them down')}
-  else if(killer.kind==='hero'){const oh=outpostHonor(a);killer.honor+=oh;S.facStats[killer.fac].honor+=oh;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
+  else if(killer.kind==='hero'){const off=sidesOff(a,killer),oh=outpostHonor(a);if(!off){killer.honor+=oh;S.facStats[killer.fac].honor+=oh}const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
     killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
     say(killer,'kill',{target:a.name});
     record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':o.finish?'Finished ':'Killed ',a,' (level '+a.lvl+')'+(o.finish&&!killer.nemesis[a.id]?' where they lay':'')+'.');
@@ -169,10 +169,10 @@ export function slay(a,killer,o){o=o||{};
     if(killer.nemesis[a.id]){debtDone(killer,a);log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
     else log(killer,o.finish?' finished ':' killed ',a,' ',lv,o.finish?' where they lay':'',' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild);
-    mates.forEach(x=>{if(o.finish||a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran, or one finished where they lay (#657), swears the whole guild; lesser deaths bind just their party
+    mates.forEach(x=>{if(!sidesOff(x,killer)&&(o.finish||a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party)))x.nemesis[killer.id]=a.name}); // only a fallen veteran, or one finished where they lay (#657), swears the whole guild; lesser deaths bind just their party
     inheritGrudge(a,killer);
     goalEvent(killer,'slay',a);
-    if(mates.length&&a.guild&&(a.lvl>=4||o.finish))log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
+    if(mates.length&&a.guild&&!off&&(a.lvl>=4||o.finish))log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
     fall(a,'slain by '+killer.name);}
   else if(killer.kind==='boss'){log(a,' ',lv,' was incinerated by ',{t:'Kragmaw',c:'gd'},'.');fall(a,'incinerated by Kragmaw')}
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
@@ -186,7 +186,7 @@ export function strike(a,t,o){
   if(t.kind==='hero')d*=.6*dmgTaken(t);
   d=Math.round(d);t.hp-=d;actHit(a,t,d,crit);if(t.kind==='hero')actHurt(t,a,d);if(c.range>2)bolt(a,t,c.orb||c.acc);
   pop(t.x,t.y-.6,crit?d+'!':String(d),crit?'#ffe060':'#ffffff');
-  if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return d}
+  if(t.kind==='boss'){S.boss.dmg[raidSide(a)]+=d;return d}
   if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}
   return d}
 
@@ -301,7 +301,7 @@ export function updAgent(a,dt){
     const idx=a.raidIdx,ang=Math.PI*(.55+idx*.18),rr=Math.min(CLS[a.cls].range+.9,3.2);
     const px=boss.x+Math.cos(ang)*rr*-1,py=boss.y-.3+Math.sin(ang)*rr*(idx%2?1:-1)*.8;
     if(dist(a,boss)>rr+.6){moveTo(a,px,py,dt,2.4);break}a.moving=false;a.face=boss.x>a.x?1:-1;
-    const raiders=S.agents.filter(b=>b.raid&&b.fac===a.fac);priestHeal(a,raiders);
+    const raiders=S.agents.filter(b=>b.raid&&raidSide(b)===raidSide(a));priestHeal(a,raiders);
     {const mv=fightMoves(a,boss,raiders,a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,boss);a.cd=1.1}}
     fightAid(a,boss);break}
   }}

@@ -19,7 +19,7 @@
 //
 // State (lazy, saved with the world): S.rivals = {heat:{'lo:hi':n}, on:{'lo:hi':{since,why}},
 // last:{'crypt:gid'|'boss:gid':gameMin}, t, stats:{declared,ended,duels,assists,heat:{kind:events}}}; keys are guild ids.
-import {S} from './state.js';
+import {S,loreSides,inCompany} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {inSlots} from './company.js'; // the slotted company (#588)
@@ -31,7 +31,7 @@ const R=()=>S.rivals||(S.rivals={heat:{},on:{},last:{},t:S.gameMin,stats:{declar
 const key=(g,h)=>g.id<h.id?g.id+':'+h.id:h.id+':'+g.id;
 const tagTxt=g=>({t:'<'+g.tag+'> '+g.name,c:'f'+g.fac});
 const live=g=>g&&!g.retired;
-const hasFellow=g=>S.agents.some(a=>a.guild===g&&inSlots(a)&&a.state!=='dead');
+const hasFellow=g=>S.agents.some(a=>a.guild===g&&(inSlots(a)||(loreSides()&&inCompany(a)))&&a.state!=='dead'); // sides as lore (#1025): no company's guild feuds
 const byId=id=>S.GUILDS.find(g=>g.id===Number(id));
 
 function heat(g,h,n,why,kind){

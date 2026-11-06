@@ -1712,6 +1712,10 @@ console.log('page watchdog');
   if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
   ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
 // the activity line names a DM-made site, never the Crypt (#917)
+// sides as lore (#1025): the Factions panel and the Honor row hide, honour is still counted
+{const P=await import('../src/ui/panels.js'),st=sim.S.setup,sec=document.createElement('section'),g=document.createElement('div');g.id='facs';sec.append(g);document.body.append(sec);const was=globalThis.document.getElementById;
+  document.getElementById=id=>id==='facs'?g:was.call(document,id);P.renderFacs();ok(!sec.hidden&&g.childNodes.length>0,'sides: the Factions table shows in a world with sides');
+  sim.S.setup={...(st||{}),sides:'lore'};P.renderFacs();ok(sec.hidden===true,'sides as lore: the Factions panel is hidden');sim.S.setup=st;P.renderFacs();ok(!sec.hidden,'and back with the setting gone');document.getElementById=was;sec.remove&&sec.remove()}
 {const {doing}=await import('../src/ui/panels.js');const a=sim.S.agents.find(x=>x.state!=='dead'&&!x.player&&!x.adv);
   if(a){const keep={st:a.state,hid:a.hidden,si:a.siteIn},L=(sim.S.sites||(sim.S.sites={seq:0,list:[]})).list,fake={id:9917,name:'The Ashen Vault',boss:'Orrik',bossTitle:'the Keeper',state:'open'};L.push(fake);
     a.state='dungeon';a.siteIn=9917;a.hidden=true;let t=doing(a);ok(/Ashen Vault/.test(t)&&/Orrik/.test(t)&&!/Sunken Crypt/.test(t),'hero card: inside a site names the site ('+t+')');

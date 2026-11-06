@@ -4,6 +4,7 @@
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
 // delegated click handler (initPanels) looks the hero up in S.agents and hands it
 // to the picker, which controls.js wires to select + follow.
+import {loreSides} from '../sim/state.js'; // sides as lore (#1025)
 import {worldFill} from '../world/words.js';
 import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
@@ -135,7 +136,7 @@ function identity(b,a){sec(b,'Identity');const kv=el('div','kv');
   const row=(k,v)=>{kv.append(el('span','k',k));const s=el('span','v');if(typeof v==='string')s.textContent=v;else s.append(v);kv.append(s)};
   row('Level',String(a.lvl));row('Class',a.cls);
   if(a.race){const s=el('span','gd',raceOf(a).name);s.title=raceOf(a).culture;const w=el('span');w.append(s,' of '+homeOf(a).name);row('People',w)}
-  row('Faction',FAC[a.fac].name);row('Guild',a.guild?`<${a.guild.tag}> ${a.guild.name}`:'Unguilded');b.append(kv);
+  if(!loreSides())row('Faction',FAC[a.fac].name);row('Guild',a.guild?`<${a.guild.tag}> ${a.guild.name}`:'Unguilded');b.append(kv);
   const need=xpNeed(a.lvl),xp=el('div','xprow');
   if(a.lvl>=20)xp.append(el('span','dm','Max level'));
   else{xp.append(meter('xp xpb',Math.max(0,a.xp)/need),el('span','dm',`${Math.round(a.xp)} / ${need} xp to level ${a.lvl+1}`))}
@@ -160,7 +161,7 @@ function skillsGrid(b,a){if(!a.abil)return;sec(b,'Skills');const g=el('div','skg
   b.append(g,el('div','dm skey','* trained'))}
 
 function record_(b,a){sec(b,'Record');const kv=el('div','kv');
-  const rows=[['Gold',a.gold+'g'],['Honor',a.honor],['Kills',a.kills],['Elite kills',a.eliteKills||0]];if(a.avenged!=null)rows.push(['Avenged',a.avenged]);
+  const rows=[['Gold',a.gold+'g'],...(loreSides()?[]:[['Honor',a.honor]]),['Kills',a.kills],['Elite kills',a.eliteKills||0]];if(a.avenged!=null)rows.push(['Avenged',a.avenged]);
   for(const [k,v] of rows)kv.append(el('span','k',k),el('span','v',String(v)));b.append(kv)}
 
 function story(b,a){sec(b,'Story');
@@ -415,7 +416,7 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   const mh=maxHp(a),short=briefCard(a);
   // header and body are patched in place (#145): scroll, focus and open rows survive the 0.3 s tick
   patch(k.hd,h=>{h.append(heroName(a));
-    h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
+    h.append(el('div','meta',`Level ${a.lvl} ${a.cls}${loreSides()?'':' of the '+FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
     const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=a.siteIn!=null?'site:'+a.siteIn:(cryptOfHero(a)||CRYPT).name;b.title='Open the dungeon view';dg.append(' ',b)}if(LAIR&&(a.state==='raid'&&a.raid||a.state==='downed'&&Math.hypot(a.x-LAIR.x,a.y-LAIR.y)<=(LAIR.r||5)+1)){const b=el('button','dglink','View the raid ▸');b.type='button';b.dataset.dungeon=LAIR.name;b.title='Open the raid arena';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
     h.append(el('div','dm','HP'),meter('hp',a.hp/mh));{const dr=downRow(a);if(dr)h.append(dr)} // DOWNED, the tally and the timer (#659)
     h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
@@ -442,7 +443,8 @@ export function renderTops(){patch($('tops'),ul=>ranked().slice(0,8).forEach((a,
   nm.append(el('span','dm',a.cls));const lv=el('span','lv','Lv '+a.lvl);
   b.append(n,nm,lv);b.onclick=()=>pick(a);li.append(b);ul.append(li)}),{anchor:false})}
 
-export function renderFacs(){const rows=[['',...FAC.map((f,i)=>el('span','h f'+i,f.name.toUpperCase()))]];
+// Sides as lore (#1025): the table is hidden, and honour is still counted.
+export function renderFacs(){const sec=$('facs')&&$('facs').closest&&$('facs').closest('section');if(sec)sec.hidden=loreSides();if(loreSides())return;const rows=[['',...FAC.map((f,i)=>el('span','h f'+i,f.name.toUpperCase()))]];
   const s=f=>living().filter(a=>a.fac===f);
   rows.push(['Avg level',...[0,1].map(f=>(s(f).reduce((t,a)=>t+a.lvl,0)/Math.max(1,s(f).length)).toFixed(1))]);
   rows.push(['Fallen',...[0,1].map(f=>S.facStats[f].fallen)]);
