@@ -10,7 +10,7 @@ import {TILE,U,ART} from './tile.js';
 import {W,H,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
 import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
-import {assetPixels,onAssets} from './assets.js';
+import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
 
 // Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
@@ -322,6 +322,32 @@ const propBiome=b=>b==='highland'||!PROP_BIOMES.includes(b)?'meadow':b;
 const GROUND={meadow:G,fen:SGRASS,ash:ROCK,tundra:SNOW};
 export const ASSET_PROPS={};
 for(const b of PROP_BIOMES)for(let i=1;i<=VARIANTS;i++){ASSET_PROPS[`prop:tree-${b}-${i}`]=TREE;ASSET_PROPS[`prop:rock-${b}-${i}`]=GROUND[b]}
+// Whole trees (#834): LPC crowns are 3 tiles wide and 2.5 tall, so a tree is bigger than a one-tile prop. prop:canopy-<biome>-1..3
+// (96x120 art px at the 32 tier: crown, trunk and its ground shadow, root on row CANOPY_ROOT) stand on about every other TREE tile
+// (a checkerboard of the map's own tiles, nothing the sim sees) and are drawn over the chunk's ground in tile-row order. A TREE tile of
+// a biome with a canopy loaded paints its ground only; with none, the procedural tree of the tile is drawn as before. Trees are painted
+// into the cached chunk, so they cost nothing per frame; draw.js redraws the ones standing in front of an entity (treesNear).
+export const ASSET_CANOPY={};
+for(const b of PROP_BIOMES)for(let i=1;i<=VARIANTS;i++)ASSET_CANOPY[`prop:canopy-${b}-${i}`]=TREE;
+export const CANOPY_ROOT=108; // art px from the top of a canopy image to where its trunk meets the ground
+const EMPTY={w:1,h:1,hex:[null]};
+function canopyImg(b,h){const n=Math.floor(h*VARIANTS)%VARIANTS;let got=null;
+  for(let k=0;k<VARIANTS;k++){const id=`prop:canopy-${b}-${1+(n+k)%VARIANTS}`,im=asset(id);if(im&&!got)got={id,im}}
+  return got}
+const treeSpots=new Map(); // tile key -> anchor {tree, x, y (the base, in tiles), ax, ay, w, h (world units), im} or false
+function anchorAt(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return null;const k=ty*W+tx;let a=treeSpots.get(k);if(a!==undefined)return a||null;
+  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0){const v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
+    if(v){const w=v.im.naturalWidth/ART,h=v.im.naturalHeight/ART;
+      a={tree:true,id:v.id,im:v.im,x:tx+.5,y:ty+1,ax:(tx+.5)*U+(hash(tx,ty,613)-.5)*5-w/2,ay:(ty+1)*U-CANOPY_ROOT/ART+(hash(tx,ty,615)-.5)*3-1,w,h}}}
+  treeSpots.set(k,a);return a||null}
+// Paint the trees that reach chunk tiles x0..x1 by y0..y1 (crowns overhang: a tree rooted up to two rows below or a column aside counts).
+function paintCanopy(c,x0,y0,x1,y1){for(let ty=y0;ty<Math.min(H,y1+3);ty++)for(let tx=Math.max(0,x0-2);tx<Math.min(W,x1+2);tx++){const a=anchorAt(tx,ty);if(a)c.drawImage(a.im,a.ax,a.ay,a.w,a.h)}}
+export const drawTree=(c,a)=>c.drawImage(a.im,a.ax,a.ay,a.w,a.h);
+// The trees standing in front of something at (x,y) tiles (its feet): rooted below it, close enough for a crown or a crown over a crown
+// to reach it. Pushed into out once each per frame (stamp), for draw.js to sort among the entities and redraw over them.
+export function treesNear(x,y,out,stamp){if(!canopyOn)return;const cx=Math.floor(x),cy=Math.floor(y);
+  for(let ty=cy;ty<=cy+5;ty++)for(let tx=cx-3;tx<=cx+3;tx++){const a=anchorAt(tx,ty);if(a&&a.y>y&&a.stamp!==stamp){a.stamp=stamp;out.push(a)}}}
+let canopyOn=false;
 const ROCK_ODDS=.036;
 function pickVariant(kind,b,h,asset){const n=Math.floor(h*VARIANTS)%VARIANTS;
   for(let k=0;k<VARIANTS;k++){const id=`prop:${kind}-${b}-${1+(n+k)%VARIANTS}`;if(!asset)return {id};const A=assetPixels(id);if(A)return {id,A}}
@@ -329,6 +355,7 @@ function pickVariant(kind,b,h,asset){const n=Math.floor(h*VARIANTS)%VARIANTS;
 // The prop of tile (tx,ty): {id, A, kind:'tree'|'rock', ground} or null (asset=false: the id it wants, asset or not).
 export function propAt(tx,ty,asset=true){const t=tileOr(tx,ty);if(t<0)return null;
   const b=propBiome(biomeOfZone(zone[I(tx,ty)]));
+  if(t===TREE&&asset&&canopyImg(b,0))return {id:'canopy',A:EMPTY,kind:'tree',ground:GROUND[b]}; // the tree is a whole canopy tree over this tile's ground (paintCanopy)
   if(t===TREE){const v=pickVariant('tree',b,hash(tx,ty,611),asset);return v&&{...v,kind:'tree',ground:GROUND[b]}}
   if(t===GROUND[b]&&hash(tx,ty,617)<ROCK_ODDS){const v=pickVariant('rock',b,hash(tx,ty,619),asset);return v&&{...v,kind:'rock',ground:t}}
   return null}
@@ -371,9 +398,9 @@ const chunks=new Map();
 export let chunkGen=0;
 // Whether any terrain asset is loaded (then chunks are painted at TILE, else at U). Refreshed when assets change.
 let artOn=null;
-const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
+const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_CANOPY,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
 export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
-onAssets(id=>{if(id&&/^portrait:/.test(id))return;chunks.clear();chunkGen++;planKey=-1;artOn=null;gArt=null}); // a tile asset arrived (a face is not terrain, #710) (or the index changed): repaint on the next request
+onAssets(id=>{if(id&&/^portrait:/.test(id))return;chunks.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;gArt=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))}); // a tile asset arrived (a face is not terrain, #710) (or the index changed): repaint on the next request
 
 // Cached canvas for chunk (cx,cy): min(CH,W-cx*CH) by min(CH,H-cy*CH) tiles at k pixels a tile (TILE, or U with no
 // terrain asset). c.uw and c.uh give its size in world units (tiles * U), which is what the renderer scales it to.
@@ -391,6 +418,7 @@ function paintChunk(cx,cy){
   c.putImageData(img,0,0);
   // decorations are painted in world units; the scaled, translated context clips them to this chunk
   c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);
+  if(art)paintCanopy(c,tx0,ty0,tx0+cw,ty0+ch);
   decorate(c,tx0,ty0,tx0+cw,ty0+ch);
   return cv}
 
