@@ -23,7 +23,7 @@
 //   S.staged {seq, day:{d,n}, cur: rec|null, past:[short records], stats}
 //   rec {id, kind, title, frame, reason, near:{hero, label}, at:{x,y}, z, lvl, cast:{...}, labels, born, until, phase, scene, result}
 //   S.table.calls [{id, kind, about, legal?, who?, t, done, by, text, pick}] while a staged scene is open
-import {S,clockStr,dayNo} from './state.js';
+import {S,clockStr,dayNo,loreSides} from './state.js';
 import {keep} from './kept.js';
 import {ZONES,REGIONS,CITY,LANDMARKS,ZPTS,zoneAt,dist} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
@@ -242,7 +242,7 @@ export function stageScene(a,o={}){a=a&&typeof a==='object'?{...a}:{};delete a._
   const notes=[],given=v=>v!=null&&v!=='';let setId=null,town=null,spot=null,named=false,picked=false;
   if(INDOOR_STAGE[kind]){const st=settingOf(a.setting);if(st.err)return refuse(st.err,a);setId=st.id||null;
     const tw=atOf(a.at);if(tw.err)return refuse(tw.err,a);
-    if(tw.town){if(F.fac!=null&&tw.town.fac!=null&&tw.town.fac!==F.fac)return refuse(tw.town.name+' is an enemy town: the Fellowship would not be met there; pick one of their own ('+CITY.filter(c=>c.fac===F.fac).map(c=>c.name).join(', ')+')',a);
+    if(tw.town){if(!loreSides()&&F.fac!=null&&tw.town.fac!=null&&tw.town.fac!==F.fac)return refuse(tw.town.name+' is an enemy town: the Fellowship would not be met there; pick one of their own ('+CITY.filter(c=>c.fac===F.fac).map(c=>c.name).join(', ')+')',a);
       town=tw.town;named=!!tw.spot;if(!setId){setId=fitSetting(kind,{spot:tw.spot,title:a.title,frame,want:cast.want,role:cast.role});picked=true}spot=tw.spot||(setId==='tavern'?'inn':setId==='chapel'?'chapel':'square')}}
   else if(given(a.setting)||given(a.at))notes.push('setting and at are for meeting and social scenes; '+(/^[aeiou]/.test(kind)?'an ':'a ')+kind+' plays on the ground where it happens, so '+(given(a.setting)&&given(a.at)?'both were':given(a.setting)?'setting was':'at was')+' ignored');
   const W=town?{at:{x:town.spots[spot].x,y:town.spots[spot].y},label:(named?'at the '+spot+' in ':'in ')+town.name}:(kind==='vision'&&visionWho(a.near))||whereOf(a.near); // a vision finds a member wherever they rest, in town too (#639)

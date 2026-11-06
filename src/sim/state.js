@@ -46,5 +46,6 @@ export const noOthers=()=>!!(S.setup&&S.setup.others==='none');
 // older world has no such field and every gate reads as before. a.fac stays set on every hero and town as a lore tag.
 export const loreSides=()=>!!(S.setup&&S.setup.sides==='lore');
 export const sameSide=(a,b)=>loreSides()||a.fac===b.fac; // may these two stand together? Everyone may, in a lore world
+export const ownTown=(c,a)=>loreSides()||c.fac===a.fac; // does this town take hero a in? Any town does, in a lore world
 export const dayNo=()=>Math.floor(S.gameMin/1440)+1; // game day, 1-based (the UI shows D4 03:12 with it)
 export const clockStr=()=>{const m=Math.floor(S.gameMin)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
