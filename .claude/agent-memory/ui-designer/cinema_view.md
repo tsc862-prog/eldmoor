@@ -11,7 +11,9 @@ Cinema view (#979): `src/ui/cinema.js` (overlays, key C, enter/leave), `src/rend
 
 **How to apply:**
 - `.screen canvas{width:100%}` catches any canvas in an overlay: use a more specific rule.
-- Eldmoor is 80 tiles wide, so at scale 4 on 3440 the view is 54 tiles and the clamp range is under one view: a far company move there is a pan, not a cut. Test cuts at 1280x800 or with `DIR.SIGHT_FAR` low.
+- Scale was first 4/6 and the coordinator judged it too close (chunky, heroes bigger than gates): 2 road, 2.5 rest, 3.5 fights at 3440. Half steps look clean by eye.
+- Eldmoor is 80 tiles wide, so at 3440 the cover floor is about 2.7 and the view nearly the whole map: a far company move there is a pan, not a cut. Test cuts at 1280x800 or with `DIR.SIGHT_FAR` low.
+- `DIR` is read live, so a browser test can try scales without a rebuild. Test the hall through the setup page (Opening: Straight to the hall): the default world scatters the company.
 - Browser checks that `import('/src/...')` from an eval: restart the spare vite after any edit, or the eval gets a second module instance (camera reads sc 1, the map centre). See [[scene-map-polish]].
 - Setting `S.gameMin` backward in a test crashes `campOne` (negative watch index) and stops the frame loop: only move it forward.
 - After a vite restart the first load is slow: poll for the setup page's button, do not sleep a fixed time.

@@ -6,8 +6,9 @@
 // What it does, a frame at a time:
 //   follow    the followed company, or the part of it riding with its leader. Position and zoom ease on a critically
 //             damped spring, so a move starts and stops softly and nothing overshoots.
-//   zoom      at rest the scale is a whole number of screen pixels an art pixel where it can be, so tiles stay crisp: pulled
-//             out on the road, a little closer at rest, in for a fight or a Table scene (draw.js hands over the scene's cut).
+//   zoom      wide, so the world is the picture and people stand small in it. Scales sit on half steps: at 3440x1440 2 on the road
+//             (one screen pixel an art pixel), 2.5 at rest, 3.5 in a fight or a Table scene (draw.js hands over the cut). A fixed
+//             half step does not shimmer: the chunks scale rigidly and move by whole pixels; only a zoom in progress does.
 //   drift     after a few quiet seconds the view wanders slowly round the company; the amplitude eases in and out.
 //   sights    now and then, when the company is not busy, it cuts away to something worth seeing and back: a duel, a raid on
 //             the wyrm, a cart beset, a fight with an elite, another company's fight; failing those the wyrm in its lair, a
@@ -22,11 +23,12 @@ import {LANDMARKS,CITY} from '../world/map.js';
 import {followed,members,companies,leaderOf} from '../sim/company.js';
 
 export const DIR={
-  ROAD_ROWS:24,REST_ROWS:22,FIGHT_ROWS:15, // tiles high at rest; the scale is then rounded to whole art pixels
+  ROWS:45,                                 // tiles high on the road, rounded to a half step, never under scale 2 or the map's cover
+  REST:.5,CLOSE:1.5,                       // added to that scale at rest, and in a fight, a Table scene or on a sight
   POS_S:1.3,FIGHT_POS_S:.9,ZOOM_S:1.9,     // spring times, in seconds
   MAX_PAN:26,                              // tiles a second at most: a longer way is a cut
   FAR:.8,                                  // a target more than this many view widths off is reached by a cut
-  SIGHT_FAR:.55,                           // a sight (or the way back) this far off is a cut; nearer it eases over
+  SIGHT_FAR:.35,                           // a sight (or the way back) this far off is a cut; nearer it eases over
   OUT_S:.38,IN_S:.6,ENTER_S:1.1,           // the dip to black and back, and the fade up on entering
   CLUSTER:16,                              // tiles from the leader: further out rides apart from the shot
   MARGIN_X:12,MARGIN_Y:9,                  // tiles round the people who must stay in frame
@@ -45,9 +47,11 @@ const FIGHT={fight:1,duel:1,assist:1,downed:1};
 const ROAD={travel:1,return:1,flee:1};
 const seen=a=>!!a&&a.state!=='dead'&&!a.hidden;
 const smooth=x=>x*x*(3-2*x);
-// Rest scales: even numbers are whole screen pixels an art pixel (ART 2), never short of covering the window.
+// Rest scales sit on half steps: 2 is one screen pixel an art pixel (ART 2). Below it the art would lose pixels; below the
+// cover the window would show past the map's edge.
 export const coverScale=(w,h)=>Math.max(w/(W*T),h/(H*T));
-export const restScale=(w,h,rows)=>Math.max(Math.max(2,Math.round(h/(rows*T)/2)*2),coverScale(w,h));
+export const roadScale=(w,h)=>Math.max(2,Math.round(h/(DIR.ROWS*T)*2)/2,Math.ceil(coverScale(w,h)*2-1e-6)/2);
+export const closeScale=(w,h)=>roadScale(w,h)+DIR.CLOSE;
 // One axis of the spring (critically damped, stable at any frame time).
 function damp(s,target,time,dt,maxV){const o=2/Math.max(.01,time),x=o*dt,e=1/(1+x+.48*x*x+.235*x*x*x);
   let c=s.p-target;if(maxV){const m=maxV*time;c=clamp(c,-m,m)}
@@ -82,10 +86,10 @@ export function createDirector(opts={}){
     if(want!==d.modeWant){d.modeWant=want;d.modeT=0}else d.modeT+=dt;
     if(want==='fight'||d.modeT>=DIR.HOLD_MODE)d.mode=want;
     d.busy=d.mode==='fight';d.quiet=d.mode==='rest'?d.quiet+dt:0;
-    const base=restScale(w,h,d.mode==='fight'?DIR.FIGHT_ROWS:d.mode==='road'?DIR.ROAD_ROWS:DIR.REST_ROWS);
-    // everyone in frame: step down a whole scale at a time, never past the cover
+    const base=d.mode==='fight'?closeScale(w,h):roadScale(w,h)+(d.mode==='rest'?DIR.REST:0);
+    // everyone in frame: step down a half scale at a time, never past the cover
     const need=Math.min(w/((x1-x0+DIR.MARGIN_X)*T),h/((y1-y0+DIR.MARGIN_Y)*T));
-    let sc=base;if(need<sc)sc=Math.max(coverScale(w,h),need>=2?Math.floor(need/2)*2:need);
+    let sc=base;if(need<sc)sc=Math.max(coverScale(w,h),need>=2?Math.floor(need*2)/2:need);
     const a=calm()?0:clamp((d.quiet-DIR.DRIFT_AFTER)/DIR.DRIFT_IN,0,1);d.driftA+=(a-d.driftA)*Math.min(1,dt*.8);
     const lead=d.mode==='road'?DIR.LEAD_S:0,sp=Math.hypot(d.cvx,d.cvy),k=sp*lead>DIR.LEAD_MAX?DIR.LEAD_MAX/(sp*lead):1;
     return {x:(d.sx+d.cvx*lead*k+Math.sin(d.t*.134)*DIR.DRIFT*d.driftA)*T,y:(d.sy+d.cvy*lead*k+Math.sin(d.t*.103+1)*DIR.DRIFT*.6*d.driftA)*T,sc}}
@@ -106,7 +110,7 @@ export function createDirector(opts={}){
   function pickSight(hotOnly){const open=sights().filter(s=>(d.cool.get(s.key)||0)<=d.t&&(!hotOnly||s.hot));if(!open.length)return null;
     const top=Math.max(...open.map(s=>s.hot||0)),best=open.filter(s=>(s.hot||0)===top);return best[Math.floor(rnd()*best.length)]}
   function sightShot(w,h){const s=d.sight,p=s.at();if(p){s.x=p.x;s.y=p.y}else s.left=Math.min(s.left,1.2);
-    return {x:s.x*T,y:s.y*T,sc:restScale(w,h,s.wide?DIR.ROAD_ROWS:DIR.FIGHT_ROWS)}}
+    return {x:s.x*T,y:s.y*T,sc:s.wide?roadScale(w,h):closeScale(w,h)}}
   const startSight=s=>{s.left=between(DIR.HOLD);const p=s.at();s.x=p?p.x:0;s.y=p?p.y:0;d.cool.set(s.key,d.t+DIR.COOL);d.lastSight=d.t;return s};
   function considerSights(dt,sceneOn){
     if(d.dip)return;
@@ -117,9 +121,9 @@ export function createDirector(opts={}){
     if(due||s)d.nextAt=d.t+between(DIR.GAP);if(s)d.next={sight:startSight(s)}}
   function shotNow(w,h,dt,cut,people){
     const comp=companyShot(w,h,dt,people); // always run: the pace and the velocity keep up during a sight
-    if(cut){const sc=Math.min(cut.sc,restScale(w,h,DIR.FIGHT_ROWS));return {x:cut.x+(cut.dx||0)/sc,y:cut.y+((cut.dy||0)+h*DIR.LIFT)/sc,sc,free:true,pos:DIR.FIGHT_POS_S}}
+    if(cut){const sc=Math.min(cut.sc,closeScale(w,h));return {x:cut.x+(cut.dx||0)/sc,y:cut.y+((cut.dy||0)+h*DIR.LIFT)/sc,sc,free:true,pos:DIR.FIGHT_POS_S}}
     if(d.sight)return {...sightShot(w,h),pos:DIR.POS_S};
-    if(d.spot&&seen(d.spot.a))return {x:d.spot.a.x*T,y:d.spot.a.y*T,sc:restScale(w,h,DIR.FIGHT_ROWS),pos:DIR.POS_S};
+    if(d.spot&&seen(d.spot.a))return {x:d.spot.a.x*T,y:d.spot.a.y*T,sc:closeScale(w,h),pos:DIR.POS_S};
     comp.y+=h*DIR.LIFT/comp.sc;return {...comp,pos:d.mode==='fight'?DIR.FIGHT_POS_S:DIR.POS_S}}
   function keep(s,w,h){if(s.free)return s; // the target stays inside the map, so the spring never leans on the clamp
     const vw=w/s.sc,vh=h/s.sc;s.x=vw>=W*T?W*T/2:clamp(s.x,vw/2,W*T-vw/2);s.y=vh>=H*T?H*T/2:clamp(s.y,vh/2,H*T-vh/2);return s}

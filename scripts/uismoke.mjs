@@ -1665,7 +1665,7 @@ console.log('page watchdog');
     L.pop();a.state=keep.st;a.hidden=keep.hid;if(keep.si!=null)a.siteIn=keep.si}}
 // ---- #979: the cinema view: in and out leaves the page as it was, the key, the gate over it, the director's moves ----
 console.log('cinema view');
-{const C=await import('../src/ui/cinema.js'),{cam}=await import('../src/render/draw.js'),{DIR,createDirector,restScale,coverScale}=await import('../src/render/director.js'),gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js'),{W:WT}=await import('../src/world/tiles.js');
+{const C=await import('../src/ui/cinema.js'),{cam}=await import('../src/render/draw.js'),{createDirector,roadScale,closeScale,coverScale}=await import('../src/render/director.js'),gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js'),{W:WT}=await import('../src/world/tiles.js');
   const fs=await import('node:fs'),css=fs.readFileSync(new URL('../src/style.css',import.meta.url),'utf8'),src=fs.readFileSync(new URL('../src/render/director.js',import.meta.url),'utf8');
   const btn=$('vCin'),co=SLT.followed(),heroes=SLT.members(co),body=document.body,key=(k,x={})=>{for(const f of document._ls.keydown||[])f({key:k,target:body,preventDefault(){},stopPropagation(){},...x})};
   const page=()=>JSON.stringify({view:cam.view,zoom:cam.zoom,camX:cam.camX,camY:cam.camY,sc:cam.sc,dir:cam.director||null,body:body.className,order:[...$('side').children].map(n=>n.id||n.className),colM:[...$('colM').children].filter(n=>!n.classList.contains('cinhole')).map(n=>n.id||n.className),scr:$('screen').parentNode.id,rows:$('felbody').children.length});
@@ -1697,7 +1697,7 @@ console.log('cinema view');
   const fake={sel:heroes[0],hover:null,camX:0,camY:0,sc:1},w=3440,h=1440,D=createDirector({seed:7,still:()=>true}),run=(n,f)=>{for(let i=0;i<n;i++){const x=fake.camX,y=fake.camY,fade=D.fade;D.step(fake,w,h,null,1/60);const px=Math.hypot(fake.camX-x,fake.camY-y)*fake.sc;if(f)f(px,fade)}};
   const keep=heroes.map(a=>({a,x:a.x,y:a.y,st:a.state,hid:a.hidden}));for(const a of heroes){a.state='town';a.hidden=false;a.x=heroes[0].x;a.y=heroes[0].y}
   const G0=sim.S.gameMin;D.enter(fake,w,h);ok(D.fade===1,'entering starts in the dark');let big=0;run(180,(px)=>{big=Math.max(big,px)});ok(D.fade===0,'and fades up');ok(big<40,'the camera moves softly ('+big.toFixed(1)+' px a frame at most)');
-  ok(fake.sc%2===0||Math.abs(fake.sc-coverScale(w,h))<.01,'at rest the scale is whole art pixels ('+fake.sc.toFixed(2)+')');
+  ok(Math.abs(fake.sc*2-Math.round(fake.sc*2))<.01&&fake.sc>=2&&fake.sc>=coverScale(w,h),'at rest the scale is on a half step, from 2, covering the window ('+fake.sc.toFixed(2)+')');
   const a0=heroes[0],sc0=fake.sc;for(const a of heroes)a.state='fight';run(300);ok(fake.sc>sc0,'a fight pulls in ('+sc0.toFixed(1)+' -> '+fake.sc.toFixed(1)+')');for(const a of heroes)a.state='town';run(900);ok(Math.abs(fake.sc-sc0)<.05,'and back out ('+fake.sc.toFixed(2)+', '+D.shotKind+')');
   const far=2;let jumps=0,dark=0,dips=0;const F2=createDirector({seed:3,still:()=>true}),w2=1280,h2=800;for(const a of heroes)a.x=WT-2;F2.enter(fake,w2,h2);for(let i=0;i<120;i++)F2.step(fake,w2,h2,null,1/60);for(const a of heroes)a.x=far;
   for(let i=0;i<240;i++){const x=fake.camX,fd=F2.fade;F2.step(fake,w2,h2,null,1/60);const px=Math.abs(fake.camX-x)*fake.sc;if(px>60){if(F2.fade>.97||fd>.97)dark++;else jumps++}if(fd>0)dips++}
@@ -1710,7 +1710,7 @@ console.log('cinema view');
     for(const [a,x,y,s,t] of k){a.x=x;a.y=y;a.state=s;a.target=t}}
   ok(D.named(a0,fake)&&!D.named({company:-5},fake),'names: the selected company only, not a stranger');
   ok(sim.S.gameMin===G0&&!/core\/rng\.js/.test(src.split('\n').filter(l=>l.startsWith('import')&&/\brnd\b|\bri\b/.test(l)).join('')),'the director takes no sim dice and moves no game time');
-  ok(restScale(1280,800,DIR.ROAD_ROWS)<restScale(3440,1440,DIR.FIGHT_ROWS),'distances follow the window');
+  ok(roadScale(1280,800)>=2&&closeScale(3440,1440)>roadScale(3440,1440)&&roadScale(3840,2160)>roadScale(1280,800),'distances follow the window');
   for(const k of keep){k.a.x=k.x;k.a.y=k.y;k.a.state=k.st;k.a.hidden=k.hid}
   key('Escape');ok(!C.cinemaOn(),'left')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
