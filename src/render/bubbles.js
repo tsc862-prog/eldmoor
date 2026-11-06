@@ -19,20 +19,21 @@ function wrap(text){const out=[];let cur='';
   return out}
 
 // Every bubble in view, laid out in world px: {b, tone, head, lines, px, top, bottom, x0, bw, bh, lh, pad}.
-function layout(ctx,S,cam){const out=[],cv=ctx.canvas,vw=cv.width/cam.sc,vh=cv.height/cam.sc;
+function layout(ctx,S,cam,where){const out=[],cv=ctx.canvas,vw=cv.width/cam.sc,vh=cv.height/cam.sc;
   const s=CSS*cam.dpr/cam.sc,lh=s*.8,pad=s*.3;ctx.font=s+'px VT323, monospace';
   for(const a of S.agents.concat(S.npcs||[],S.wanderers||[])){const b=a.bubble;if(!b||b.life<=0||a.hidden||a.state==='dead'||!bubbleVisible(a,S))continue; // heroes and townsfolk (sim/npcs.js)
-    const px=a.x*T,py=a.y*T;if(Math.abs(px-cam.camX)>vw/2+60||Math.abs(py-cam.camY)>vh/2+60)continue;
+    const wp=where&&where(a)||a,px=wp.x*T,py=wp.y*T; // where: a fight on a patch shows its people at their beats' place, so the bubble follows the walk, not the tile the sim wrote
+    if(Math.abs(px-cam.camX)>vw/2+60||Math.abs(py-cam.camY)>vh/2+60)continue;
     const tone=toneOf(a,slotted(),S.gameMin),head=tone.kind==='class'?a.name.toUpperCase():tone.npc?'['+a.name+']':null,lines=(head?[head]:[]).concat(wrap(b.text)); // a member's bubble leads with its name in class colour, an NPC's in [brackets] in its disposition colour
     let w=0;for(const l of lines)w=Math.max(w,ctx.measureText(l).width);
     const bw=w+pad*2,bh=lines.length*lh+pad*1.2,bottom=py-HEAD-s*1.15,top=bottom-bh,x0=px-bw/2;
     out.push({b,tone,head,lines,px,top,bottom,x0,bw,bh,lh,pad})}
   return out}
 // The bubbles' boxes in world px, [x0, y0, x1, y1] each (the tail included).
-export function bubbleBoxes(ctx,S,cam){return layout(ctx,S,cam).map(o=>[o.x0,o.top,o.x0+o.bw,o.bottom+o.pad*.7])}
+export function bubbleBoxes(ctx,S,cam,where){return layout(ctx,S,cam,where).map(o=>[o.x0,o.top,o.x0+o.bw,o.bottom+o.pad*.7])}
 
-export function drawBubbles(ctx,S,cam,drawText){
-  for(const o of layout(ctx,S,cam)){const {b,tone,head,lines,px,top,bottom,x0,bw,bh,lh,pad}=o;
+export function drawBubbles(ctx,S,cam,drawText,where){
+  for(const o of layout(ctx,S,cam,where)){const {b,tone,head,lines,px,top,bottom,x0,bw,bh,lh,pad}=o;
     ctx.globalAlpha=Math.min(1,b.life/FADE);
     ctx.fillStyle=FILL;
     if(ctx.roundRect){ctx.beginPath();ctx.roundRect(x0,top,bw,bh,pad);ctx.fill();if(head&&tone.color){ctx.strokeStyle=tone.color;ctx.lineWidth=cam.dpr/cam.sc;ctx.stroke()}}else ctx.fillRect(x0,top,bw,bh);
