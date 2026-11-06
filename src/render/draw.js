@@ -265,7 +265,7 @@ export function createRenderer(cv,screenEl){
       if(G){ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);if(pz&&pz.flash>0){ctx.globalAlpha=pz.flash;ctx.drawImage(sceneTint(G.img,pz.col),G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh)}}
       else{const o=worldSprite(s,live),ow=live?1/ART:0,x0=-Math.floor(s.width/2)*PROC_SCALE-ow; // living entities get the dark outline, one art pixel wide
         const fl=pz&&pz.flash>0?sceneTint(o,pz.col):null; // the hit flash
-        if((pz?pz.face:e.face)<0){ctx.setTransform(-tf.a,0,0,tf.d,tf.e+px*tf.a,tf.f);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,x0,py-sh-ow,o.width/ART,o.height/ART)}ctx.setTransform(tf)} // mirrored about px
+        if((pz?pz.face:e.face)<0){ctx.save();ctx.translate(px,0);ctx.scale(-1,1);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,x0,py-sh-ow,o.width/ART,o.height/ART)}ctx.restore()} // mirrored about px, on top of any tilt (a setTransform from the base dropped the stumble and fall of every foe facing left)
         else{ctx.drawImage(o,px+x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,px+x0,py-sh-ow,o.width/ART,o.height/ART)}}}
       if(tilt)ctx.restore();ctx.globalAlpha=ghostA;
       const top=py-sh;
@@ -314,7 +314,7 @@ export function createRenderer(cv,screenEl){
     else{
       if(!cin)for(const D of CRYPTS)if(D.group&&D.group.phase==='inside'&&inView(D.x*T,D.y*T,LM))lab(D.group.mem.length+' inside · '+Math.ceil(D.group.t)+'s',D.x*T,D.mouth.y0*T-4,TEXT.crypt,14,7);
       const lh=14*cam.dpr/sc;
-      if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
+      if(cut)for(const r of bubbleBoxes(ctx,S,cam,onPatch?scenePose:null))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
         if(cin&&!cut&&!cin.named(a,cam))continue; // the cinema view names only the hovered hero and the selected company, with no plate (#979)
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
@@ -341,7 +341,7 @@ export function createRenderer(cv,screenEl){
     flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;ph(5);
     const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
     if(whole)drawWholeMap(ctx,cam,blink);
-    if(close){drawBubbles(ctx,S,cam,drawText);
+    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)&&!(onPatch&&HIT_NUM.test(p.txt))){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
     if(mini&&!cin)mini.draw(S);if(cin)cin.paint(ctx,cv.width,cv.height);ph(6);

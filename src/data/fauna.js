@@ -25,7 +25,7 @@ export const FAUNA={
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the
   // shaghorn are left out on purpose. Levels sit inside the region's band (nothing near a home town above it; elites are the one
   // exception, as everywhere). Goods are Vale-only (VALE_GOODS), priced up the same ladder as Eldmoor's.
-  wendmouth: {tier:0,count:12,roadMinX:30,elite:'Hollowfang',species:[
+  wendmouth: {tier:0,count:12,roadMinX:999,elite:'Hollowfang',species:[
     {sp:'wolf',name:'Strand Wolf',pl:'Strand Wolves',lv:[1,3],loot:'Strandpelt',q:'Wolves on the Strand'},
     {sp:'boar',name:'Reed Boar',pl:'Reed Boars',lv:[2,4],loot:'Reed-Tusk',q:'Tusks from the Reeds'},
     {sp:'spider',name:'Dyke Weaver',pl:'Dyke Weavers',lv:[3,5],loot:'Dyke Silk',q:'Sweep the Dykes'}]},

@@ -153,7 +153,7 @@ other. The rules:
   reconnects and names the same heroes (same id and name, alive; a hero that is gone, renamed by a new world or dead is
   skipped). The page's bridge reconnects by itself after a relay restart. Options: `--relay-port N`, `--vite-port N`,
   `--no-open`, `--repo DIR` (the checkout `u` pulls). The old way, `npm run relay -- --runners` and `npm run dev` in two
-  terminals, still works. Temp stays on the project drive (owner rule 2026-11-05): the launcher sets `TEMP`, `TMP` and `TMPDIR` for its children to `logs/tmp` (gitignored; `ELDMOOR_TMP` overrides) and sweeps entries older than a day at start; checks make their temp dirs with `mkTmp` from `scripts/tmp.mjs`, which removes them when the process exits. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
+  terminals, still works. A fourth child, `[voice]` (#554), is the owner's local speech engine (Kokoro-FastAPI behind the narrator voice, `TTS_URL`, default 127.0.0.1:8880), started only when configured: `KOKORO_START=<path to its start script>` in `.env` (or the environment; the only extra value read from `.env` besides `OLLAMA_URL` and `TTS_URL`) or `--voice-script PATH`; `--no-voice` or `VOICE=0` skips it, and unset prints one hint line and nothing else. Run as `powershell -ExecutionPolicy Bypass -File <script>` on Windows (`pwsh` elsewhere for a .ps1, `node` for a .mjs, else the file itself), an argument array, never a shell; no path is hard-coded in the repo. It starts in parallel and never delays the relay or Vite. A missing script, a `TTS_URL` not on this machine, or something already answering on the port is one line and no start (what it did not start is never killed); a crash is one line with no restart (a new launcher start tries again); `q`, Ctrl+C and closing the window stop it with its process tree; `s` shows running, not configured, off or stopped. The relay reads the engine live (`/tts/status` per request, the page rechecks each minute), so an engine that loads slowly is found when it is ready. Temp stays on the project drive (owner rule 2026-11-05): the launcher sets `TEMP`, `TMP` and `TMPDIR` for its children to `logs/tmp` (gitignored; `ELDMOOR_TMP` overrides) and sweeps entries older than a day at start; checks make their temp dirs with `mkTmp` from `scripts/tmp.mjs`, which removes them when the process exits. `npm run upcheck` tests it (real children on spare ports, a temp git checkout).
 - `npm run runnercheck`: app runners (start/stop from the page, refusals, a mock Ollama runner end to end) and
   the relay's Anthropic concurrency queue (mock 429 provider).
 - `npm run sessioncheck` (#787): Claude sessions kept small, on the real Agent SDK and its CLI binary against a mock Messages API (no key, no network): the compaction window through `query()`'s env, `getContextUsage().autoCompactThreshold`, a real `compact_boundary`, and hero, Fellowship and DM runners end to end (ctx on the turn line, a roll, held back at a scene, the old file, the resume prompt, a "fresh" line, `AGENT_HEAR_WAKE_MIN`, the report's table).
@@ -955,6 +955,18 @@ The owner's rule: the DM and the players talk only inside the game. How it holds
   result, event, runner prompt and brain snapshot, and fails on any secret; it also proves a narrate
   line reaches members in range (and the table) and not one far away, npc_say reaches earshot, party
   chat reaches every member, and the relay keeps the seats apart.
+
+## Narrator voice (issue #554)
+
+The DM's narration (`narrate`, `npc_say`, Table frames and banner narration) can be read aloud by a local text-to-speech engine
+behind the page's Sound switch. The relay (`scripts/providers/tts.mjs`) talks to any local server with the OpenAI `/v1/audio/speech`
+shape (first choice: Kokoro-FastAPI with Kokoro-82M, default `TTS_URL=http://127.0.0.1:8880`); the URL must be loopback, so no text
+leaves the PC, and nothing is paid. Routes (page origin only): `GET /tts/status`, `POST /tts/say {text, voice}` -> `{id}`, `GET /tts?id=`;
+clips cached by hash under `logs/tts/`; `/health` has `providers.tts`; `RELAY_TTS=0` turns it off; `TTS_MODEL`, `TTS_FORMAT`, `TTS_VOICE`.
+Voices are data (`src/data/voices.js`, hash-picked, no RNG). The page side is `src/ui/sound.js` (queue: Table, npc_say, narrate, hero lines;
+never overlapping; a line older than 20 s is dropped; 3x/8x plays Table only; volume slider and "Heroes speak" in Settings, default off).
+With no engine the game is silent and Settings shows one hint line. Audio is for the watcher only (channelcheck unaffected). `npm run ttscheck`.
+Owner steps: see the PR body of #554 (install Kokoro-FastAPI, start it, restart the relay).
 
 ## Behavior logs (for review)
 
