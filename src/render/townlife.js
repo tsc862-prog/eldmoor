@@ -37,6 +37,7 @@ function roofSpots(L){const c=L.c;L.chim.length=0;L.flag=null;
   for(const b of c.buildings){const [bx,by]=b.draw||b.box,at=n=>pieceSpot(c,b,n);
     if(b.piece==='smithy'){const s=at('chimney');L.chim.push({x:s?s[0]:bx*T+12,y:s?s[1]:by*T+1,kind:'forge',hours:(npcRole('smith')||{}).hours||[6,21]})}
     else if(b.piece==='inn'){const s=at('chimney');L.chim.push({x:s?s[0]:bx*T+38,y:s?s[1]:by*T+1,kind:'hearth'})}
+    else if(b.piece==='house'){const s=at('chimney');if(s)L.chim.push({x:s[0],y:s[1],kind:'hearth'})}
     if(b.piece==='hall'){const s=at('flag');L.flag=s?{x:s[0],y:s[1]}:{x:(bx+(b.draw?b.draw[2]:b.box[2])/2)*T,y:by*T+3}}}}
 onAssets(()=>{for(const L of LAY.values())roofSpots(L)});
 function layout(c,ci){let L=LAY.get(c);if(L)return L;
@@ -66,6 +67,7 @@ function layout(c,ci){let L=LAY.get(c);if(L)return L;
   const opp=OPPOSITE[side],horiz=opp==='N'||opp==='S',len=(horiz?c.x1-c.x0:c.y1-c.y0)-2;
   L.walk={opp,horiz,len,x0:c.x0+1,y0:c.y0+1,x1:c.x1,y1:c.y1,off:hash(ci,3,8)*40};
   L.walker={kind:'deco',x:0,y:0,face:1,fr:0,walk:true,kp:{role:'captain',fac:c.fac,id:ci*10+5},paint:paintGuard,town:L,torch:true};
+  L.noWalk=opp==='N'&&c.buildings.some(b=>b.kit&&b.box[1]===c.y0+1); // a plan's north row stands over that wall: he would walk on its roofs
   LAY.set(c,L);return L}
 
 // Where the wall-walker is at time t: back and forth along the wall, pausing at each end (a triangle with plateaus).
@@ -115,7 +117,7 @@ export function lifeEnts(ents){
     const shut=!!WET[skyAt(c.x0,c.y0)],mk=shut?0:ramp(h,7,8,17,18);
     for(const s of L.stalls){s.open=mk;ents.push(s)}
     for(const g of L.guards)ents.push(g);
-    placeWalker(L,F.now);ents.push(L.walker)}}
+    if(!L.noWalk){placeWalker(L,F.now);ents.push(L.walker)}}}
 // Air pass, over the entities and under the night: smoke, flags, door lamps, birds off the trees.
 export function lifeAir(ctx,blink){drawRoostBirds(ctx);if(F.tpx<9)return;
   for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci),h=F.hour,wind=(WIND[skyAt(c.x0,c.y0)]||.3);
@@ -138,4 +140,4 @@ export function lifeLight(ctx,glow,dk,LIGHT){if(F.tpx<9)return;
     for(const d of L.doors){if(lp>0&&inTiles(d.x/T,d.y/T,1))glow(d.x,d.y-6,d.w>1?20:15,LIGHT.torch,dk*.55*lp);
       if(d.forge){const w=ramp(F.hour,5.5,6.5,19,21);if(w>0)glow(d.x,d.y-6,22,[255,120,40],dk*.6*w*(.85+.15*Math.sin(F.now*9)))}}
     for(const g of L.guards)glow(g.x*T+(g.face>0?5:-5),g.y*T-14,13,LIGHT.torch,dk*.5);
-    glow(L.walker.x*T+(L.walker.face>0?5:-5),L.walker.y*T-14,13,LIGHT.torch,dk*.5)}}
+    if(!L.noWalk)glow(L.walker.x*T+(L.walker.face>0?5:-5),L.walker.y*T-14,13,LIGHT.torch,dk*.5)}}
