@@ -61,6 +61,8 @@ import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
+import {lazyOn, toolOptions, withLazyEnv, markLazy, lazyLine, searchCount, lazyRec} from './lazy-tools.mjs'; // AGENT_LAZY_TOOLS (issue #808)
+import {PLAYER_TOOLS} from '../src/data/player-tools.js';
 import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, tableHooks, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,7 +78,7 @@ const flag = k => argv.includes('--' + k);
 export function systemPrompt(st) {
   const traits = (st.traits || []).join('; ');
   return [
-    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of Eldmoor (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
+    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of ${st.world || 'Eldmoor'} (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
     st.origin ? `Your past: ${st.origin}` : '',
     st.oath ? `Your oath: ${String(st.oath).replace(/[.!?]+$/, '')}.` : '',
     st.thread ? `A thread in your past, not an oath: ${st.thread} You have sworn nothing; what you swear, if anything, is yours to choose.` : '',
@@ -312,7 +314,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
 
   const rollAt = rollPoint('hero', model, env); // the roll and the compaction net (#787)
-  const childEnv = withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'}, rollAt, env);
+  const lazy = lazyOn(env), childEnv = withLazyEnv(withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'}, rollAt, env), lazy);
+  if (lazy) console.log('[agent] ' + lazyLine(PLAYER_TOOLS.length));
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   await warmUp({base, seat: {hero: heroId}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
@@ -326,7 +329,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
     // between turns only, and never with a scene open or due, on a reflection, or carrying on after a cut (#787)
-    const rd = rollDue(sess, rollAt, {busy: !!(refl || again || (b0 && (b0.scene || b0.table)))});
+    const rd = rollDue(sess, rollAt, {lazy, busy: !!(refl || again || (b0 && (b0.scene || b0.table)))});
     if (rd) {rollSession(sess, setAside); saveSess(); console.log('  ' + rd.line)}
     const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
@@ -350,19 +353,20 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the next turn carries on
     const grab = sceneGrab({due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, abort: () => turnAbort.abort(),
       onGrab: () => console.log(`  [scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
+    const opened = !sess.sessionId, to = toolOptions(lazy, `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}`);
     const q = query({prompt, options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       // the hero rides on every MCP request (header, and the query for clients that drop headers)
-      mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Hero': String(heroId), 'X-Eldmoor-Runner': runner}, timeout: 90000}},
-      tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
+      mcpServers: {eldmoor: {type: 'http', url: to.url, headers: {'X-Eldmoor-Hero': String(heroId), 'X-Eldmoor-Runner': runner}, timeout: 90000}},
+      tools: to.tools, allowedTools: to.allowedTools, permissionMode: 'dontAsk', settingSources: [],
       settings: {autoCompactEnabled: true}, maxTurns: refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv, hooks: tableHooks({idle: on => freeSlot.idle(on), onOver: () => {rested = true; console.log('  [table: nothing to wait for here; the turn ends and pacing wakes it]')}}), // #868
     }});
     const gs = grabSpend(); // #747: what an aborted query reports before the cut
     try {for await (const m of q) {
       if (m.type === 'assistant') gs.add(m);
-      if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; if (!refl) delete sess.rolled; saveSess(); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => console.log('  ' + s))}}
+      if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; if (opened) markLazy(sess, lazy); if (!refl) delete sess.rolled; saveSess(); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => console.log('  ' + s))}}
       else if (m.type === 'system' && m.subtype === 'compact_boundary') {sess.compacts = (sess.compacts || 0) + 1; console.log(`  [compacted: ${m.compact_metadata.pre_tokens} -> ${m.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (m.type === 'assistant' && !m.parent_tool_use_id) {
         sess.ctx = ctxOf(m.message.usage) ?? sess.ctx; // the last call's prompt: what the price line is measured on (#787)
@@ -390,7 +394,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const ud = usageDelta(sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
       spent += cost; sess.costUsd += cost; turnCost = cost;
-      console.log(`[turn ${sess.turns}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(sess.ctx)} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
+      console.log(`[turn ${sess.turns}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(sess.ctx)}${lazy ? ` | tool search ${searchCount(tc.tools)}` : ''} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
     // Claude keeps tool use at the table; a scene turn that ended without scene_act gets one structured answer (issue #163)
     let forced = null;
@@ -402,8 +406,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
           console.log(`[scene answer] ${model} | ${forced.tools ? 'scene_act sent' : forced.misses + ' answers missed'} | tokens in ${forced.in} / out ${forced.out} | ${money(forced.cost)} | run ${money(spent)}`)}}
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
     if (refl) {const wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; await closeReflection(base, heroId, RUNNER, refl.id, wrote); console.log(`  [reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
-    reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(rd ? ['session-rolled'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+    reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}), ...lazyRec(lazy, tc.tools),
+      flags: [...(lazy ? ['lazy-tools'] : []), ...(rd ? ['session-rolled'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSess(); if (grab.grabbed() && !failed && !stopReq) resume = true;
     if (fails.ok(!failed && (tools > 0 || !!refl)) && !ended) ended = fails.why();
   }

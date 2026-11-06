@@ -132,6 +132,20 @@ ok(pickRow(CITY[0].name, CITY[0].fac, new Set(PROLOGUES.filter(r => r.towns && r
   ok(until(framed, 40000), 'a room\'s first round asks the DM for its frame');
   const c0 = T.openScenes().find(x => x.kind === 'crawl'); c0.calls[0].done = true; c0.calls[0].text = 'The dark leans in.'; const fr = T.sceneFrame(c0); ok(fr.includes('The dark leans in.') && fr.includes('Room 1 of'), 'the DM\'s words join the room\'s frame, which keeps the foes and the round');
 }
+// ---- #1016: a level 1 company is not offered, or voted, a job it cannot take ----
+{ world({prologue: 'none'}, 21); const F = SLT.slotted(), L = SLT.slotHeroes(F), town = F.hall, ld = L[0];
+  S.adventures = (S.adventures || []).filter(h => !(h.phase === 'open' && h.town === town));
+  S.adventures.push({id: 90016, phase: 'open', town, tpl: 'investigate', ff: 1, data: {}, until: S.gameMin + 600});
+  const {firstMove} = await import('../src/sim/arrival.js'), {propose} = await import('../src/sim/council.js');
+  for (const a of L) a.lvl = 1;
+  const t1 = firstMove(town, F).first; ok(/asks for level 4/.test(t1) && !/Before them: the hall/.test(t1), 'level 1: the first move says the job is beyond them (' + t1.slice(0, 80) + ')');
+  const r1 = propose(ld, 'job', 'Take the hall job', {job: 90016}); ok(typeof r1 === 'string' && /asks for level 4/.test(r1) && /Grow first/.test(r1), 'level 1: a vote for it is refused with the reason');
+  ok(typeof propose(ld, 'job', 'Take the hall job', {job: 90016}) === 'string', 'and refused again until something changes');
+  ok(!(F.props || []).some(P => P.kind === 'job'), 'nothing was put to the table');
+  for (const a of L) a.lvl = 4;
+  const t2 = firstMove(town, F).first; ok(/Before them: the hall/.test(t2), 'level 4: it is the first move');
+  ok(typeof propose(ld, 'job', 'Take the hall job', {job: 90016}) !== 'string', 'level 4: the vote opens');
+}
 setRunnerLinks(null);
 console.log(fails ? `prologuecheck: ${fails} of ${n} failed` : `prologuecheck: ok (${n})`);
 process.exit(fails ? 1 : 0);

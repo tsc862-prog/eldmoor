@@ -526,8 +526,10 @@ export function lineRefusal(a,text){if(!a||!a.player)return null;
   return null}
 export function noteSaid(a,text,listeners){if(!a||!a.player)return;spokenAbout(a,text);const L=a.talkSaid||(a.talkSaid=[]);L.push(String(text).slice(0,200));if(L.length>TALK.LAST)L.shift();
   for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1;noteKnownAt(b,a);noteKnownAt(a,b)}
-  if(saidHook)try{saidHook(a,text,listeners)}catch(e){}} // a companion of its company may answer (#764, sim/compvoice.js)
+  if(saidHook)try{saidHook(a,text,listeners)}catch(e){} // a companion of its company may answer (#764, sim/compvoice.js)
+  for(const f of saidMore)try{f(a,text,listeners)}catch(e){}} // the world may answer (#1017, sim/narrvoice.js)
 let saidHook=null;export function setSaidHook(f){saidHook=typeof f==='function'?f:null}
+const saidMore=[];export const addSaidHook=f=>{if(typeof f==='function')saidMore.push(f)};
 export function heardLines(a,n=TALK.HEARD){const cut=t=>t.length>TALK.CUT?t.slice(0,TALK.CUT-1)+'…':t;
   return (a.chat||[]).filter(e=>e.from&&(e.party||e.trigger==='agent'||e.from.kind==='hero'||e.whisper||e.emote)).slice(-n)
     .map(e=>e.t+' '+(e.from===a?'(you)':e.from.name||'?')+(e.party?' [party]':'')+(e.whisper?' [whispered]':'')+': '+(e.emote?'*':'')+cut(String(e.text||''))+(e.emote?'*':''))}

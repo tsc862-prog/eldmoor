@@ -12,7 +12,7 @@
 // section below, #588). slotted() names the company that has them (null when there is none); read membership with
 // inSlots(a), slotKeyOf(a) and partySlotted(p). Saves carry only S.companies / a.company / p.company (the old
 // S.fellowship, a.fellow, a.fellowRole and p.fellow accessors are gone; save.js migrates v6 saves that stored them).
-import {S,clockStr} from './state.js';
+import {S,clockStr,loreSides} from './state.js';
 import {keep} from './kept.js';
 import {swornOf,hushOath} from './oath.js'; // only a sworn oath is an open thread (#800)
 import {homeOf} from '../data/races.js';
@@ -101,7 +101,7 @@ export function refuseJoin(C,a){if(!C)return 'No such company.';if(!alive(a))ret
 export function attach(C,a){const old=companyOf(a);if(old&&old!==C)leaveCompany(a);a.company=C.id;linkHero(a);return a}
 export function foundCompany(ids,o={}){const hs=(ids||[]).map(x=>typeof x==='object'?x:byId(x)).filter(Boolean);
   if(!hs.length&&o.fac==null)return {ok:false,error:'A company needs at least one hero.'};
-  const fac=o.fac!=null?o.fac:hs[0].fac;if(hs.some(a=>a.fac!==fac))return {ok:false,error:'A company is of one faction.'};
+  const fac=o.fac!=null?o.fac:hs[0].fac;if(!loreSides()&&hs.some(a=>a.fac!==fac))return {ok:false,error:'A company is of one faction.'};
   if(hs.length>PARTY.MAX)return {ok:false,error:'A company holds at most '+PARTY.MAX+' heroes.'};
   if(hs.some(a=>!alive(a)))return {ok:false,error:'Only living heroes ride in a company.'};
   let lead=hs[0];for(const b of hs)if(b.lvl>lead.lvl)lead=b;
@@ -229,7 +229,7 @@ export function autoPick(fac){const pool=S.agents.filter(a=>eligible(a,fac));
 // Check a proposed slot map: five distinct living heroes (or null = recruit), one faction, classes fit.
 export function checkSlots(slots,fac){const seen=new Set(),F=slotted();
   for(const s of SLOTS){const id=slots[s.key];if(id==null)continue;const a=byId(id);
-    if(!alive(a))return s.label+': that hero is not alive.';if(a.fac!==fac)return a.name+' is not of the '+FAC[fac].name+'.';
+    if(!alive(a))return s.label+': that hero is not alive.';if(!loreSides()&&a.fac!==fac)return a.name+' is not of the '+FAC[fac].name+'.';
     if(!fits(s.key,a))return a.name+' is a '+a.cls+'; the '+s.label+' slot needs '+s.cls.join(' or ')+'.';
     if(inSlots(a)&&!(F&&F.ids.includes(a.id)))return a.name+' already rides with a Fellowship.';
     if(seen.has(a.id))return a.name+' is in two slots.';seen.add(a.id)}

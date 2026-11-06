@@ -3,6 +3,7 @@
 // plus a default stance template ({other} stands for a companion's name; stored as persona.stance, a template for a later UI or prompt to fill, not yet read by any prompt). It never carries sim
 // facts: class, bonds, oath, home and history stay as they are. Applied by applyArchetype in
 // src/sim/persona.js. Field lengths fit PERSONA_FIELDS and STANCE_MAX in prompts.js.
+import {WORDS} from '../world/words.js';
 export const ARCHETYPES={
   veteran:{name:'Dour Veteran',blurb:'Has buried more friends than they can name and expects to bury more.',
     voice:'Flat and weary; answers in few words and calls every plan "optimistic".',
@@ -13,7 +14,7 @@ export const ARCHETYPES={
     stance:'Watches {other} with a tired eye, sure they will learn the hard way.'},
   idealist:{name:'Bright Idealist',blurb:'Believes the road can be made safe and means to do it personally.',
     voice:'Warm and earnest; speaks of "when" instead of "if" and means it every time.',
-    wants:'To make one road in Eldmoor safe for good, so that children can walk it.',
+    wants:'To make one road in '+WORDS.world+' safe for good, so that children can walk it.',
     fears:'Learning that the work changes nothing.',
     quirk:'Gives away the best of the loot, then forgets they did.',
     never_says:'It is not our problem.',
