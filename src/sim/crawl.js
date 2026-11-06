@@ -1,5 +1,5 @@
 // The dungeon crawl (issue #65). When the Fellowship goes down into a dungeon whose spec lists rooms
-// (CRYPT.rooms, src/world/spec.js), the run is not one abstract roll: it goes room by room, each
+// (D.rooms of a spec dungeon, src/world/spec.js, sim/crypts.js), the run is not one abstract roll: it goes room by room, each
 // round of each room a Table scene (kind 'crawl', turns in initiative order) the DM frames, resolved by
 // dice at the table. Background groups keep the single `pw` roll in dungeon.js, untouched.
 //
@@ -14,7 +14,7 @@
 // standing. Nobody left standing is the wipe, and the downed die with it. Deaths come from these dice at the table,
 // not from a hidden wipe roll. A party that leaves with someone down carries them up the stair, still bleeding. A majority falling back withdraws the party (a rearguard blow
 // as they go); a room not won in `rounds` drives them back. Clearing the last room pays what the abstract
-// run pays. Plain data on CRYPT.group.crawl (numbers and ids only), so a save mid-crawl resumes.
+// run pays. Plain data on the group's crawl (numbers and ids only), so a save mid-crawl resumes.
 // Positions (#744, sim/roomgrid.js): cr.pos keeps a tile of the room's own grid for every member and foe ({heroId: {x, y}, f0: ...},
 // for room cr.posR). The party comes in at the stair in slot order, the foes stand at the den. An agent's act may carry a move (a spot,
 // a relation or steps; it lands at once), guard, hold and retreat imply one, a reflex goes where its act goes.
@@ -23,7 +23,7 @@
 // they reach, a step out of a foe's reach gives it a free blow (cr.free, settled with the foes' turn), a Mage's read is a blast on a square,
 // a ward reaches those near, tending needs their side, and a withdrawal needs the stair. GEO.ON=false, or a room with no grid, plays as before.
 import {rnd,ri,pickA} from '../core/rng.js';
-import {CRYPT} from '../world/map.js';
+import {CRYPT,CRYPTS} from '../world/map.js';
 import {standAt} from '../world/passable.js';
 import {BESTIARY,VARIANTS,ROLES,heroTag,baseId} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
@@ -35,7 +35,8 @@ import {record,timeline,first} from './history.js';
 import {bestUse,useItem} from './inv.js';
 import {notify} from './notify.js';
 import {engage as loreEngage,slain as loreSlain} from './lore.js'; // what a hero learns of a creature it fights here, as in the open (#188): agent heroes only, no RNG
-import {setCrawlHook,payClear,clearXp} from './dungeon.js';
+import {setCrawlHook,payClear,clearXp,firstKey} from './dungeon.js';
+import {cryptOfGroup,cryptOfCtx,cryptCtx,cryptRun} from './crypts.js';
 import {tableOn,openScene,setSceneKind,sceneFor} from './table.js';
 import {moment,setReflectHold} from './reflect.js'; // no reflection while a crawl runs; one moment when it ends (#687)
 import {companyOf,companyById,roleOf,slotKeyOf,slotted,slotHeroes} from './company.js';
@@ -64,10 +65,10 @@ const gd=t=>({t,c:'gd'});
 const byId=id=>S.agents.find(x=>x.id==id)||null;
 const living=a=>a&&a.kind==='hero'&&a.state!=='dead';
 
-// The dungeon a group is in: a DM-made site (sim/sites.js, #69; g.site its id, the site's rooms as data on S.sites) or the Sunken Crypt.
+// The dungeon a group is in: a DM-made site (sim/sites.js, #69; g.site its id, the site's rooms as data on S.sites) or a spec dungeon (#891).
 // Read straight from S so this module never imports sites.js (sites.js drives its groups through the exports below).
 export const siteById=id=>id==null?null:((S.sites&&S.sites.list)||[]).find(s=>s.id===id)||null;
-const dunOf=g=>g&&g.site!=null?siteById(g.site)||CRYPT:CRYPT;
+const dunOf=g=>g&&g.site!=null?siteById(g.site)||CRYPT:cryptOfGroup(g);
 const roomsOf=g=>dunOf(g).rooms||[];
 var SITE_END=null;export function setSiteEnd(f){SITE_END=f} // sim/sites.js: pays a cleared site, marks a ruin
 // The crawl runs for a group the Fellowship is in, in a dungeon with rooms, while Table mode is on (Watch mode keeps the roll).
@@ -115,13 +116,13 @@ function openRound(g){const cr=g.crawl,room=roomsOf(g)[cr.i];
   if(cr.rd===0)loreRoom(g,cr);
   placed(g); // the party at the stair, the foes at the den (#744)
   cr.guard=[];cr.back=[];cr.shield=0;cr.free=[];cr.warded=[];cr.hid=[];cr.aim={};cr.edge=Math.round(g.bonus||0); // the site scene's choices at the stair (sim/table.js g.bonus) tip every roll of the crawl
-  return openScene('crawl',room.name+(cr.rd?' (round '+(cr.rd+1)+')':''),frameOf(g,room),g.site!=null?{room:cr.i,rd:cr.rd,site:g.site}:{room:cr.i,rd:cr.rd},companyById(cr.co)||undefined)}
+  return openScene('crawl',room.name+(cr.rd?' (round '+(cr.rd+1)+')':''),frameOf(g,room),g.site!=null?{room:cr.i,rd:cr.rd,site:g.site}:{room:cr.i,rd:cr.rd,...cryptCtx(dunOf(g))},companyById(cr.co)||undefined)}
 
 // ---- the scene kind ----
 const SPECIAL={Warrior:['hold','Hold the line: the foes\' blows on the others fall short'],Priest:['ward','Ward the group with prayer: a little mending and a steadier hand for all'],
   Rogue:['scout','Look for the gap in their guard'],Hunter:['scout','Read their movements and call the gap'],Mage:['read','Read the old wards and turn them on the foes'],Wildspeaker:['ward','Ask the roots for a steadier hand for all'],Skald:['read','Sing a dirge that turns the old wards on the foes']};
-// The group a crawl scene belongs to: the site its ctx names, else the Crypt's.
-const grp=sc=>{const id=sc&&sc.ctx&&sc.ctx.site;if(id!=null){const D=siteById(id),g=D&&D.group;return g&&g.crawl?g:null}return CRYPT.group&&CRYPT.group.crawl?CRYPT.group:null};
+// The group a crawl scene belongs to: the site its ctx names, else the spec dungeon's (ctx.dun, none for the first).
+const grp=sc=>{const id=sc&&sc.ctx&&sc.ctx.site;if(id!=null){const D=siteById(id),g=D&&D.group;return g&&g.crawl?g:null}const G=cryptOfCtx(sc&&sc.ctx).group;return G&&G.crawl?G:null};
 // The crew is the company at the table (#441); background fill-ins ride along: they are paid and brought home, but do not act,
 // take blows or count for the foes. A crawl saved before companies (no cr.co) treats the whole group as the crew.
 const crewOf=g=>{const C=g.crawl&&g.crawl.co!=null?companyById(g.crawl.co):null;return C?g.mem.filter(a=>C.ids.includes(a.id)):g.mem};
@@ -288,20 +289,20 @@ setSceneKind('crawl',{options,reflex,apply,outcome,view,move:moveOf,place:placeM
 
 // ---- the driver, once per step while the group is inside (called from dungeon.js dungeonCheck) ----
 function leave(g){const D=dunOf(g);for(const a of g.mem){a.hidden=false;Object.assign(a,standAt(D.x+(rnd()-.5)*1.5,D.y+.5+rnd()*.6))}}
-const endGroup=g=>{if(g.site!=null){const D=siteById(g.site);if(D)D.group=null}else CRYPT.group=null};
+const endGroup=g=>{if(g.site!=null){const D=siteById(g.site);if(D)D.group=null}else cryptOfGroup(g).group=null};
 const whoOf=g=>{const C=g.crawl&&companyById(g.crawl.co);return {t:g.name||(C?C.name:'The company'),c:'f'+g.fac}};
-function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats;leave(g);
+function finish(g){const cr=g.crawl,who=whoOf(g),st=cr.stats,D=dunOf(g);leave(g);
   if(cr.end!=='clear')for(const a of crewOf(g))if(leftBehind(a))log(a,' could not be carried up the stair and died below.'); // driven back or withdrawing: the bleeding may be left (DOWN.CRAWL_LEFT, #269)
   if(g.site!=null){if(SITE_END)SITE_END(g,cr.end==='clear'?'clear':cr.driven?'driven':'withdrawn');for(const a of g.mem)toWorld(a);tally(cr.end==='clear'?'clears':cr.driven?'driven':'withdrawn',g,cr);endGroup(g);return st}
-  if(cr.end==='clear'){log(who,' cleared ',gd(CRYPT.name),' room by room and destroyed ',gd(CRYPT.boss),'!');
-    if(first('crypt:f'+g.fac))timeline('crypt',who,' cleared ',gd(CRYPT.name),' for the first time.');
+  if(cr.end==='clear'){log(who,' cleared ',gd(D.name),' room by room and destroyed ',gd(D.boss),'!');
+    if(first(firstKey(D,'f'+g.fac)))timeline('crypt',who,' cleared ',gd(D.name),' for the first time.');
     payClear(g,CRAWL.CLEAR_BONUS)}
   else{const names=g.mem.filter(living); // the fill-ins too
-    log(who,cr.driven?' were driven back from ':' withdrew from ',gd(CRYPT.name),' with the ',gd(roomsOf(g)[cr.i].name),' unbeaten.');
-    for(const a of names){record(a,cr.driven?'Driven back from ':'Withdrew from ',gd(CRYPT.name),'.');goHome(a)}}
+    log(who,cr.driven?' were driven back from ':' withdrew from ',gd(D.name),' with the ',gd(roomsOf(g)[cr.i].name),' unbeaten.');
+    for(const a of names){record(a,cr.driven?'Driven back from ':'Withdrew from ',gd(D.name),'.');goHome(a)}}
   for(const a of g.mem)toWorld(a); // the downed come up the stair carried, still bleeding: the world's helpers take over (#654)
   tally(cr.end==='clear'?'clears':cr.driven?'driven':'withdrawn',g,cr);
-  CRYPT.group=null;return st}
+  endGroup(g);return st}
 // Called when the group has no one left (everyone fell): the wipe, at the table's dice.
 export function crawlLost(g){const who=whoOf(g),D=dunOf(g);
   for(const a of crewOf(g))bleedOut(a); // nobody stands to carry them: the downed die where they lie (#654)
@@ -311,11 +312,12 @@ export function crawlLost(g){const who=whoOf(g),D=dunOf(g);
   tally('wipes',g,g.crawl)}
 // The Fellowship's crawl record (slotted().crawl: runs, clears, driven back, withdrawn, wipes, deaths, rooms won), for the sim summary and the checks.
 // A hero of a company with a crawl running holds its reflection moments; the end of the run raises one combined moment per survivor.
-setReflectHold(a=>{const gs=[CRYPT.group,...((S.sites&&S.sites.list)||[]).map(s=>s.group)];return gs.some(g=>g&&g.crawl&&g.mem&&g.mem.includes(a))});
-function tally(k,g,cr){for(const a of crewOf(g))if(living(a))moment(a,'crawl',k==='clears'?'cleared':k==='driven'?'driven back':'withdrew');const F=companyById(cr.co)||slotted();if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
-  C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.downs=(C.downs||0)+(cr.stats.downs||0); /* downings below ground (#654) */for(const x of ['strikes','walks','flanks','free','blasts','tendWalks'])if(cr.stats[x])C[x]=(C[x]||0)+cr.stats[x]; /* what the tiles did (#745) */C.rooms+=cr.end==='clear'?roomsOf(g).length:cr.i;C.deaths+=(cr.crew!=null?cr.crew:g.mem0)-members(g).length}
+setReflectHold(a=>{const gs=[...CRYPTS.map(D=>D.group),...((S.sites&&S.sites.list)||[]).map(s=>s.group)];return gs.some(g=>g&&g.crawl&&g.mem&&g.mem.includes(a))});
+function tally(k,g,cr){for(const a of crewOf(g))if(living(a))moment(a,'crawl',k==='clears'?'cleared':k==='driven'?'driven back':'withdrew');const lost=(cr.crew!=null?cr.crew:g.mem0)-members(g).length;if(g.site==null)cryptRun(dunOf(g),k,lost);const F=companyById(cr.co)||slotted();if(!F)return;const C=F.crawl||(F.crawl={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0,rooms:0,scenes:0});
+  C.runs++;C[k]++;C.scenes=(C.scenes||0)+cr.stats.rounds;C.downs=(C.downs||0)+(cr.stats.downs||0); /* downings below ground (#654) */for(const x of ['strikes','walks','flanks','free','blasts','tendWalks'])if(cr.stats[x])C[x]=(C[x]||0)+cr.stats[x]; /* what the tiles did (#745) */C.rooms+=cr.end==='clear'?roomsOf(g).length:cr.i;C.deaths+=lost;
+  if(CRYPTS.length>1&&g.site==null){const by=C.by||(C.by={}),n=dunOf(g).name,r=by[n]||(by[n]={runs:0,clears:0,driven:0,withdrawn:0,wipes:0,deaths:0});r.runs++;r[k]++;r.deaths+=lost}} // the record kept apart per dungeon (#891)
 export function crawlTick(g,dt){const cr=g.crawl;
-  if(g.site!=null?sceneFor(companyById(cr.co)):S.table)return; // a scene (the stair, or a room) is open: the table runs it (a site: its company's scene)
+  if(g.site!=null||dunOf(g)!==CRYPT?sceneFor(companyById(cr.co)):S.table)return; // a scene (the stair, or a room) is open: the table runs it (a site or a later dungeon: its company's scene, so two crawls run side by side)
   if(!g.tSite)return;                                 // the stair scene (sim/table.js tableTick) comes first
   if(cr.end==='wiped'){crawlLost(g);endGroup(g);return}
   if(cr.end){finish(g);return}
