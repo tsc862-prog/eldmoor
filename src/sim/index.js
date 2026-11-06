@@ -5,7 +5,8 @@ import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
 import {S,newWorldId,resetS} from './state.js';
 import {GOODS} from '../data/items.js';
-import {CRYPTS} from '../world/map.js';
+import {CRYPTS,LAIR,ZONES,zoneAt} from '../world/map.js';
+import {ACTIVE_SPEC} from '../world/spec.js';
 import {reserveNames} from '../data/races.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
@@ -119,8 +120,8 @@ export function init(o={}){resetWorld();
   noteProlog(o); // the first delve (#922): stored only when it differs, so a setup world on the default keeps today's state
   if(o.setup||prologueOn())planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
-  log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
-  log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
+  log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond '+ZONES[zoneAt(LAIR.x,LAIR.y)]+'.'); // the lair's and the first dungeon's own region and name, not Eldmoor's (the Vale has neither Cinderpass nor a Sunken Crypt)
+  log('No guild yet holds a banner, and ',{t:CRYPTS[0].name,c:'gd'},' waits beneath '+ZONES[zoneAt(CRYPTS[0].x,CRYPTS[0].y)]+'.');
   log({t:'Hardcore rules:',c:'gd'},' every hero has one life. The fallen stay fallen.');
 }
 

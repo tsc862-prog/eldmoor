@@ -194,6 +194,9 @@ const snap=v=>Math.round(v*ART)/ART;
 function pc(c,n,x,y,rows){const a=ATLAS[n],im=sheetImg();if(!a||!im)return;const h=rows||a[3];c.drawImage(im,a[0],a[1],a[2],h,snap(x),snap(y),a[2]/ART,h/ART)}
 // Piece n standing with its foot at world (x,y), centred.
 const foot=(c,n,x,y)=>{const a=ATLAS[n];if(a)pc(c,n,x-a[2]/ART/2,y-a[3]/ART)};
+// For others that dress the land (harbour.js): piece n at world (x,y), false when the sheet is not loaded; and a piece's size in world units.
+export const scenePiece=(c,n,x,y)=>{if(!sheetImg())return false;pc(c,n,x,y);return true};
+export const scenePieceSize=n=>{const a=ATLAS[n];return a?[a[2]/ART,a[3]/ART]:null};
 const rect=(c,x,y,w,h,k)=>{c.fillStyle=k;c.fillRect(x,y,w,h)};
 
 const FLOWERS=[['#f2c94a','#c8922a'],['#f4f4ea','#c8ccd0'],['#e8604a','#b03a30'],['#7a9ce8','#4a68c0']];
