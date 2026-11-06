@@ -108,7 +108,7 @@ export function buildSite(theme,band,size,opt={}){
 // swapping one ability 1, adding a resistance 1, renaming 0; at most CUSTOM.points in all. At most CUSTOM.perRegionDay
 // per region per game-day, whatever the DM wants. Every grant and every refusal goes to the DM log.
 // tweaks: {name, levels, swap:[oldId,newId], resist:[tag,mult]}; ctx: {region, level, reason, adv}.
-export function customFoe(baseId,tweaks,ctx={}){const t=tweaks||{},M=MOBS[baseId],V=VARIANTS[baseId];
+export function customFoe(baseId,tweaks,ctx={}){const t=tweaks||{},M=Object.hasOwn(MOBS,baseId)?MOBS[baseId]:undefined,V=Object.hasOwn(VARIANTS,baseId)?VARIANTS[baseId]:undefined; // own keys only: 'hasOwnProperty' is no creature
   const refuse=why=>{dmlog('custom',ctx.adv||null,['Special foe refused: '+why],{base:baseId,tweaks:t,reason:ctx.reason||'',granted:false});return null};
   if(!M&&!V)return refuse('no such creature '+baseId);
   const type=M?baseId:Object.keys(MOBS).find(k=>k.split('@')[0]===V.base&&(ctx.region==null||MOBS[k].z===ctx.region))||Object.keys(MOBS).find(k=>k.split('@')[0]===V.base);
