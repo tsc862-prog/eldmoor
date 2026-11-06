@@ -25,7 +25,7 @@
 //   - The scripted DM (sim/dm.js raiseSite) raises sites from finished adventures and world events, through the lever.
 import {rnd,clamp,hash} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
-import {tiles,I,ZONES,REGIONS,CITY,CRYPT,zoneAt,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,CRYPTS,zoneAt,dist} from '../world/map.js';
 import {standAt} from '../world/passable.js';
 import {EPICS,DG_EPICS} from '../data/items.js';
 import {baseId,ELITE_TEMPLATE} from '../data/bestiary.js';
@@ -119,7 +119,7 @@ function roadNear(p,r){const x0=Math.max(0,Math.floor(p.x-r)),x1=Math.min(W-1,Ma
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(tiles[I(x,y)]===ROAD)return true;return false}
 export function siteSpotErr(p,z){const e=spotErr(p,{region:z,clear:SITE.TOWN_GAP});if(e)return e;
   if(roadNear(p,SITE.ROAD_GAP))return 'within '+SITE.ROAD_GAP+' tiles of a road';
-  if(CRYPT&&dist(p,CRYPT)<SITE.PLACE_GAP+(CRYPT.exclude||0))return 'too close to '+CRYPT.name;
+  {const D=CRYPTS.find(x=>dist(p,x)<SITE.PLACE_GAP+(x.exclude||0));if(D)return 'too close to '+D.name}
   const q=(S.places||[]).find(x=>dist(x,p)<SITE.PLACE_GAP);if(q)return 'too close to '+q.name;
   return null}
 function findSpot(z,near,R){const ok=q=>!siteSpotErr(q,z);const r1=q=>({x:Math.floor(q.x)+.5,y:Math.floor(q.y)+.5});
