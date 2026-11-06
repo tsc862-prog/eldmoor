@@ -24,10 +24,10 @@ function cloud(rgb){let c=clouds.get(rgb);if(c)return c;c=mk(NOISE,NOISE);const 
   x.putImageData(id,0,0);clouds.set(rgb,c);return c}
 // Soft masks of where each air lies, baked once.
 // Each keeps a summed count of its tiles, so a layer with nothing in the view costs nothing.
-function maskOf(fn){const r=mk(W*MK,H*MK),x=r.getContext('2d'),sat=new Int32Array((W+1)*(H+1));x.fillStyle='#fff';let any=false;
+function maskOf(fn,soft=.9){const r=mk(W*MK,H*MK),x=r.getContext('2d'),sat=new Int32Array((W+1)*(H+1));x.fillStyle='#fff';let any=false;
   for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const a=fn(tx,ty);if(a>0){x.globalAlpha=a;x.fillRect(tx*MK,ty*MK,MK,MK);any=true}
     sat[(ty+1)*(W+1)+tx+1]=(a>0?1:0)+sat[ty*(W+1)+tx+1]+sat[(ty+1)*(W+1)+tx]-sat[ty*(W+1)+tx]}
-  if(!any)return null;const m=mk(W*MK,H*MK),o=m.getContext('2d');o.filter=`blur(${MK*.9}px)`;o.drawImage(r,0,0);o.filter='none';return {m,sat}}
+  if(!any)return null;const m=mk(W*MK,H*MK),o=m.getContext('2d');o.filter=`blur(${MK*soft}px)`;o.drawImage(r,0,0);o.filter='none';return {m,sat}}
 const tilesIn=(s,x0,y0,x1,y1)=>{x0=Math.max(0,Math.min(W,x0|0));y0=Math.max(0,Math.min(H,y0|0));x1=Math.max(0,Math.min(W,Math.ceil(x1)));y1=Math.max(0,Math.min(H,Math.ceil(y1)));const r=W+1;return s[y1*r+x1]-s[y0*r+x1]-s[y1*r+x0]+s[y0*r+x0]};
 let M=null;
 function masks(){const bio=(x,y)=>biomeOfZone(zone[I(x,y)]);
@@ -37,7 +37,7 @@ function masks(){const bio=(x,y)=>biomeOfZone(zone[I(x,y)]);
 // Fog by zone, remade when the zones in fog change: a pixel a tile, smoothed by the scale.
 let fogKey='',fog=null;
 function fogMask(){let k='';for(let z=0;z<ZONES.length;z++)k+=weatherKind(z)==='fog'?'1':'0';if(k===fogKey)return fog;fogKey=k;if(!k.includes('1'))return fog=null;
-  fog=maskOf((x,y)=>weatherKind(zone[I(x,y)])==='fog'?1:0);return fog}
+  fog=maskOf((x,y)=>weatherKind(zone[I(x,y)])==='fog'?1:0,3);return fog} // a front, not a line: soft over a few tiles
 const ramp=(h,a,b,c,d)=>h<=a||h>=d?0:h<b?(h-a)/(b-a):h<=c?1:(d-h)/(d-c);
 // Clear space around the view's centre, in the fog's own canvas.
 let hole=null;function clearing(){if(hole)return hole;hole=mk(128,128);const x=hole.getContext('2d'),g=x.createRadialGradient(64,64,10,64,64,64);g.addColorStop(0,'rgba(0,0,0,.85)');g.addColorStop(.55,'rgba(0,0,0,.5)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return hole}
