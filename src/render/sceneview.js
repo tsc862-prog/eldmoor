@@ -85,7 +85,7 @@ export function sceneSpec(sc=S.table){if(!sc)return null;
   const members=sc.ids.map(byId).filter(Boolean),cast=castOf(sc),an=anchorOf(sc,members);
   if(sc.ctx&&sc.ctx.site!=null){const D=dungeonOf(sc); // a DM-made site's crawl (#642): the dungeon view with the site's own interior
     return D?{mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:D.name,dungeon:D}:null}
-  if(DUNGEON_KINDS.has(sc.kind))return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:CRYPT?CRYPT.name:'the Crypt',dungeon:CRYPT};
+  if(DUNGEON_KINDS.has(sc.kind)){const D=dungeonOf(sc);return {mode:'dungeon',kind:sc.kind,title:sc.title,members,cast,anchor:an,town:null,where:D?D.name:'the Crypt',dungeon:D}}
   const c=sc.ctx||{},town=(c.town&&CITY.find(t=>t.name===c.town))||(an?townAt(an.x,an.y):null),z=an?zoneAt(an.x,an.y):-1;
   // indoors: in a town, or wherever the DM named a room (stage_scene setting, #431 slice 2: a house by the road)
   if((INDOOR_KINDS.has(sc.kind)||ROOM_KINDS.has(sc.kind))&&(sc.kind==='talk'||ROOM_KINDS.has(sc.kind)?SETTINGS[c.setting]:(town||SETTINGS[c.setting]))){ // a talk (#407) plays indoors only when talkscene.js set its room (the person stands in a town); in the field it keeps the cut
@@ -132,7 +132,7 @@ export function sceneTick(cam){const sc=S.table;
     if(sp&&sp.mode==='dungeon'){if(!dgShut&&!dungeonOpen()){autoDg=true;dgAt=sp.dungeon||CRYPT;openDungeon(dgAt)}}else if(sp)openSceneView(sc)}}
   if(!sc)seenId=null;
   if(open){if(!sc||sc.id!==openId)closeSceneView(false);else{spec=sceneSpec(sc);track(sc);const scr=document.getElementById('screen');if(scr&&spec)scr.classList.toggle('scin',spec.mode==='indoor')}}
-  if(autoDg){const site=isSite(dgAt),g=site?dungeonGroup(dgAt):CRYPT&&CRYPT.group,inside=!!(g&&g.mem&&(site?g.mem.length:g.mem.some(a=>inSlots(a)))); // a site: while its group is inside
+  if(autoDg){const site=isSite(dgAt),g=dungeonGroup(dgAt||CRYPT),inside=!!(g&&g.mem&&(site?g.mem.length:g.mem.some(a=>inSlots(a)))); // a site: while its group is inside
     if(!dungeonOpen()&&inside)dgShut=true; // Back to world during the crawl: not again until it is over
     if(!inside){if(dungeonOpen())closeDungeon();autoDg=false;dgShut=false;dgAt=null}}
   if(speaker&&clock()-speaker.t>SPEAK_S)speaker=null}
