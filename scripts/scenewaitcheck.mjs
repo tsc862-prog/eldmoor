@@ -62,6 +62,14 @@ console.log('B. the local loop gives a free turn up for its scene');
   const t0 = Date.now(), r = await localTurn({chat: slowChat, call: async () => ({ok: true}), sess: sess(), prompt: 'Turn 2.', model: 'm', toolTurns: 6, interrupt: () => flip});
   ok(r.sceneJump && aborted && calls === 1 && Date.now() - t0 < 1500, `interrupt ends the turn at once: sceneJump ${!!r.sceneJump}, the call in flight withdrawn (${aborted}), ${calls} model call, ${Date.now() - t0} ms`);
   ok(/its scene opened mid-turn/.test((await import('./local-agent.mjs')).localLine(r, 'm')), 'the turn line says the scene opened mid-turn');
+  // a turn cut by its scene before any call is not an empty turn (own flag, no fail count); a truly empty one still is
+  {const {localLine} = await import('./local-agent.mjs'), {localWorked, failTracker} = await import('./pacing.mjs'), {localRec} = await import('./behavior-turn.mjs');
+    const ft = failTracker(2); ft.ok(localWorked(r)); ft.ok(localWorked(r));
+    ok(r.tools === 0 && localWorked(r) === null && ft.count === 0, `a scene-cut turn with no call is neither worked nor failed (--max-fails count ${ft.count})`);
+    ok(!/empty turn \(/.test(localLine(r, 'm')) && /not an empty turn/.test(localLine(r, 'm')), 'its turn line does not say empty turn');
+    const fl = localRec(r).flags; ok(fl.includes('scene-cut') && fl.includes('scene-jump'), `turns.jsonl flags: ${fl.join(',')}`);
+    const e0 = {tools: 0, rejected: 0}; const fe = localRec(e0).flags;
+    ok(localWorked(e0) === false && /empty turn \(no tool call\)/.test(localLine({...e0, sceneJump: false, in: 0, out: 0, ms: 0, modelCalls: 0, cost: 0, calls: []}, 'm')) && !fe.includes('scene-cut'), 'a truly empty turn still counts');}
   // the game's table_waits line in a tool result ends the turn after that call
   let n = 0; const chat2 = async () => {n++; return {message: {role: 'assistant', content: '', tool_calls: [{function: {name: n === 1 ? 'look' : 'status', arguments: {}}}]}, usage: {in: 1, out: 1}, ms: 1}};
   const r2 = await localTurn({chat: chat2, call: async t => ({ok: true, table_waits: 'A Table scene waits on you (Test): answer with scene_act now (options: press, steady).'}), sess: sess(), prompt: 'Turn 2.', model: 'm', toolTurns: 6});

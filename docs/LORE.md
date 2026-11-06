@@ -467,12 +467,12 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 
 | Town | Faction | People | Notes |
 | --- | --- | --- | --- |
-| Aldermere | Concord | Hallowan | Alder-shaded home town in the north-west, first of the Concord towns on the Wend. |
-| Gullstrand | Concord | Skerrin | A gull-loud harbour town just south of Aldermere, at the river's mouth. |
-| Hawkstead | Concord | Tarrow | A falconers' upland market on the north bank, road to the Kestrel Barrow and the ford. |
-| Brandhold | Warband | Ashfolk | Brand-marked home town in the south-west, first of the Warband towns. |
-| Stiltmere | Warband | Mirekin | A stilted fen town in Sallowfen, road to the Sallow Vaults. |
-| Hornridge | Warband | Thornhide | A horn-and-bone ridge-town on the south bank, road to the ford. |
+| Aldermere | Concord | Hallowan | Alder-shaded home town in the north-west, first of the Concord towns on the Wend. A market green inside the walls, the forge and halls fronting a paved lane, the inn on the green's west edge. |
+| Gullstrand | Concord | Skerrin | A gull-loud harbour town just south of Aldermere, at the river's mouth. Its gate faces the water: a street climbs from the quay and jetty to a lane under the halls. |
+| Hawkstead | Concord | Tarrow | A falconers' upland market on the north bank, road to the Kestrel Barrow and the ford. Built on terraces, the chapel on the hall's shoulder and a stair up the middle. |
+| Brandhold | Warband | Ashfolk | Brand-marked home town in the south-west, first of the Warband towns. A forge town with its gate in the north wall and one straight street to the yard before the inn. |
+| Stiltmere | Warband | Mirekin | A stilted fen town in Sallowfen, road to the Sallow Vaults. Wide and loose, its buildings standing apart along planked lanes. |
+| Hornridge | Warband | Thornhide | A horn-and-bone ridge-town on the south bank, road to the ford. A hold on a long slope, gate at the top and two terraces down to the inn. |
 
 - **The Wend**: the one river of the vale; the name is the vale's too, the Wending Vale. **The Low Bridge, the Weirgate ford, the High Bridge**: its three crossings, west to east.
 - **The Drowned Weir** (dungeon, level 7+ entry, south bank beside the Weirgate ford): the great delve, five chambers, a flooded sluice-works of green stone. Boss **Weir-Warden Orsk** (a Grave Warden of the old weir-keepers, named exception like Mere-Warden Hask). Chambers: **The Sluice Stair**, **The Millrace Gallery**, **The Weighing Hall**, **The Flooded Granary**, **The Weir-Warden's Chair**.
