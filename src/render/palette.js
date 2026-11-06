@@ -155,7 +155,15 @@ export const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a2
 export const RAID={breath:[255,140,40],wave:[255,200,90],bar:'#c8402e',barHi:'#ff7a50',barBack:'#24100e',phase:UI.amber,
   fled:'#ffd070',fell:'#e0584a',add:UI.red,ring:'rgba(255,120,40,.35)'};
 // The scene view's marks (render/sceneview.js): the outdoor cut's frame, the dimmed world past it, the turn chevron.
-export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,person:UI.amber};
+// A fight on a map patch (#746): the tile grid (a dark line and a pale one beside it, so it reads on grass and on snow alike), the
+// patch's edge, cover and slow tiles (a faint wash, and a glyph with a dark rim), and the fight's beats (the hit flash on a hero and on a
+// foe, a shot's streak, the rings of a guard, a ward and a heal, and the colours of the words that float up: the dungeon view's).
+export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,person:UI.amber,
+  grid:'rgba(10,12,22,.26)',gridHi:'rgba(255,246,220,.12)',patchEdge:'rgba(242,193,78,.5)',markRim:'#100c16',
+  cover:'#8fe08a',coverWash:'rgba(143,224,138,.1)',slow:'#9ad8f0',slowWash:'rgba(154,216,240,.12)',
+  hitHero:'#ff5a48',hitFoe:'#ffffff',shot:'#fff0b8',
+  ring:{ward:'#bfe8a8',heal:'#8ee0a0',potion:'#e07a9a',guard:'#e8c860',hold:'#e8c860'},
+  word:{hit:UI.red,hurt:'#ff6a5a',heal:'#8ee0a0',miss:'#b8b4c8',fumble:'#e0b040',fell:'#e8e0c8',fail:'#e0584a',plain:'#9ad8f0'}};
 
 // What a hero is trying to do (#534, render/purposefx.js): the intent icon over a head and the followed or hovered hero's
 // path, tether and wait line, one colour per kind (the purpose line in the panels uses the same hues).
