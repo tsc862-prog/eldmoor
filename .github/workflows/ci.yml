@@ -114,6 +114,7 @@ jobs:
       - {name: Sightings and couriers (issue 446), run: npm run sightcheck}
       - {name: Table scene waits (slow mock members), run: npm run scenewaitcheck}
       - {name: Hero standing orders, run: npm run orderscheck}
+      - {name: Guild choice, run: npm run guildchoicecheck}
       - {name: OpenAI provider (mock OpenAI and no key), run: npm run openaicheck}
       - {name: Hugging Face provider (mock router and no token), run: npm run hfcheck}
       - {name: Gemini provider (mock Gemini and no key), run: npm run googlecheck}
