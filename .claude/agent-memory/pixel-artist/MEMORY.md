@@ -21,5 +21,6 @@
 - [Town life](townlife.md) — #795 render-only critters/smoke/stalls/guards, deco entities, staging
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
 - [LPC creatures](lpccreatures.md) — #831 OGA LPC creature cut, what fit and what did not, staging a creature shot
+- [LPC trees and rocks](lpctrees.md) — #834 whole canopy trees painted in chunk, redrawn over entities; cutter needs ELDMOOR_PACKS; C: disk full gotcha
 - [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
