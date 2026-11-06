@@ -643,6 +643,59 @@ console.log('budget stops (fake children, #807)');
   D.sup.killAll(); await sleep(20); D.server.close();
 }
 
+// ---------------------------------------------------------------- 2d. a whole company falls, fake children
+// The Fellowship or company runner ends by itself with its last member: its recruits get the same mind back and only what is left
+// of the budget. A stop from the page or a spent budget starts nothing (tablecheck --arrival has the world's side).
+console.log('a whole company falls (fake children)');
+{
+  const tmp = mkTmp('eldmoor-runnercheck-wipe-'), heroes = [], kids = [], lines = [];
+  const be = {call: async () => ({ok: true}), dmCall: async () => ({ok: true}), narrate() {}, info: () => ({connected: true, heroes, dm: false, worldId: 'w1'})};
+  const fakeSpawn = (cmd, args, opts) => {const k = new EventEmitter(); k.pid = 70000 + kids.length; k.args = args; k.got = '';
+    k.stdout = new EventEmitter(); k.stderr = new EventEmitter(); k.stdin = Object.assign(new EventEmitter(), {write: d => {k.got += d}});
+    k.kill = () => {setTimeout(() => k.emit('exit', null), 5)}; kids.push(k); return k};
+  const server = http.createServer((q, r) => {r.writeHead(404); r.end('{}')}), play = attachPlay(server, {backend: be, log: () => {}});
+  const sup = attachRunners(server, {play, enabled: true, log: l => lines.push(l), spawnImpl: fakeSpawn, base: () => 'http://127.0.0.1:1', logs: tmp, env: {PATH: process.env.PATH, ANTHROPIC_API_KEY: 'sk-test-not-a-key', RUNNER_CLAUDE_MAX: '10'}});
+  await new Promise(r => server.listen(0, '127.0.0.1', r)); const B = `http://127.0.0.1:${server.address().port}`, A = {lines};
+  const start = body => req(B, '/play/runner/start', {method: 'POST', body: {provider: 'anthropic', ...body}});
+  const say = (k, l) => k.stdout.emit('data', Buffer.from(l + '\n'));
+  const look = async key => (await req(B, '/play/runner')).runners.find(r => r.key === key);
+  const events = () => readFileSync(join(tmp, 'runners', 'events.jsonl'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  const held = async (key, k, ids, tag) => {for (const id of ids) await req(B, '/play/claim', {method: 'POST', body: {hero: id, runner: hostname() + ':' + k.pid + ':' + tag, provider: 'ollama', model: 'mock-wipe:1b'}, origin: null}); await look(key); sup.adopt()};
+    const fell = async (k, ids) => {for (const id of ids) {const i = heroes.findIndex(h => h.id === id); heroes[i] = {...heroes[i], alive: false}} k.emit('exit', 0); await sleep(10)};
+    const F5 = [{id: 31, name: 'Ka', alive: true, fellow: true, company: 30, size: 2}, {id: 32, name: 'La', alive: true, fellow: true, company: 30, size: 2}]; heroes.push(...F5);
+    let w = await start({kind: 'fellowship', provider: 'ollama', model: 'mock-wipe:1b'}), kw = kids[kids.length - 1], n = kids.length;
+    ok(w.status === 200, 'a Fellowship runner starts'); await held('fellowship', kw, [31, 32], 'fellowship'); await fell(kw, [31, 32]);
+    ok(!sup.adopt().length && kids.length === n, 'the Fellowship falls to the last and its runner ends: nothing to start until a recruit stands');
+    heroes.push({id: 33, name: 'Ma', alive: true, fellow: true, succeeds: 31, company: 30, size: 1});
+    let got2 = sup.adopt(), kn = kids[kids.length - 1];
+    ok(got2.includes('fellowship') && kn.args.includes('mock-wipe:1b') && events().some(x => x.event === 'start' && x.key === 'fellowship' && x.by === 'adopt'), 'the first recruit brings the Fellowship runner back with the old mind, and the log says adopt did it');
+    heroes.push({id: 34, name: 'Na', alive: true, fellow: true, succeeds: 32, company: 30, size: 2}); await req(B, '/play/claim', {method: 'POST', body: {hero: 33, runner: hostname() + ':' + kn.pid + ':fellowship', provider: 'ollama', model: 'mock-wipe:1b'}, origin: null}); await look('fellowship');
+    ok(!sup.adopt().length, 'the next recruit needs no second runner: the one back picks it up');
+    await req(B, '/play/runner/stop', {method: 'POST', body: {kind: 'fellowship'}}); kn.emit('exit', 0); await sleep(30);
+    // a paid company that ended: an heir and a recruit in a new company, each a hero runner with a share of what is left
+    heroes.push({id: 41, name: 'Oz', alive: true, company: 40, size: 2}, {id: 42, name: 'Pi', alive: true, company: 40, size: 2});
+    w = await start({kind: 'company', company: 40, budget: 2, by: 'owner'}); kw = kids[kids.length - 1]; await held('company:40', kw, [41, 42], 'company'); say(kw, '[turn 1] x | run $0.4000 of $2.0000'); await look('company:40'); await fell(kw, [41, 42]);
+    heroes.push({id: 43, name: 'Qu', alive: true, succeeds: 42, company: 44, size: 1}); got2 = sup.adopt(); kn = kids[kids.length - 1];
+    ok(got2.includes('hero:43') && Number(kn.args[kn.args.indexOf('--budget') + 1]) === .8, 'a company that ended: its heir gets a hero runner with its share of the $1.60 left, never a fresh budget');
+    heroes.push({id: 45, name: 'Ru', alive: true, succeeds: 41, company: 44, size: 2}); got2 = sup.adopt();
+    ok(got2.includes('hero:45'), 'and the recruit who joins the heir later gets one too');
+    for (const id of [43, 45]) await req(B, '/play/runner/stop', {method: 'POST', body: {hero: id}}); for (const k of kids.slice(-2)) k.emit('exit', 0); await sleep(30);
+    // stopped from the page, then the company falls: nothing starts
+    heroes.push({id: 51, name: 'Sa', alive: true, company: 50, size: 1}, {id: 52, name: 'Ty', alive: true, company: 50, size: 1});
+    w = await start({kind: 'company', company: 50, provider: 'ollama', model: 'mock-wipe:1b', by: 'owner'}); kw = kids[kids.length - 1]; await held('company:50', kw, [51, 52], 'company');
+    await req(B, '/play/runner/stop', {method: 'POST', body: {kind: 'company', company: 50}}); kw.emit('exit', 0); await sleep(30); n = kids.length;
+    for (const id of [51, 52]) {const i = heroes.findIndex(h => h.id === id); heroes[i] = {...heroes[i], alive: false}} heroes.push({id: 53, name: 'Uma', alive: true, succeeds: 51, company: 50, size: 1});
+    ok(!sup.adopt().length && kids.length === n, 'a company stopped from the page and fallen after: its recruit gets no runner, the gate asks the owner');
+    // out of money, then the company falls: nothing starts, and the refusal is logged
+    heroes.push({id: 61, name: 'Vi', alive: true, company: 60, size: 2}, {id: 62, name: 'Wy', alive: true, company: 60, size: 2});
+    w = await start({kind: 'company', company: 60, by: 'owner'}); kw = kids[kids.length - 1]; await held('company:60', kw, [61, 62], 'company');
+    say(kw, '[08:09:00] [Wy] [turn 3] x | run $2.1000 of $2.0000'); say(kw, '[08:09:01] [Wy] done (budget reached): 3 turns, 0 at the table, $0.51'); await look('company:60'); await fell(kw, [61, 62]); n = kids.length;
+    heroes.push({id: 63, name: 'Xa', alive: true, succeeds: 62, company: 60, size: 1});
+    ok(!sup.adopt().length && kids.length === n && A.lines.some(l => /Xa: no hero runner:/.test(l)) && events().some(x => x.event === 'no-restart' && x.hero === 63), 'a company out of budget falls: its recruit gets no runner and the refusal is logged (#807)');
+  server.close();
+
+}
+
 // ---------------------------------------------------------------- 3. end to end
 const tmp = mkTmp('eldmoor-runnercheck-');
 const mock = await startMockOllama();
