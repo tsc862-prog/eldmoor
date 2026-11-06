@@ -89,6 +89,7 @@ jobs:
       - {name: Professions, run: npm run professioncheck}
       - {name: Art pipeline (mock Hugging Face and assets on and off), run: npm run artcheck}
       - {name: New World setup, run: npm run setupcheck}
+      - {name: Tool fuzz (every hero and DM tool with valid and hostile arguments in many states), run: npm run toolfuzz}
 
   ui:
     name: Watcher UI

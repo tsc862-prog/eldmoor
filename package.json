@@ -57,6 +57,7 @@
     "dm": "node scripts/dm-agent.mjs",
     "dmcheck": "node scripts/dmcheck.mjs",
     "channelcheck": "node scripts/channelcheck.mjs",
+    "toolfuzz": "node scripts/toolfuzz.mjs",
     "rumourcheck": "node scripts/rumourcheck.mjs",
     "embedcheck": "node scripts/embedcheck.mjs",
     "campaigncheck": "node scripts/campaigncheck.mjs",
