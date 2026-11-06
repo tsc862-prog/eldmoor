@@ -96,4 +96,5 @@
 - [Nightly mock scenes](nightly-mock-scenes.md) — #822 three layers: mock answered no scene, hunt crossed the river to deadly prey, no supervisor in the nightly
 - [Long company run](long-company-run.md) — #926 longrun.mjs harness, scene dedupe key + wake spam + --warm fixes, what mock minds do and do not prove
 - [Empty-world DM](empty-world-dm.md) — others none prep: dm_status.others wording, first-turn clause, mock run, SUMMON limits kept
+- [Turn waste](turn-waste.md) — scene_act refusals cause, one-wait order, emoteAct name regex bug
 - [DM on stage](dm-on-stage.md) — #1017 causes of a silent DM, call keys, sceneframe, narrator voice protocol and caps, names, measured cost
