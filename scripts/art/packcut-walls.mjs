@@ -14,18 +14,20 @@
 //   castlefloors_outside  the three flagstone layouts of the plaza; each slab gets a tone and a bevel of its own
 //   castle_outside        ashlar courses (faces)
 //   castlewalls           the round tower, the dentil band under the battlements
+//   dirt                  the street, through the tile:road cut of the same kit: as it is in a stone town, along the town's own ramp (TOWN_GROUND street) where the paving is dark
 //
 // The palisade (a spec town's `wall: 'palisade'`): the same set and sizes in timber, for a town that would not raise stone. The kit has
 // no stakes or log walls, so they are laid from its deck boards (bridges.png), each stake a board stood on end, sharpened; the
 // blockhouses that stand for towers and piers wear the LPC Roofs shakes; the plaza is plank decking on the same boards.
 //
-// Assets: tile:lpc-<style>-plaza (a 4x4 tile patch), tile:lpc-<style>-wall-<n|e|s|w> (two tiles long), and
+// Assets: tile:lpc-<style>-plaza (a 4x4 tile patch, the palisade's decking 12x8), tile:lpc-<style>-street (one tile, a plan's streets only),
+// tile:lpc-<style>-wall-<n|e|s|w> (two tiles long), and
 // building:lpc-<style>-tower / -pier / -pier-tall. No manifest row, `source` and `license` on the entry. townart.js draws the set
 // only when all of it is loaded, else the WALL and FLOOR tiles as ever.
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {encodePng} from './png.mjs';
+import {decodePng,encodePng} from './png.mjs';
 import {sha256,fileOf} from './lib.mjs';
 import {TOWN_GROUND,PALISADE} from '../../src/render/palette.js';
 import {TOWN_STYLES} from '../../src/data/townart.js';
@@ -57,7 +59,7 @@ function flags(w,h,R,seed,{tones=[.46,.52,.58,.64],hi=.2,lo=.18}={}){const W=w*T
   return im}
 
 // ---- a wall's parts ----
-function kitOf(style){const K=kit(style),G=TOWN_GROUND[style],P=K.P.stone;return {...K,plaza:ramp(G.plaza,5),walk:ramp(G.walk,4),face:ramp([P[3],P[2],P[1],P[0]],6)}}
+function kitOf(style){const K=kit(style),G=TOWN_GROUND[style],P=K.P.stone;return {...K,plaza:ramp(G.plaza,5),walk:ramp(G.walk,4),street:G.street?ramp(G.street,5):null,face:ramp([P[3],P[2],P[1],P[0]],6)}}
 // The walk on top of a wall: flat like the kit's wall tops, with cross joints so a run reads as laid stone. `along` y or x.
 function walk(im,K,x,y,w,h,along){rect(im,x,y,w,h,K.walk(.62));const n=along==='y'?h:w;
   for(let s=0;s<n;s+=16){if(along==='y'){rect(im,x,y+s,w,1,K.walk(.22));rect(im,x,y+s+1,w,1,K.walk(.8))}else{rect(im,x+s,y,1,h,K.walk(.22));rect(im,x+s+1,y,1,h,K.walk(.8))}}}
@@ -143,15 +145,26 @@ function block(K,H){const W=T,rf=19,im=blank(W,H);lay(im,'boards',1,rf,W-2,H-rf,
   const e=j=>Math.round(9*(1-j/(rf-1)));lay(im,'shake',0,0,W,rf,K.roof,{bias:-.1,at:(i,j)=>.24*(1-j/rf)-(i>W*.66?.2:0),clip:(x,y)=>x>=e(y)&&x<W-e(y)});
   for(let j=0;j<rf;j++){set(im,e(j),j,rgb(K.line));set(im,W-e(j)-1,j,rgb(K.line))}rect(im,e(0),0,W-2*e(0),1,K.line);rect(im,0,rf-1,W,1,K.line);
   if(H>40){rect(im,15,rf+13,2,11,K.line);rect(im,13,rf+17,6,2,K.line)}return im}
-// Plank decking: rows of boards, each with its own start and butt joints, wrapping at the patch's edge.
+// Plank decking: rows of boards cut to lengths of their own, each with its tone, some grain and now and then a knot. The kit's board has
+// its marks only at its two ends, so they go where a board really ends: tiled along a row they came back every 62 pixels as a pattern.
+const BOARD=62,END=6;
 function planks(w,h,K,seed){const W=w*T,H=h*T,im=blank(W,H);
-  for(let y=0,r=0;y<H;y+=16,r++){lay(im,'boards',0,y,W,16,K.deck,{sx:Math.floor(hash(r,1,seed)*62),sy:(r%3)*16,bias:(hash(r,2,seed)-.5)*.16});
-    rect(im,0,y,W,1,K.deck(0));for(const x of [0,Math.floor(40+hash(r,3,seed)*50)]){rect(im,x,y,1,16,K.deck(0));rect(im,x+1,y+1,1,15,K.deck(.85))}}
+  for(let y=0,r=0;y<H;y+=16,r++){const sy=(r%3)*16,cuts=[];for(let x=Math.floor(hash(r,3,seed)*W),n=0,end=x+W;;n++){const len=52+Math.floor(hash(r,n,seed+4)*84);if(x+len>end-40){cuts.push([x,end-x,n]);break}cuts.push([x,len,n]);x+=len}
+    for(const [x0,len,n] of cuts){const bias=(hash(r*31+n,2,seed)-.5)*.24,o={sy,bias},at=(sx,i,cw)=>lay(im,'boards',(x0+i)%W,y,cw,16,K.deck,{...o,sx});
+      for(let i=0;i<len;i++)at(i<END?i:i>=len-END?BOARD-(len-i):END+(i-END)%(BOARD-2*END),i,1);
+      for(let g=0,ng=1+Math.floor(hash(r,n,seed+5)*3);g<ng;g++){const gy=y+4+Math.floor(hash(n,g,seed+6+r)*8),gx=x0+8+Math.floor(hash(g,n,seed+7+r)*(len-30)),gl=6+Math.floor(hash(n+g,r,seed+8)*14);for(let i=0;i<gl;i++)set(im,(gx+i)%W,gy,K.deck(.26+bias))}
+      if(hash(n,r,seed+9)<.16){const kx=x0+12+Math.floor(hash(r,n,seed+10)*(len-26)),ky=y+6+Math.floor(hash(n,r,seed+11)*4);for(const [i,j,t] of [[1,0,.1],[2,0,.1],[0,1,.1],[1,1,0],[2,1,0],[3,1,.1],[1,2,.1],[2,2,.1],[4,1,.3]])set(im,(kx+i)%W,ky+j,K.deck(t))}
+      const e=x0%W;rect(im,e,y,1,16,K.deck(0));rect(im,(e+1)%W,y+1,1,14,K.deck(.85))}
+    rect(im,0,y,W,1,K.deck(0))}
   return im}
-const PALISADE_PIECES={plaza:K=>planks(4,4,K,23),'wall-n':palN,'wall-e':palE,'wall-s':palS,'wall-w':palW,tower:K=>block(K,2*T),pier:K=>block(K,T),'pier-tall':K=>block(K,2*T)};
+const PALISADE_PIECES={plaza:K=>planks(12,8,K,23),'wall-n':palN,'wall-e':palE,'wall-s':palS,'wall-w':palW,tower:K=>block(K,2*T),pier:K=>block(K,T),'pier-tall':K=>block(K,2*T)};
 
-const PIECES={plaza:K=>flags(4,4,K.plaza,17),'wall-n':wallN,'wall-e':wallE,'wall-s':wallS,'wall-w':wallW,tower,pier:K=>pier(K,T-20),'pier-tall':K=>pier(K,2*T-20)};
-const idOf=(style,k)=>`${k==='plaza'||k.startsWith('wall')?'tile':'building'}:lpc-${style}-${k}`;
+// A town's street: the road's own dirt where the paving is light, along the town's ramp where a street that bright would not sit in it.
+function street(K){const src=decodePng(fs.readFileSync(path.join(ROOT,'assets','tile','32','road.png')));if(!K.street)return src;const im=blank(src.w,src.h),v=[];
+  for(let y=0;y<im.h;y++)for(let x=0;x<im.w;x++)v.push(lum(get(src,x,y)));const lo=Math.min(...v),hi=Math.max(...v);
+  for(let y=0;y<im.h;y++)for(let x=0;x<im.w;x++)set(im,x,y,K.street((lum(get(src,x,y))-lo)/(hi-lo||1)));return im}
+const PIECES={street,plaza:K=>flags(4,4,K.plaza,17),'wall-n':wallN,'wall-e':wallE,'wall-s':wallS,'wall-w':wallW,tower,pier:K=>pier(K,T-20),'pier-tall':K=>pier(K,2*T-20)};
+const idOf=(style,k)=>`${k==='plaza'||k==='street'||k.startsWith('wall')?'tile':'building'}:lpc-${style}-${k}`;
 export function cutWalls(){const out={};for(const style of Object.keys(TOWN_STYLES)){const K=kitOf(style);for(const [k,f] of Object.entries(PIECES))out[idOf(style,k)]=f(K)}
   const K=palKit();for(const [k,f] of Object.entries(PALISADE_PIECES))out[idOf('palisade',k)]=f(K);return out}
 
@@ -161,6 +174,6 @@ function main(argv=process.argv.slice(2)){
   for(const [id,im] of Object.entries(cutWalls())){const file=fileOf(id,32),buf=encodePng(im);
     fs.mkdirSync(path.dirname(path.join(out,file)),{recursive:true});fs.writeFileSync(path.join(out,file),buf);console.log('[cut]',id,`${im.w}x${im.h}`);
     const by=/^building:lpc-palisade/.test(id)?LPC_ROOF_KIT:LPC_KIT;
-    if(idx)idx.assets[id+'@32']={id,kind:id.split(':')[0],file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:by.source,license:by.license,authors:by.authors,url:by.url,accepted:new Date().toISOString().slice(0,10)}}
+    if(idx)idx.assets[id+'@32']={id,kind:id.split(':')[0],file,w:im.w,h:im.h,sha256:sha256(buf),tier:32,source:by.source,license:by.license,authors:by.authors,url:by.url,accepted:idx.assets[id+'@32']?.accepted||new Date().toISOString().slice(0,10)}}
   if(idx){idx.assets=Object.fromEntries(Object.keys(idx.assets).sort().map(k=>[k,idx.assets[k]]));fs.writeFileSync(ip,JSON.stringify(idx,null,2)+'\n')}}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url))main();

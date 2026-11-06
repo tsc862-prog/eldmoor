@@ -9,11 +9,12 @@ import {U as T,PROC_SCALE,ART,HEAD} from './tile.js';
 import {zone,I,ZONES,LABELS,CITY} from '../world/map.js';
 import {CONDITIONS} from '../sim/levers.js';
 import {TEXT} from './palette.js';
-import {bannerSprite,buntingSprite,worldSprite} from './sprites.js';
+import {bannerSprite,buntingSprite,worldSprite,sheetFrame} from './sprites.js';
 import {hash} from '../core/rng.js';
 import {toneOf,toneName} from '../core/colors.js';
 import {slotted} from '../sim/company.js'; // the slotted company (#588)
 
+const WSTEP=[1,0,2,0]; // sheet columns of a walk cycle
 // Each prop: rectangles [x, y, w, h, colour] in world px relative to the foot point.
 const PROPS={
   ruin:[[-6,-9,3,9,'#8a8a96'],[3,-6,3,6,'#7a7a86'],[-2,-3,4,3,'#6a6a76'],[-6,-10,3,1,'#a8a8b4'],[-7,-1,14,1,'#4a4a56']],
@@ -76,8 +77,10 @@ export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite,o
   // DM-placed people
   for(const w of S.wanderers||[]){if(!inView(w.x*T,w.y*T,32))continue;
     const fr=w.moving?Math.floor(blink*6+w.id)%2:Math.floor(blink*1.5)%2,s=npcSprite(w,fr),px=Math.round(w.x*T),py=Math.round(w.y*T);
-    const sw=s.width*PROC_SCALE,sh=s.height*PROC_SCALE,o=worldSprite(s); // scaled to the 32x48 entity size (render/tile.js)
+    const G=sheetFrame(w,w.face<0?1:2,w.moving?WSTEP[Math.floor(blink*6+w.id)%4]:0); // a role sheet of the people (#832), else the procedural figure
+    const sw=G?G.fw/ART:s.width*PROC_SCALE,sh=G?G.fh/ART:s.height*PROC_SCALE,o=G?null:worldSprite(s); // scaled to the 32x48 entity size (render/tile.js)
     ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(px,py,sw/2,1.5,0,0,7);ctx.fill();
     const t=toneOf(w,slotted(),S.gameMin);if(close)dispoRing(px,py,sw,t.kind);
-    ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-1/ART,py-sh-1/ART,o.width/ART,o.height/ART);ctx.restore();
+    if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);
+    else{ctx.save();ctx.translate(px,0);if(w.face<0)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-1/ART,py-sh-1/ART,o.width/ART,o.height/ART);ctx.restore()}
     if(close)drawText(toneName(w,t),px,py-HEAD,t.color||TEXT.person,12)}}
