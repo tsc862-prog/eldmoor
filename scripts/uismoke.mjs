@@ -1192,6 +1192,22 @@ console.log('the DM prepares the table');
   crew[1].raid=false;crew[2].state='dead';rv.trackRaid();st=dv.refreshDungeon();
   ok(st.gone.some(g=>g.why==='broke'&&g.id===crew[1].id)&&st.gone.some(g=>g.why==='fell'&&g.id===crew[2].id)&&st.falls.length===1&&/1 broke off/.test(st.status)&&/1 fell/.test(st.status),'raid arena: who broke off and who fell ('+st.status+')');
   ok(lis().some(li=>li.classList.contains('lost')&&li.textContent.includes(crew[2].name))&&lis().some(li=>/fled/.test(li.textContent)),'raid arena: the bar marks the fled and the fallen');
+  // a raider at zero HP (sim/downed.js clears a.raid): down in the lair, not fled; then dead (a fall) or up again (lived)
+  const lay=(a,dn)=>{a.state='downed';a.raid=false;a.hp=0;a.down=dn};lay(crew[3],{s:1,f:2,stable:false});rv.trackRaid();st=dv.refreshDungeon();
+  ok(st.down.length===1&&st.down[0].id===crew[3].id&&st.down[0].here&&!st.gone.some(g=>g.id===crew[3].id)&&/1 down/.test(st.status)&&/1 broke off/.test(st.status),'raid arena: a downed raider lies in the lair, not among the fled ('+st.status+')');
+  ok(st.down[0].s===1&&st.down[0].f===2&&/1 of 3 saves made, 2 of 3 failed/.test(rv.raidDetail(crew[3].id,st).stateText)&&lis().some(li=>li.classList.contains('down')&&/\(down\)/.test(li.textContent)&&li.textContent.includes(crew[3].name)),'raid arena: its saves in the detail and its row on the bar');
+  ok(st.down[0].reach&&/reach of Cinder Breath/.test(rv.raidDetail(crew[3].id,st).notes.join(' ')),'raid arena: the breath’s reach over the downed is named');
+  select(crew[3]);uiFast();ok([...$('hero').querySelectorAll('.dglink')].some(b=>/raid/i.test(b.textContent)&&b.dataset.dungeon===L.name),'raid arena: the hero card of a downed raider still has View the raid');
+  crew[3].state='dead';rv.trackRaid();st=dv.refreshDungeon();ok(!st.down.length&&st.falls.some(q=>q.id===crew[3].id)&&/2 fell/.test(st.status),'raid arena: a downed raider who dies is a fall ('+st.status+')');
+  crew[3].state=was[3].state;delete crew[3].down;
+  lay(crew[4],{s:0,f:0,stable:true});rv.trackRaid();st=dv.refreshDungeon();ok(st.down.length===1&&st.down[0].stable&&lis().some(li=>/\(stable\)/.test(li.textContent)),'raid arena: a stable raider reads stable');
+  crew[4].state='town';crew[4].hp=10;delete crew[4].down;rv.trackRaid();st=dv.refreshDungeon();ok(st.gone.some(g=>g.why==='rose'&&g.id===crew[4].id)&&!st.falls.some(q=>q.id===crew[4].id)&&lis().some(li=>/\(up\)/.test(li.textContent)),'raid arena: a downed raider who gets up lived');
+  // adds on the bar, a boss's phase marks (Kragmaw has none), and a boss scene opens the arena as a crawl opens the dungeon
+  const add=S.mobs.find(x=>x.alive&&!x.hidden),ax={x:add.x,y:add.y};add.x=L.x+1;add.y=L.y+1;st=dv.refreshDungeon();ok(st.adds.some(q=>q.e===add)&&lis().some(li=>li.classList.contains('add')),'raid arena: an add has its row on the bar');add.x=ax.x;add.y=ax.y;
+  ok(st.boss.marks.length===0,'raid arena: Kragmaw’s one phase leaves its bar unmarked');B.tpl='vesk';st=dv.refreshDungeon();ok(st.boss.marks.join()==='0.55,0.2','raid arena: a template’s later phases mark the bar ('+st.boss.marks.join()+')');B.tpl='kragmaw';st=dv.refreshDungeon();
+  {const sv=await import('../src/render/sceneview.js'),sp=sv.sceneSpec({kind:'boss',ids:crew.map(a=>a.id),ctx:{},title:'Kragmaw',beats:[]});ok(sp&&sp.mode==='dungeon'&&sp.dungeon===L,'raid arena: a boss scene opens the arena, not the outdoor cut');
+    const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),keepT=S.table,sp0=T.TABLE.speed;S.table={id:9085,kind:'boss',title:'Kragmaw',frame:['The lair shakes.'],ids:crew.slice(0,2).map(a=>a.id),i:0,phase:'turn',t:0,acts:{},ctx:{},pause:true,at:0,rd:1,beats:[]};TB.renderTable(1);
+    ok([...$('tbanner').querySelectorAll('[data-dungeon]')].some(b=>b.dataset.dungeon===L.name&&/raid/i.test(b.textContent)),'raid arena: the Table banner of a boss scene has View the raid');S.table=keepT;TB.renderTable(1);T.TABLE.speed=sp0}
   // the hero card of a raider has View the raid; the timeline's raid lines have Inside
   crew[2].state=was[2].state;select(crew[0]);uiFast();const link=[...$('hero').querySelectorAll('.dglink')].find(b=>/raid/i.test(b.textContent));
   ok(!!link&&link.dataset.dungeon===L.name,'raid arena: the hero card of a raider has View the raid');

@@ -153,7 +153,7 @@ export const THEMES={
 export const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a20'};
 // The raid arena's marks (render/raidview.js): the breath's telegraph and wave, the boss's bar, broke-off and fallen marks.
 export const RAID={breath:[255,140,40],wave:[255,200,90],bar:'#c8402e',barHi:'#ff7a50',barBack:'#24100e',phase:UI.amber,
-  fled:'#ffd070',fell:'#e0584a',add:UI.red,ring:'rgba(255,120,40,.35)'};
+  fled:'#ffd070',fell:'#e0584a',saved:'#58c070',add:UI.red,ring:'rgba(255,120,40,.35)',cold:[38,36,44,235],plate:'rgba(6,6,14,.72)'};
 // The scene view's marks (render/sceneview.js): the outdoor cut's frame, the dimmed world past it, the turn chevron.
 export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,person:UI.amber};
 
