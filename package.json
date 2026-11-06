@@ -100,6 +100,7 @@
     "art:lpc-heroes": "node scripts/art/lpc-heroes.mjs --index --credits-md docs/CREDITS.md",
     "art:packcut": "node scripts/art/packcut.mjs terrain --index && node scripts/art/packcut.mjs props --index",
     "art:biomecut": "node scripts/art/packcut-biomes.mjs --index",
+    "art:lpc-buildings": "node scripts/art/packcut-buildings.mjs --index",
     "art:loop": "node scripts/art/daily.mjs --loop",
     "art:accept": "node scripts/art/accept.mjs",
     "art:review": "node scripts/art/review.mjs",
