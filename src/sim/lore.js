@@ -22,7 +22,6 @@ import {MOBS,ELITES} from '../data/mobs.js';
 import {BESTIARY,VARIANTS,NAMED_KITS,ABILITIES,baseId} from '../data/bestiary.js';
 import {bestFor} from './abilities.js';
 import {ev} from './notify.js';
-import {clearLine} from './path.js'; // hunt takes nothing it has no straight way to (#794, #934)
 import {moment} from './reflect.js';
 import {nearHeroes,nearMobs} from './spatial.js';
 import {held} from './scenes.js';
