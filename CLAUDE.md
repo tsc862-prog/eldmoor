@@ -273,7 +273,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   the DM's prep holds the world (`worldHeld()` in `src/sim/prep.js`), agent heroes get no paced turn and their acting
   tools (`act:true`: say, party_say, move_to, hunt, take_quest, propose, ...) are refused with "The DM is preparing the
   table; wait for the opening scene." (`offline:true`, so it never counts as a failed turn); reads still answer.
-  The gate is continuous (owner decision on #559): the world runs only while every living agent-played company member
+  The gate is continuous (owner decision on #559): the world runs only while every living agent-played company member (any company, a company of one included)
   and the DM seat have a live runner (thinking, between turns, waiting for a Claude slot all count; a warm-up that failed
   while its runner plays on counts too). A supervised runner that stops, crashes, hits its budget or lets a member go
   pauses the world at once and the banner names who; "Resume anyway" (Start anyway before the first run) overrides until
@@ -366,7 +366,7 @@ is silent, and scene choices time out to the scripted branch, so the world never
   company of two or more; `seatInfo` in `src/sim/player-host.js` builds the list for the page and play-headless).
   Seats restart on their own (`adopt` in `scripts/runners.mjs`, every `ADOPT_MS`): a member who leaves a company is let
   go by the company runner and gets a hero runner with that runner's mind; a solo whose hero runner ended with its death
-  gets one for its heir (`succeeds`) with the same mind, within `HEIR_WAIT_MS`; a stop from the page never restarts.
+  gets one for its heir (`succeeds`) with the same mind, within `HEIR_WAIT_MS` (30 min); a Fellowship or company runner that ended with its last member (it exits by itself) comes back for the first recruit with the same mind and what is left of its budget, and for a company that ended its heir and recruits get hero runners with a share of that; a stop from the page never restarts.
   The setup page starts one company runner for an apart group sharing one mind (`planRunners`). Claude slots: at most `RUNNER_CLAUDE_MAX` (default 3, at least 1)
   Claude turns at once across the runners; each supervised Claude turn leases a slot (`POST
   /play/runner/slot`, released after the turn, freed when the child exits) and waits for one when all are
@@ -572,7 +572,7 @@ model each member's runner plays with (Claude Haiku, Claude Sonnet, a local or a
   oath), the scripted DM when the runner is slow or gone (a reflex, #561); members greet, question, object (spoken, not a veto) or keep
   silent; the oath is sworn at the table (`campaign('recruit')`). Runners give the newcomer the fallen member's runner settings
   (`inheritRunner`, `/play/health` `heroes[].succeeds`). A solo's death leaves an heir at level 1 at home, a company of one,
-  with a short opening (owner answer 2). Letters (`C.letters`, any company, keyed by writer): to whoever takes the writer's
+  with a short opening (owner answer 2). A company with nobody left, in any world: the Fellowship's recruits come at once to the hall (the first with no scene and a Chronicle line, the next table waits up to `ARRIVE.HEIR_WAIT` for its runner, then they greet each other); any other company leaves one heir, and its waiting seats (and whoever fell in the same tick) go to the heir's company. Letters (`C.letters`, any company, keyed by writer): to whoever takes the writer's
   place, else the next joiner of their class, else the next joiner after `PARTY.LETTER_DAYS` 3. `tablecheck` (its `--arrival`
   child), `dmcheck` (prep caps, Continue, no host, the frame), `uismoke` (the banner).
 - Dungeon crawl (#65, `src/sim/crawl.js`): when a company is in the group that goes down a dungeon whose spec lists

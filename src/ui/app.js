@@ -31,7 +31,7 @@ import {trackDowned} from './downview.js'; // each death save as it lands (#659)
 import {initCinema,renderCinema} from './cinema.js'; // the map as the whole window, with the director camera (#979)
 
 export function initUI(renderer){
-  initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initMapLegend();initTable();initRunAlert();initRunGate(k=>startRunner(k));
+  initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initMapLegend();initTable();initRunAlert();initRunGate((k,h)=>startRunner(k,h));
   initSheet();initFrames();applyLayout();
   const minds=()=>{renderHero();renderFrames();renderFellowship();renderMinds()};
   initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents();initChatPanel();initSettings(()=>renderHero());initPurpose();initCinema(renderer)}
