@@ -40,6 +40,8 @@
 // --ruling-budget S: real seconds the game waits per ruling (4-30; default 8 with Anthropic, 25 with a local model).
 // Companion voice (issue #764): with the talk model, speaks for the scripted companions of agent companies (companion_call ->
 // companion_say); --no-companion-voice leaves them to their usual talk; --companion-budget S (default 8 with Anthropic, 25 local).
+// Narrator voice (issue #1017): with the talk model, a line as a company arrives somewhere, at daybreak, when one of them speaks to the
+// world (narrator_call -> narrator_say); --no-narrator-voice leaves all of it to DM turns; --narrator-budget S (default 8, 25 local).
 import {mkdirSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {dirname, join, resolve} from 'node:path';
@@ -63,8 +65,9 @@ export const DEFAULT_DM_MODEL = 'claude-sonnet-5-5'; // claude-api skill (cached
 export const EVENING = 18 * 60, DAY = 1440, POLL_MS = 4000, BACKOFF = [30, 60, 120, 240, 600];
 // Fellowship-change turns (issue #165): between evenings, a turn is also due when the Fellowship's situation changed (dm_status
 // fellowship_change: they arrived or set out, a scene ended, a member fell, an oath or a job finished), at most EVENT_MAX a game
-// day and EVENT_GAP game minutes apart, on top of the real-time minimum gap and the Table/vote wait.
-export const EVENT_MAX = 3, EVENT_GAP = 120;
+// day and EVENT_GAP game minutes apart, on top of the real-time minimum gap and the Table/vote wait. #1017: three a day were
+// spent by mid-morning (a camp at midnight, a dawn, a town), which left the DM away until the evening; five reach the afternoon.
+export const EVENT_MAX = 5, EVENT_GAP = 120;
 
 // The DM's standing orders: built once per session and kept with it, so a resumed conversation sees the same prompt.
 export function dmSystemPrompt(st) {
@@ -73,7 +76,7 @@ export function dmSystemPrompt(st) {
     'You are the Dungeon Master of Eldmoor, a small hardcore fantasy world that runs on its own: heroes of two factions quest, trade, feud, run a crypt and raid a wyrm, and die for good. ' +
       (F ? `The story follows ${F.name}, a Fellowship of five (${F.members.filter(m => !m.empty).map(m => m.name + ' the ' + m.role).join(', ')}).` : 'No Fellowship rides yet; watch the world for a story worth telling.'),
     '',
-    'Your job in this seat is preparation between scenes, not running them: read what happened, keep your campaign notes, and shape the next stretch of the world so the Fellowship meets interesting choices, recurring faces and consequences of what they did.',
+    DM_JOB,
     '',
     'Rules of the seat:',
     '- You act only through your tools. You never control a hero, never decide who lives or dies, and never touch anyone\'s health, level or gear. The dice and the heroes decide; you set the stage.',
@@ -86,28 +89,43 @@ export function dmSystemPrompt(st) {
     DM_CAMPAIGN_ORDERS,
     DM_WISH_ORDERS,
     '- Use log_intent for one line of what you are preparing and why, when you set something up.',
-    '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly. Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do.',
+    '- You speak to the heroes only inside the game: narrate (a line of description the heroes near a place hear and see) and npc_say (a person in the world says something). Your notes, log_intent lines and lever reasons are private to you and the watcher; no hero ever reads them, and you never message a player directly.',
+    DM_SPEAK_ORDERS,
     '- You may stage a narrated encounter with stage_scene (an elite, an ambush, a meeting, a trap, a mystery or a social scene): for an elite or an ambush call stage_scene with preview "true" first to see the cast the game will build, then write a frame that fits it (a frame of armed men over a pack of boars is refused); you write the frame and the cast, the cast finds the party and a Table scene opens when they meet; the members choose and the dice decide. A meeting or social scene may name a setting (a house, a tavern back room, a chapel, a cellar, an interrogation cell, a shrine, the hold of a ship) and at (a town or a building in it): the Table scene plays in that room; the other kinds play where they happen. A vision (stage_scene kind vision) is an omen or a shared dream with no cast and no dice: near a member or "fellowship" it comes when they next rest, near a place when one of them stands there; you frame it, answer what they ask of it, and cast.reveal, cast.place or cast.creature becomes what they know; use it to plant a thread, a warning or a place to seek. At most one a day is plenty; build it on your threads and notes. Refusals (too soon, too hurt, too strong) are the rules of the seat, not errors to argue with.',
-    '- While a scene you staged is at the table, a fast voice of yours answers its calls (voicing the person or foe, describing each action, picking one complication); the same voice frames the opening scene of a new world (session zero) and speaks for a newcomer who arrives to take a fallen member’s place. You do not need to do anything for that.',
+    DM_VOICES_ORDERS,
     DM_FELLOWSHIP_ORDERS,
     DM_COMPANY_ORDERS,
     DM_EVENT_ORDERS,
     DM_CALL_ORDERS,
+    DM_NAME_ORDERS,
     DM_WHEN_ORDERS,
     DM_BETWEEN_ORDERS,
     DM_RENOWN_ORDERS,
-    '- If dm_status shows a Table scene or an open vote, read only and end the turn.',
+    DM_PENDING_ORDERS,
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '- In narrate, npc_say, whisper, dream and table_answer: ' + NO_WORDS.trim(),
     '',
-    'Each turn: dm_status (read fellowship_needs first), hear (what they said aloud since you last listened), notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, levers as needed), update notes, pull at most a few levers, and end with one short sentence of what you prepared.',
+    DM_EACH_TURN,
   ].join('\n');
 }
+// On stage (#1017, under the story-first direction of #1012). Live play: the seat was told it prepares and does not run scenes, and to
+// speak sparingly; in 13 turns it never spoke. It is the voice of the game now: every turn ends in something the company can hear.
+export const DM_JOB = 'You run this game for the company, and they should hear you: the table has a DM, and that is you. Between scenes you read what happened, keep your campaign notes and shape what comes next so they meet interesting choices, recurring faces and consequences of what they did; but the heart of the seat is telling it: what they see as they arrive, what the road and the weather do, who calls out to them.';
+export const DM_SPEAK_ORDERS = '- Speak every turn. A turn ends in something they can hear: narrate {near, text} (one to three sentences of what can be seen, heard or smelled where they are; dm_status speak_to gives near) or npc_say {npc, text} (a person near them calls out; speak_to lists who). Build it on what they just said or did and on your threads. Never what a hero thinks or must do, and never words for a hero. your_lines_today shows what is left; the rest of a quiet turn may be silence, this line may not. Your notes and levers come second to it.';
+export const DM_VOICES_ORDERS = '- Fast voices of yours run beside you and need nothing from you: at the table one frames every scene the company sits down to (a vote, a fight, a fire, a fork in a job), answers the calls of what you staged, and speaks for a newcomer who takes a fallen member’s place; between scenes one speaks a line as they arrive somewhere, at daybreak and when one of them speaks to the world. What they said is in dm_status your_lines_today and your DM log: carry it on, do not repeat it.';
+export const DM_PENDING_ORDERS = '- If dm_status shows a Table scene or an open vote, change nothing in the world: read, then at most one narrate near "table", and end the turn.';
+export const DM_EACH_TURN = 'Each turn: dm_status (read fellowship_needs first), hear (what they said aloud since you last listened), notes_read, then look where the story is (fellowship_view, read_timeline, read_dm_log, hooks, heroes_near, npcs, regions, survey, levers as needed), update notes, pull at most a few levers, and end with a line they can hear, then one short sentence of what you did.';
+export const DM_NAME_ORDERS = '- A name in your notes is not on the map. dm_status map_names, regions, survey and npcs say what is; a place from your campaign seed that they do not list does not stand yet: mark_place {kind, near, name, reason} puts it there, and from then on near, place, about and when take that name. Never tell the story as if a refused thing stands: fix the name, or leave it out.';
+// An older session's prompt keeps the words it started with, so the old orders are replaced, not just added to.
+export const withDmStageOrders = sys => {sys = String(sys || ''); if (sys.includes('Speak every turn.')) return sys;
+  return sys.replace(/Your job in this seat is preparation between scenes, not running them:[^\n]*/, DM_JOB).replace(/ Speak sparingly: a few lines a day, about what can be seen and heard, never what a hero thinks or must do\./, '\n' + DM_SPEAK_ORDERS)
+    .replace(/- While a scene you staged is at the table, a fast voice of yours[^\n]*/, DM_VOICES_ORDERS).replace(/- If dm_status shows a Table scene or an open vote, read only and end the turn\./, DM_PENDING_ORDERS)
+    .replace(/A quiet turn is: hear, then one act or nothing\./, 'A quiet turn is: hear, then one line they can hear.').replace(/Each turn: dm_status \(read fellowship_needs first\)[^\n]*/, DM_EACH_TURN) + (sys.includes(DM_NAME_ORDERS) ? '' : '\n' + DM_NAME_ORDERS)};
 // Priorities (issue #165): the Fellowship first, then the overall world. The standing-orders line; withDmFellowshipOrders adds it to an older session's prompt.
 // A note for the people who build the game (#663): the one line the DM seat carries (the heroes' is WISH_ORDERS in agent-player.mjs).
 export const DM_WISH_ORDERS = '- wish {tool, what, why, moment} is for the people who build the game: say which tool you wished you had to tell this story (even one the rules forbid), in English, at most 3 a game day. It is read later, never answered in play; nothing changes this session.';
 export const withDmWishOrders = sys => /- wish \{tool, what, why, moment\}/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_WISH_ORDERS;
-export const DM_FELLOWSHIP_ORDERS = '- The Fellowship comes first, then the overall world. Every turn starts with them: where they are, their open threads and oaths, pending decisions, their recent scenes, and what would make their next game hours interesting (dm_status fellowship_needs; fellowship_view for the detail). The DM never reads hero notes; you know only what the game shows. An oath is what a hero swore aloud (oaths.sworn); a thread is only offered from their past (oaths.offered): never say they swore it, but a rumour or a person who knew it may put it before them. Put your hooks, rumours, people, places and staged scenes on their road and their threads first. World-shaping that does not touch them comes after, and only when nothing is pending for them; part of each day�s lever and staging limits is kept for the Fellowship, so a refusal that says so is that rule, not an error. A turn also runs when their situation changes (a scene ends, they arrive somewhere, a member falls, an oath is kept), not only on game evenings.';
+export const DM_FELLOWSHIP_ORDERS = '- The Fellowship comes first, then the overall world. Every turn starts with them: where they are, their open threads and oaths, pending decisions, their recent scenes, and what would make their next game hours interesting (dm_status fellowship_needs; fellowship_view for the detail). The DM never reads hero notes; you know only what the game shows. An oath is what a hero swore aloud (oaths.sworn); a thread is only offered from their past (oaths.offered): never say they swore it, but a rumour or a person who knew it may put it before them. Put your hooks, rumours, people, places and staged scenes on their road and their threads first. World-shaping that does not touch them comes after, and only when nothing is pending for them; part of each day’s lever and staging limits is kept for the Fellowship, so a refusal that says so is that rule, not an error. A turn also runs when their situation changes (a scene ends, they arrive somewhere, a member falls, an oath is kept), not only on game evenings.';
 export const withDmFellowshipOrders = sys => {
   sys = String(sys || ''); if (/\bThe Fellowship comes first\b/.test(sys)) return sys;
   const at = sys.indexOf('\n- If dm_status shows a Table scene');
@@ -125,7 +143,7 @@ export const withDmEventOrders = sys => /\bWorld events \(start_event\b/.test(St
 // logged problem; withDmCallOrders adds them to an older session's prompt.
 export const DM_CALL_ORDERS = [
   '- Send every call whole, the first time. stage_scene needs kind, near, frame and reason (one sentence). For a job, a person or a marker the flat tools are simplest: post_hook {town, tpl, reason}, place_person {role, near, want?, reason}, mark_place {kind, near, reason} (near as for stage_scene). pull_lever takes lever (a name exactly as levers lists it) and params (the parameters levers shows for it): create_npc needs role (peddler, hermit, drover, sellsword, minstrel or stranger) and home, either "town" with town, or "camp" or "road" with at {"x":..,"y":..} on the map and on walkable ground near the Fellowship. A refusal names what is wrong: fix that argument or drop the move; never send the same call again.',
-  '- Name places and people exactly. near is one thing: a member\'s name or id, a town, a region, or "x,y" alone, never two together ("Highgate, 10,20" is refused); "fellowship" works for stage_scene, place_person and mark_place, while narrate takes a member\'s name or "table" instead. A landmark such as the Sunken Crypt is not a place name; use its region. npc_say and npc_offer always need npc: the id from npcs, or npc from the place_person (effect.npc from the create_npc pull) that placed them; never a name you made up or wrote differently.',
+  '- Name places and people exactly. near is one thing: a member\'s name or id, a town, a region, or "x,y" alone, never two together ("a town and coordinates together" is refused); "fellowship" works for stage_scene, place_person and mark_place, while narrate takes a member\'s name or "table" instead. A landmark such as a dungeon is not a place name; use its region. npc_say and npc_offer always need npc: the id from npcs, or npc from the place_person (effect.npc from the create_npc pull) that placed them; never a name you made up or wrote differently.',
   '- When the whole Fellowship is in town, stage_scene near "fellowship" is refused (fights, traps and mysteries happen out in the world). A meeting or social scene can still be set there: pass at (their town, or a building in it, such as "the inn in <town>") instead of near, and a setting (house, tavern, chapel, cellar, cell, shrine or hold; dm_status staged.settings lists them); the person waits there and the scene opens in that room. Or speak through a townsperson there (npc_say), place a person in their town, or note the scene in your plans and stage it once they ride out.',
 ].join('\n');
 // What you can do between scenes (issue #636): every lever as a tool, and taking things back. withDmBetweenOrders adds it to an older session's prompt.
@@ -136,13 +154,13 @@ export const DM_BETWEEN_ORDERS = [
 export const withDmBetweenOrders = sys => /\bWhat you can do between scenes\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_BETWEEN_ORDERS;
 export const withDmCallOrders = sys => /\bSend every call whole\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_CALL_ORDERS;
 // Deferred actions and chosen wakes (issue #635): one example each; withDmWhenOrders adds the line to an older session's prompt.
-export const DM_WHEN_ORDERS = '- You act between your turns with when and watch. when leaves an action behind for a trigger (a hero or company entering a region or town, coming near a place or person, talking to someone, falling below some health, a named foe dying, a job reaching a scene, camp, nightfall, daybreak, an hour, hours passing, a level, an oath kept): for example when {trigger: "enter_region", on: {"region": "Mirefen", "company": "fellowship"}, action: "narrate", args: {"text": "Fog rolls off the black water; somewhere a bell tolls once.", "near": "{who}"}, reason: "the bog announces itself"}. It runs through the same tool when it fires, so limits and refusals apply then; whens lists them, unwhen cancels. watch chooses what wakes you early: watch {trigger: "talks_to", on: {"npc": "Mara"}, note: "she knows of the stolen seal"} starts your next turn when a hero talks to her, and the turn prompt says so. Set a few that serve your plans; at most 6 of each.';
+export const DM_WHEN_ORDERS = '- You act between your turns with when and watch. when leaves an action behind for a trigger (a hero or company entering a region or town, coming near a place or person, talking to someone, falling below some health, a named foe dying, a job reaching a scene, camp, nightfall, daybreak, an hour, hours passing, a level, an oath kept): for example when {trigger: "enter_region", on: {"region": "<a region>", "company": "fellowship"}, action: "narrate", args: {"text": "Fog rolls off the black water; somewhere a bell tolls once.", "near": "{who}"}, reason: "the bog announces itself"}. It runs through the same tool when it fires, so limits and refusals apply then; whens lists them, unwhen cancels. watch chooses what wakes you early: watch {trigger: "talks_to", on: {"npc": "Mara"}, note: "she knows of the stolen seal"} starts your next turn when a hero talks to her, and the turn prompt says so. Set a few that serve your plans; at most 6 of each.';
 export const withDmWhenOrders = sys => /\byou act between your turns with when and watch\b/i.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_WHEN_ORDERS;
 // Searchable notes (issue #155): the DM's standing-orders line; withDmMemoryOrders adds it to an older session's prompt.
 export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything you want to find again, free-form (your own title, text and tags; about and section optional), recall by words, tag, about or id across all sections before you build on a person, place or thread, update_memory, forget, and pin the few that must never be archived. dm_status lists the notes that bear on the moment.';
 // Campaign seed: the notes start from the world's campaign file (docs/campaigns/<world>.md).
 // What the DM sees of the companies' life (#558): hear first, then the views; survey before placing; world_standing for the wider turns.
-export const DM_SIGHT_ORDERS = '- Listen before you act: dm_status unheard counts the lines the companies said aloud since your last hear; read hear first (what they plan, fear, ask for, joke about), then the views. fellowship_view, companies_view and heroes_near show what members carry (quest items, potions, gold), the quests they hold and what they know (carries, quests, knows): build on those, do not hand them what they already hold or warn them of what they know. A quiet turn is: hear, then one act or nothing. Before you place anything, survey {near} gives roads, landmarks and legal x,y spots that mark_place, place_person and stage_scene accept; a refusal about the ground means survey. world_standing is one read of the wider world (guild focus, rivalries, the wyrm, the Crypt, prices, conditions, the top heroes) for the turns after the companies have been served. You hear only what is said aloud in the world, never a journal, memories or thoughts.';
+export const DM_SIGHT_ORDERS = '- Listen before you act: dm_status unheard counts the lines the companies said aloud since your last hear; read hear first (what they plan, fear, ask for, joke about), then the views. fellowship_view, companies_view and heroes_near show what members carry (quest items, potions, gold), the quests they hold and what they know (carries, quests, knows): build on those, do not hand them what they already hold or warn them of what they know. A quiet turn is: hear, then one line they can hear. Before you place anything, survey {near} gives roads, landmarks and legal x,y spots that mark_place, place_person and stage_scene accept; a refusal about the ground means survey. world_standing is one read of the wider world (guild focus, rivalries, the wyrm, the Crypt, prices, conditions, the top heroes) for the turns after the companies have been served. You hear only what is said aloud in the world, never a journal, memories or thoughts.';
 // Word in town and names for deeds (#637, #638): seed_rumour and bestow. withDmRenownOrders adds it to an older session's prompt.
 export const DM_RENOWN_ORDERS = '- While you are away, the town can still speak for you: seed_rumour {town or region, text, about, days, reason} gives the innkeeper, gate captain and bard word to pass on for 1-5 days, in their own words, to heroes who talk to them or read the gate board; about is the place, creature or person it points at (they learn of it). Use it to put a lead or a warning on a company’s road before you sleep. After a deed worth a song, bestow {hero, title, why, by} gives the hero a name ("Wightbane", "of the Ford"), proclaimed by a person near them or the narrator; one at a time, sparingly, never a number. A hero who refuses the name aloud keeps no other from you.';
 export const withDmRenownOrders = sys => /\bseed_rumour \{town or region/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_RENOWN_ORDERS;
@@ -151,15 +169,20 @@ export const DM_CAMPAIGN_ORDERS = '- Your notes start with a campaign seed (prem
 export const withDmCampaignOrders = sys => /\bcampaign seed\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_CAMPAIGN_ORDERS;
 export const withDmMemoryOrders = sys => /\bYour notes are searchable\b/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_MEMORY_ORDERS;
 const notesNow = st => st && Array.isArray(st.relevant_notes) && st.relevant_notes.length ? ` Notes that may matter now: ${st.relevant_notes.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id}).` : '';
-const heardNote = st => st && st.unheard && st.unheard.total ? ` ${st.unheard.total} line${st.unheard.total === 1 ? '' : 's'} said aloud wait for you: read hear first.` : ' Nothing new was said aloud; a quiet turn is hear, then one act or nothing.';
+const heardNote = st => st && st.unheard && st.unheard.total ? ` ${st.unheard.total} line${st.unheard.total === 1 ? '' : 's'} said aloud wait for you: read hear first.` : ' Nothing new was said aloud; a quiet turn is hear, then one line they can hear.';
 // The first turn after a roll (#787): the DM's memory is in the game, so it re-reads it. The notes are the campaign; a hero's journal is not the DM's to read.
 export const DM_RESUME = ' You are picking up after a pause, with no memory of this conversation: start with notes_read and read_dm_log, to recall what you have set in motion.';
 // The evening turn asks once a game day (#829): a thing the story wanted that no tool or lever allowed. One sentence, no extra call.
 export const DM_WISH_ASK = ' Was there a thing the story wanted today that no tool or lever allowed? If so, say it with wish {tool, what, why, moment} (read later by the builders; nothing changes now); if not, leave it.';
 export const wishNote = (st, sess) => st && st.part === 'evening' && sess && sess.wishAsk !== st.day ? (sess.wishAsk = st.day, DM_WISH_ASK) : '';
+// The speak order that closes every turn prompt (#1017): who the line reaches and what is left of the day's lines.
+export const speakNote = st => {const s = st && st.speak_to, y = st && st.your_lines_today; if (!s) return '';
+  const [n, of] = String(y && y.narrate || '0/12').split('/').map(Number), people = (s.people || []).map(p => `${p.name} (npc ${p.id})`).join(', ');
+  return n >= of ? ` Your narrate lines are spent today; end this turn with a person near them speaking (npc_say)${people ? ': ' + people : ''}.`
+    : ` End this turn with something they can hear: narrate {near: "${s.near}", text} about ${s.where} at this hour (${y.narrate} lines used today)${people ? ', or npc_say from ' + people : ''}.`};
 export const dmTurnPrompt = (turns, st) => turns === 0
-  ? 'You take the DM seat. Orient yourself: dm_status, hear, fellowship_view, notes_read, levers, read_timeline. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.'
-  : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Prepare the next stretch of the campaign, the Fellowship first.${heardNote(st)}${notesNow(st)}`;
+  ? `You take the DM seat. Orient yourself: dm_status, hear, fellowship_view, notes_read, levers, read_timeline, regions, survey {near: "fellowship"}. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.${speakNote(st)}`
+  : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Run the next stretch of the campaign, the Fellowship first.${heardNote(st)}${notesNow(st)}${speakNote(st)}`;
 // Each turn starts with the Fellowship (issue #165): the status line and the first needs, then the wider world only if nothing is pending for them.
 export const fellowNow = st => {const n = st && st.fellowship_needs; if (!n) return companiesNow(st); return `Fellowship first: ${n.summary} ${(n.items || []).slice(0, 3).join(' ')} ${n.quiet ? 'Nothing is pending for them, so the wider world may have a turn after you have given them something to ride toward.' : 'Settle what is pending for them before you touch the wider world.'} `.replace(/\s+/g, ' ').trim() + ' ' + companiesNow(st)};
 // Every company a thread (#450): when other companies ride, the turn prompt names them neediest first (at most four) and why.
@@ -213,7 +236,7 @@ const pollRest = (t0, waitMs) => waitMs > 0 && Date.now() - t0 >= Math.min(waitM
 export const NO_WORDS = 'Never quote a hero or put words in a hero\'s mouth (only an arrival\'s newcomer, when a call asks you to voice them): you may describe what they do, not what they say (they speak for themselves; a line that quotes one is cut). ';
 export const TABLE_SYSTEM = 'You are the Dungeon Master\'s voice at the table in Eldmoor, a hardcore fantasy world (original setting; no names from other games or books). ' +
   NO_WORDS +
-  'A scene is being played: one you staged, the opening of the campaign (session zero: frame it as the company first sits down), a newcomer’s arrival (voice the newcomer), or a company’s talk round its camp fire (frame the night and open the talk on the topic given; never speak for the heroes), or a hero going down (describe the downing, a death save or its end, true to the dice given). Each request is one call: frame the scene, voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
+  'A scene is being played: one you staged, the opening of the campaign (session zero: frame it as the company first sits down), a newcomer’s arrival (voice the newcomer), a company’s talk round its camp fire (frame the night and open the talk on the topic given; never speak for the heroes), a hero going down (describe the downing, a death save or its end, true to the dice given), or any other scene as it opens, a vote, a fight, a fork in a job, a room of a dungeon (add to the line the table already shows what they see and hear; never how it ends). Each request is one call: frame the scene, voice a person or creature (one line they say or do), describe what a hero\'s action looks like (one line, true to the dice result given), or pick one complication from the legal list (plus one line of what the heroes notice). ' +
   'Write what can be seen, heard or smelled, as much as the moment needs; usually a few vivid sentences. The Cast line is the truth: voice and describe only what it lists, and invent no one else (no men, bandits or leaders when the cast is creatures). Never decide what a hero thinks, chooses or feels, never change a result the dice gave, never kill or save anyone. Reply as JSON {"text": "...", "pick": "..."}; pick is "" unless the call is a complication.';
 export function tablePrompt(t) {
   const c = t.call, s = t.scene || {};
@@ -229,8 +252,9 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
     while (!done && !stopped()) {
       const p0 = Date.now(), t = await tool(base, 'table_call', waitMs > 0 ? {wait_ms: waitMs} : {});
       const hot = !!(t && t.ok && (t.scene || t.staged));
-      if (t && t.ok && t.call && t.call.id !== seen && t.call.seconds_left > .8 && !stopped()) {
-        seen = t.call.id; const c = t.call, t0 = Date.now(), left = `left ${Number(c.seconds_left).toFixed(1)} s`; // #885: the seconds the call had at pickup
+      // key: call ids start over in every scene, so the id alone took the next scene's first call for one already answered (#1017)
+      if (t && t.ok && t.call && (t.call.key || t.call.id) !== seen && t.call.seconds_left > .8 && !stopped()) {
+        seen = t.call.key || t.call.id; const c = t.call, t0 = Date.now(), left = `left ${Number(c.seconds_left).toFixed(1)} s`; // #885: the seconds the call had at pickup
         try {
           const ms = Math.max(800, c.seconds_left * 1000 - 400); // past the call's budget the answer is worthless: abort it (the Ollama adapter honours only the signal)
           const r = await adapter.call({system: TABLE_SYSTEM, user: tablePrompt(t), schema: tableSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
@@ -238,7 +262,7 @@ export function tableVoice({base, adapter, model, effort = 'low', log = () => {}
           onCost(r.usage || {});
           if (!j || typeof j.text !== 'string') log(`[table] call ${c.id} ${c.kind}: the model's reply was not JSON; the scripted DM fills it`);
           else {
-            const a = await tool(base, 'table_answer', {call: c.id, text: j.text, ...(c.legal ? {pick: j.pick} : {})});
+            const a = await tool(base, 'table_answer', {call: c.id, ...(c.key ? {key: c.key} : {}), text: j.text, ...(c.legal ? {pick: j.pick} : {})});
             log(`[table] call ${c.id} ${c.kind}${a.pick ? ' ' + a.pick : ''}: ${a.ok ? '"' + short(a.said || '', 140) + '"' : 'x ' + short(a.error, 100)}${a.spoke_for ? ' (spoke for ' + a.spoke_for.join(', ') + ': cut)' : ''} | ${((Date.now() - t0) / 1000).toFixed(1)} s, ${r.usage ? r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
           }
         } catch (e) {log(`[table] call ${c.id} ${c.kind}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s (${left} at pickup); the scripted DM fills it`)}
@@ -360,6 +384,51 @@ export function companionVoice({base, adapter, model, effort = 'low', log = () =
   const p = loop().catch(e => log(`[companion] voice stopped: ${short(String(e && e.message || e), 120)}`));
   return {stop: () => {done = true; return p}};
 }
+// ---- the narrator's voice (issue #1017) ----
+// A line as the company arrives somewhere, at daybreak, or when one of them speaks to the world (src/sim/narrvoice.js): the game puts
+// a moment (narrator_call), one structured model call writes the line, narrator_say speaks it through the narrate tool. About 700 tokens
+// in and 80 out: a tenth of the cheapest DM turn. Nothing waits for it; a late, failed or refused line is simply not said.
+export const NARR_POLL_IDLE = 1500;
+export const NARR_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), telling what the company sees and hears between scenes. ' +
+  NO_WORDS +
+  'Each request is one moment: they arrive somewhere, a new day breaks, or one of them says something aloud out in the wild. Write one to three sentences of what can be seen, heard or smelled there and then, new each time and never a line you already said. Name only the places and people the request gives. Your notes hint at what you are building: let it show through the world, reveal nothing outright. Never what a hero thinks, feels or must do; no question put to them, no choice, no reward, no creature that attacks. ' +
+  'When a hero spoke (their_words), let the world answer only if the words were meant for it (a call into the dark, a word at a shrine); if they were talking among themselves, reply with text "". Reply as JSON {"text": "..."}.';
+export function narrPrompt(c) {
+  const w = c.where || {}, at = w.town ? `in ${w.town}` : `in ${w.region || 'the wilds'}${w.place ? ', at ' + w.place : ''}`, h = c.their_words;
+  return [`${c.time} (${c.part}), ${at}. ${c.what}`, `The company${c.company ? ' ' + c.company : ''}: ${(c.members || []).join(', ')}.`,
+    c.heard && c.heard.length ? `Lately said: ${c.heard.join(' | ')}` : '', c.your_notes && c.your_notes.length ? `Your notes bearing on it: ${c.your_notes.join(' | ')}` : '',
+    c.you_said && c.you_said.length ? `You already said: ${c.you_said.join(' | ')}` : '', h ? `${h.from} said aloud: "${h.text}"` : ''].filter(Boolean).join('\n');
+}
+export const narrSchema = () => ({type: 'object', properties: {text: {type: 'string'}}, required: ['text'], additionalProperties: false});
+export function narratorVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = NARR_POLL_IDLE, budgetS = 8, waitMs = VOICE_WAIT_MS}) {
+  let done = false, seen = 0, warned = false;
+  const loop = async () => {
+    while (!done && !stopped()) {
+      const p0 = Date.now(), t = await tool(base, 'narrator_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
+      if (t && !t.ok && !t.offline && !warned) {warned = true; log(`[narrator] the game refused the voice: ${short(t.error, 100)}`)} // said once: a voice that cannot be heard must not look like a quiet one
+      const c = t && t.ok && t.call;
+      if (c && c.call !== seen && c.seconds_left > .8 && !stopped()) {
+        seen = c.call; const t0 = Date.now();
+        try {
+          const ms = Math.max(800, c.seconds_left * 1000 - 400);
+          const r = await adapter.call({system: NARR_SYSTEM, user: narrPrompt(c), schema: narrSchema(c), maxTokens: 300, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+          let j = null; try {j = JSON.parse(r.text)} catch {}
+          onCost(r.usage || {});
+          if (!j || typeof j.text !== 'string') log(`[narrator] ${c.kind}: the model's reply was not usable; nothing is said`);
+          else {
+            const said = await tool(base, 'narrator_say', {call: c.call, text: j.text.trim()});
+            log(`[narrator] ${c.kind}: ${said.ok ? (said.silent ? '(silence)' : '"' + short(said.said || j.text, 140) + '"') : 'x ' + short(said.error, 100)}${said.spoke_for ? ' (spoke for ' + said.spoke_for.join(', ') + ': cut)' : ''} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}`);
+          }
+        } catch (e) {log(`[narrator] ${c.kind}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s; nothing is said`)}
+        continue;
+      }
+      if (t && t.ok && pollRest(p0, waitMs)) continue;
+      await sleep(pollIdle);
+    }
+  };
+  const p = loop().catch(e => log(`[narrator] voice stopped: ${short(String(e && e.message || e), 120)}`));
+  return {stop: () => {done = true; return p}};
+}
 // ---- the ruling voice (issue #522) ----
 // A hero tries something the tools never named (attempt; scene_act attempt at the table). The game asks the DM for a ruling
 // (ruling_call): the hero in words, the attempt, the place and what is in sight, the legal skills, DCs and effect forms. It waits
@@ -434,7 +503,7 @@ export const talkNote = st => {const w = talkWaiting(st); return w.length ? ` A 
 export const PREP_WAIT_MS = 15000;
 export const prepPrompt = st => {const p = st.prep || {}, cap = `at most ${p.max_calls || 20} tool calls and ${p.max_seconds || 90} seconds`;
   return p.kind === 'opening'
-    ? `Session zero. The world is paused before the first table opens, and this one turn is your preparation (${cap}). ${fellowNow(st)}Read: dm_status, notes_read (your campaign seed: premise, threads, characters, plans and opening beats), fellowship_view. Write your plans for the first days (remember or notes_write). Mark one place or post one hook for the opening, on the company's road (mark_place or post_hook), and log_intent one line. Then call prep_done. Nothing of this reaches a hero except through the opening scene, which you will frame when it opens.`
+    ? `Session zero. The world is paused before the first table opens, and this one turn is your preparation (${cap}). ${fellowNow(st)}Read: dm_status, notes_read (your campaign seed: premise, threads, characters, plans and opening beats), fellowship_view, then the map as it really is: regions and survey {near: "fellowship"}; a place in your notes that they do not list is not there until you mark it. Write your plans for the first days (remember or notes_write). Mark one place or post one hook for the opening, on the company's road (mark_place or post_hook), and log_intent one line. Then call prep_done. Nothing of this reaches a hero except through the opening scene, which you will frame when it opens.`
     : `The world is paused for a short prep before the clock runs again (${cap}): re-read where the companies are (dm_status, fellowship_view, notes_read), bring your plans up to date, then call prep_done.`};
 export async function waitPrep({base, log = () => {}, stopped = () => false, tool = dmTool, waitMs = PREP_WAIT_MS, every = 1000}) {
   const t0 = Date.now(); let said = false;
@@ -520,7 +589,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.rolled = true; log(`[dm] the seat changes mind (${was} -> ${rs.provider}): a new conversation; the notes, whens and DM log stay with the world${note ? '; ' + note : ''}`);
   }
   sess.runner = rs;
-  sess.system = withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
+  sess.system = withDmStageOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
   const saveSess = () => saveDmSession(sess, {url: base});
   let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;
@@ -561,6 +630,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!flag('no-talk-voice')) {talkVoice({base, adapter: voiceAd, model: rs.model, log, stopped: () => stopping || over(), onCost, budgetS: Number(opt('talk-budget', env.DM_TALK_BUDGET || (gem ? 8 : 25)))}); log(`[dm] talk voice: ${rs.model}${where} answers the Fellowship's conversations with world characters`)}
     if (!flag('no-companion-voice')) {companionVoice({base, adapter: voiceAd, model: rs.model, log, stopped: () => stopping || over(), onCost, budgetS: Number(opt('companion-budget', env.DM_COMPANION_BUDGET || (gem ? 8 : 25)))}); log(`[dm] companion voice: ${rs.model}${where} speaks for the scripted companions of agent companies`)}
     if (!flag('no-ruling-voice')) {rulingVoice({base, adapter: voiceAd, model: rs.model, log, stopped: () => stopping || over(), onCost, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || (gem ? 8 : 25)))}); log(`[dm] ruling voice: ${rs.model}${where} rules on the heroes' free actions`)}
+    if (!flag('no-narrator-voice')) {narratorVoice({base, adapter: voiceAd, model: rs.model, log, stopped: () => stopping || over(), onCost, budgetS: Number(opt('narrator-budget', env.DM_NARRATOR_BUDGET || (gem ? 8 : 25)))}); log(`[dm] narrator voice: ${rs.model}${where} speaks as the company arrives, at daybreak and when one of them speaks to the world`)}
     const rules = '\n\nHow your turns work here: call one tool at a time and read its result before the next. When you are done for this turn, reply with one short sentence of what you prepared, in plain text (no tool call).';
     let prepSt = await waitPrep({base, log, stopped: () => stopping}); // the prep before the table opens (#437)
     if (prepSt) log(`[dm] preparing the table (${prepSt.prep.kind}): at most ${prepSt.prep.max_calls} calls, ${prepSt.prep.max_seconds} s`);
@@ -622,6 +692,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     rulingVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: rulingModel}), model: rulingModel, log, stopped: () => stopping || spent >= budget, budgetS: Number(opt('ruling-budget', env.DM_RULING_BUDGET || 8)),
       onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
     log(`[dm] ruling voice: ${rulingModel} rules on the heroes' free actions`);
+  }
+  if (!flag('no-narrator-voice')) {
+    const {default: Anthropic} = await import('@anthropic-ai/sdk'), {anthropicAdapter} = await import('./providers/anthropic.mjs');
+    const narrModel = opt('talk-model', env.DM_TALK_MODEL || opt('table-model', env.DM_TABLE_MODEL || DEFAULT_TABLE_MODEL));
+    narratorVoice({base, adapter: anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY}), defaultModel: narrModel}), model: narrModel, log, stopped: () => stopping || spent >= budget, budgetS: Number(opt('narrator-budget', env.DM_NARRATOR_BUDGET || 8)),
+      onCost: u => {const c = u.cost || 0; spent += c; sess.costUsd += c; tableCost += c}});
+    log(`[dm] narrator voice: ${narrModel} speaks as the company arrives, at daybreak and when one of them speaks to the world`);
   }
   sess.runner = rs; mind = {provider: rs.provider, model: rs.model}; claim();
   const {model, effort} = rs;

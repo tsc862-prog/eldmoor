@@ -14,11 +14,12 @@
 // breath 22-30 every 7 s within 4.6 tiles, 9000 hp, 300 s to wake. Do not change them without a
 // balance-tester report.
 import {BOSS_EPICS, DG_EPICS} from './items.js';
+import {WORDS} from '../world/words.js';
 
 export const BOSSES={
   kragmaw:{
     id:'kragmaw',name:'Kragmaw',full:'Kragmaw the Cinder Wyrm',family:'wyrm',lvl:20,maxhp:13000,respawn:600,
-    wake:' stirs again in its Cinderpass lair.',
+    wake:' stirs again in its '+WORDS.lairRegion+' lair.',
     attack:{cd:1.6,dmg:[55,30]},
     abilities:[{id:'cinderbreath',fx:'breath',cd:7,dmg:[22,8],radius:4.6,tag:'fire',color:'#ffa040',name:'Cinder Breath'}],
     phases:[{at:1,name:'The lair'}],
@@ -29,7 +30,7 @@ export const BOSSES={
   // (#65) fights it with this. Sized for a group of 4-5 at level 9-12: about 3000 hp, hits of 18-30.
   vesk:{
     id:'vesk',name:'Vesk',full:'Lich-Warden Vesk',family:'undead',lvl:12,maxhp:3000,respawn:600,
-    wake:' stirs beneath the Sunken Crypt.',
+    wake:' stirs beneath '+WORDS.crypt+'.',
     attack:{cd:1.8,dmg:[18,12]},
     abilities:[
       {id:'gravechill',fx:'drain',cd:9,dmg:[14,6],tag:'cold',name:'Grave Chill',heal:.5},
