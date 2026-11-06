@@ -5,6 +5,7 @@
 // Facts come from the hero's own data (origin, traits, goal, bonds, nemesis, history). The
 // history list is capped at 40 lines, so the prose leans on the lasting counters first
 // (kills, honor, eliteKills, epics, deaths) and uses history for what it can still show.
+import {loreSides} from '../sim/state.js'; // sides as lore (#1025)
 import {WORDS} from '../world/words.js';
 import {FAC} from '../data/factions.js';
 import {raceOf} from '../data/races.js';
@@ -54,7 +55,7 @@ export function biography(a,agents=[]){
   // 3. Deeds: level, kills, elites, epics, crypt, raids.
   const tally=[];
   if(a.kills)tally.push(plural(a.kills,'kill'));
-  if(a.honor)tally.push(plural(a.honor,'point')+' of honor');
+  if(a.honor&&!loreSides())tally.push(plural(a.honor,'point')+' of honor');
   const p3=[(dead?`${a.name} reached level ${a.lvl}`:`${a.name} stands at level ${a.lvl}`)+(tally.length?', with '+tally.join(' and ')+' to show for it':'')+'.'];
   if(a.eliteKills){
     if(d.elites.length===a.eliteKills&&a.eliteKills<=2)p3.push(' They slew ',...list(d.elites.map(gold)),'.');
