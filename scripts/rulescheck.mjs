@@ -11,6 +11,7 @@
 //  6. patch notes (#664): every docs/patchnotes/*.md has front matter and 1-6 player-facing lines; on a pull request the
 //     checked-out (merged) tree holds docs/patchnotes/<PR>.md, unless the PR carries the label no-notes. The PR number
 //     comes from --pr N or PR_NUMBER (CI); the label is read live with gh (GH_TOKEN), so adding it and re-running works.
+//  9. every world of WORLDS has its rows (epic #940 slice B): a snapshot row, a campaign file, fauna per region, a first delve per town, its places in docs/LORE.md.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
 import {mkTmp} from './tmp.mjs';
 import {readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync} from 'node:fs';
@@ -84,8 +85,8 @@ const TABLES = [ // [id, file, picker(module) -> table]; an array row is named b
   ['USES', 'src/data/items.js', m => m.USES], ['CLS', 'src/data/classes.js', m => m.CLS], ['CLSN', 'src/data/classes.js', m => m.CLSN], ['SPECS', 'src/data/classes.js', m => m.SPECS],
   ['FAC', 'src/data/factions.js', m => m.FAC],
   ['PROF', 'src/data/professions.js', m => m.PROF],
-  ['ELDMOOR.regions', 'src/world/spec.js', m => m.ELDMOOR.regions], ['ELDMOOR.towns', 'src/world/spec.js', m => m.ELDMOOR.towns],
-  ['STEPPING.regions', 'src/world/spec.js', m => m.STEPPING.regions], ['STEPPING.towns', 'src/world/spec.js', m => m.STEPPING.towns],
+  // the regions and towns of every world of WORLDS (a world new on this branch has nothing to compare)
+  ...Object.keys(specMod.WORLDS).flatMap(id => ['regions', 'towns'].map(k => [id.toUpperCase() + '.' + k, 'src/world/spec.js', m => (m.WORLDS ? m.WORLDS[id] : m[id.toUpperCase()]) && (m.WORLDS ? m.WORLDS[id] : m[id.toUpperCase()])[k]])),
 ];
 const rowKey = r => r == null ? String(r) : typeof r !== 'object' ? String(r) : Array.isArray(r) ? (typeof r[0] === 'object' ? JSON.stringify(r[0]) : String(r[0])) : String(r.id ?? r.name ?? r.key ?? JSON.stringify(Object.keys(r)));
 const keysOf = t => t == null ? null : Array.isArray(t) ? t.map(rowKey) : Object.keys(t);
@@ -174,6 +175,32 @@ console.log('\ncomments: no code hides after a // comment');
 {
   const r = spawnSync(process.execPath, [join(ROOT, 'scripts/commentcodecheck.mjs')], {cwd: ROOT, encoding: 'utf8'});
   ok(r.status === 0, 'no statement written after a // comment on the same line (scripts/commentcodecheck.mjs)' + (r.status === 0 ? '' : '\n    ' + r.stdout.trim().split('\n').slice(1).join('\n    ')));
+}
+
+// ---- 9. every world has its rows (epic #940 slice B) ----
+console.log('\nworlds: every world of WORLDS has its table rows');
+{
+  const {SNAPSHOTS} = await import(pathToFileURL(join(ROOT, 'scripts/world-snapshots.mjs')).href);
+  const {FAUNA} = await import(pathToFileURL(join(ROOT, 'src/data/fauna.js')).href);
+  const {PROLOGUES} = await import(pathToFileURL(join(ROOT, 'src/data/prologues.js')).href);
+  const lore = existsSync(join(ROOT, 'docs/LORE.md')) ? readFileSync(join(ROOT, 'docs/LORE.md'), 'utf8') : '';
+  // What a world needs besides its spec: a snapshot row (scripts/world-snapshots.mjs), a campaign file, fauna for every region
+  // (Eldmoor keeps the stock tables, so it is the one exception), a first delve for every town, its places in docs/LORE.md.
+  const missing = (id, spec) => {
+    const out = [];
+    if (!SNAPSHOTS[id]) out.push('no row in scripts/world-snapshots.mjs (hashes, minSpawn)');
+    if (!existsSync(join(ROOT, 'docs', 'campaigns', id + '.md'))) out.push(`no campaign file docs/campaigns/${id}.md`);
+    if (id !== 'eldmoor') for (const r of spec.regions || []) if (!FAUNA[r.id]) out.push(`no FAUNA row for region ${r.id} (src/data/fauna.js)`);
+    for (const t of spec.towns || []) if (!PROLOGUES.some(p => p.towns ? p.towns.includes(t.name) : p.fac === t.fac)) out.push(`no first delve naming ${t.name} (src/data/prologues.js)`);
+    for (const n of [...(spec.regions || []).map(r => r.name), ...(spec.towns || []).map(t => t.name)]) if (n && !lore.includes(n)) out.push(`${n} is not in docs/LORE.md`);
+    return out;
+  };
+  for (const [id, spec] of Object.entries(specMod.WORLDS)) {
+    const m = missing(id, spec);
+    ok(m.length === 0, `world ${id} has its rows` + (m.length ? '\n    ' + m.join('\n    ') : ''));
+  }
+  const ghost = missing('ghost', {regions: [{id: 'nowhere', name: 'Nowhereland'}], towns: [{name: 'Nowhere Town'}]});
+  ok(ghost.length >= 5, 'a world with none of its rows is caught, by name (' + ghost.length + ' gaps found for a made-up world)');
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');
