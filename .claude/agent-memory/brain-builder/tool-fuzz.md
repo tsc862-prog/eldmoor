@@ -32,3 +32,8 @@ exception text (JS_ERR), or the fuzz could not see throws.
 
 Pitfalls: a heredoc template literal turns `\b` into backspace (use String.raw or the Edit tool; `\\s` in a quoted heredoc lost its backslashes);
 `python3` here hangs; the dm test for a throw must read the DM log, not only the result; Math.random is not what `rnd` uses (seedRng is).
+
+Later finds (seed sweeps 3 5 8 13 21 34 with --sets 20 found what the default seed did not): watch trigger `constructor` (TRIGGERS lookup),
+start_event kind `toString`, custom_foe base `hasOwnProperty`, propose job_id "-" (read as NaN). Always sweep a few seeds after a change to tools.
+cleanArgs must stay narrow: dmcheck needs a point object {x,y} for near/at and a cast that is not an object refused by stage_scene itself;
+channelcheck needs tags as a string "a, b" split by remember. Run dmcheck and channelcheck after touching argfix.
