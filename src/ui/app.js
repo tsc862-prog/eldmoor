@@ -30,7 +30,7 @@ import {initSettings} from './settings.js'; // the Settings popover and the Worl
 import {trackDowned} from './downview.js'; // each death save as it lands (#659)
 
 export function initUI(renderer){
-  initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initMapLegend();initTable();initRunAlert();initRunGate(k=>startRunner(k));
+  initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initMapLegend();initTable();initRunAlert();initRunGate((k,h)=>startRunner(k,h));
   initSheet();initFrames();applyLayout();
   const minds=()=>{renderHero();renderFrames();renderFellowship();renderMinds()};
   initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents();initChatPanel();initSettings(()=>renderHero());initPurpose()}
