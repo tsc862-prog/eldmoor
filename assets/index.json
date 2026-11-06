@@ -6402,6 +6402,27 @@
       ],
       "url": "https://opengameart.org/content/liberated-pixel-cup-lpc-base-assets-sprites-map-tiles",
       "accepted": "2026-11-06"
+    },
+    "prop:scenery@32": {
+      "id": "prop:scenery",
+      "kind": "prop",
+      "file": "prop/32/scenery.png",
+      "w": 256,
+      "h": 216,
+      "sha256": "4b0eda87efe0ef975c68596d7cdbe50ce8edf24885682ed37bc28ef8a2cc8240",
+      "tier": 32,
+      "source": "lpc-terrains",
+      "license": "CC-BY-SA 3.0",
+      "authors": [
+        "Lanea Zimmerman (Sharm)",
+        "Daniel Armstrong (HughSpectrum)",
+        "bluecarrot16",
+        "Daniel Eddeland (Daneeklu)",
+        "Richard Kettering (Jetrel)",
+        "Zachariah Husiar (Zabin)"
+      ],
+      "url": "https://opengameart.org/content/lpc-terrains",
+      "accepted": "2026-11-05"
     }
   }
 }

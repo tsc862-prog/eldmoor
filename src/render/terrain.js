@@ -12,6 +12,7 @@ import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
+import {sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery} from './scenery.js';
 import {ASSET_PEAKS,peakArt,peakPixel} from './peaks.js';
 
 // Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
@@ -211,12 +212,13 @@ function groundOf(bio,x,y,h){return bio==='tundra'?snowBase(x,y,h):bio==='ash'?p
 // never blend. The neighbour's colour comes from its own texel at the same world pixel, so
 // ruts, drifts and noise run on across the seam.
 const BLEND=new Uint8Array(16);for(const t of [G,FLOWER,SGRASS,MUD,SNOW,ICE,ROCK,ROAD,LAVA,SWAMP])BLEND[t]=1;
+if(sceneryOn)BLEND[ROAD]=0; // country roads are a shape of their own there (render/scenery.js)
 const fam=t=>t===FLOWER?G:t;
 const EDGE=[.42,.6,.78]; // noise threshold by distance to the edge: nearer edges bleed more
 const tileOr=(tx,ty)=>tx<0||ty<0||tx>=W||ty>=H?-1:tiles[I(tx,ty)];
 // The ground a tree or mountain tile stands on (its region's biome ground), for transition pieces; other tiles are themselves.
 const baseOf=(tx,ty)=>GROUND[propBiome(biomeOfZone(zone[I(tx,ty)]))];
-const groundAt=(tx,ty)=>{const t=tileOr(tx,ty);return t===TREE||t===PEAK?baseOf(tx,ty):t};
+const groundAt=(tx,ty)=>{const t=tileOr(tx,ty);return t===TREE||t===PEAK?baseOf(tx,ty):sceneryOn&&t>=0?sceneGround(t,tx,ty):t};
 // The blend is decided on the procedural grid (pixel (px,py) of U x U), so it bleeds the same at every tier; (ax,ay) is
 // the art pixel (0..TILE-1) inside it whose colour is wanted, from the asset of whichever tile type wins.
 // With art=false it answers at the procedural grid alone (ax,ay unused): the no-asset fast path of paintChunk.
@@ -346,7 +348,7 @@ function canopyImg(b,h){const n=Math.floor(h*VARIANTS)%VARIANTS;let got=null;
   return got}
 const treeSpots=new Map(); // tile key -> anchor {tree, x, y (the base, in tiles), ax, ay, w, h (world units), im} or false
 function anchorAt(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return null;const k=ty*W+tx;let a=treeSpots.get(k);if(a!==undefined)return a||null;
-  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0){const v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
+  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0&&!(sceneryOn&&treeFelled(tx,ty))){const v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
     if(v){const w=v.im.naturalWidth/ART,h=v.im.naturalHeight/ART;
       a={tree:true,id:v.id,im:v.im,x:tx+.5,y:ty+1,ax:(tx+.5)*U+(hash(tx,ty,613)-.5)*5-w/2,ay:(ty+1)*U-CANOPY_ROOT/ART+(hash(tx,ty,615)-.5)*3-1,w,h}}}
   treeSpots.set(k,a);return a||null}
@@ -428,9 +430,9 @@ function paintChunk(cx,cy){
   const img=c.createImageData(cw*k,ch*k),d=img.data;
   for(let j=0;j<ch;j++)for(let i=0;i<cw;i++){const tx=tx0+i,ty=ty0+j,t=tiles[I(tx,ty)];
     for(let py=0;py<k;py++)for(let px=0;px<k;px++){
-      const col=rgb(art?pixel(t,tx,ty,px,py):procPixel(t,tx,ty,px,py)),o=((j*k+py)*stride+i*k+px)*4,sh=art?shade(t,tx,ty,(px/ART)|0,(py/ART)|0):shade(t,tx,ty,px,py);
+      const col=rgb(art?(sceneryOn?scenePixel(t,tx,ty,px,py):pixel(t,tx,ty,px,py)):procPixel(t,tx,ty,px,py)),o=((j*k+py)*stride+i*k+px)*4,sh=art?shade(t,tx,ty,(px/ART)|0,(py/ART)|0):shade(t,tx,ty,px,py);
       d[o]=col[0]*sh;d[o+1]=col[1]*sh;d[o+2]=col[2]*sh;d[o+3]=255}}
-  c.putImageData(img,0,0);
+  c.putImageData(img,0,0);if(art&&sceneryOn){c.save();c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);paintScenery(c,tx0,ty0,tx0+cw,ty0+ch);c.restore()}
   // decorations are painted in world units; the scaled, translated context clips them to this chunk
   c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);
   if(art)paintCanopy(c,tx0,ty0,tx0+cw,ty0+ch);
@@ -444,6 +446,11 @@ export function buildTerrain(){
   const tctx=terrain.getContext('2d');tctx.imageSmoothingEnabled=false;
   for(let cy=0;cy<CHUNKS_Y;cy++)for(let cx=0;cx<CHUNKS_X;cx++){const c=getChunk(cx,cy);tctx.drawImage(c,cx*CH*U,cy*CH*U,c.uw,c.uh)}
   return terrain}
+
+// A world with a scenery note (render/scenery.js): the river as one smooth water, its land edges as plain ground with no tile-shaped
+// bank piece, the meadow flowers as drifts rather than flower tiles, and the region's ground tone over it all.
+function scenePixel(t,tx,ty,ax,ay){const w=riverPixel(tx,ty,ax,ay)||roadPixel(tx,ty,ax,ay);if(w)return w;
+  const g=sceneGround(t,tx,ty);return tonePixel(pixel(g,tx,ty,ax,ay),g,tx,ty,ax,ay)}
 
 // Towns and landmarks (walls, gate, buildings, banners, graves, crypt mouths, the lair): render/townart.js draws them in
 // world units onto the chunk context, from their generated assets or procedurally (#177 slice 3).

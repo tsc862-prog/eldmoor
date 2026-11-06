@@ -104,6 +104,7 @@
     "art:biomecut": "node scripts/art/packcut-biomes.mjs --index",
     "art:lpc-buildings": "node scripts/art/packcut-buildings.mjs --index",
     "art:lpc-walls": "node scripts/art/packcut-walls.mjs --index",
+    "art:scenery": "node scripts/art/packcut-scenery.mjs --index",
     "art:loop": "node scripts/art/daily.mjs --loop",
     "art:accept": "node scripts/art/accept.mjs",
     "art:review": "node scripts/art/review.mjs",

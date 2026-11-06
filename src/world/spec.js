@@ -355,6 +355,15 @@ export const VALE={
       mask:{kind:'east-of-curve',curve:'fEdge'}},
   ],
   river:{curve:'river',width:2,span:[0,121],fords:[76]}, // the Wend rises at x=122; the Weirgate ford is the only wading place
+  // Art notes (src/render/scenery.js reads them; the sim and the map never do).
+  scenery:{
+    wash:{wendmouth:'meadow',hawkwold:'heath',greywood:'woods',ashenfold:'ash'},
+    fields:[[17,4,10,4,'wheat'],[19,9,6,2,'cabbage'],[8,14,9,3,'wheat'],[21,22,9,3,'plough'],[1,35,11,3,'cabbage'],[19,37,7,3,'wheat'],[23,41,7,3,'plough'],[1,52,8,3,'wheat'],[11,52,9,3,'plough']],
+    dress:{'The Drowned Weir':'weir','The Kestrel Barrow':'barrow','The Sallow Vaults':'vaults','The Brandwright Kiln':'kiln',Kragmaw:'lair'},
+    bridges:{'26,33':'stone'},
+    head:{x:122,y:30},
+    clear:[[80.5,41,3.8],[78.2,37.5,2.6]], // felled ground before the Drowned Weir, so its mouth stands in the open
+  },
   towns:[
     // Concord, north bank
     // Aldermere: a market green at the river mouth; the forge and the halls front a paved lane, the inn on the green's west edge.
