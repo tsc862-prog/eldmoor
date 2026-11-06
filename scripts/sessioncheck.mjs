@@ -175,6 +175,8 @@ const readSess = id => {try {return JSON.parse(readFileSync(join(tmp, 'agents', 
 const oldFiles = () => {try {return readdirSync(join(tmp, 'agents', 'old'))} catch {return []}};
 const port = 18100 + Math.floor(Math.random() * 500), WORLD = `http://127.0.0.1:${port}`;
 const health = u => fetch(u + '/play/health').then(r => r.json());
+// A runner that exited has let go of its hero, but under load the release can land late and the next runner for the hero is refused ("already has a live agent runner") until it has. Wait for it, as a page or a supervisor would, before starting the next one.
+const freed = async () => (await until(async () => {const h = await health(WORLD).catch(() => null); return h && h.heroes.every(x => x.link === 'none')}, 60000)) || console.log('  (the hero still shows a runner 60 s after its exit)');
 // A pass-through in front of the world that can say the hero's table is open in the state header.
 function proxy(target) {
   const p = {table: false, port: 0, close: () => srv.close()};
@@ -251,14 +253,18 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
     ok(await until(() => /\| ctx 26k \| turn \$/.test(r2.out())), 'a runner plays with the table open');
     r2.p.stdin.write('fresh\n');
     const n = (r2.out().match(/\| ctx 26k/g) || []).length;
-    ok(await until(() => (r2.out().match(/\| ctx 26k/g) || []).length > n + 2), 'turns go on with the table open');
+    const went = await until(() => (r2.out().match(/\| ctx 26k/g) || []).length > n + 2);
+    ok(went, 'turns go on with the table open');
+    if (!went) console.log('--- runner output ---\n' + r2.out().split('\n').slice(-30).join('\n') + '\n--- health ---\n' + JSON.stringify(await health(WORLD).catch(e => String(e))).slice(0, 800));
     ok(!/session rolled/.test(r2.out()), 'a fresh session asked at a scene is held for it');
     px.table = false;
     ok(await until(() => /\[session rolled: a fresh session was asked for\]/.test(r2.out())), 'and is not lost: it rolls at the first turn after the scene');
     r2.p.stdin.write('stop\n'); await r2.done;
+    await freed();
   }
   const again = start(['scripts/agent-player.mjs', '--url', WORLD, '--hero', String(hero.id), '--env', join(envDir, '.env'), '--new', '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1'], {env: {...childEnv, AGENT_MODEL: 'claude-sonnet-5-5'}});
-  await again.done; const s = readSess(hero.id);
+  await again.done; await freed(); const s = readSess(hero.id);
+  if (!(s && s.runner && s.runner.model === 'claude-haiku-5-5' && /earlier session kept/.test(again.out()))) console.log('--- --new output ---\n' + again.out().split('\n').slice(-20).join('\n'));
   ok(s && s.runner && s.runner.model === 'claude-haiku-5-5' && /earlier session kept/.test(again.out()), '--new sets the conversation aside and keeps the hero\'s mind');
 }
 // The net inside a turn: a roll held back by a scene and a session past it, compacted between two calls of one turn.
