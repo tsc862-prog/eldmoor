@@ -84,10 +84,10 @@ function art(sum){const c=el('canvas','tart');const F=sum&&sum.fellowship;
 function worldCard(id){const f=worldFacts(id),on=id===WORLD_ID,sum=on?st.sum:saveSummary(id);
   const b=el('button','tbtn tworld'+(on?' on':''));b.type='button';b.dataset.a='map';b.dataset.world=id;b.setAttribute('aria-pressed',String(on));
   b.title=(sum?'Saved world: day '+sum.day+'. ':'No saved world yet. ')+(on?'This is the map you are on.':'Switch to this map (the page reloads).');
-  b.append(worldPreview(id,'tpv'));
+  const pic=el('span','twpic');pic.append(worldPreview(id,'tpv'));b.append(pic);
   const body=el('span','twbody');
   const head=el('span','twhead');head.append(el('span','twname',f.name));
-  head.append(el('span','twtag'+(on?' on':''),on?'On this map':sum?'Day '+sum.day:'New'));body.append(head);
+  head.append(el('span','twtag'+(on?' on':''),on?'On this map':sum?'Day '+sum.day:'No save'));body.append(head);
   body.append(el('span','twblurb',f.blurb),el('span','twfact',f.line1),el('span','twfact',f.line2));
   b.append(body);return b}
 function mapRow(){const row=el('section','tworlds');row.setAttribute('aria-label','World map');

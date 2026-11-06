@@ -178,7 +178,7 @@ function worldCard(id){const f=worldFacts(id),d=el('div','swcard'+(id===WORLD_ID
 // What the Opening will be for the hall chosen: the first delve's name and keeper, from data/prologues.js (the game's own pick).
 function delveHint(s){if(prologueOf(s)!=='delve'||s.mode==='apart')return null;
   const row=s.hall?pickRow(s.hall,s.fac,new Set()):null;
-  return el('div','dm sopen',row?'Opening: '+row.name+', a short delve near '+s.hall+' ('+row.boss+' keeps it), then home.':'Opening: a short delve near the hall; pick a hall town to see which.')}
+  return el('div','dm sopen',row?'Opening: '+row.name+', a short delve near '+s.hall+' ('+row.boss+' keeps it), then home.':'Opening: a short delve near the hall, named once you pick a hall town.')}
 function render(){if(!root)return;const s=st.setup,page=el('div','spage'),halls=hallTowns(s.world,s.fac);if(s.hall&&!halls.includes(s.hall))delete s.hall; // another faction or map: back to the default
   const head=el('div','shead');head.append(el('h2',null,'New World'),el('div','dm','Build the world, choose who plays whom, and the heroes are agent-played from the first minute. Nothing changes until you press Start.'));page.append(head);
 

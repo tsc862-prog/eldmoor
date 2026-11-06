@@ -584,7 +584,7 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .tpage{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;align-items:stretch;gap:14px;min-width:0}
 .tart{display:block;margin:8px auto 0;max-width:100%;height:auto;image-rendering:pixelated}
 .ttl{text-align:center;font-size:clamp(26px,8vw,44px);margin:0}
-.tsub{text-align:center;color:var(--dim)}
+.tsub{text-align:center;justify-content:center;color:var(--dim)}
 .tpage>.tmenu,.tpage>.tnews,.tpage>.trelay,.tpage>.tmsg,.tpage>.tfoot{width:100%;max-width:560px;align-self:center;box-sizing:border-box}
 .tcur{text-align:center;color:var(--dim);font-size:20px}
 .tcur b{color:var(--gold);font-weight:normal}
@@ -593,8 +593,10 @@ button.shsort:hover,button.shsort.on{color:var(--gold)}
 .tworlds .tlbl{text-align:center}
 .twgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px;min-width:0}
 button.tbtn.tworld{display:flex;flex-direction:column;align-items:stretch;gap:10px;width:100%;padding:10px;text-align:left;font-family:var(--mono);font-size:18px;letter-spacing:0;text-transform:none;min-width:0;line-height:1.15}
+button.tbtn.tworld[aria-pressed="true"]{background:#1a1f3a;color:var(--ink)}
 button.tbtn.tworld.on{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold),4px 4px 0 #05060c}
 button.tbtn.tworld:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+.twpic{display:flex;align-items:center;justify-content:center;min-height:204px}
 .tpv,.spv{display:block;align-self:center;max-width:100%;height:auto;image-rendering:pixelated;border:2px solid var(--edge);background:#0a0c18}
 .twbody{display:flex;flex-direction:column;gap:4px;min-width:0}
 .twhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
@@ -1036,7 +1038,8 @@ body:not(.docked) .fellately .flately{max-height:320px;overflow-y:auto}
   .title .tnews .tnread{width:auto;padding:8px 14px}
   .title .tpage{zoom:1.6;max-width:1500px;margin-top:6vh;display:grid;grid-template-columns:minmax(0,560px) minmax(0,1fr);column-gap:40px;align-content:start}
   .title .tpage>*{grid-column:1}
-  .title .tpage>.tnews{grid-column:2;grid-row:1/span 7;align-self:start}
+  .title .tpage>.tart,.title .tpage>.ttl,.title .tpage>.tsub,.title .tpage>.tcur,.title .tpage>.tworlds{grid-column:1/-1}
+  .title .tpage>.tnews{grid-column:2;grid-row:auto/span 5;align-self:start}
 }
 
 /* Setup: the chosen map beside its fields (ui/setup.js worldCard) */
@@ -1048,3 +1051,4 @@ body:not(.docked) .fellately .flately{max-height:320px;overflow-y:auto}
 .swfact{color:var(--dim)}
 .swnote{color:var(--amber)}
 .sopen{grid-column:1/-1}
+.swcard{max-width:720px}
