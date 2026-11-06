@@ -31,8 +31,8 @@ function build(){if(!bands){bands={trunk:mk(CW,CHT),crown:mk(CW,CHT),wall:mk(CW,
         cv.drawImage(a.im,a.ax/T*SK,a.ay/T*SK,a.w/T*SK,a.h/T*SK)}}}
   if(!canopy)for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++)if(tiles[I(tx,ty)]===TREE){const px=(tx+.5)*SK,py=(ty+.9)*SK; // the one-tile procedural tree
     tr.fillRect(px-SK*.1,py-SK*.1,SK*.2,SK*.2);cr.beginPath();cr.ellipse(px,py,SK*.5,SK*.36,0,0,7);cr.fill();cv.fillRect(tx*SK,ty*SK,SK,SK)}
-  for(const c of CITY)for(const b of c.buildings||[]){if(b.piece==='board')continue;const [bx,by,bw,bh]=b.box;ho.fillRect(bx*SK,by*SK,bw*SK,bh*SK);
-    const art=buildingArt(c,b);
+  for(const c of CITY)for(const b of c.buildings||[]){if(b.piece==='board')continue;const [bx,by,bw,bh]=b.box,art=buildingArt(c,b);
+    if(art){ho.save();ho.beginPath();ho.rect(bx*SK,by*SK,bw*SK,bh*SK);ho.clip();ho.drawImage(art.img,art.box[0]*SK,art.box[1]*SK,art.box[2]*SK,art.box[3]*SK);ho.restore()}else ho.fillRect(bx*SK,by*SK,bw*SK,bh*SK); // the art's own outline: a spire or a well has clear corners in its box
     if(art)cv.drawImage(art.img,art.box[0]*SK,art.box[1]*SK,art.box[2]*SK,art.box[3]*SK);else{const q=b.draw||b.box;cv.fillRect(q[0]*SK,q[1]*SK,q[2]*SK,q[3]*SK)}}
   gen=chunkGen;key=-1}
 // One band swept along the sun from height h0 to h1 (tiles), added to the shadow.
