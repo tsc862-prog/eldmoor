@@ -43,13 +43,13 @@ const ramp=(h,a,b,c,d)=>h<=a||h>=d?0:h<b?(h-a)/(b-a):h<=c?1:(d-h)/(d-c);
 let hole=null;function clearing(){if(hole)return hole;hole=mk(128,128);const x=hole.getContext('2d'),g=x.createRadialGradient(64,64,10,64,64,64);g.addColorStop(0,'rgba(0,0,0,.85)');g.addColorStop(.55,'rgba(0,0,0,.5)');g.addColorStop(1,'rgba(0,0,0,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return hole}
 
 const PAT=new Map();
-function layer(w,h,k,ox,oy,mask,rgb,a,now,vx,vy,scale){if(!mask||a<.01||!tilesIn(mask.sat,-ox/k/T-3,-oy/k/T-3,(w-ox)/k/T+3,(h-oy)/k/T+3))return;
+function layer(w,h,k,ox,oy,mask,rgb,a,now,vx,vy,scale,tint){if(!mask||a<.01||!tilesIn(mask.sat,-ox/k/T-3,-oy/k/T-3,(w-ox)/k/T+3,(h-oy)/k/T+3))return;
   let p=PAT.get(rgb);if(!p){p=yx.createPattern(cloud(rgb),'repeat');PAT.set(rgb,p)}const s=k*scale;
   yx.globalCompositeOperation='copy';yx.setTransform(s,0,0,s,ox+now*vx*k,oy+now*vy*k);yx.fillStyle=p;yx.fillRect(-ox/s-now*vx/scale-2,-oy/s-now*vy/scale-2,w/s+4,h/s+4);
   yx.globalCompositeOperation='source-over';yx.setTransform(1,0,0,1,0,0); // a second sheet, slower, so it billows rather than slides
   yx.globalAlpha=.6;yx.setTransform(s*1.7,0,0,s*1.7,ox-now*vx*k*.5,oy+now*vy*k*.3);yx.fillStyle=p;yx.fillRect((-ox+now*vx*k*.5)/(s*1.7)-2,(-oy-now*vy*k*.3)/(s*1.7)-2,w/(s*1.7)+4,h/(s*1.7)+4);yx.globalAlpha=1;
   yx.globalCompositeOperation='destination-in';yx.setTransform(k,0,0,k,ox,oy);yx.imageSmoothingEnabled=true;yx.drawImage(mask.m,0,0,W*MK,H*MK,0,0,W*T,H*T);
-  yx.setTransform(1,0,0,1,0,0);yx.globalCompositeOperation='source-over';
+  yx.setTransform(1,0,0,1,0,0);if(tint){yx.globalCompositeOperation='source-atop';yx.fillStyle=tint;yx.fillRect(0,0,w,h)}yx.globalCompositeOperation='source-over';
   ax.globalAlpha=a;ax.drawImage(lay,0,0);ax.globalAlpha=1;drew++}
 
 // Draw the air; sc the scale, far views fade it. ctx is left in the world transform.
@@ -64,12 +64,15 @@ export function drawAir(ctx,cv,cam,sc,now){if(!FX.full)return;const fade=Math.ma
   if(moved||++tick>=3){tick=0;lastX=ox;lastY=oy;lastS=sc;any=paint(w,hh,k,ox,oy,now,river,fen,ash,fg)}
   if(!any)return;
   ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.globalAlpha=fade;ctx.drawImage(air,0,0,w,hh,0,0,w*NR,hh*NR);ctx.globalAlpha=1;ctx.imageSmoothingEnabled=false;ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY)}
+// A bank of fog is lit by the whole sky, not by the sun's last colour: it is laid under the light map, so it takes the inverse of the hour's tint and comes out grey. Fog
+// in a neighbouring region under a clear sky needs this most, because there the ambient keeps all its colour (grade.js only greys it under the camera's own cloud).
+function fogTint(){const A=G.amb,hi=Math.max(A[0],A[1],A[2]),lo=Math.min(A[0],A[1],A[2]),s=hi>0?1-lo/hi:0;if(s<.06||A[2]>A[0]*1.25)return null;const n=(A[0]+A[1]+A[2])/3,c=j=>Math.min(255,226*n/Math.max(1,A[j]))|0;return `rgba(${c(0)},${c(1)},${c(2)},${Math.min(.85,s*2.4).toFixed(2)})`}
 let tick=0,lastX=0,lastY=0,lastS=0,any=false,drew=0;
 function paint(w,hh,k,ox,oy,now,river,fen,ash,fg){drew=0;
   ax.setTransform(1,0,0,1,0,0);ax.globalCompositeOperation='source-over';ax.clearRect(0,0,w,hh);
   layer(w,hh,k,ox,oy,M.river,'232,238,246',river,now,2.2,.25,.42);
   layer(w,hh,k,ox,oy,M.fen,'206,220,196',fen,now,1.4,.4,.6);
   layer(w,hh,k,ox,oy,M.ash,'158,136,124',ash,now,3,-.5,.7);
-  layer(w,hh,k,ox,oy,fg,'226,230,240',.95,now,3.6,.5,.9);
+  layer(w,hh,k,ox,oy,fg,'226,230,240',.95,now,3.6,.5,.9,fogTint());
   // what the camera looks at stays clear
   ax.globalCompositeOperation='destination-out';const rx=w*.42,ry=hh*.62;ax.drawImage(clearing(),w/2-rx,hh/2-ry,rx*2,ry*2);ax.globalCompositeOperation='source-over';return drew>0}
