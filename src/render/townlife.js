@@ -17,15 +17,16 @@ import {FAC} from '../data/factions.js';
 import {npcRole} from '../data/npcs.js';
 import {U as T,PROC_SCALE,ART} from './tile.js';
 import {npcSprite,worldSprite,sprite} from './sprites.js';
-import {MARK} from './palette.js';
+import {MARK,TOWN} from './palette.js';
 import {hash} from '../core/rng.js';
 import {F,frame,inTiles,skyAt,WET,WIND,ramp,lamps} from './life.js';
 import {critterEnts,drawRoostBirds} from './critters.js';
-import {pieceSpot} from './townart.js';
-import {onAssets} from './assets.js';
+import {pieceSpot,buildingArt} from './townart.js';
+import {townStyle} from '../data/townart.js';
+import {onAssets,assetPixels} from './assets.js';
 import {trackSteps,drawFootprints} from './footprints.js';
 
-const OPPOSITE={E:'W',W:'E',N:'S',S:'N'};
+const OPPOSITE={E:'W',W:'E',N:'S',S:'N'},U_ART=1/ART;
 const KEEPERS=['peddler','drover','quartermaster','innkeeper']; // townsfolk roles whose look a stallkeeper borrows
 const GOODS=[['#c8402a','#e8b038','#7a9a3a'],['#4a7ab0','#e8e0c8','#a04a8a'],['#b8863a','#7a5a3a','#d8c890']]; // what lies on the table
 
@@ -139,5 +140,29 @@ export function lifeLight(ctx,glow,dk,LIGHT){if(F.tpx<9)return;
   for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci),lp=lamps(F.hour);
     for(const d of L.doors){if(lp>0&&inTiles(d.x/T,d.y/T,1))glow(d.x,d.y-6,d.w>1?20:15,LIGHT.torch,dk*.55*lp);
       if(d.forge){const w=ramp(F.hour,5.5,6.5,19,21);if(w>0)glow(d.x,d.y-6,22,[255,120,40],dk*.6*w*(.85+.15*Math.sin(F.now*9)))}}
-    for(const g of L.guards)glow(g.x*T+(g.face>0?5:-5),g.y*T-14,13,LIGHT.torch,dk*.5);
-    if(!L.noWalk)glow(L.walker.x*T+(L.walker.face>0?5:-5),L.walker.y*T-14,13,LIGHT.torch,dk*.5)}}
+    for(const g of L.guards)glow(g.x*T+(g.face>0?5:-5),g.y*T-14,22,LIGHT.torch,dk*.8*(.9+.1*Math.sin(F.now*2.1+g.x)));
+    if(!L.noWalk)glow(L.walker.x*T+(L.walker.face>0?5:-5),L.walker.y*T-14,22,LIGHT.torch,dk*.8);
+    if(lp>0)for(const w of panes(L).glow)if(w.on(F.hour))glow(w.x,w.y,w.r,WINDOW,dk*.55*lp)}}
+// Lit windows at night: the glass of each cut building, found in its own pixels (the palette's glass ramp), painted warm over the night, house by house:
+// the small hours put most of them out. With no cut art a building has only its door lamp.
+const WINDOW=[255,186,96],GLASS_SET=new Map();
+const near3=(r,g,b,c)=>Math.abs(r-c[0])+Math.abs(g-c[1])+Math.abs(b-c[2]);
+function glassOf(id,img,style){let m=GLASS_SET.get(id);if(m!==undefined)return m;m=null;
+  const A=assetPixels(id),P=(TOWN[style]||{}).glass;
+  if(A&&P){const ramp=P.map(h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)]),c=document.createElement('canvas');c.width=A.w;c.height=A.h;const x=c.getContext('2d');let n=0,sx=0,sy=0;
+    for(let j=0;j<A.h;j++)for(let i=0;i<A.w;i++){const h=A.hex[j*A.w+i];if(!h)continue;const r=parseInt(h.slice(1,3),16),g=parseInt(h.slice(3,5),16),b=parseInt(h.slice(5,7),16);
+      let d=999;for(let q=0;q<ramp.length;q++){d=Math.min(d,near3(r,g,b,ramp[q]));if(q)for(let t=.25;t<1;t+=.25){const p=ramp[q-1],u=ramp[q];d=Math.min(d,near3(r,g,b,[p[0]+(u[0]-p[0])*t,p[1]+(u[1]-p[1])*t,p[2]+(u[2]-p[2])*t]))}}
+      if(d<26){const v=Math.min(1,.55+(r+g+b)/765*.8);x.fillStyle=`rgb(255,${Math.round(150+80*v)},${Math.round(70+90*v)})`;x.fillRect(i,j,1,1);n++;sx+=i;sy+=j}}
+    if(n)m={c,cx:sx/n,cy:sy/n}}
+  GLASS_SET.set(id,m);return m}
+onAssets(id=>{if(id==null||String(id).startsWith('building:'))GLASS_SET.clear()});
+function panes(L){if(L.win&&L.winGen===GLASS_SET.size)return L.win;const out={list:[],glow:[]},c=L.c;
+  for(const b of c.buildings){const a=buildingArt(c,b);if(!a||b.piece==='board')continue;const g=glassOf(a.id,a.img,townStyle(c));if(!g)continue;
+    const h=hash(b.box[0],b.box[1],911),late=h<.3?24.5:h<.7?23:22,on=hr=>hr>=17||hr<5?(hr<5?(h<.18):hr<late):false,k=U_ART;
+    const x=a.box[0]*T,y=a.box[1]*T,w=a.box[2]*T,hh=a.box[3]*T;out.list.push({img:g.c,x,y,w,h:hh,on});
+    out.glow.push({x:x+g.cx*k,y:y+hh,r:Math.max(18,Math.min(44,w*.5)),on})}
+  L.win=out;L.winGen=GLASS_SET.size;return out}
+export function lifeWindows(ctx){if(F.tpx<6)return;const lp=lamps(F.hour);if(lp<=0)return;
+  for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci);
+    for(const w of panes(L).list){if(!w.on(F.hour))continue;ctx.globalAlpha=lp*(.84+.1*Math.sin(F.now*.9+w.x));ctx.drawImage(w.img,w.x,w.y,w.w,w.h)}}
+  ctx.globalAlpha=1}
