@@ -10,7 +10,7 @@ import {W,H,TREE,WALL,PEAK} from '../world/tiles.js';
 import {tiles,I,CITY} from '../world/map.js';
 import {U as T} from './tile.js';
 import {treeAnchor,chunkGen} from './terrain.js';
-import {buildingArt} from './townart.js';
+import {buildingArt,gateArt} from './townart.js';
 import {G} from './grade.js';
 import {peakArt,peakFaces,peakDirty,FACE} from './peaks.js';
 
@@ -18,11 +18,12 @@ const SK=FACE; // shadow pixels a tile
 const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
 const CW=W*SK,CHT=H*SK;
 let bands=null,cover=null,work=null,out=null,gen=-1,key=-1,castAt=0,peakStale=false,peakBox=null;
+const TALL=5; // tiles of art from which a building counts as tall
 const FACE_A=.95; // how far a mountain face turned from the sun takes the shade
 // Caster masks, built once per set of terrain art.
-function build(){if(!bands){bands={trunk:mk(CW,CHT),crown:mk(CW,CHT),wall:mk(CW,CHT),house:mk(CW,CHT),peak:mk(CW,CHT),tall:mk(CW,CHT),east:mk(CW,CHT),west:mk(CW,CHT)};cover=mk(CW,CHT);work=mk(CW,CHT);out=mk(CW,CHT)}
-  const x=n=>bands[n].getContext('2d'),tr=x('trunk'),cr=x('crown'),wl=x('wall'),ho=x('house'),pk=x('peak'),cv=cover.getContext('2d');
-  for(const c of [tr,cr,wl,ho,pk,cv]){c.clearRect(0,0,CW,CHT);c.fillStyle='#000'}
+function build(){if(!bands){bands={trunk:mk(CW,CHT),crown:mk(CW,CHT),wall:mk(CW,CHT),house:mk(CW,CHT),great:mk(CW,CHT),peak:mk(CW,CHT),tall:mk(CW,CHT),east:mk(CW,CHT),west:mk(CW,CHT)};cover=mk(CW,CHT);work=mk(CW,CHT);out=mk(CW,CHT)}
+  const x=n=>bands[n].getContext('2d'),tr=x('trunk'),cr=x('crown'),wl=x('wall'),ho=x('house'),gr=x('great'),pk=x('peak'),cv=cover.getContext('2d');
+  for(const c of [tr,cr,wl,ho,gr,pk,cv]){c.clearRect(0,0,CW,CHT);c.fillStyle='#000'}
   let canopy=false;const art=peakArt();
   for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];
     if(t===WALL){wl.fillRect(tx*SK,ty*SK,SK,SK);cv.fillRect(tx*SK,ty*SK,SK,SK)}
@@ -34,8 +35,11 @@ function build(){if(!bands){bands={trunk:mk(CW,CHT),crown:mk(CW,CHT),wall:mk(CW,
   if(!canopy)for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++)if(tiles[I(tx,ty)]===TREE){const px=(tx+.5)*SK,py=(ty+.9)*SK; // the one-tile procedural tree
     tr.fillRect(px-SK*.1,py-SK*.1,SK*.2,SK*.2);cr.beginPath();cr.ellipse(px,py,SK*.5,SK*.36,0,0,7);cr.fill();cv.fillRect(tx*SK,ty*SK,SK,SK)}
   for(const c of CITY)for(const b of c.buildings||[]){if(b.piece==='board')continue;const [bx,by,bw,bh]=b.box,art=buildingArt(c,b);
-    if(art){ho.save();ho.beginPath();ho.rect(bx*SK,by*SK,bw*SK,bh*SK);ho.clip();ho.drawImage(art.img,art.box[0]*SK,art.box[1]*SK,art.box[2]*SK,art.box[3]*SK);ho.restore()}else ho.fillRect(bx*SK,by*SK,bw*SK,bh*SK); // the art's own outline: a spire or a well has clear corners in its box
+    const m=art&&art.box[3]>=TALL?gr:ho; // what stands tall goes on throwing shadow past the houses' height
+    if(art){for(const q of m===gr?[ho,gr]:[ho]){q.save();q.beginPath();q.rect(bx*SK,by*SK,bw*SK,bh*SK);q.clip();q.drawImage(art.img,art.box[0]*SK,art.box[1]*SK,art.box[2]*SK,art.box[3]*SK);q.restore()}}else ho.fillRect(bx*SK,by*SK,bw*SK,bh*SK); // the art's own outline: a spire or a well has clear corners in its box
     if(art)cv.drawImage(art.img,art.box[0]*SK,art.box[1]*SK,art.box[2]*SK,art.box[3]*SK);else{const q=b.draw||b.box;cv.fillRect(q[0]*SK,q[1]*SK,q[2]*SK,q[3]*SK)}}
+  for(const c of CITY){const g=gateArt(c);if(!g)continue;const [x,y,w,h]=g.box,f=g.along?[x,y,w,h]:[x,g.foot-1,w,1]; // a gatehouse: its towers and span, standing as tall as the great halls
+    gr.fillRect(f[0]*SK,f[1]*SK,f[2]*SK,f[3]*SK);ho.fillRect(f[0]*SK,f[1]*SK,f[2]*SK,f[3]*SK);if(!g.along)cv.fillRect(x*SK,(g.foot-2)*SK,w*SK,2*SK);else cv.fillRect(x*SK,y*SK,w*SK,h*SK)}
   gen=chunkGen;key=-1;if(art)peakMasks([0,0,CW,CHT])}
 // What of the mountains has been painted, into the masks: their outline casts and covers, the tall of them casts farther, and their faces take the sun.
 function peakMasks(b){const f=peakFaces(),w=b[2]-b[0],h=b[3]-b[1],im=new ImageData(w,h),d=im.data;
@@ -48,7 +52,7 @@ function sweep(o,m,h0,h1,dx,dy){const wx=work.getContext('2d');wx.globalComposit
   o.drawImage(work,0,0)}
 function cast(){const o=out.getContext('2d'),L=G.len*SK,dx=G.sx*L,dy=G.sy*L;
   o.globalCompositeOperation='source-over';o.clearRect(0,0,CW,CHT);
-  sweep(o,bands.trunk,0,1.1,dx,dy);sweep(o,bands.crown,.95,2.3,dx,dy);sweep(o,bands.wall,0,.9,dx,dy);sweep(o,bands.house,0,1.7,dx,dy);sweep(o,bands.peak,0,1.3,dx,dy);sweep(o,bands.tall,1.2,2.8,dx,dy);
+  sweep(o,bands.trunk,0,1.1,dx,dy);sweep(o,bands.crown,.95,2.3,dx,dy);sweep(o,bands.wall,0,.9,dx,dy);sweep(o,bands.house,0,1.7,dx,dy);sweep(o,bands.great,1.6,3.2,dx,dy);sweep(o,bands.peak,0,1.3,dx,dy);sweep(o,bands.tall,1.2,2.8,dx,dy);
   // a soft edge, then off the art of what casts
   const wx=work.getContext('2d');wx.globalCompositeOperation='copy';wx.filter='blur(1.2px)';wx.drawImage(out,0,0);wx.filter='none';wx.globalCompositeOperation='source-over';
   o.globalCompositeOperation='copy';o.drawImage(work,0,0);
