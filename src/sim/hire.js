@@ -166,7 +166,7 @@ function mourn(h){const t=h.hire;t.mourned=true;
 const busy=h=>OFFER.FIGHT.includes(h.state)||OFFER.BUSY.includes(h.state);
 // Once a step (sim/index.js, after companionTick): days run out, a hire released elsewhere goes home, the fallen are
 // mourned, a hire in the Fellowship's company joins its party, and a hire that has reached town is a townsperson again.
-export function hireTick(){const hs=S.agents.filter(h=>h.hire&&!h.hire.done);if(!hs.length)return;
+export function hireTick(){let hs=null;for(const h of S.agents)if(h.hire&&!h.hire.done)(hs||(hs=[])).push(h);if(!hs)return; // #730: no list built on the usual step with no hire
   for(const h of hs){const t=h.hire;
     if(t.leverLeft!=null){const e=(S.hireAway||[]).find(e=>e.p.id===t.npc),rec=e&&e.p.lever!=null&&S.levers?S.levers.active.find(x=>x.id===e.p.lever):null;if(rec)rec.until=S.gameMin+t.leverLeft}
     if(h.state==='dead'){if(!t.mourned)mourn(h);continue}

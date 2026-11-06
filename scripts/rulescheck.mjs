@@ -12,6 +12,7 @@
 //     checked-out (merged) tree holds docs/patchnotes/<PR>.md, unless the PR carries the label no-notes. The PR number
 //     comes from --pr N or PR_NUMBER (CI); the label is read live with gh (GH_TOKEN), so adding it and re-running works.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
+import {mkTmp} from './tmp.mjs';
 import {readFileSync, readdirSync, existsSync, mkdtempSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
@@ -91,7 +92,7 @@ const keysOf = t => t == null ? null : Array.isArray(t) ? t.map(rowKey) : Object
 if (argv.includes('--no-tables')) console.log('append-only tables: skipped (--no-tables)');
 else {
   console.log('append-only tables: no existing row reordered or renamed against ' + opt('--against', 'origin/main'));
-  const ref = opt('--against', 'origin/main'), dir = mkdtempSync(join(tmpdir(), 'eldmoor-rules-'));
+  const ref = opt('--against', 'origin/main'), dir = mkTmp('eldmoor-rules-');
   const a = spawnSync('git', ['archive', ref, 'src'], {cwd: ROOT, maxBuffer: 1 << 30});
   let t = a.status === 0 ? spawnSync('tar', ['-x'], {cwd: dir, input: a.stdout, maxBuffer: 1 << 30}) : null;
   if (!t || t.status !== 0) ok(false, 'could not read ' + ref + ' (git archive failed: ' + String(a.stderr || (t && t.stderr)).trim().slice(0, 200) + '); run `git fetch origin main`');
@@ -158,6 +159,13 @@ console.log('patch notes: one player-facing note per PR (docs/patchnotes/<PR>.md
     ok(labels.includes('no-notes'), labels.includes('no-notes') ? `PR #${pr} has no note and the label no-notes` :
       `PR #${pr} has no patch note: add docs/patchnotes/${pr}.md (title, date, area, issues in front matter, then 1-6 "- " lines on what the player will see; "Nothing you will notice: ..." for CI and tests), or label the PR no-notes and re-run`);
   }
+}
+
+// ---- 8. no code hidden after a // comment (#933) ----
+console.log('\ncomments: no code hides after a // comment');
+{
+  const r = spawnSync(process.execPath, [join(ROOT, 'scripts/commentcodecheck.mjs')], {cwd: ROOT, encoding: 'utf8'});
+  ok(r.status === 0, 'no statement written after a // comment on the same line (scripts/commentcodecheck.mjs)' + (r.status === 0 ? '' : '\n    ' + r.stdout.trim().split('\n').slice(1).join('\n    ')));
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');

@@ -46,6 +46,7 @@ import {leaderFor} from './council.js';
 import {woundLine} from './tend.js';
 import {worldHeld} from './prep.js'; // the world held before play (#559)
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
+import {growthText} from './abilities.js'; // a waiting score point (#714)
 
 export const PACE={REAL_MS:10000,REAL_MAX:30000,MIN:[5,24*60],HALL:3}; // a pace call holds at most REAL_MS (asked up to REAL_MAX); heartbeat bounds in game minutes
 
@@ -62,7 +63,7 @@ export function paceCheck(id,{since=null,minutes=240,wake='all',reflect=false}={
   const from=Number.isFinite(Number(since))&&since!==null?Number(since):S.gameMin,m=Math.min(PACE.MIN[1],Math.max(PACE.MIN[0],Number(minutes)||240));
   const out=(w,why,must)=>({ok:true,wake:w,why:why||null,...(must?{must:true}:{}),gameMin:Math.round(S.gameMin),since:from,clock:day(),table:!!tv});
   const tv=tableView(a);
-  if(tv&&!tv.acted&&tv.phase!=='outcome'&&tv.waiting_for!=='the DM')return out('now','a scene at the table: '+tv.scene,true); // not while the DM sets it (#682)
+  if(tv&&!tv.acted&&tv.phase!=='outcome'&&tv.waiting_for!=='the DM'&&tv.your_turn)return out('now','a scene at the table: '+tv.scene,true); // only when it asks something of this hero (#926): a member whose turn has not come was woken again and again to find nothing to answer; its YOUR TURN event (level 3) wakes it // not while the DM sets it (#682)
   const seen=a.playEvSeen||0,sleeping=asleep(a);let soft=null,now=null; // a sleeper's agent gets no soft turns and no heartbeat: only wake events (#178)
   for(const e of a.playEv||[]){if(e.n<=seen)continue;const l=wakeLevel(e);if(l>=3)return out('now',e.text,true);if(l===2&&!now)now=e;if(l===1&&!soft&&!sleeping)soft=e}
   if(wake==='must'||tableRest(a))return null;
@@ -91,7 +92,7 @@ export function paceBrief(id,{self=false}={}){const a=hero(Number(id));
     foe,autopilot:!!a.playIdle,camp:campView(a),table:!!(tv&&tv.phase!=='outcome'),news,memories:heroRelevant(a),...(notTold(a)?{warning:NOT_TOLD}:{}), // memories: the hero's own notes most relevant now, {id, title} only (#155)
     scene:sceneOpen(a,tv),heard:heardLines(a),met:metNames(a),nearby:localsNear(a).map(x=>x.hook),road:roadSight(a,TRAFFIC.BRIEF),earshot:earshotLine(a),hold:S.gambitHold&&S.gambitHold.id===a.id?S.gambitHold.rule:null,insight:sightLine(a),roads:roadsLine(a), // who would hear a say or a shout, who to talk to, who is out of range (#395); null when nobody is near; heard/met: what was said lately and who it has met (sim/talk.js), so a trimmed context does not re-introduce itself
     ...hallBrief(a), // hall:[{id,title,giver,reward}] for a Fellowship member in town when its hall posts jobs for the Fellowship (#326); absent otherwise
-    quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
+    growth:growthText(a),quest:questBrief(a), // {focus, id, others}: the quest in focus and how many more it holds (sim/questlog.js)
     persona:personaLine(a),personaV:personaSig(a),...(self?{self:selfText(a)}:{}),...(toldLine(a)?{told:toldLine(a)}:{}), // stories it told of its past round the fire (#571): keep them straight // the hero's own persona (#409): one line for the header, a signature, and on request the full text
     ...gatherBrief(a), // gather: session zero waits for the whole company (#771)
     follow:followBrief(a), // {following?, followed_by?}: the hero's own follow and who walks with it, in words (#445); null when none
@@ -120,7 +121,7 @@ function hallPay(a,h){const T=ADV.ADVENTURES[h.tpl];if(!T||!T.pay)return null;co
 // texts, the frame and the beats so far (what tableView shows the hero, nothing more). null when acted or over.
 function sceneOpen(a,tv){if(!tv||tv.acted||tv.phase==='outcome'||!tv.options||tv.waiting_for==='the DM')return null;const keys=optionsFor(sceneOf(a),a).map(o=>o.k);if(!keys.length)return null;
   const g=swornOf(a)&&a.goal.text?a.goal.text:null,tl=toldLine(a);
-  return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
+  return {title:tv.scene,kind:tv.kind,frame:tv.frame,phase:tv.phase,id:sceneOf(a).id,...(tv.round?{round:tv.round}:{}),keys,options:tv.options,your_turn:!!tv.your_turn,so_far:tv.so_far||[],
     you:{name:a.name,cls:a.cls,persona:personaLine(a),...(g?{oath:g}:{}),...(tl?{told:tl}:{}),...(tv.your_past?{past:tv.your_past}:{})},...(tv.swear?{swear:tv.swear}:{}),...(tv.room?{room:tv.room}:{}),...(tv.moves?{moves:tv.moves}:{}),...(tv.topic?{topic:tv.topic}:{}),...(tv.asked_you?{asked_you:tv.asked_you}:{})}} // who answers (#571: a forced answer speaks as itself, not as the frame or a companion)
 // Where the hero stands, for the header (#399): a town by name when it is inside one ("Highgate (town; Lowmark around it)"), so
 // an agent waiting in town no longer reads the region and calls hunt there. The same words move_to reads back.

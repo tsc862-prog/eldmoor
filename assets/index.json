@@ -1638,6 +1638,23 @@
       "credits": "docs/CREDITS.md#lpc-creature-sheets",
       "accepted": "2026-11-04"
     },
+    "tile:ash-rock@32": {
+      "id": "tile:ash-rock",
+      "tier": 32,
+      "kind": "tile",
+      "file": "tile/32/ash-rock.png",
+      "w": 32,
+      "h": 32,
+      "colors": 13,
+      "grid": "8x32",
+      "sha256": "3e33362a50d6c60c9c325a70aa7b01148723db0f317a428d244e372f95aa6af7",
+      "model": "pixel-xl",
+      "repo": "nerijs/pixel-art-xl",
+      "provider": "fal-ai",
+      "seed": 1776,
+      "at": "2026-11-04T01:31:19.754Z",
+      "accepted": "2026-11-04T02:50:38.452Z"
+    },
     "tile:fen-grass@32": {
       "id": "tile:fen-grass",
       "kind": "tile",

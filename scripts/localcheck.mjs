@@ -19,13 +19,15 @@
 //      agents' choice with no table timeout.
 // Sessions go to a temporary folder (AGENT_LOGS), never to logs/agents/.
 // Usage: npm run localcheck
+import {mkTmp} from './tmp.mjs';
 import http from 'node:http';
 import {spawn} from 'node:child_process';
 import {mkdtempSync, readFileSync, existsSync, rmSync, readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneDue, sceneToAnswer, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS} from './local-agent.mjs';
+import {localWorked} from './pacing.mjs';
+import {localTurn, cleanArgs, parseTextCall, parseTextCalls, cleanNarration, sceneFrom, sceneDue, sceneToAnswer, sceneSchema, sceneTurn, scenePrompt, localLine, trimHistory, ollamaTools, LOCAL_DEFAULTS, actSig, REPEAT_ACTS, chatbotVoice} from './local-agent.mjs';
 import {ollamaAdapter, numCtxFrom} from './providers/ollama.mjs';
 import {attachPlay} from './relay-mcp.mjs';
 import {startMockOllama} from './mock-ollama.mjs';
@@ -123,6 +125,7 @@ console.log('text-written calls and forced scene turns (issue #163)');
     ok(sceneDue(mine, sess681) === null, 'the scene the session just answered is not due again (brief shows it stale)');
     ok(await sceneToAnswer({scene: mine}, g681, false, sess681) === null && await sceneToAnswer({table: true}, async () => ({ok: true, table: mine}), true, sess681) === null, 'neither the brief path nor the status fallback forces it');
     ok(sceneDue({...mine, frame: 'Another word, later.'}, sess681) !== null, 'a different scene is due');
+    ok(sceneDue({...mine, round: '2 of up to 3'}, sess681) !== null && sceneDue({...mine, id: 9}, sess681) !== null, 'the same words in the next round, or put again as another scene, are due (#926)');
     ok(await sceneToAnswer({table: true}, async () => ({ok: true, table: {...base, acted: true, your_turn: false, everyone_answers: true}}), true, {}) === null, 'the status fallback honours acted');
   }
   const sch = sceneSchema(scene.keys), schS = sceneSchema(scene.keys, {strict: true});
@@ -176,6 +179,24 @@ console.log('fenced JSON calls inside prose, DM argument shapes (issue #401)');
     let k = 0; const r = await localTurn({chat: async () => ({message: seq[Math.min(k++, seq.length - 1)], usage: {in: 1, out: 1}, ms: 1}), call: async (tool, args) => {ran.push(tool + JSON.stringify(args)); return {ok: true}}, sess: {system: 'You are Mirora.'}, prompt: 'A Timber Wolf attacks.', model: 'm'});
     ok(ran[0] === 'fight{"target_id":7}' && ran[1] === 'wait{"minutes":10}', 'in a turn the junk-prefixed fight call runs: ' + ran.join(' '));
     ok(r.narration === 'Mirora fought the wolf.' && !r.foreign, 'and the closing narration loses the echo and the Chinese tail: ' + JSON.stringify(r.narration))}
+  // issue #837: chatbot voice in the narration is re-prompted once, never shown or kept, and a repeat is an empty turn
+  {const real = ['It seems like your last action was after your recent turn ended. What would you like to do next? You can check your surroundings.', 'Could you please specify which action or option you would like to perform?', "It seems like you're at a point in the game where you need to choose from specific actions."],
+    fine = ['Branett, what should we do next? Let me know when you are ready.', "How can we help you, trapper?", 'It seems you have a surplus of gold, Ivoon. Might I ask why you bank so much?', 'The game has paused, so Mirora waits at the gate.', 'What would you do if the trail went cold, Ulfock?', "Ask me again when the boars are paid. You can count on me."];
+    ok(real.every(chatbotVoice) && fine.every(t => !chatbotVoice(t)), 'chatbot voice: assistant phrasing is caught, in-character questions to a companion are not: ' + [...real, ...fine].map(chatbotVoice).join(','));
+    const sent = []; let k = 0; const shown = [];
+    const seq = [{role: 'assistant', content: real[0]}, {role: 'assistant', content: 'Mirora checks the gate.', tool_calls: [{function: {name: 'look', arguments: {}}}]}, {role: 'assistant', content: 'Mirora looked around the gate.'}];
+    const sess = {system: 'You are Mirora.'};
+    const r = await localTurn({chat: async req => {sent.push(req.messages); return {message: seq[Math.min(k++, seq.length - 1)], usage: {in: 1, out: 1}, ms: 1}}, call: async () => ({ok: true}), sess, prompt: 'The wolf is gone.', model: 'm', on: (t, x) => {if (t === 'text') shown.push(x)}});
+    ok(r.reprompted && k === 3 && sent[1].some(m => m.role === 'user' && /not a message from a person/.test(m.content)) && sent[1].every(m => m.content !== real[0]), 'a chatbot reply is re-prompted once and its text is not sent back');
+    ok(!r.chatbot && r.narration === 'Mirora looked around the gate.' && !shown.some(chatbotVoice) && !JSON.stringify(sess.local.history).includes('What would you like'), 'and the recovered turn keeps only the real narration');
+    k = 0; const seq2 = [{role: 'assistant', content: real[0]}, {role: 'assistant', content: real[1]}]; const shown2 = [];
+    const sess2 = {system: 'You are Mirora.'};
+    const r2 = await localTurn({chat: async () => ({message: seq2[Math.min(k++, 1)], usage: {in: 1, out: 1}, ms: 1}), call: async () => ({ok: true}), sess: sess2, prompt: 'The wolf is gone.', model: 'm', on: (t, x) => {if (t === 'text') shown2.push(x)}});
+    ok(r2.chatbot && r2.narration === '' && shown2.length === 0 && !JSON.stringify(sess2.local.history).includes('Could you please') && localWorked(r2) === false && sess2.local.emptyRun === 1, 'a second chatbot reply is dropped, flagged and counts as an empty turn');
+    // the refusal the model reads says it is the game, not a person
+    const seen = []; let j = 0; const seq3 = [{role: 'assistant', content: '', tool_calls: [{function: {name: 'wait', arguments: {minutes: 5}}}]}, {role: 'assistant', content: 'Mirora waited.'}];
+    await localTurn({chat: async req => {seen.push(req.messages); return {message: seq3[Math.min(j++, 1)], usage: {in: 1, out: 1}, ms: 1}}, call: async () => ({ok: false, error: 'Your turn has passed.'}), sess: {system: 'x'}, prompt: 'p', model: 'm', opts: {endOnWait: false}});
+    ok(seen[1].some(m => m.role === 'tool' && /Your turn has passed\./.test(m.content) && /not a message from a person/.test(m.content)), 'a refused tool result carries the note that it is the game, not a person')}
   // issue #467: the circuit breaker and the per-minute call cap
   {const refuse = async () => ({ok: false, error: 'Refused: unknown place "{"x":-5,"y":0}"'}), same = {role: 'assistant', content: '', tool_calls: [{function: {name: 'mark_place', arguments: {kind: 'ruin', near: '{"x":-5,"y":0}', reason: 'r'}}}]};
     let n = 0; const s1 = {system: 'You are the DM.'}, r = await localTurn({chat: async () => {n++; return {message: same, usage: {in: 1, out: 1}, ms: 1}}, call: refuse, sess: s1, prompt: 'Your turn.', model: 'm', tools: DM_TOOLS, toolTurns: 16, opts: {endOnWait: false}});
@@ -281,7 +302,7 @@ console.log('ollama adapter chat (mock server)');
 }
 
 // ---------------------------------------------------------------- 2. the runner, end to end
-const tmp = mkdtempSync(join(tmpdir(), 'eldmoor-localcheck-'));
+const tmp = mkTmp('eldmoor-localcheck-');
 ctxFrom = seen.length;
 const childEnv = {...process.env, AGENT_LOGS: tmp, ANTHROPIC_API_KEY: '', OLLAMA_URL: OLLAMA, AGENT_MIN_GAP: '0', AGENT_HEARTBEAT: '30', AGENT_REFLECT: '0'}; // AGENT_REFLECT=0: no reflection turns where turn counts are exact; H passes --reflect (#179) // pacing (issue #126) kept short for the old sections
 const kids = [];
@@ -530,6 +551,19 @@ ${R.out.slice(-800)}`));
     ok(!sz.ok && /speak in English/.test(sz.error), 'the game refuses a foreign-script line: ' + sz.error);
     sim.markPlayer(a, false)}
 
+  // E2. repeated acts (#801): the same emote every turn is flagged repeat-act and counts as an empty turn; consistent play is never flagged
+  {const sg = (name, args) => actSig([{name, args}]);
+    ok(sg('emote', {text: 'a'}) === sg('emote', {text: 'a'}) && sg('emote', {text: 'a'}) !== sg('emote', {text: 'b'}) && sg('say', {text: 'a'}) !== sg('emote', {text: 'a'}), 'actSig: same call and arguments match, another text or tool does not');
+    ok(['wait', 'hunt', 'move_to', 'follow', 'rest', 'scene_act', 'use_ability', 'buy', 'sell', 'take_quest', 'look', 'status', 'fight', 'lead_to'].every(t => actSig([{name: t, args: {}}]) === null) && actSig([]) === null && actSig(undefined) === null && actSig([{name: 'emote', args: {text: 'a'}}, {name: 'say', args: {text: 'b'}}]) === null, 'actSig: wait, hunt, move_to, follow, rest, scene_act, abilities, trade, quests, reads, no act and a turn with two acts are never flagged');
+    ok([...REPEAT_ACTS].sort().join() === 'emote,party_say,say,whisper', 'only emote, say, party_say and whisper can be flagged');
+    const a = pick(), n0 = seen.length;
+    const R = runner(a, 'mock-pose:1b', ['--heartbeat', '10', '--min-gap', '0', '--max-fails', '3', '--max-turns', '8', '--new']);
+    const code = await Promise.race([R.done, sleep(60000).then(() => 'timeout')]);
+    const flagged = (R.out.match(/repeat-act: the same emote/g) || []).length, refused = (R.out.match(/already did that/g) || []).length;
+    ok(code === 0 && /3 failed or empty turns in a row/.test(R.out) && R.turns.length <= 5, `a model looping one emote is stopped by --max-fails after ${R.turns.length} turns` + (code === 0 ? '' : '\n' + R.out.slice(-1200)));
+    ok(flagged >= 2 || refused >= 1, `the loop is caught by the runner flag (${flagged} repeat-act) or the game's own refusal (${refused})`);
+    sim.markPlayer(a, false)}
+
   // I. a New World reuses the hero's id for another hero (issue #219): the runner notices, releases its claim and
   // exits with code 75 (the supervisor starts it again); the next run sets the old session aside and takes a turn
   {const a = pick(), oldName = a.name;
@@ -638,7 +672,7 @@ ${R.out.slice(-800)}`));
       kids.push(q); let qo = ''; q.stdout.on('data', d => qo += d); q.stderr.on('data', d => qo += d);
       const code = await Promise.race([new Promise(r => q.on('close', r)), sleep(120000).then(() => 'timeout')]);
       clearInterval(tick8);
-      const live = mem.filter(a => a.state !== 'dead'), refused = (qo.match(/< \{"ok":false,"error":"You (have already met your companions|already said that)/g) || []).length;
+      const live = mem.filter(a => a.state !== 'dead'), refused = (qo.match(/< \{"ok":false,"error":"You (have already met your companions|already said that)|The company has already met this hero/g) || []).length;
       ok(code === 0, 'mock-intro: every member plays two turns' + (code === 0 ? '' : ' (' + code + ')\n' + qo.slice(-2000)));
       ok(refused === live.length, `the first introduction goes through, the repeat is refused with an error the model sees (${refused} refused of ${live.length} members)` + (refused === live.length ? '' : '\n' + qo.slice(-2500)));
       // counted from the runner's own log (the chat buffer keeps only 20 lines per hero)

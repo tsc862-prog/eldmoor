@@ -73,7 +73,7 @@ import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
-import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, tableHooks, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
+import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, tableHooks, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 let LOG_FILE = join(LOGS, 'fellowship.log'); const RUNS_FILE = join(LOGS, 'fellowship-runs.jsonl'); // AGENT_LOGS moves them for tests
@@ -86,7 +86,7 @@ export function fellowshipPrompt(st) {
     `FELLOWSHIP: you ride with ${f.fellowship || 'a Fellowship'} as its ${f.role || 'member'}. Four companions share your one road; their names, roles and how you see them are in status.fellowship.companions. status.fellowship also holds your voice, wants, fears, quirk, a line you would never say, your backstory and your memories: play from them, in that voice.`,
     '- Talk to your companions with party_say, a shout your companions hear only within about 12 tiles (the result says who heard and who was too far away; earshot tells you beforehand), and catch up with party_read. DISTANCE CUTS YOU OFF: beyond that range nobody hears you, only companions within it hear a proposal or vote, and lead_to reaches only those near. If you must separate, agree aloud where and when to meet again (leave_party with where and when_hours, or a split proposal with meet_at and meet_in_hours), write it in your notes (remember), and keep to it. A paid courier (send_courier, hired at a town gate) is the only way to reach someone out of range, and it takes game hours. When you come back from a long absence, ask what you missed; when a companion returns, tell them what they missed, in your own words. Keep it short and in character. Your companions and the DM are other minds: you know only what they say in the game and what your hero sees.',
     '- You already know your companions: do not introduce yourself again, and do not repeat a line or a question (each turn shows what was said lately). Talk to move the party forward: propose, vote, lead_to, or answer a question you were asked. The game refuses a line you already said.',
-    '- Decisions that need everyone (take a job, answer a Crypt or raid call, split up) go through propose(kind, details) and vote(proposal_id, yes|no, reason). Vote on every open proposal (status.proposals, or an event) with a reason in your own voice.',
+    '- Decisions that need everyone (take a job, go down into the Crypt, raid Kragmaw, split up) go through propose(kind, details) and vote(proposal_id, yes|no, reason). Vote on every open proposal (status.proposals, or an event) with a reason in your own voice.',
     '- The leader (status.party_leader) chooses where the party goes with lead_to; everyone else follows. If you are the leader, lead: pick hunting grounds and jobs that suit the weakest of you, from what the party has seen and been told. leave_party splits you off for a while and costs you the others\' trust; do it only for a reason your character would have.',
     '- TABLE MODE: when status, look or wait show "table", the world is paused for a scene and every second counts. Act at once with scene_act(option, line), using one of the options listed, with a short line in your voice. Do not look around first. You may answer as soon as the scene opens; it happens on your turn. Then wait.',
     '- Hardcore still holds: one life each. Protect each other.',
@@ -266,7 +266,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const sc0 = !refl && b0 ? sceneDue(b0.scene, m.sess) : null;
     if (sc0) {const first = await claudeScene(m, model, sc0, tc);
       if (first && first.tools) {m.sess.turns++; m.turns++; m.scenes++; m.tools += first.tools;
-        reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: first.narration || '', seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: first.in, tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['scene', 'forced-scene', 'scene-first']});
+        reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: first.narration || '', seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['scene', 'forced-scene', 'scene-first']});
         saveSession(m.sess, {url: base}); return true}}
     const ac = new AbortController(); aborts.add(ac); m.ac = ac; let rested = false;
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the turn resumes
@@ -279,8 +279,9 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       settings: {autoCompactEnabled: true}, maxTurns: scene || refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv, hooks: tableHooks({idle: on => {if (m.lease) m.lease.idle(on)}, onOver: () => {rested = true; out(m.name, '[table: nothing to wait for here; the turn ends and pacing wakes it]')}}), // #868
     }});
-    const sceneS = [];
+    const sceneS = [], gs = grabSpend(); // #747: what an aborted query reports before the cut
     try {for await (const msg of q) {
+      if (msg.type === 'assistant') gs.add(msg);
       if (msg.type === 'system' && msg.subtype === 'init') {m.sess.sessionId = msg.session_id; if (!refl && !scene) delete m.sess.rolled; saveSession(m.sess, {url: base}); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => out(m.name, s))}}
       else if (msg.type === 'system' && msg.subtype === 'compact_boundary') {m.compacts = (m.compacts || 0) + 1; m.sess.compacts = (m.sess.compacts || 0) + 1; out(m.name, `[compacted: ${msg.compact_metadata.pre_tokens} -> ${msg.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (msg.type === 'assistant' && !msg.parent_tool_use_id) {
@@ -300,7 +301,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       else {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); out(m.name, `turn failed: ${err}`); failed = true}}
     grab.stop(); aborts.delete(ac);
     m.sess.turns++; m.turns++; if (scene) m.scenes++;
-    let turnCost = null, tin = null, tout = null, cread = null, cwrite = null;
+    let turnCost = null, tin = null, tout = null, cread = null, cwrite = null, grabCost = null;
+    if (grab.grabbed() && !result) { // the cut query sent no result: count what it spent (#747)
+      grabCost = gs.cost(model, {sent: String(m.sess.system || '').length + prompt.length}); spent += grabCost.usd; m.cost += grabCost.usd; m.sess.costUsd += grabCost.usd; turnCost = grabCost.usd;
+      out(m.name, `[turn ${m.turns}] cut for its scene | ${model} | ${grabCost.how} ${money(grabCost.usd)} (${grabCost.calls} model calls reported) | member ${money(m.cost)} | run ${money(spent)} of ${money(budget)}`)}
     if (result) {
       const ud = usageDelta(m.sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)
       const tot = result.total_cost_usd || 0, cost = tot >= m.sess.lastTotal ? tot - m.sess.lastTotal : tot; m.sess.lastTotal = tot;
@@ -317,7 +321,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     let wrote = 0; if (refl) {wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; m.notes = (m.notes || 0) + wrote; m.reflections = (m.reflections || 0) + 1;
       await closeReflection(base, m.id, runnerId, refl.id, wrote); out(m.name, `[reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(m.sess.ctx != null ? {ctx: m.sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     m.rolledNow = false; saveSession(m.sess, {url: base});
     if (grab.grabbed() && !again && !stopping && !m.ended && !failed) {out(m.name, '[scene answered; resuming the turn]'); return (await claudeTurn(m, null, w, null, true)) || tools > 0}
     return !failed && (tools > 0 || !!refl);

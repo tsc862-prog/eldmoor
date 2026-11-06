@@ -10,6 +10,7 @@
 // Owned by world-builder (routines and reactions); names and sprites by
 // character-builder; lines by lore-keeper. Canon: docs/LORE.md, "Townsfolk".
 import {pickA} from '../core/rng.js';
+import {keep} from './kept.js';
 import {CITY,CRYPT,ZONES,dist} from '../world/map.js';
 import {solidAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
@@ -20,7 +21,7 @@ import {S,clockStr,dayNo} from './state.js';
 import {pop} from './effects.js';
 import {moveTo} from './heroes.js';
 import {attitudeOf,presence} from './levers.js';
-import {within,LOD} from './spatial.js';
+import {within,LOD,snapHeroes,dropSnap,heroesAround} from './spatial.js';
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
 
 // Tuning. Speeds in tiles/s at 1x; GREET_R tiles from the post that count as a visit;
@@ -37,6 +38,7 @@ export const WALK=1.6,STROLL=1.1,GREET_R=2,BLESS_R=3,HEAR=7,COOL=30,URGENT=3,BUB
 // Private LCG: choosing lines, stroll points and pauses never perturbs the gameplay RNG.
 const SEED0=0x3c6ef372;let seed=SEED0;export const resetNpcSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('npcs',()=>seed,v=>{seed=v}); // saved with the world
 
 const fill=(s,p,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?p.name:k==='town'?p.town:ctx[k]!=null?String(ctx[k]):k)
   .replace(/\b([Aa]) (?=[AEIOUaeiou])/g,'$1n ');
@@ -117,7 +119,7 @@ const nearHero=(p,rad)=>S.agents.some(a=>a.state!=='dead'&&a.state!=='ghost'&&!a
 // Greeting: the first unmet (or long unseen) living hero within GREET_R of an NPC at post.
 function greet(p,work){
   if(p.chatCd>0||!(p.state==='post'||(p.role==='bard'&&work)))return;
-  for(const a of S.agents){if(a.state==='dead'||a.state==='ghost'||a.hidden||!within(a,p,GREET_R))continue;
+  for(const a of heroesAround(p.x,p.y,GREET_R)){if(a.state==='dead'||a.state==='ghost'||a.hidden)continue; // #730: the npcsTick hero grid, same heroes in the same order
     const last=p.met[a.id];if(last!=null&&S.gameMin-last<REGREET)continue;
     // DM levers: a hostile resident turns away; a friendly one, a festival or a plague changes the odds
     p.met[a.id]=S.gameMin;const att=attitudeOf(p,[a]);if(att==='hostile'||r()>=GREET_P*presence(p.town)*(att==='friendly'?2:1))continue;
@@ -157,7 +159,9 @@ function bless(p,c){const g=CRYPT&&CRYPT.group;
     if(p.chatCd<=COOL-URGENT){p.face=a.x>p.x?1:-1;npcSay(p,'bless',{target:a.name})}}}
 
 // Once per step from sim/index.js.
-export function npcsTick(dt){ensureNpcs();newsTick();
+export function npcsTick(dt){ensureNpcs();newsTick();snapHeroes(); // #730: heroes do not move while the residents act
+  try{residents(dt)}finally{dropSnap()}}
+function residents(dt){
   for(const p of S.npcs){const c=cityOf(p),work=atWork(npcRole(p.role));
     if(p.chatCd>0)p.chatCd-=dt;
     if(p.bubble){p.bubble.life-=dt;if(p.bubble.life<=0)p.bubble=null}
