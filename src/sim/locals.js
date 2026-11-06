@@ -10,6 +10,7 @@
 // Deterministic: no RNG at all (a hash of ids and the arrival time picks which visits get a hail), agent-played Fellowship
 // members only, so a world with no Fellowship is untouched and a seeded run is identical. DOM-free. Owned by ai-designer.
 import {S} from './state.js';
+import {keep} from './kept.js';
 import {CITY,ZONES,dist} from '../world/map.js';
 import {ELITES} from '../data/mobs.js';
 import {ADVENTURES} from '../data/adventures.js';
@@ -71,6 +72,7 @@ function reason(p,a,c){const role=p.role;
 
 // ---- once per step (sim/index.js) ----
 let acc=0;export const resetLocals=()=>{acc=0}; // a new world starts the timer over (#674)
+keep('locals',()=>acc,v=>{acc=v});
 export function localsTick(dt){if(!slotted())return;acc+=dt;if(acc<LOC.EVERY)return;acc=0;
   const T=talkState();
   for(const a of S.agents){if(!inSlots(a)||!a.player||!living(a)||a.kind!=='hero')continue;

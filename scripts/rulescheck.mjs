@@ -12,7 +12,8 @@
 //     checked-out (merged) tree holds docs/patchnotes/<PR>.md, unless the PR carries the label no-notes. The PR number
 //     comes from --pr N or PR_NUMBER (CI); the label is read live with gh (GH_TOKEN), so adding it and re-running works.
 // Usage: npm run rulescheck [-- --against origin/main] [--no-tables] [--pr N]
-import {readFileSync, readdirSync, existsSync, mkdtempSync} from 'node:fs';
+import {mkTmp} from './tmp.mjs';
+import {readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {tmpdir} from 'node:os';
 import {join, dirname, resolve, relative, sep} from 'node:path';
@@ -91,22 +92,30 @@ const keysOf = t => t == null ? null : Array.isArray(t) ? t.map(rowKey) : Object
 if (argv.includes('--no-tables')) console.log('append-only tables: skipped (--no-tables)');
 else {
   console.log('append-only tables: no existing row reordered or renamed against ' + opt('--against', 'origin/main'));
-  const ref = opt('--against', 'origin/main'), dir = mkdtempSync(join(tmpdir(), 'eldmoor-rules-'));
+  const ref = opt('--against', 'origin/main'), dir = mkTmp('eldmoor-rules-');
   const a = spawnSync('git', ['archive', ref, 'src'], {cwd: ROOT, maxBuffer: 1 << 30});
   let t = a.status === 0 ? spawnSync('tar', ['-x'], {cwd: dir, input: a.stdout, maxBuffer: 1 << 30}) : null;
   if (!t || t.status !== 0) ok(false, 'could not read ' + ref + ' (git archive failed: ' + String(a.stderr || (t && t.stderr)).trim().slice(0, 200) + '); run `git fetch origin main`');
   else {
+    // the extract is ES modules whatever the temp dir's own package.json says (tmp.mjs writes commonjs into logs/tmp; without this every table read as new)
+    writeFileSync(join(dir, 'package.json'), '{"type":"module"}\n');
     const allow = ALLOW.tables || {};
+    const newOnes = [];
     for (const [id, file, pick] of TABLES) {
       let head, base;
       try {head = keysOf(pick(await import(pathToFileURL(join(ROOT, file)).href)))} catch (e) {ok(false, id + ' loads on this branch: ' + e.message); continue}
-      try {base = keysOf(pick(await import(pathToFileURL(join(dir, file)).href)))} catch {base = null}
-      if (!base) {ok(true, id + ' is new (nothing to compare)'); continue}
+      let baseMod = null, baseErr = null;
+      try {baseMod = await import(pathToFileURL(join(dir, file)).href)} catch (e) {baseErr = e}
+      if (baseErr && existsSync(join(dir, file))) {ok(false, id + ' cannot be read from ' + ref + ' although ' + file + ' exists there (' + String(baseErr.message).slice(0, 120) + '); the append-only guard would be off'); continue}
+      base = baseMod ? keysOf(pick(baseMod)) : null;
+      if (!base) {ok(true, id + ' is new (nothing to compare)'); newOnes.push(id); continue}
+      if (base.length === 0) {ok(false, id + ' reads empty on ' + ref + '; the append-only guard would compare nothing'); continue}
       if (!head) {ok(false, id + ' is gone from this branch'); continue}
       const bad = [], al = new Set(allow[id] || []);
       base.forEach((k, i) => {if (head[i] !== k && !al.has(k)) bad.push(`row ${i}: '${k}' on ${ref}, '${head[i]}' here`)});
       ok(bad.length === 0, `${id}: ${base.length} existing rows keep their place (${head.length} now)` + (bad.length ? '\n    ' + bad.slice(0, 8).join('\n    ') + (bad.length > 8 ? `\n    ... ${bad.length - 8} more` : '') + '\n    (append new rows at the end; a coordinated rename goes in the allowlist "tables")' : ''));
     }
+    ok(newOnes.length < TABLES.length, 'the guard compares tables (' + (TABLES.length - newOnes.length) + ' of ' + TABLES.length + ' read from ' + ref + '; new: ' + (newOnes.join(', ') || 'none') + ')');
   }
 }
 
@@ -158,6 +167,13 @@ console.log('patch notes: one player-facing note per PR (docs/patchnotes/<PR>.md
     ok(labels.includes('no-notes'), labels.includes('no-notes') ? `PR #${pr} has no note and the label no-notes` :
       `PR #${pr} has no patch note: add docs/patchnotes/${pr}.md (title, date, area, issues in front matter, then 1-6 "- " lines on what the player will see; "Nothing you will notice: ..." for CI and tests), or label the PR no-notes and re-run`);
   }
+}
+
+// ---- 8. no code hidden after a // comment (#933) ----
+console.log('\ncomments: no code hides after a // comment');
+{
+  const r = spawnSync(process.execPath, [join(ROOT, 'scripts/commentcodecheck.mjs')], {cwd: ROOT, encoding: 'utf8'});
+  ok(r.status === 0, 'no statement written after a // comment on the same line (scripts/commentcodecheck.mjs)' + (r.status === 0 ? '' : '\n    ' + r.stdout.trim().split('\n').slice(1).join('\n    ')));
 }
 
 console.log(fail ? `\n${fail} FAILED` : '\nall rules hold');

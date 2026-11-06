@@ -289,7 +289,8 @@ export function sceneSchema(keys, {strict = false, moves = null, swear = false} 
 // The open scene as the brief (/play/pace {brief:true}, field scene) or a status/look reply (field table) gives it
 // -> {title, kind, frame, keys, options, your_turn, so_far}, or null when there is nothing to answer.
 // Never a scene this hero already acted in, an everyone-answers one that is not open to it, or a turn scene on someone else's turn (#681).
-export const sceneKey = t => t ? [t.title || t.scene || '', t.kind || '', String(t.frame || '').slice(0, 80)].join('|') : '';
+// The scene's id and round are part of the key (#926): the same words put twice (a proposal asked again) or a rescue whose frame does not change from round to round were taken for the scene answered a moment ago, and went unanswered for 10 real minutes.
+export const sceneKey = t => t ? [t.id ?? '', t.title || t.scene || '', t.kind || '', String(t.frame || '').slice(0, 80), String(t.round || '')].join('|') : '';
 export function sceneFrom(t) {
   if (!t || t.acted || t.phase === 'outcome' || t.phase === 'done') return null;
   if (t.your_turn === false && (t.everyone_answers || t.phase === 'turn')) return null;
