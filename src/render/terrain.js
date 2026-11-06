@@ -307,7 +307,8 @@ function pickVariant(kind,b,h,asset){const n=Math.floor(h*VARIANTS)%VARIANTS;
 export function propAt(tx,ty,asset=true){const t=tileOr(tx,ty);if(t<0)return null;
   const b=propBiome(biomeOfZone(zone[I(tx,ty)]));
   if(t===TREE&&asset&&canopyImg(b,0))return {id:'canopy',A:EMPTY,kind:'tree',ground:GROUND[b]}; // the tree is a whole canopy tree over this tile's ground (paintCanopy)
-  if(t===TREE){const v=pickVariant('tree',b,hash(tx,ty,611),asset);return v&&{...v,kind:'tree',ground:GROUND[b]}}
+  if(t===TREE){const v=pickVariant('tree',b==='highland'?'meadow':b,hash(tx,ty,611),asset); // highland has canopies, no one-tile trees
+   return v&&{...v,kind:'tree',ground:GROUND[b]}}
   if(t===GROUND[b]&&hash(tx,ty,617)<(ROCK_ODDS_BY[b]||ROCK_ODDS)){const v=pickVariant('rock',b,hash(tx,ty,619),asset);return v&&{...v,kind:'rock',ground:t}}
   return null}
 
