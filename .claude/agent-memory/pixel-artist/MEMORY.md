@@ -21,6 +21,7 @@
 - [Town life](townlife.md) — #795 render-only critters/smoke/stalls/guards, deco entities, staging
 - [Free art sets](freepacks.md) — #789 LPC/Kenney review: LPC fits, Kenney does not; pack folder, cutters, licences, staging shots
 - [Biome ground](biomes.md) — #835 LPC fen/swamp/mud/ash/snow/ice/lava from the Terrains atlas, pair table, 3-type corners, ENOSPC note
+- [LPC landmarks](lpclandmarks.md) — #836 crypt mouth and lair from LPC castlewalls/lavarock, landmark shot staging, C: full gotcha
 - [Whole-map marks](entitylod.md) — #729 lod.js: threshold, pawns plus 1:1 creature sprites, sheet warm-up, probe in a junction worktree
 - [LPC trees and rocks](lpctrees.md) — #834 whole canopy trees painted in chunk, redrawn over entities; cutter needs ELDMOOR_PACKS; C: disk full gotcha
 - [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
