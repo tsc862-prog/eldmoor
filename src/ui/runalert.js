@@ -11,7 +11,7 @@ import {agentLink,agentRunner,dmLink} from './player-bridge.js';
 import {setDmAlive} from '../sim/talk.js'; // a live but busy DM gets a grace before the scripted townsfolk answer (#540)
 import {ctl} from './controls.js';
 import {alertCue} from './table.js';
-import {runFree,onGateClose} from './rungate.js';
+import {runFree,onGateClose,seatWaived} from './rungate.js';
 import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
 export {reasonOf} from './runners.js';
 
@@ -51,7 +51,7 @@ export function initRunAlert(){
   setRunnerLinks(a=>agentLink(a));                       // the relay's claims: connected / waiting = a runner holds the hero
   setDmAlive(()=>{const l=dmLink();return l==='connected'||l==='waiting'});
   setRunnerMind(a=>agentRunner(a));                      // relay writing kinds follow the hero's runner mind (#478)
-  setReflexAck(()=>runFree());                           // reflexes for a runner-less member only in Developer "Run without agents"
+  setReflexAck(a=>runFree()||seatWaived(a));              // reflexes for a runner-less member: Developer "Run without agents", or the owner's Start/Resume anyway for that seat
   onGateClose(()=>{if(on)alertCue()});
   const b=$('vRal');if(b){b.onclick=()=>{on=!on;try{localStorage.setItem(KEY,on?'on':'off')}catch(_){}sync()}}
   sync()}

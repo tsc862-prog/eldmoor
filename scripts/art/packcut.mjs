@@ -17,14 +17,14 @@ import {decodePng,encodePng} from './png.mjs';
 import {sha256,fileOf} from './lib.mjs';
 
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..','..');
-export const LPC_TILES=path.join(process.env.ELDMOOR_PACKS||path.join(ROOT,'assets','packs'),'lpc-base','LPC Base Assets','tiles'); // ELDMOOR_PACKS: a packs folder kept outside this checkout
-const T=32;
-const px=(im,x,y)=>{const o=(y*im.w+x)*4;return [im.data[o],im.data[o+1],im.data[o+2],im.data[o+3]]};
-const blank=(w,h)=>({w,h,data:new Uint8Array(w*h*4)});
-const put=(im,x,y,p)=>{const o=(y*im.w+x)*4;im.data[o]=p[0];im.data[o+1]=p[1];im.data[o+2]=p[2];im.data[o+3]=p[3]};
-const sheet=n=>decodePng(fs.readFileSync(path.join(LPC_TILES,n+'.png')));
-const tile=(im,tx,ty)=>{const o=blank(T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++)put(o,x,y,px(im,tx*T+x,ty*T+y));return o};
-function over(dst,src,ox,oy){for(let y=0;y<src.h;y++)for(let x=0;x<src.w;x++){const p=px(src,x,y);if(p[3]>=128&&x+ox>=0&&y+oy>=0&&x+ox<dst.w&&y+oy<dst.h)put(dst,x+ox,y+oy,[p[0],p[1],p[2],255])}}
+export const LPC_TILES=path.join(process.env.ELDMOOR_PACKS||path.join(ROOT,'assets','packs'),'lpc-base','LPC Base Assets','tiles');
+export const T=32;
+export const px=(im,x,y)=>{const o=(y*im.w+x)*4;return [im.data[o],im.data[o+1],im.data[o+2],im.data[o+3]]};
+export const blank=(w,h)=>({w,h,data:new Uint8Array(w*h*4)});
+export const put=(im,x,y,p)=>{const o=(y*im.w+x)*4;im.data[o]=p[0];im.data[o+1]=p[1];im.data[o+2]=p[2];im.data[o+3]=p[3]};
+export const sheet=n=>decodePng(fs.readFileSync(path.join(LPC_TILES,n+'.png')));
+export const tile=(im,tx,ty)=>{const o=blank(T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++)put(o,x,y,px(im,tx*T+x,ty*T+y));return o};
+export function over(dst,src,ox,oy){for(let y=0;y<src.h;y++)for(let x=0;x<src.w;x++){const p=px(src,x,y);if(p[3]>=128&&x+ox>=0&&y+oy>=0&&x+ox<dst.w&&y+oy<dst.h)put(dst,x+ox,y+oy,[p[0],p[1],p[2],255])}}
 function fillWith(dst,t){for(let y=0;y<dst.h;y++)for(let x=0;x<dst.w;x++)put(dst,x,y,px(t,x%T,y%T))}
 function crop(im,x0,y0){const o=blank(T,T);for(let y=0;y<T;y++)for(let x=0;x<T;x++){const X=x0+x,Y=y0+y;put(o,x,y,X>=0&&Y>=0&&X<im.w&&Y<im.h?px(im,X,Y):[0,0,0,0])}return o}
 
@@ -70,17 +70,19 @@ export function cutTerrain(){
 // ash dark and warm grey; tundra cold and pale). Trees: LPC crowns are 3 tiles wide and 2.5 tall, so a tree is not a one-tile prop:
 // prop:canopy-<biome>-1..3 are whole trees (crown over trunk and its ground shadow, 96x120, root at row 108) that terrain.js draws
 // over the ground of its TREE tiles and over entities behind them. Nothing is scaled; shadows keep their alpha.
-const BIOMES=['meadow','fen','ash','tundra'];
+const BIOMES=['meadow','fen','ash','tundra','highland'];
 const mix=(a,b,k)=>a+(b-a)*k;
 // per biome recolour of one pixel [r,g,b,a]; 'rock' and 'tree' have their own tones
 function tone(p,biome,kind){let [r,g,b,a]=p;const l=(r*.3+g*.59+b*.11);
   if(biome==='meadow')return p;
   if(kind==='rock'){
     if(biome==='fen'){r=mix(r*.82,l*.78,.4);g=mix(g*.92,l*.95,.3)+6;b=mix(b*.74,l*.7,.4)}
+    else if(biome==='highland'){r=mix(r,l,.6)*.9+2;g=mix(g,l,.6)*.95+6;b=mix(b,l,.5)*1.04+18}   // cold blue-grey granite, a touch of lichen green
     else if(biome==='ash'){const k=.62;r=mix(l,r,.55)*k+4;g=mix(l,g,.45)*k;b=mix(l,b,.45)*k-2}
     else{r=mix(r,l,.55)*.97+6;g=mix(g,l,.55)*1+12;b=mix(b,l,.4)*1.08+30}}
   else{
     if(biome==='fen'){r=r*.95+10;g=g*.8+6;b=b*.58;const m=l*.12;r+=m;g-=m*.4}                // drab olive, a little brown
+    else if(biome==='highland'){r=r*.78+2;g=mix(g,l,.15)*.92+4;b=b*1.12+14}                  // cool, dark blue-green upland pine and birch
     else if(biome==='ash'){const k=.7;r=mix(r,l,.5)*k+12;g=mix(g,l,.55)*k;b=mix(b,l,.5)*k-2}  // scorched, grey-green
     else{r=mix(r,l,.3)*.9+6;g=mix(g,l,.2)*.98+8;b=mix(b,l,.1)*1.1+16}}                        // frosted, cold
   const c=v=>Math.max(0,Math.min(255,Math.round(v)));return [c(r),c(g),c(b),a]}
@@ -105,7 +107,7 @@ export function cutProps(){
   const tree=(k,trunkNo)=>{const o=blank(CANOPY_W,CANOPY_H),tr=sub(TK,trunkNo*96,0,96,96);stamp(o,tr,0,CANOPY_ROOT-63);
     const [bx,by,bw,bh]=box[k],c=sub(crown[k],bx,by,bw,bh);stamp(o,c,Math.round((CANOPY_W-bw)/2),CANOPY_ROOT-ride[k]-bh);return o};
   const T0=[tree(0,0),tree(1,1),tree(2,0),tree(3,1)];
-  const mixes={meadow:[0,1,3],fen:[0,1,2],ash:[2,3,1],tundra:[2,3,2]};
+  const mixes={meadow:[0,1,3],fen:[0,1,2],ash:[2,3,1],tundra:[2,3,2],highland:[2,3,0]}; // uplands: mostly conifers, one broad tree
   for(const b of BIOMES)mixes[b].forEach((k,i)=>{let im=recolour(T0[k],b,'tree');
     if(b==='tundra'&&k>=2){ // snow on the boughs: the upper part of the crown goes pale, in a speckle
       const top=CANOPY_ROOT-ride[k]-bh_of(k);
