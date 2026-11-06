@@ -8,6 +8,7 @@
 // Reads the world module only (CITY, LANDMARKS); never the sim, never the map's tiles, so the map hash cannot move.
 import {U,TILE,ART} from './tile.js';
 import {CITY,LANDMARKS} from '../world/map.js';
+import {outsideTown,townRing} from '../world/gen.js';
 import {FAC} from '../data/factions.js';
 import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle} from '../data/townart.js';
 import {assetPixels,assetEntry,onAssets} from './assets.js';
@@ -70,14 +71,19 @@ const WALL_KEYS=['plaza','wall-n','wall-e','wall-s','wall-w','tower','pier','pie
 const wallId=(c,k)=>`${k==='plaza'||k.startsWith('wall')?'tile':'building'}:lpc-${c.wall||townStyle(c)}-${k}`;
 function wallSet(c){const o={};for(const k of WALL_KEYS){const i=pieceImage(wallId(c,k));if(!i)return null;o[k]=i}return o}
 const SIDES='nesw';
+const boxOver=(a,b)=>a[0]<b[0]+b[2]&&b[0]<a[0]+a[2]&&a[1]<b[1]+b[3]&&b[1]<a[1]+a[3];
 const iw=i=>i.w||i.width,ih=i=>i.h||i.height;
 // One tile of a patch, sampled by the tile's place in the world, so a patch runs on across tiles and chunks.
 function tileOf(ctx,img,tx,ty){const sx=(tx*TILE)%iw(img),sy=(ty*TILE)%ih(img);ctx.drawImage(img,sx,sy,TILE,TILE,tx*U,ty*U,U,U)}
 // Towers and piers of town c: {key, box} in tiles, in drawing order (north first, so the nearer one stands in front).
 function townPosts(c){const g=c.gateTiles,xs=g.map(v=>v[0]),ys=g.map(v=>v[1]),side=c.gateSide||'E',P=[];
-  for(const x of [c.x0,c.x1]){P.push({key:'tower',box:[x,c.y0,1,2]},{key:'tower',box:[x,c.y1-1,1,2]})}
+  if(c.notch){ // a stepped outline: a tower at every turn of the ring, on the turn and the ring tile above or below it
+    for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++){if(!townRing(c,x,y))continue;const r=(i,j)=>townRing(c,x+i,y+j);
+      if(!((r(-1,0)||r(1,0))&&(r(0,-1)||r(0,1))))continue;P.push({key:'tower',box:[x,r(0,-1)?y-1:y,1,2]})}}
+  else for(const x of [c.x0,c.x1]){P.push({key:'tower',box:[x,c.y0,1,2]},{key:'tower',box:[x,c.y1-1,1,2]})}
   if(side==='E'||side==='W'){const x=xs[0],a=Math.min(...ys),b=Math.max(...ys);P.push({key:'pier-tall',box:[x,a-2,1,2]},{key:'pier',box:[x,b+1,1,1]})}
   else{const y=ys[0];P.push({key:'pier',box:[Math.min(...xs)-1,y,1,1]},{key:'pier',box:[Math.max(...xs)+1,y,1,1]})}
+  if(c.notch)for(let i=P.length-1;i>=0;i--)if(P[i].key!=='tower'&&P.some(q=>q.key==='tower'&&boxOver(q.box,P[i].box)))P.splice(i,1); // a tower beside the gate stands for its pier
   return P.sort((p,q)=>(p.box[1]+p.box[3])-(q.box[1]+q.box[3]))}
 // What stands on the ground throws a shadow to the lower right. A town's shadows are one mask in art pixels, every box swept along
 // the light, so neighbours merge instead of doubling; kept as row runs in world units, made once a town.
@@ -87,9 +93,10 @@ function townShadow(c){let R=shadowC.get(c);if(R)return R;
   const x0=c.x0-1,y0=c.y0-1,W=(c.x1-c.x0+4)*TILE,H=(c.y1-c.y0+4)*TILE,m=new Uint8Array(W*H),gate=new Set(c.gateTiles.map(([x,y])=>x+','+y));
   const sweep=([bx,by,bw,bh],n)=>{const X=(bx-x0)*TILE,Y=(by-y0)*TILE,w=bw*TILE,h=bh*TILE;
     for(let d=1;d<=n;d++)for(let y=Y+d;y<Y+h+d;y++)if(y>=0&&y<H)for(let x=X+d;x<X+w+d;x++)if(x>=0&&x<W)m[y*W+x]=1};
-  for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++)if((x===c.x0||x===c.x1||y===c.y0||y===c.y1)&&!gate.has(x+','+y))sweep([x,y,1,1],SWEEP.wall);
+  for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++)if(townRing(c,x,y)&&!gate.has(x+','+y))sweep([x,y,1,1],SWEEP.wall);
   for(const p of townPosts(c))sweep(p.box,SWEEP.post);
-  for(const b of c.buildings||[])sweep(b.box,b.piece==='board'?SWEEP.low:SWEEP.building);
+  for(const b of c.buildings||[]){const [x,y,w,h]=b.box,k=b.kit||'',top=b.piece==='well'?1:k==='chapel-great'?3:k==='chapel-hill'?2:0; // a spire and a well's basin leave the back of their box clear
+    sweep([x,y+top,w,h-top],b.piece==='board'||b.piece==='well'?SWEEP.low:SWEEP.building)}
   R=[];const k=U/TILE;for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!m[y*W+x])continue;let e=x;while(e<W&&m[y*W+e])e++;R.push([x0*U+x*k,y0*U+y*k,(e-x)*k,k]);x=e}
   shadowC.set(c,R);return R}
 // A stone sill across the gate where the road meets the paving, on the wall's outer edge and its inner one.
@@ -105,7 +112,7 @@ function kerb(ctx,c,x,y){const P=TOWN_GROUND[townStyle(c)].plaza,a=U/TILE,X=x*U,
   run(x,y-1,t=>ctx.fillRect(X,Y,U,t));run(x-1,y,t=>ctx.fillRect(X,Y,t,U));run(x,y+1,t=>ctx.fillRect(X,Y+U-t,U,t));run(x+1,y,t=>ctx.fillRect(X+U-t,Y,t,U))}
 // A street's own cut, where one is loaded: the road tile is left under it otherwise, with square corners.
 const streetImage=c=>c.wall||!c.ground?null:pieceImage(`tile:lpc-${townStyle(c)}-street`);
-const paved=(c,x,y)=>x>c.x0&&x<c.x1&&y>c.y0&&y<c.y1&&!lane(c,x,y);
+const paved=(c,x,y)=>x>c.x0&&x<c.x1&&y>c.y0&&y<c.y1&&!townRing(c,x,y)&&!outsideTown(c,x,y)&&!lane(c,x,y);
 // Where street and paving turn, the kerb turns on an arc: a paved tile with street on two sides has that corner rounded off, a street
 // tile with paving on two sides has its corner filled. All inside the tile, so chunks can paint it alone. Radius in art pixels.
 const CURVE=7;
@@ -117,7 +124,7 @@ function curves(ctx,c,plaza,street,x,y){const onLane=lane(c,x,y),P=TOWN_GROUND[t
       ctx.fillStyle=e<1?P[0]:P[3];ctx.fillRect(X,Y,a,a)}}}
 // The town's ground and ring for the tiles [x0,x1)x[y0,y1): plaza, streets, shadows, walls, then towers and piers.
 function cutGround(ctx,c,set,x0,y0,x1,y1){const st=streetImage(c);
-  for(let y=Math.max(c.y0+1,y0);y<Math.min(c.y1,y1);y++)for(let x=Math.max(c.x0+1,x0);x<Math.min(c.x1,x1);x++){if(!lane(c,x,y)){tileOf(ctx,set.plaza,x,y);kerb(ctx,c,x,y)}else if(st)tileOf(ctx,st,x,y);if(st)curves(ctx,c,set.plaza,st,x,y)}
+  for(let y=Math.max(c.y0+1,y0);y<Math.min(c.y1,y1);y++)for(let x=Math.max(c.x0+1,x0);x<Math.min(c.x1,x1);x++){if(c.notch&&(outsideTown(c,x,y)||townRing(c,x,y)))continue;if(!lane(c,x,y)){tileOf(ctx,set.plaza,x,y);kerb(ctx,c,x,y)}else if(st)tileOf(ctx,st,x,y);if(st)curves(ctx,c,set.plaza,st,x,y)}
   for(const [x,y] of c.gateTiles)if(x>=x0&&x<x1&&y>=y0&&y<y1)tileOf(ctx,set.plaza,x,y);
   sill(ctx,c);
   ctx.fillStyle=SHADOW;for(const [x,y,w,h] of townShadow(c))if(x<x1*U&&x+w>x0*U&&y<y1*U&&y+h>y0*U)ctx.fillRect(x,y,w,h);
@@ -139,7 +146,9 @@ const planC=new Map();
 export function townPlan(c){let P=planC.get(c);if(P)return P;P=[];const st=townStyle(c),id=p=>pieceId(st,p);
   const gate=new Set(c.gateTiles.map(([x,y])=>x+','+y));
   for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++){
-    const l=x===c.x0,r=x===c.x1,t=y===c.y0,b=y===c.y1;if(!(l||r||t||b)||gate.has(x+','+y))continue;
+    if(!townRing(c,x,y)||gate.has(x+','+y))continue;
+    const l=outsideTown(c,x-1,y),r=outsideTown(c,x+1,y),t=outsideTown(c,x,y-1),b=outsideTown(c,x,y+1);
+    if(!(l||r||t||b)){P.push({id:id('wall-corner'),box:[x,y,1,1],rot:0,corner:outsideTown(c,x-1,y-1)||outsideTown(c,x+1,y-1)?'n':'s'});continue} // the inner turn of a stepped ring
     if((l||r)&&(t||b))P.push({id:id('wall-corner'),box:[x,y,1,1],rot:t?(l?0:1):(r?2:3),corner:t?'n':'s'});
     else P.push({id:id('wall'),box:[x,y,1,1],rot:t?0:r?1:b?2:3,side:SIDES[t?0:r?1:b?2:3]})}
   {const g=c.gateTiles,xs=g.map(v=>v[0]),ys=g.map(v=>v[1]),side=c.gateSide||'E',along=side==='E'||side==='W';
@@ -201,7 +210,7 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
     if(plain(building(c,'auction')))bld(4*T,3*T+dy,f.dark,'#c8b890','#f2c14e');
     if(plain(building(c,'hall')))bld(8*T,3*T+dy,'#6a4a3a','#b8a888');
     if(walls||(c.buildings||[]).some(b=>b.kit))cutBanners(ctx,c,x0,y0,x1,y1,R);else for(const gy of [5,8]){const gx=12*T+6+ox,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}
-    for(let i=0;i<3;i++){const gx=4*T+i*12+ox,gyy=8*T+dy+4,tx=Math.floor(gx/T),ty=Math.floor(gyy/T);if((c.buildings||[]).some(b=>b.kit&&tx+1>b.box[0]&&tx<b.box[0]+b.box[2]&&ty+1>b.box[1]&&ty<b.box[1]+b.box[3])||lane(c,tx,ty))continue; // a plan's own building or street may lie here
+    if(!c.notch)for(let i=0;i<3;i++){const gx=4*T+i*12+ox,gyy=8*T+dy+4,tx=Math.floor(gx/T),ty=Math.floor(gyy/T);if((c.buildings||[]).some(b=>b.kit&&tx+1>b.box[0]&&tx<b.box[0]+b.box[2]&&ty+1>b.box[1]&&ty<b.box[1]+b.box[3])||lane(c,tx,ty))continue; // a plan's own building or street may lie here
       R(gx+1,gyy,4,1,'#5a5a66');R(gx,gyy+1,6,7,'#5a5a66');R(gx+1,gyy+1,4,1,'#6e6e7a');R(gx+2,gyy+3,2,2,'#3a3a46');R(gx-1,gyy+8,8,1,'#3a3a46')}
   }
   // landmarks: the lair's nest (asset only), crypt mouths (asset, else the procedural arch over the 3x3 rock patch)
