@@ -207,7 +207,7 @@ ok(new Set(hits().map(h => h.id)).size === hits().length, 'each hit has its own 
   ok(eventDue(st0, last, {day: -1, n: 0}), 'eventDue: a new watch hit wakes the runner (signature unchanged)');
   ok(!eventDue(st0, {...last, watch: 4}, {day: -1, n: 0}), 'eventDue: a hit already seen does not');
   ok(!eventDue(st0, {...last, gm: 5000 - 10}, {day: -1, n: 0}), 'eventDue: still within EVENT_GAP');
-  ok(!eventDue(st0, last, {day: 3, n: 3}), 'eventDue: still within EVENT_MAX a day');
+  ok(!eventDue(st0, last, {day: 3, n: EVENT_MAX}), 'eventDue: still within EVENT_MAX a day');
   ok(eventDue({...st0, watches_fired: []}, {...last, sig: 'sig-b'}, {day: -1, n: 0}), 'eventDue: the fellowship_change floor still wakes it');
   const n = whenNote(st0, {watch: 3, fired: 6});
   ok(/Your watch fired: Kerin enters Mirefen/.test(n) && /the witch/.test(n) && /when 3 \(night falls\): narrate fired/.test(n), 'the turn prompt names the watch and the when', n);
