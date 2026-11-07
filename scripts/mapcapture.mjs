@@ -1,6 +1,6 @@
 // mapcapture (#1013 slice 1b): which module-scope values were built from the live map at import, and which are rebound.
 // A module that reads CITY or W inside a function follows the live binding by itself; one that builds a table from them at
-// module scope keeps the first map's copy after setWorld. This walks the ASTs of src/sim, src/data, src/world and src/core:
+// module scope keeps the first map's copy after setWorld. This walks the ASTs of src/sim, src/data, src/world, src/core and src/render:
 //   roots      the names map.js and tiles.js export live (plus ACTIVE_SPEC),
 //   map fns    functions that read a root, or a captured value, or call a map fn, followed across imports,
 //   captures   a module-scope binding whose initializer runs such code while the module loads,
@@ -9,13 +9,13 @@
 // (or a function that hook calls) assigns or clears it. Shadowing is honoured; member calls (X.fn()) are not followed, so this is
 // a net, not a proof: the values crossingcheck compares are the proof. rulescheck fails a binding that is neither rebound nor on
 // the allowlist. `node scripts/mapcapture.mjs` prints everything found.
-import {readFileSync, readdirSync} from 'node:fs';
+import {readFileSync, readdirSync, existsSync} from 'node:fs';
 import {join, dirname, resolve, relative, sep} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {parseAst} from 'rollup/parseAst';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const LAYERS = ['sim', 'data', 'world', 'core'];
+const LAYERS = ['sim', 'data', 'world', 'core', 'render'];
 const LIVE = new Set(['src/world/map.js', 'src/world/tiles.js']);
 // Tables a map's fauna rewrites in place (setWorld applies it): built from them means built from the map.
 const TABLES = {'src/data/mobs.js': ['MOBS', 'COUNTS', 'ELITES', 'ECO'], 'src/data/items.js': ['EPICS']};
@@ -90,7 +90,7 @@ function refs(node, shadow, onRef, enter) {
 
 export function scan({root = ROOT, stop = []} = {}) {
   const rel = f => relative(root, f).split(sep).join('/');
-  const files = LAYERS.flatMap(l => walkDir(join(root, 'src', l))).filter(f => f.endsWith('.js'));
+  const files = LAYERS.filter(l => existsSync(join(root, 'src', l))).flatMap(l => walkDir(join(root, 'src', l))).filter(f => f.endsWith('.js'));
   const mods = new Map(); // rel -> module facts
   for (const f of files) {
     const ast = parseAst(readFileSync(f, 'utf8'));

@@ -13,10 +13,11 @@ import {treeAnchor,chunkGen} from './terrain.js';
 import {buildingArt,gateArt} from './townart.js';
 import {G} from './grade.js';
 import {peakArt,peakFaces,peakDirty,FACE} from './peaks.js';
+import {onWorld} from '../sim/kept.js';
 
 const SK=FACE; // shadow pixels a tile
 const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
-const CW=W*SK,CHT=H*SK;
+let CW=W*SK,CHT=H*SK;
 let bands=null,cover=null,work=null,out=null,gen=-1,key=-1,castAt=0,peakStale=false,peakBox=null;
 const TALL=5; // tiles of art from which a building counts as tall
 const FACE_A=.95; // how far a mountain face turned from the sun takes the shade
@@ -86,3 +87,6 @@ export function castFigure(ctx,tf,img,sx,sy,sw,sh,px,py,dw,dh,flip){const s=silh
   ctx.setTransform(flip?-a:a,0,-figureX()*a,-figureY()*a,tf.e+px*a,tf.f+py*a);ctx.drawImage(s,sx,sy,sw,sh,-dw/2,-dh,dw,dh)}
 // A soft stretched blob along the sun, for what paints itself (critters, stalls, carts): a path segment, the caller fills. h its height in world units.
 export function castBlob(ctx,px,py,w,h){const bx=figureX()*h,by=figureY()*h,L=Math.hypot(bx,by);ctx.moveTo(px+bx,py+by);ctx.ellipse(px+bx/2,py+by/2,Math.max(w,L/2),w*.7,Math.atan2(by,bx),0,7)}
+// Another map (#1013): the masks are the size of the map, and hold its trees, walls and mountains.
+onWorld(()=>{CW=W*SK;CHT=H*SK;bands=cover=work=out=peakBox=null;gen=key=-1;peakStale=false},()=>({castSize:[CW,CHT]}));
+export const warmCast=()=>{if(!bands||gen!==chunkGen)build()};

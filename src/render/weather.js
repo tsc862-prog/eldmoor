@@ -7,11 +7,14 @@ import {W,H} from '../world/tiles.js';
 import {U as T} from './tile.js';
 import {zone,I,ZONES} from '../world/map.js';
 import {weatherKind} from '../sim/weather.js';
+import {onWorld} from '../sim/kept.js';
 
 // Per zone: a bounding box for particles.
-const BOX=ZONES.map(()=>({x0:W,y0:H,x1:0,y1:0}));
-for(let y=0;y<H;y++){let x=0;while(x<W){const z=zone[I(x,y)];let x1=x;while(x1<W&&zone[I(x1,y)]===z)x1++;
-  const b=BOX[z];b.x0=Math.min(b.x0,x);b.x1=Math.max(b.x1,x1);b.y0=Math.min(b.y0,y);b.y1=Math.max(b.y1,y+1);x=x1}}
+function zoneBoxes(){const B=ZONES.map(()=>({x0:W,y0:H,x1:0,y1:0}));
+  for(let y=0;y<H;y++){let x=0;while(x<W){const z=zone[I(x,y)];let x1=x;while(x1<W&&zone[I(x1,y)]===z)x1++;
+    const b=B[z];b.x0=Math.min(b.x0,x);b.x1=Math.max(b.x1,x1);b.y0=Math.min(b.y0,y);b.y1=Math.max(b.y1,y+1);x=x1}}
+  return B}
+let BOX=zoneBoxes();
 
 // The look of each weather kind: zone tint, then n particles with velocity in tiles/s,
 // size in px, colour (col2 alternates on odd particles), optional sideways wobble and a
@@ -35,6 +38,7 @@ const mod=(v,m)=>((v%m)+m)%m;
 // seam at night, pale blocks where two regions met by day). Rebuilt only when some zone's weather changes. Render only.
 const TR=3; // blur radius in tiles
 let tintCv=null,tintSig='',tintBuf=null,tintTmp=null;
+onWorld(()=>{BOX=zoneBoxes();tintCv=tintBuf=tintTmp=null;tintSig=''},()=>({weatherBoxes:BOX})); // another map (#1013): its zones, and a tint map of its size
 const parseRgba=c=>{const m=c.match(/[0-9.]+/g).map(Number);return[m[0],m[1],m[2],m[3]]};
 for(const k of Object.keys(LOOK))LOOK[k].rgba=parseRgba(LOOK[k].tint);
 function blur(src,dst,w,h,horiz){const n=horiz?w:h,m=horiz?h:w,sx=horiz?4:4*w,ox=horiz?4*w:4;

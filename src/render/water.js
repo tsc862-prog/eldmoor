@@ -13,6 +13,7 @@ import {F} from './life.js';
 import {quayOver} from './harbour.js';
 import {G} from './grade.js';
 import {sceneryOn,waterLevel} from './scenery.js';
+import {onWorld} from '../sim/kept.js';
 
 const isW=(x,y)=>x>=0&&y>=0&&x<W&&y<H&&(tiles[I(x,y)]===RIVER||tiles[I(x,y)]===BRIDGE);
 const N8=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
@@ -62,3 +63,6 @@ export function drawWater(ctx){if(F.tpx<30)return;if(!flow){build();buildBanks()
   for(let y=y0;y<=y1;y++){const B=banks[y];for(let i=0;i<B.length;i+=4){const px=B[i],py=B[i+1];if(px<x0*T||px>x1*T)continue;const v=Math.sin(t*1.9+B[i+2])*B[i+3];if(v<.25)continue;const q=v>.7?2:1;ctx.fillRect(Math.round(px),Math.round(py),q,1)}}
   // rings
   ctx.strokeStyle=foam;ctx.lineWidth=.8;for(let i=0;i<RN;i++){const a=t-RT[i];if(a<0||a>1.1)continue;ctx.globalAlpha=1-a/1.1;ctx.beginPath();ctx.ellipse(RX[i],RY[i],2+a*9,1+a*4,0,0,7);ctx.stroke()}ctx.globalAlpha=1}
+// Another map (#1013): its own river, or none.
+onWorld(()=>{flow=rows=banks=null;FORD.length=0;RT.fill(-9);LX.fill(0);LY.fill(0);rh=0});
+export const warmWater=()=>{if(!flow){build();buildBanks()}};
