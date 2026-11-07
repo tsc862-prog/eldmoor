@@ -259,6 +259,14 @@ function wake(w,e,hit){const x={id:++w.hseq,watch:e.id,gm:Math.round(S.gameMin),
 function drop(w,e,status,why){const i=w.list.indexOf(e);if(i>=0)w.list.splice(i,1);
   if(e.kind==='when'){keep(w.fired,{seq:w.fseq=(w.fseq||0)+1,id:e.id,gm:Math.round(S.gameMin),t:clockStr(),day:dayNo(),trigger:e.label,who:null,tool:e.tool==='pull_lever'?(e.args||{}).lever:e.tool,ok:false,status,why});
     dmlog('agent',null,['When #'+e.id+' '+status+' ('+e.label+'): '+why+'.'],{by:'dm-agent',when:e.id,result:status})}}
+// A crossing (#1013): what is bound to a place of the map being left waits with it, and comes back when the company does, its hours
+// stopped for the time away. Edges start over: what is already true on return does not fire. Time and hero triggers go with the DM.
+const PLACE_BOUND=new Set(['enter_region','enter_town','near_place','near_person','talks_to','foe_dies','quest_scene']);
+export function parkWhens(map){const w=S.dmAgent&&S.dmAgent.when;if(!w)return 0;const L=w.list.filter(e=>PLACE_BOUND.has(e.trigger));if(!L.length)return 0;
+  w.list=w.list.filter(e=>!PLACE_BOUND.has(e.trigger));(w.parked||(w.parked={}))[map]={at:Math.round(S.gameMin),list:L};
+  dmlog('agent',null,[L.length+' of your whens and watches wait with the land the company left: they come back when it does.'],{by:'scripted',parked:L.map(e=>e.id),map});return L.length}
+export function unparkWhens(map){const w=S.dmAgent&&S.dmAgent.when,p=w&&w.parked&&w.parked[map];if(!p)return 0;const dt=S.gameMin-p.at;
+  for(const e of p.list){e.until+=dt;e.st=baseline(e);w.list.push(e)}delete w.parked[map];if(!Object.keys(w.parked).length)delete w.parked;return p.list.length}
 // Called from the step (dreamTick): nothing set, nothing done.
 export function whenTick(){const D=S.dmAgent,w=D&&D.when;if(!w||!w.list.length)return;
   if(w.at!=null&&S.gameMin>=w.at&&S.gameMin-w.at<WHEN.EVERY)return;w.at=S.gameMin;

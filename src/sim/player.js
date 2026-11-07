@@ -30,7 +30,8 @@ import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
 import {closedRoad,roadEndAt,roadWords} from './roads.js';
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
-import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,CRYPTS,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
+import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,CRYPTS,ZPTS,EXITS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
+import {exitNamed,exitOpen,roadWord} from './atlas.js'; // the roads off the map (#1013)
 import {cryptOfHero,cryptOfCtx,cryptCtx,cryptByWord,cryptInWords,cryptNearest,heroCryptName,cryptTitle,cryptIf,hasCrypt,NO_CRYPT} from './crypts.js';
 import {hasLair,NO_LAIR} from './lair.js';
 import {homeOf,raceOf} from '../data/races.js';
@@ -371,6 +372,7 @@ function orderOf(a,c,target){if(!c||c.auto)return null;
 function goalOrder(a,goal){const g=String(goal||'').toLowerCase();if(waitish(g))return {kind:'wait'};
   const f=/\bfollow(?:ing)?\s+([a-z' -]+)/.exec(g);if(f){const w=f[1].trim().split(/\s+/)[0];const b=S.agents.find(x=>x!==a&&x.kind==='hero'&&x.state!=='dead'&&x.name.toLowerCase().split(' ')[0]===w&&!x.hidden&&dist(a,x)<=sightOf(a));
     if(b&&!followRefusal(a,b)){a.playOrder={kind:'follow',id:b.id};return {kind:'follow',id:b.id,name:b.name}}}
+  {const e=exitNamed(g);if(e&&exitOpen(e))return {kind:'move',label:e.name,target:e.name,to:{x:e.x,y:e.y},last:'hunt'}} // an aim that names a road off the map walks there (#1013)
   const hit=knownNames(a).filter(n=>n&&new RegExp('(^|[^a-z])'+reEsc(n.toLowerCase())+'($|[^a-z])').test(g)).sort((x,y)=>y.length-x.length)[0];
   const huntish=/\b(hunt|hunting|kill|slay|grind|level|xp)\b/.test(g);
   if(hit){if(huntish&&ZONES.includes(hit))return {kind:'hunt',n:TP.HUNT,k0:a.kills,ground:hit};
@@ -623,9 +625,12 @@ function plan(a,target){const raw=clean(target,60),t0=raw.toLowerCase().trim();
   if(!t0)return {error:'Say where to go.'};
   {const e=closedRoad(t0);if(e)return {error:roadWords(e)}} // a road with no far side yet (sim/roads.js, #1013)
   for(const v of placeVariants(a,t0)){const r=planOne(a,v.t,v.town);if(r){if(v.note&&!r.error)r.note=v.note;return roadEnd(r)}}
-  return placeFallback(a,t0,raw)||{error:unknownPlace(a,t0,raw)}}
+  return exitPlan(a,t0)||placeFallback(a,t0,raw)||{error:unknownPlace(a,t0,raw)}}
 // A walk that ends where a closed road leaves the map is walked; the hero is told there is nothing past it.
 function roadEnd(r){const L=r.legs&&r.legs[r.legs.length-1],e=L&&!r.error?roadEndAt(L):null;if(e)r.note=(r.note?r.note+' ':'')+roadWords(e);return r}
+// An open road off this map (#1013): its name, or a place beyond it the hero has heard of. It walks there; the leader's arrival puts it to the company.
+function exitPlan(a,t){const e=exitNamed(t,n=>knowsPlace(a,n));if(!e||!exitOpen(e))return null;
+  const r=toFieldOf(a,{x:e.x,y:e.y},e.name);r.note='That road leaves this land. When your leader reaches it with everyone together, the company decides at the table.';return r}
 const SPOT_WORDS={blacksmith:'smith',smithy:'smith',forge:'smith',armorer:'smith',armourer:'smith',tanner:'smith',tavern:'inn',innkeeper:'inn',temple:'chapel',church:'chapel',shrine:'chapel',plaza:'square',gates:'gate','town gate':'gate','main gate':'gate','city gate':'gate',auctioneer:'auction house'};
 const TOWN_SPOTS=['gate','inn','smith','chapel','square','auction house','quest giver'];
 const spotWord=x=>{x=x.trim().replace(/^the\s+/,'');return SPOT_WORDS[x]||(/^(?:town|market|main|village|city)?\s*square$/.test(x)?'square':x)};
@@ -1583,6 +1588,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
   if(r&&r.ok!==false)errandTool(a,tool); // running a town errand is progress toward the aim (#727)
+  if(r&&r.ok!==false&&EXITS.length){const C=companyOf(a);roadWord(a,C,C?leaderFor(a):null,tool,args,r)} // the leader's words are what open a crossing (#1013)
   if(meta.act&&r&&r.ok!==false&&r.act!==false){holdAnswered(a);a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
     if((tool==='move_to'||tool==='hunt'||tool==='follow'||tool==='rest')&&a.intent&&!a.intent.done&&!a.intent.order){const c=a.pq&&a.pq[0];attachOrder(a,orderOf(a,c&&c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c,tool==='move_to'?args&&args.target:null))} // a command under an aim with none becomes its order (#535)
     if(tool==='follow'){const f=a.pq[0];a.playOrder={kind:'follow',id:f.id,until:f.until,h:f.h}}else if(a.playOrder&&a.playOrder.kind==='follow'&&(a.pq&&a.pq[0])!==q0)a.playOrder=null} // a new order ends a standing follow (#445) // the agent's last action that went through (autopilot, #126)
