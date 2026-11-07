@@ -541,7 +541,7 @@ const QUARRY_CAPTAIN='The quarry on Crowfell shut before my time, and the cellar
 // No faction gating (#1012): sides are lore here, so any company may rest in Oldstead, and no other side walks this map. No raid, no great dungeon, nothing above level 5; one small dungeon up on the fell for a company past its first delve.
 export const HOLLIN={
   name:'The Hollin Reach',
-  blurb:'One small walled town, a long road through fields and a wood, an old quarry up on the fell, and a river nobody crosses. Where a company begins; the roads north and east run on past the last milestone, to lands not yet seen.',
+  blurb:'One small walled town, a long road through fields and a wood, an old quarry up on the fell, and a river nobody crosses. Where a company begins; the Drovers\' Road runs north to the sea at the Wendmouth, and the Fell Road east past the last milestone, to lands not yet seen.',
   size:{w:118,h:64},
   seeds:{terrain:61,detail:83},
   sides:'lore',
@@ -587,7 +587,7 @@ export const HOLLIN={
     fellGap:[101,23],     // and the gap between the crags
   },
   exits:[
-    {id:'north',name:'the Drovers\' Road',to:{map:null,heard:'lands not yet seen'},edge:{side:'N',from:66,to:69}},
+    {id:'north',name:'the Drovers\' Road',to:{map:'wendmouth',exit:'south'},edge:{side:'N',from:66,to:69}},
     {id:'east',name:'the Fell Road',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:17,to:20}},
   ],
   roads:[
@@ -605,11 +605,109 @@ export const HOLLIN={
   labels:[['HOLLINLEA',30,8],['WITHYWOOD',92,38],['CROWFELL',100,8],['OLDSTEAD',30.5,15.6]],
 };
 
+// The Gull Cliff Den's chambers: a small delve on the sea-cliffs for a company come up the coast. Old Brine and her run, as the Vale's first delve told them, pitched like the Vale's small delves at a level 7 company.
+const GULL_DEN_ROOMS=[
+  {id:'nets',name:'The Net Run',frame:"A run trodden through shredded nets, under the roots at the cliff's lip. Half-grown things come down it snapping.",
+    foes:[{type:'wolf',n:3}],lvl:-1,hit:.25,rounds:2},
+  {id:'midden',name:'The Fish Midden',frame:"A cave heaped with bones and scales, and the sea booming somewhere under the floor. Two boars have taken the den's leavings and defend them.",
+    foes:[{type:'boar',n:2,hits:2},{type:'wolf',n:1}],lvl:0,hit:.31,rounds:2},
+  {id:'hollow',name:'The Warm Hollow',frame:'The deepest hollow, warm and reeking. She gets up off her litter and she is bigger than the net-menders said.',
+    foes:[{type:'denmother',n:1,name:'Old Brine',hits:4,atk:1.5},{type:'wolf',n:1,hits:1}],lvl:1,hit:.40,rounds:3,boss:true},
+];
+
+// ---- The Wendmouth: the second chapter (#1013 slice 7b, levels 5-10) ----
+// The sea on the west, the Wend sweeping down from the north-east to meet it, one bridge. A company comes up the Drovers' Road from the Hollin Reach onto the south bank,
+// and the road parts at the crossways: west over the Low Bridge to the harbour at Gullstrand, or east across the whole of the map, past the Vaults' turning, to Stiltmere in the fen.
+// The Vale's towns and rooms, Hollin's density: two towns a long day apart, thin creatures, and nothing near a wall. The Wend Road runs on past Stiltmere; it is not open yet.
+export const WENDMOUTH={
+  name:'The Wendmouth',
+  blurb:"Where the Wend meets the sea: a harbour under the cliffs, one low bridge, a long road east through the willow flats to a town on stilts. Come up the Drovers' Road from the Hollin Reach, at about level 5 or 6.",
+  size:{w:150,h:68},
+  seeds:{terrain:67,detail:89},
+  sides:'lore',
+  chapter:true,
+  ladder:{step:2},
+  curves:{
+    // The Wend: one long sweep, high in the north-east, low under Gullstrand's quay, and out to sea.
+    river:{axis:'x',base:23,sin:[[30,10,-.25],[6.1,1.1,1]]},
+    shore:{axis:'y',base:12,sin:[[13,2.4,1]],noise:{seed:21,scale:5,amp:5,slice:2.7}}, // the sea's edge
+    head:{axis:'x',base:12,noise:{seed:9,scale:6,amp:5,slice:3.3}},    // Gullhead's south edge, behind the harbour
+    neck:{axis:'y',base:84,noise:{seed:17,scale:6,amp:6,slice:1.9}},   // east of here the north bank is all Gullhead
+    fen:{axis:'y',base:90,noise:{seed:5,scale:6,amp:8,slice:4.1}},     // Sallowfen's west edge
+  },
+  regions:[
+    {id:'wendstrand',name:'Wendmouth',band:[5,7],biome:'lea',mask:{kind:'all'}},
+    {id:'sallowflats',name:'Sallowfen',band:[6,9],biome:'fen',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'fen'},{kind:'south-of-curve',curve:'river'}]}},
+    {id:'gullhead',name:'Gullhead',band:[7,10],biome:'highland',
+      mask:{kind:'or',masks:[{kind:'north-of-curve',curve:'head'},{kind:'and',masks:[{kind:'east-of-curve',curve:'neck'},{kind:'north-of-curve',curve:'river'}]}]}},
+  ],
+  sea:{curve:'shore'},
+  river:{curve:'river',width:2,mouth:{reach:24,flare:7}},
+  scenery:{
+    wash:{wendstrand:'meadow',gullhead:'heath'},
+    dress:{'The Sallow Vaults':'vaults'},
+    bridges:{'59,33':'stone'},
+    fields:[[20,16,8,4,'wheat'],[20,21,7,3,'plough'],[29,15,6,3,'cabbage'],[74,18,9,4,'wheat'],[74,23,8,3,'plough'],[56,42,8,3,'wheat'],[47,48,9,3,'plough'],[47,52,8,3,'cabbage']],
+  },
+  towns:[
+    // Gullstrand, as the Vale built it: the gate faces the Wend, a street runs up from it to a lane under the halls, and a quay and jetty reach out south.
+    {name:'Gullstrand',fac:0,x0:40,y0:17,w:26,h:13,gate:'S',gateAt:6,race:'skerrin',spots:{square:[19.5,7.6]},grave:[23.5,7.6],notch:[[21,9,5,4]],clear:3,homes:[[1.5,11.5],[16.5,11.5]],
+      torches:[[5,11.5],[9,11.5],[6,6],[15,6],[20,8],[22,7]],
+      buildings:townPlan(40,17,[['auction-great',15,1],['smithy-great',1,1],['hall-great',8,1],['chapel-hill',21,1],['board',18,7],['inn-great',8,7],['house-tall',5,1],['house-manor',1,7],['house-tall',14,7]]),
+      ground:[[1,5,24,2],[6,7,2,5],[1,11,5,1],[8,11,9,1]],pier:[[6,13,2,5]]},
+    // Stiltmere, as the Vale built it: a fen town of planked lanes inside a palisade; a long hall on the north wall, the houses off a spine.
+    {name:'Stiltmere',fac:1,x0:118,y0:38,w:19,h:13,gate:'E',gateAt:5,race:'mirekin',spots:{square:[16.5,8.1]},grave:[16.5,7.6],wall:'palisade',notch:[[17,10,2,3]],clear:3,homes:[[1.5,11.5],[14.5,11.5]],
+      torches:[[17.5,4.5],[17.5,7.5],[5,7],[12,7],[15,10],[3,11]],
+      buildings:townPlan(118,38,[['auction-great',12,1],['smithy-great',11,7],['hall-great',5,1],['chapel-hill',1,1],['inn-great',5,7],['board',15,7],['house-wide',1,7]]),
+      ground:[[5,6,13,1],[12,5,6,1],[1,6,4,1],[1,11,15,1]]},
+  ],
+  landmarks:[
+    // The first dungeon up the road: under a burnt kiln in the flats, at the end of its own turning. entry: the level a background group first goes down.
+    {kind:'crypt',name:'The Sallow Vaults',boss:'Captain Dane Sallow',x:96.5,y:56.1,mouth:{x0:95,y0:54,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:VALE_VAULT_ROOMS,entry:5},
+    // Old Brine's den, in the sea-cliffs of Gullhead.
+    {kind:'crypt',name:'The Gull Cliff Den',boss:'Old Brine',x:22.5,y:6.1,mouth:{x0:21,y0:4,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:GULL_DEN_ROOMS,entry:7},
+  ],
+  points:{
+    lowN:[59,31],lowS:[59,38],     // the Low Bridge: the one way over the Wend
+    crossways:[71,48],             // where the road from the Hollin Reach parts
+    droveBend:[63,58],             // the Drovers' Road swings west on its way up
+    fenWay:[100,41],               // the turning for the Vaults
+    vaultBend:[89,53],             // round the mound, wide of it, to the Vaults' door on its south side
+    vaultFoot:[90,59],
+    vaultEnd:[96,59],
+    stiltN:[127,35],               // the fen road passes north of Stiltmere's palisade
+    stiltE:[141,38],               // and turns down to its east gate; the Wend Road goes on
+    westWall:[36,28],              // the cliff road goes round Gullstrand's west wall
+    cliffRoad:[33,13],
+    denEnd:[23,9],                 // the road's end, under the den's mouth
+  },
+  exits:[
+    {id:'south',name:"the Drovers' Road",to:{map:'hollin',exit:'north'},edge:{side:'S',from:66,to:69}},
+    {id:'east',name:'the Wend Road',to:{map:null,heard:'the old weir upriver'},edge:{side:'E',from:26,to:29}},
+  ],
+  roads:[
+    {from:'south',via:['droveBend'],to:'crossways'},
+    {from:'crossways',to:'lowS'},{from:'lowS',to:'lowN'},{from:'lowN',to:'Gullstrand'},
+    {from:'crossways',via:['fenWay','stiltN'],to:'stiltE'},
+    {from:'stiltE',to:'Stiltmere'},
+    {from:'stiltE',to:'east'},
+    {from:'fenWay',via:['vaultBend','vaultFoot'],to:'vaultEnd'},
+    {from:'Gullstrand',via:['westWall','cliffRoad'],to:'denEnd'},
+  ],
+  roadClear:[1,3],
+  glades:[[96.5,59,5],[22.5,9,4],[52,38,7.5]], // the two mouths, and the ground below the quay: a crown stands three tiles over its root and would hide the jetty
+  lights:{townTorches:[[10.5,3.4]]},
+  spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of a wall
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{wendstrand:{herb:6,ore:1,hide:5,fish:6},sallowflats:{herb:7,ore:1,hide:4,fish:3},gullhead:{herb:3,ore:6,hide:4,fish:2}}},
+  labels:[['WENDMOUTH',78,56],['SALLOWFEN',112,60],['GULLHEAD',100,6],['GULLSTRAND',53,15.2],['STILTMERE',127.5,36.2]],
+};
+
 // ---- choosing the world ----
 // `?world=stepping` in the browser, ELDMOOR_WORLD=stepping in Node (or globalThis.ELDMOOR_WORLD
 // set before the first import, for tests); default eldmoor. Everything that needs the map size
 // or the spec goes through ACTIVE_SPEC / WORLD_ID so the choice is made exactly once.
-export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN};
+export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH};
 function pickWorld(){
   let id=null;
   try{if(typeof location!=='undefined'&&location.search)id=new URLSearchParams(location.search).get('world')}catch(e){}

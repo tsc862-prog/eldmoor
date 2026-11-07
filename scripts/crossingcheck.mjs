@@ -435,8 +435,8 @@ async function crossTools() {
   // A fresh world on the first map, every member's runner live. o.others 'none' for the flows; the full roster for what freezes.
   const world = (o = {others: 'none'}) => {M.setWorld(home); reseed(); TB.TABLE.mode = 'auto'; TB.TABLE.speed = 1; TB.TABLE.drop = null; TB.TABLE.liveMs = 120000; setRunnerLinks(() => 'connected'); setReflexAck(() => false); SIM.init(o);
     const F = CO.slotted(); setDmSeat(true); calm(); return F ? {F, mem: CO.slotHeroes(F), lead: CN.leaderOfC(F)} : {}};
-  const exit = () => M.EXITS[0], off = a => Math.hypot(a.x - exit().x, a.y - exit().y);
-  const at = (L, p = exit()) => L.forEach((a, i) => {a.x = p.x - 1 - (i % 3) * .5; a.y = p.y - 1 + Math.floor(i / 3); a.zone = M.zoneAt(a.x, a.y); a.state = 'hunt'; a.dest = null; a.target = null; a.moving = false; a.pq = []});
+  const X_H = () => T.T.H, exit = () => M.EXITS[0], off = a => Math.hypot(a.x - exit().x, a.y - exit().y);
+  const at = (L, p = exit()) => L.forEach((a, i) => {a.x = p.x - 1 - (i % 3) * .5; a.y = Math.min(X_H() - 1.5, Math.max(1.5, p.y - 1 + Math.floor(i / 3))); a.zone = M.zoneAt(a.x, a.y); a.state = 'hunt'; a.dest = null; a.target = null; a.moving = false; a.pq = []});
   const scene = C => TB.sceneFor(C);
   const opened = (C, kind) => until(() => {const s = scene(C); return !!s && s.kind === kind && s.phase === 'turn' && !SC.framing(s) && !!s.wk && !!s.wk.done}, 60 * 60);
   const byId = id => S.agents.find(a => a.id === id);
