@@ -28,13 +28,14 @@ import {initChatPanel,renderChatPanel} from './chatpanel.js'; // the Fellowship 
 import {initPurpose,renderMapTip} from './purposeview.js'; // purpose line, map tooltip and the Icons switch (#534)
 import {initSettings} from './settings.js'; // the Settings popover and the World menu (#145)
 import {trackDowned} from './downview.js'; // each death save as it lands (#659)
+import {initWorldMap,renderWorldMap} from './worldmap.js'; // the lands of the campaign as one reference picture (#1013)
 import {initCinema,renderCinema} from './cinema.js'; // the map as the whole window, with the director camera (#979)
 
 export function initUI(renderer){
   initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initMapLegend();initTable();initRunAlert();initRunGate((k,h)=>startRunner(k,h));
   initSheet();initFrames();applyLayout();
   const minds=()=>{renderHero();renderFrames();renderFellowship();renderMinds()};
-  initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents();initChatPanel();initSettings(()=>renderHero());initPurpose();initCinema(renderer)}
+  initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents();initChatPanel();initSettings(()=>renderHero());initPurpose();initWorldMap();initCinema(renderer)}
 
 export function uiFast(){trackDowned();applyLayout();renderHero();renderClock();renderFellowship();renderFrames();renderSheet();renderChatPanel();renderMapTip();renderMapLegend();renderCinema()}
-export function uiSlow(){renderTops();renderFacs();renderGuilds();renderFallen();renderMinds();renderTimeline();renderLegends();renderDmLog();renderDmSeat();renderAgents()}
+export function uiSlow(){renderTops();renderFacs();renderGuilds();renderFallen();renderMinds();renderTimeline();renderLegends();renderDmLog();renderDmSeat();renderAgents();renderWorldMap()}

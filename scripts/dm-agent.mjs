@@ -99,6 +99,7 @@ export function dmSystemPrompt(st) {
     DM_CALL_ORDERS,
     DM_NAME_ORDERS,
     DM_WHEN_ORDERS,
+    ...dmMapOrders(st),
     DM_BETWEEN_ORDERS,
     DM_RENOWN_ORDERS,
     DM_ASK_ORDERS,
@@ -109,6 +110,11 @@ export function dmSystemPrompt(st) {
     DM_EACH_TURN,
   ].join('\n');
 }
+// Several lands (#1013): only a campaign with a road to another map hears of them. dm_status campaign says so; one map, not a word.
+export const DM_MAP_ORDERS = '- This campaign runs on several lands joined by roads, and only the land the company stands on is live: survey, regions, near, npcs and hooks read that one; the others wait frozen. dm_status campaign says what is next along each road. You may prepare the next land while the company travels: notes_write plans that name it (your frames at the road read them), seed_rumour {about: a place over there} so they hear of it, and when {trigger: "enter_map", on: {map}, action, args} leaves a narrate, a person or a staged scene waiting at the road\'s end (its places are read when it fires, on that land; it waits up to 240 hours).';
+export const DM_EMPTY_LAND_ORDERS = '- In this world nobody else rides: a new land is empty until you fill it. When the company comes to one, its people, jobs and places are yours to make (place_person, summon_hero, post_hook, mark_place), for the company first.';
+export const dmMapOrders = st => st && st.campaign && (st.campaign.roads || []).some(r => r.open) ? [DM_MAP_ORDERS, ...(st.others ? [DM_EMPTY_LAND_ORDERS] : [])] : [];
+export const withDmMapOrders = (sys, st) => dmMapOrders(st).reduce((s, l) => s.includes(l) ? s : s + '\n' + l, String(sys || ''));
 // On stage (#1017, under the story-first direction of #1012). Live play: the seat was told it prepares and does not run scenes, and to
 // speak sparingly; in 13 turns it never spoke. It is the voice of the game now: every turn ends in something the company can hear.
 export const DM_JOB = 'You run this game for the company, and they should hear you: the table has a DM, and that is you. Between scenes you read what happened, keep your campaign notes and shape what comes next so they meet interesting choices, recurring faces and consequences of what they did; but the heart of the seat is telling it: what they see as they arrive, what the road and the weather do, who calls out to them.';
@@ -593,6 +599,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.rolled = true; log(`[dm] the seat changes mind (${was} -> ${rs.provider}): a new conversation; the notes, whens and DM log stay with the world${note ? '; ' + note : ''}`);
   }
   sess.runner = rs;
+  sess.system = withDmMapOrders(sess.system, st0);
   sess.system = withDmAskOrders(withDmStageOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
   const saveSess = () => saveDmSession(sess, {url: base});

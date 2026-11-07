@@ -98,3 +98,4 @@
 - [Empty-world DM](empty-world-dm.md) — others none prep: dm_status.others wording, first-turn clause, mock run, SUMMON limits kept
 - [Turn waste](turn-waste.md) — scene_act refusals cause, one-wait order, emoteAct name regex bug
 - [DM on stage](dm-on-stage.md) — #1017 causes of a silent DM, call keys, sceneframe, narrator voice protocol and caps, names, measured cost
+- [Map knowledge](map-knowledge.md) — #1013 slice 5: farlands.js, roadOf routes, manyMaps gate, enter_map, what a crossing leaves behind
