@@ -67,7 +67,7 @@ export function jobsFor(man,idx,q,{retryFailed=false,tier=TILE}={}){
   const miss=order.filter(e=>!idx.assets[K(e)]&&!q.incoming[K(e)]&&!tooOften(K(e))).map(e=>({e,key:K(e),tier,seed:e.seed+(q.rejected[K(e)]||0)*7919+retry(K(e))}));
   if(miss.length)return miss;
   const N=man.alternatesWhenComplete||0,alts=[];
-  for(let k=1;k<=N;k++)for(const e of order){if(!idx.assets[K(e)]&&!q.incoming[K(e)])continue;if((q.alts[K(e)]||0)>=k)continue;
+  for(let k=1;k<=N;k++)for(const e of order){if(!idx.assets[K(e)]&&!q.incoming[K(e)])continue;if(k>(e.alternates??N))continue; // an entry may want fewer (biome autotiles: none)if((q.alts[K(e)]||0)>=k)continue;
     const key=tierKey(e.id,tier,k);if(q.incoming[key]||tooOften(key))continue;alts.push({e,key,tier,seed:e.seed+1000*k+retry(key),alt:k})}
   return alts}
 

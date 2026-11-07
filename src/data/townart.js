@@ -33,3 +33,8 @@ export const TOWN_PIECES=[
 // others: 'wall' on every straight wall tile, 'wall-corner' on the four corners (the top-left one, turned), 'gate' over
 // the gate's two tiles and one wall tile either side (four tiles along the wall).
 export const WALL_PIECES=['wall','wall-corner','gate'];
+
+// A town's own look (render/townlook.js, palette.js TOWN_LOOK), by town name, so a town keeps its look on every map it stands on. Render
+// data only: nothing in the world or the sim reads it. A town not listed draws its style's kit as cut. A palisade town keeps its stakes.
+export const TOWN_LOOKS={Oldstead:'hearth',Gullstrand:'harbour',Hawkstead:'upland'};
+export const townLookId=c=>(c&&(c.look||TOWN_LOOKS[c.name]))||null;
