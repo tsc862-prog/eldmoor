@@ -13,6 +13,8 @@
 //            (list_jobs) is progress; intent and move_to naming the town it stands in answer "already here"; a forced aim
 //            copying a finished one word for word is dropped; an errand is a wait (#790): stale at 2 h unless run, cut to
 //            INTENT.WAIT_MAX, beaten by a level condition, and a hero who keeps setting errands is still moved by the town-idle guard
+//   stray    (#934) hunt keeps to its ground and a straight way (no prey across the water), a hero that knows it faces certain death
+//            breaks off at once, more than it can handle at half health; a fight order, named prey or its own flee_below stands; a spread stays on its bank
 //   world    background heroes are never touched (their seeded hash: node scripts/professioncheck.mjs --hash)
 // Usage: npm run townpilotcheck
 const baseSeed = Number(process.env.TOWNPILOT_SEED) || 3;
@@ -318,6 +320,56 @@ for (const arrives of [false, true]) {
   ok(!inTownRect(A) && wake && /Autopilot hunts/.test(wake), `${how}: the guard moves it all the same, out ${Math.round((S.gameMin - t0) / 60 * 10) / 10} h after it last earned anything (${A.state} in ${ZONES[zoneAt(A.x, A.y)]})`);
   ok(!A.adv && !A.quest, `${how}: and no job was taken for it`)}
 A.pq = []; A.playTurn = null; A.intent = null;
+
+// ---------------------------------------------------------------- stray (#934)
+// A level 1 company hunting the first region was killed by level 18+ creatures: hunt took the nearest thing in sight, over the river
+// and round by the bridge, the hunt's ground went where the chase went, and the 15% flee mark came after the blow that dropped it.
+console.log('stray');
+{const {clearLine} = await import('../src/sim/path.js'), {solidAt} = await import('../src/world/passable.js'), {spreadAt} = await import('../src/sim/company.js'), {MOBS} = await import('../src/data/mobs.js');
+  const lowZ = ZONES.findIndex((n, i) => band(i) && band(i)[0] <= 1), topZ = ZONES.reduce((b, n, i) => band(i) && band(i)[0] > band(b)[0] ? i : b, lowZ);
+  // a spot on the low region's bank, with open ground of the top region in sight across something solid
+  let bank = null, far = null;
+  for (let d = 3; d <= 5 && !bank; d++) for (let y = 2; y < 48 && !bank; y++) for (let x = 2; x < 76 && !bank; x++) {const p = {x: x + .5, y: y + .5}, q = {x: p.x + d, y: p.y}; // the narrowest: in sight at any hour (night cuts it to 5.4 tiles)
+    if (zoneAt(p.x, p.y) !== lowZ || solidAt(p.x, p.y) || CITY.some(t => Math.hypot(t.gate.x - p.x, t.gate.y - p.y) < 9)) continue;
+    if (zoneAt(q.x, q.y) === topZ && !solidAt(q.x, q.y) && !clearLine(p, q)) {bank = p; far = q}}
+  ok(!!bank, `a bank of ${ZONES[lowZ]} facing ${ZONES[topZ]} (${bank && bank.x},${bank && bank.y})`);
+  const topType = Object.keys(MOBS).find(k => MOBS[k].z === topZ), spot = (type, lvl, p) => {const m = S.mobs.find(x => x.type === type && !x.elite && !x.named && !x.stray) || S.mobs.find(x => x.type === type); m.stray = true; m.alive = true; m.gone = false; m.hidden = false; m.target = null; m.lvl = lvl; m.hp = m.maxhp;
+    m.x = p.x; m.y = p.y; m.home = {x: p.x, y: p.y}; m.dest = null; m.scan = 999; m.wait = 999; m.cd = 99; m.acd = 99; return m};
+  const stand = p => {fresh(A); for (const q of S.parties) q.mem = q.mem.filter(b => b !== A); A.traits = []; A.lvl = 1; A.x = p.x; A.y = p.y; A.zone = zoneAt(p.x, p.y); A.state = 'hunt'; A.hp = maxHp(A); A.lore = null; A.loreFoe = null; A.pq = []; A.target = null; A.dest = null; A.playEv = []; A.playActAt = S.gameMin; A.playIdle = false; A.playTurn = null; clearAround(p); clearAround(far)};
+  const jump = m => {m.target = A; A.target = m; A.state = 'fight'; A.dest = null};
+
+  stand(bank); let big = spot(topType, 18, far); rebuild();
+  let r = act(A, 'hunt', {count: 2}), crossed = false; ok(r.ok, 'hunt with nothing near but what stands across the water');
+  for (let i = 0; i < 30; i++) {run(.1); if (A.target === big) crossed = true; if (A.state === 'fight' && A.target !== big) break}
+  ok(!crossed && zoneAt(A.x, A.y) === lowZ, `hunt never takes the creature across the water (hero in ${ZONES[zoneAt(A.x, A.y)]})`);
+  ok((A.pq || [])[0] && A.pq[0].ground === lowZ, 'the order holds its ground');
+
+  stand(bank); r = act(A, 'hunt', {where: ZONES[lowZ], count: 2}); ok(r.ok && A.pq[0].ground === lowZ, 'hunt {where} names its ground on the order');
+  stand(far); A.pq = [{kind: 'hunt', n: 2, k0: A.kills, flee: .15, ground: lowZ}]; run(.1);
+  ok(A.dest && zoneAt(A.dest.x, A.dest.y) === lowZ, `a hunter carried off its ground walks back to it (${A.dest && ZONES[zoneAt(A.dest.x, A.dest.y)]})`);
+
+  const near = {x: far.x + 1, y: far.y};
+  stand(far); big = spot(topType, 18, near); rebuild(); A.pq = [{kind: 'hunt', n: 2, k0: A.kills, flee: .15, ground: topZ}]; jump(big); run(.1);
+  ok(A.state === 'return' && A.hp > 0, `jumped by certain death at full health: it breaks off at once (${A.state}, ${Math.round(A.hp)}/${Math.round(maxHp(A))} HP)`);
+  ok((A.playEv || []).some(e => /certain death/.test(e.text) && /flee\(\)/.test(e.text) && e.w === 2), 'the agent is woken with what it faces and the way out');
+  ok((A.playEv || []).some(e => /will not stand against that/.test(e.text)), 'and told why it ran');
+  stand(far); big = spot(topType, 18, {x: far.x + 5, y: far.y}); rebuild(); A.pq = [{kind: 'hunt', n: 2, k0: A.kills, flee: .15, ground: topZ}]; A.target = big; A.state = 'fight'; run(.05); run(.05);
+  ok(A.target !== big && A.state !== 'return', 'walking up to one it now knows: it lets go, with no blow taken and its order kept');
+
+  stand(far); big = spot(topType, 18, near); rebuild(); r = act(A, 'fight', {target_id: big.id}); ok(r.ok, 'the agent may still pick that fight'); run(.1);
+  ok(A.state === 'fight' && A.target === big, 'an order to fight it stands: no reflex takes it away');
+  stand(far); big = spot(topType, 18, near); rebuild(); A.pq = [{kind: 'hunt', n: 2, k0: A.kills, flee: .05, stand: true, ground: topZ}]; jump(big); run(.1);
+  ok(A.state === 'fight', 'nor does an order with its own flee_below');
+  stand(far); big = spot(topType, 18, near); rebuild(); jump(big); run(.1); const name = MOBS[topType].name; // it knows the name now
+  A.state = 'hunt'; A.target = null; big.target = null; A.pq = []; A.x = far.x; A.y = far.y; r = act(A, 'hunt', {prey: name, count: 1}); run(.8);
+  ok(r.ok && A.target === big, `hunting it by name is the agent's choice (${r.error || 'taken'})`);
+
+  stand(far); const mid = spot(topType, 6, near); rebuild(); A.pq = [{kind: 'hunt', n: 2, k0: A.kills, flee: .15, ground: topZ}]; jump(mid); run(.1);
+  ok(A.state === 'fight', 'more than it can handle, at full health: it fights on');
+  A.hp = maxHp(A) * .45; run(.1); ok(A.state === 'return', 'and breaks off at half health, not at 15%');
+
+  for (let i = 0; i < 5; i++) {const q = spreadAt({x: bank.x, y: bank.y + 1}, i, 5); ok(zoneAt(q.x, q.y) === lowZ && !solidAt(q.x, q.y), `a company spread on the bank stays on it, place ${i + 1}`)}
+  stand(bank); A.lvl = 1}
 
 void xpNeed; void last;
 
