@@ -7,5 +7,6 @@
 - [Mid-mob pressure](project_mid_mob_pressure.md) — #154 slice: only lv/COUNTS are levers in mobs.js; 11.9 -> 14.3 deaths/h
 - [Smith temper #13](project_smith.md) — gold sink: +1 ilvl per temper, caps, no repair, hooks
 - [Hero trades #14](project_hero_trades.md) — order book S.listings, fee/lapse, scripted buy/sell, auction_* tools
+- [Crafted at AH #719](project_ah_crafted.md) — listing kind use, price covers USES, volume low by design
 - [Vale fauna #945](project_vale_fauna.md) — per-region species, art lookup gap, home-town lows, unreachable small delves
 - [Hollin tune](project_hollin_tune.md) — #1013: Quarry Cellars numbers, chapter XP plateau, Crookjaw result

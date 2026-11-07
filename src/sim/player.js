@@ -40,7 +40,7 @@ import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {MOBS} from '../data/mobs.js';
 import {TRAITS,tm} from '../data/traits.js';
-import {listings,mine,listFor,buyListing,cancelListing,gearRef,goodRef,gearUpgrade,TRADE} from './market.js'; // hero-to-hero trades (#14)
+import {listings,mine,listFor,buyListing,cancelListing,gearRef,goodRef,gearUpgrade,craftedUse,makerOf,TRADE} from './market.js'; // hero-to-hero trades (#14)
 import {GOODS,price,SLOTS,USES,INV,useLines,EPIC_ITEMS,QUEST_ITEMS} from '../data/items.js';
 import * as D from '../data/adventures.js';
 import {jobBar} from './jobbar.js';
@@ -1300,18 +1300,19 @@ const T={
     else{const s=sellLoot(a);tot=s.gold;n=s.n}
     need(n,'Nothing to sell.');a.gold+=tot;if(tot>=REFLECT.TRADE)moment(a,'trade','sold '+n+' thing'+(n>1?'s':'')+' for '+tot+'g');return {ok:true,sold:n,gold_gained:tot,gold:a.gold}},
   auction_browse(a){need(inTown(a),'The auction house is in town.');const ago=l=>Math.max(0,Math.round((l.until-S.gameMin)/60));
-    const row=l=>({id:l.id,what:l.kind==='gear'?itemText(l.item):l.good,n:l.n,each:l.ask,seller:l.sname,hours_left:ago(l),...(l.kind==='gear'?{slot:l.item.slot,level:l.item.ilvl,class:l.item.cls||'any',better_by:Math.max(0,gearUpgrade(a,l.item)),wearable:gearUpgrade(a,l.item)>=0}:{})});
+    const row=l=>({id:l.id,what:l.kind==='gear'?itemText(l.item):l.good,n:l.n,each:l.ask,seller:l.sname,hours_left:ago(l),...(makerOf(l)?{crafted_by:makerOf(l)}:{}),...(l.kind==='gear'?{slot:l.item.slot,level:l.item.ilvl,class:l.item.cls||'any',better_by:Math.max(0,gearUpgrade(a,l.item)),wearable:gearUpgrade(a,l.item)>=0}:{})});
     const all=listings();return {ok:true,listings:all.filter(l=>l.seller!==a.id).map(row),yours:all.filter(l=>l.seller===a.id).map(row),recent_trades:(S.trades||[]).slice(0,5).map(t=>t.seller+' sold '+t.what+(t.n>1?' x'+t.n:'')+' to '+t.buyer+' for '+t.gold+'g'),gathered_sells_best:sellsBest(),gold:a.gold}},
   auction_list(a,{index,n,price:ask}){need(inTown(a),'The auction house is in town.');const i=Number(index);need(i>=0&&i<used(a),'No pack entry '+index+'.');
     need(mine(a).length<TRADE.MAX_PER_HERO,'You already have '+TRADE.MAX_PER_HERO+' listings.');const e=invOf(a).list[i];
     if(isGear(e)){const ref=gearRef(e),p=ask==null?ref:Number(ask);need(p>=ref*TRADE.MIN_X&&p<=ref*TRADE.MAX_X,'Ask between '+Math.ceil(ref*TRADE.MIN_X)+'g and '+Math.floor(ref*TRADE.MAX_X)+'g for that.');
       invOf(a).list.splice(i,1);const l=listFor(a,{item:e},p);return {ok:true,listed:itemText(e),id:l.id,each:l.ask,lapses_in_hours:TRADE.DAYS*24}}
-    need(e.kind==='good'&&(GOODS[e.id]||MATERIALS[e.id]),'Only trade goods and gear can be listed (consumables and quest items are kept).');
+    const cu=e.kind==='use'&&craftedUse(e.id);
+    need(cu||(e.kind==='good'&&(GOODS[e.id]||MATERIALS[e.id])),'Only trade goods, crafted goods (potions, meals, scrolls, packs, maps a recipe makes) and gear can be listed (other consumables and quest items are kept).');
     const k=n==null?e.n:Math.floor(Number(n));need(k>=1&&k<=e.n,'You carry '+e.n+' of that.');const ref=goodRef(e.id),p=ask==null?ref:Number(ask);
     need(p>=Math.max(1,Math.floor(ref*TRADE.MIN_X))&&p<=Math.ceil(ref*TRADE.MAX_X),'Ask between '+Math.max(1,Math.floor(ref*TRADE.MIN_X))+'g and '+Math.ceil(ref*TRADE.MAX_X)+'g each for '+e.id+'.');
-    e.n-=k;if(e.n<=0)invOf(a).list.splice(i,1);const l=listFor(a,{good:e.id,n:k},p);return {ok:true,listed:e.id+' x'+k,id:l.id,each:l.ask,lapses_in_hours:TRADE.DAYS*24}},
+    e.n-=k;if(e.n<=0)invOf(a).list.splice(i,1);const l=listFor(a,cu?{use:e.id,n:k}:{good:e.id,n:k},p);return {ok:true,listed:e.id+' x'+k,id:l.id,each:l.ask,lapses_in_hours:TRADE.DAYS*24}},
   auction_buy(a,{id,n}){need(inTown(a),'The auction house is in town.');const l=listings().find(x=>x.id===Number(id));need(l,'No listing '+id+' (auction_browse lists them).');
-    const r=buyListing(a,l,n);need(r.ok,r.error);if(r.cost>=REFLECT.TRADE)moment(a,'trade','bought '+r.what+' from '+r.seller+' for '+r.cost+'g');return {ok:true,bought:r.what+(r.n>1?' x'+r.n:''),cost:r.cost,seller:r.seller,gold:r.gold}},
+    const r=buyListing(a,l,n);need(r.ok,r.error);if(r.cost>=REFLECT.TRADE)moment(a,'trade','bought '+r.what+' from '+r.seller+' for '+r.cost+'g');return {ok:true,bought:r.what+(r.n>1?' x'+r.n:''),cost:r.cost,seller:r.seller,gold:r.gold,...(r.maker?{crafted_by:r.maker}:{})}},
   auction_cancel(a,{id}){need(inTown(a),'The auction house is in town.');const l=mine(a).find(x=>x.id===Number(id));need(l,'You have no listing '+id+'.');
     need(cancelListing(a,l),'Your pack is full ('+used(a)+'/'+capOf(a)+').');return {ok:true,returned:l.kind==='gear'?itemText(l.item):l.good+' x'+l.n}},
   equip(a,{index}){need(!['fight','duel','assist'].includes(a.state),'Not in the middle of a fight.');const i=Number(index);
