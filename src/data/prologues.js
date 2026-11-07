@@ -8,19 +8,25 @@
 //     fac      the faction index
 //     theme    a theme of data/sites.js: the interior's look and the mouth's words
 //     name     the site's name; boss its keeper, as the Chronicle names it
-//     scenario what the company sees at the mouth, read by everyone ({town} is filled in)
+//     scenario what the company sees at the mouth, read by everyone ({town} and {walk}, "a short walk", are filled in)
 //     dm       what lies behind it, for the DM's prep and frames only: never reaches a hero
 //     fill     lines the DM's reflex opens with when the DM is slow, one picked by hash
 //     xp       share of an ordinary site's XP (clearXp): the delve ends about level 2
 //     loot     {gold shared, goods, ilvl, quality}: plain, and no epic
 //     rooms    the crawl's rooms, as a site's (sim/crawl.js): {id, name, frame, foes:[{type, n, name?, hits?, atk?}], alvl, hit, rounds, boss?}
-//     walk     how far the mouth stands from the hall, in words, when it is not a short walk
 //     closing  the words at the hall gate: clear, or left (they came out without finishing it). {crypt} names the great dungeon
 export const PROLOGUE_DEFAULT='delve';
 export const PROLOGUE_VALUES=['delve','none'];
+// How far the mouth stands from the hall's gate, in words ({walk} in a scenario, and the Chronicle line). Tiles from the gate, the first
+// row whose upto holds; sim/prologue.js walkWords reads it. Mouths stand 13 to 42 tiles out; most are under 26.
+export const WALKS=[
+  {upto:26,say:'a short walk'},
+  {upto:34,say:'a walk'},
+  {upto:Infinity,say:'a long walk'},
+];
 export const PROLOGUES=[
   {id:'wick-barrow',towns:['Highgate'],fac:0,theme:'barrow',name:'the Wick Barrow',boss:'Old Tallow',
-    scenario:'A grey dawn on a grassed mound, a short walk from {town}. The hall sent word to each of you alone: go to the Wick Barrow, put out what walks there, and come back a company or do not come back. The door stone has been dragged aside from within.',
+    scenario:'A grey dawn on a grassed mound, {walk} from {town}. The hall sent word to each of you alone: go to the Wick Barrow, put out what walks there, and come back a company or do not come back. The door stone has been dragged aside, and from the inside.',
     dm:'A village sexton called Old Tallow kept the barrow lamps for forty years and would not stop when he died. Nothing here is a grand evil: it is a small sad haunting, a test the hall sets its untried blades. Lamps should feature; the last one is still lit.',
     fill:['Wet grass, cold stone, and the smell of old tallow from the dark.','A lamp burns somewhere below, though nobody living has climbed down to fill it.'],
     xp:.45,loot:{gold:30,goods:['Grave Dust'],ilvl:2,quality:'plain'},
@@ -31,7 +37,7 @@ export const PROLOGUES=[
     closing:{clear:'The hall gate of {town}, by evening. The gate captain looks over the grave dirt on you and does not smile. "Old Tallow was the least of what is out there. Walk into {crypt} thinking otherwise and you stay in it."',
       left:'The hall gate of {town}, by evening, with the barrow unfinished behind you. The gate captain counts you. "So now you know what a small one costs. {crypt} is not small."'}},
   {id:'toll-cellars',fac:0,theme:'ruin',name:'the Toll-House Cellars',boss:'Hob Reckoner',
-    scenario:'The burnt shell of a toll-house, a short walk from {town}. The hall sent word to each of you alone: road thieves have dug in under it, and whoever clears them may call themselves a company. A cellar stair goes down behind the fallen roof.',
+    scenario:'The burnt shell of a toll-house, {walk} from {town}. The hall sent word to each of you alone: road thieves have dug in under it, and whoever clears them may call themselves a company. A cellar stair goes down behind the fallen roof, and someone has swept its top step.',
     dm:'Hob Reckoner kept the tolls here until he burned the place himself and went to ground below with his cousins. A greedy small-time crook, not a mastermind; he will shout about what he is owed.',
     fill:['Soot on the wind, and a cellar stair going down into a smell of old beer.','Somebody below is counting out loud, and stops.'],
     xp:.45,loot:{gold:30,goods:['Wolf Pelt'],ilvl:2,quality:'plain'},
@@ -42,7 +48,7 @@ export const PROLOGUES=[
     closing:{clear:'The hall gate of {town}, by evening. The gate captain weighs Hob\'s ledger in one hand. "Thieves in a cellar. Good. Now forget it: {crypt} does not bargain, and it does not run out of cousins."',
       left:'The hall gate of {town}, by evening, with the cellars still held behind you. The gate captain sighs. "Cudgels did that. Think on what {crypt} would do."'}},
   {id:'ashpit-den',towns:['Grimhold'],fac:1,theme:'den',name:'the Ashpit Den',boss:'Mother Soot',
-    scenario:'Black morning on the spoil heaps, a short walk from {town}. The hall sent word to each of you alone: something breeds in the old ashpit and has been at the goats. Kill it together and the banner has a use for you; do not, and nobody will ask where you went. The hollow under the slag breathes warm.',
+    scenario:'Black morning on the spoil heaps, {walk} from {town}. The hall sent word to each of you alone: something breeds in the old ashpit and has been at the goats. Kill it together and the banner has a use for you; do not, and nobody will ask where you went. The hollow under the slag breathes warm.',
     dm:'A scarred she-beast that dens in the town\'s ash heap and has grown fat on goats. The halls send every green blade to this kind of chore, and mock those who fail it. It is an animal, not a villain: cornered, hungry, protecting a litter.',
     fill:['Warm air from the hollow, sour with ash and old bones.','Goat bones crunch underfoot at the lip of the pit.'],
     xp:.45,loot:{gold:30,goods:['Wolf Pelt'],ilvl:2,quality:'plain'},
@@ -53,7 +59,7 @@ export const PROLOGUES=[
     closing:{clear:'The hall gate of {town}, by evening, stinking of ash. The gate captain laughs at you, then stops. "You killed a goat thief. Do not get ideas. {crypt} has eaten better than you."',
       left:'The hall gate of {town}, by evening, with the den still breathing behind you. The gate captain spits. "Beaten by a goat thief. Stay out of {crypt}, then; it would not even notice."'}},
   {id:'slag-delving',fac:1,theme:'mine',name:'the Slag Delving',boss:'Gaffer Crook',
-    scenario:'The mouth of a worked-out adit, a short walk from {town}. The hall sent word to each of you alone: the shift that went down to strip the old rails has not come up, and the banner wants to know who is worth feeding. The rails run into the dark and hum.',
+    scenario:'The mouth of a worked-out adit, {walk} from {town}. The hall sent word to each of you alone: the shift that went down to strip the old rails has not come up, and the banner wants to know who is worth feeding. The rails run into the dark, and they hum like a struck bell nobody is holding.',
     dm:'Gaffer Crook led the rail-strippers and found it easier to keep the scrap and rob the next shift. He holds the lower gallery with what is left of his crew and the crawlers they let breed. A petty tyrant who thinks being underground makes him a king.',
     fill:['Cold air out of the adit, and the rails humming with something far below.','A dropped pick lies at the mouth, its handle still wet.'],
     xp:.45,loot:{gold:30,goods:['Thick Hide'],ilvl:2,quality:'plain'},
@@ -125,11 +131,11 @@ PROLOGUES.push(
     'The hall gate of {town}, by evening, the pit rattling behind you. The gate captain spits. "Beaten by a goat thief. Stay out of {crypt}."'));
 
 // The Hollin Reach's first delve (#1013 slice 7a): the one dungeon on that map, at the end of its road. The same small shape; its closing words look to the roads out, not to a great dungeon.
-PROLOGUES.push({...valeDelve('tithe-grange','Oldstead',0,'ruin','the Tithe Grange','Cellarer Thrupp',
-    'The roofless grange at the end of the wood road, a long walk from {town}. The hall sent word to each of you alone: the tithe carts stopped coming back, and hedge-thieves have the undercroft. The road goes no further than this door.',
+PROLOGUES.push(valeDelve('tithe-grange','Oldstead',0,'ruin','the Tithe Grange','Cellarer Thrupp',
+    'The roofless grange at the end of the wood road, {walk} from {town}. The hall sent word to each of you alone: the tithe carts stopped coming back, and hedge-thieves have the undercroft. The road goes no further than this door.',
     'Cellarer Thrupp kept the tithe here for a priory nobody remembers, and when the priory stopped sending for it he stayed and went on counting. He lets the thieves sleep below for a share and keeps their takings in his old ledgers. A small, stubborn, hungry man. The first thing a company ever beats, so let it feel like something.',
     ['Rooks go up from the roofless barn, and something below drops a cask and swears.','Cart ruts run to the cellar door and none run back.'],'Wolf Pelt',
     ['hedgecaller',2],['The Cart Bay','Two hedge-thieves look up from a broken tithe cart, and one of them whistles for help that does not come.'],['tollbreaker',2],['The Undercroft','Stone vaults and stacked grain, and two big men who were told nobody ever comes this far.'],
     'captain','hedgecaller',"The Cellarer's Count",'A stub of candle, a wall of ledgers, and an old man who wants to know what you are bringing and whether you have it in writing.',
     'The hall gate of {town}, by evening, with grain dust on your boots. The gate captain weighs the ledger in one hand. "That is the end of the wood road. The other two have no end anybody here has seen."',
-    'The hall gate of {town}, by evening, with the grange still held behind you. The gate captain shuts the wicket. "One old man and a cellar. There are two more roads out of here, and neither is as short as that one."'),walk:'a long walk'});
+    'The hall gate of {town}, by evening, with the grange still held behind you. The gate captain shuts the wicket. "One old man and a cellar. There are two more roads out of here, and neither is as short as that one."'));
