@@ -609,11 +609,11 @@ export const HOLLIN={
 // The Gull Cliff Den's chambers: a small delve on the sea-cliffs for a company come up the coast. Old Brine and her run, as the Vale's first delve told them, pitched like the Vale's small delves at a level 7 company.
 const GULL_DEN_ROOMS=[
   {id:'nets',name:'The Net Run',frame:"A run trodden through shredded nets, under the roots at the cliff's lip. Half-grown things come down it snapping.",
-    foes:[{type:'wolf',n:3}],lvl:-1,hit:.25,rounds:2},
+    foes:[{type:'wolf',n:3}],lvl:-1,hit:.225,rounds:2},
   {id:'midden',name:'The Fish Midden',frame:"A cave heaped with bones and scales, and the sea booming somewhere under the floor. Two boars have taken the den's leavings and defend them.",
-    foes:[{type:'boar',n:2,hits:2},{type:'wolf',n:1}],lvl:0,hit:.31,rounds:2},
+    foes:[{type:'boar',n:2,hits:2},{type:'wolf',n:1}],lvl:0,hit:.28,rounds:2},
   {id:'hollow',name:'The Warm Hollow',frame:'The deepest hollow, warm and reeking. She gets up off her litter and she is bigger than the net-menders said.',
-    foes:[{type:'denmother',n:1,name:'Old Brine',hits:4,atk:1.5},{type:'wolf',n:1,hits:1}],lvl:1,hit:.40,rounds:3,boss:true},
+    foes:[{type:'denmother',n:1,name:'Old Brine',hits:4,atk:1.5},{type:'wolf',n:1,hits:1}],lvl:1,hit:.36,rounds:3,boss:true},
 ];
 
 // ---- The Wendmouth: the second chapter (#1013 slice 7b, levels 5-10) ----
