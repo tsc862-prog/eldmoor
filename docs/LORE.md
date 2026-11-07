@@ -558,7 +558,7 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 | Town | Faction | People | Notes |
 | --- | --- | --- | --- |
 | Gullstrand | Concord | Skerrin | The harbour, as the Vale built it: its gate faces the Wend, with a quay and a jetty outside it and the Low Bridge just up the bank. |
-| Stiltmere | Warband | Mirekin | The fen town on planked lanes inside a palisade, its gate on the far east side, at the end of the long road. |
+| Stiltmere | Warband | Mirekin | The fen town on planked lanes inside a palisade, its gate on the far east side, where the fen road turns on toward the Wend Road. |
 
 - **The Low Bridge**: the only way over the Wend on this map, under Gullstrand's south wall.
 - **The Crossways** of the Wendmouth: where the Drovers' Road parts, west to the Low Bridge and east into the flats.
@@ -567,7 +567,7 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 - **The Gull Cliff Den** (Gullhead, entry 7): Old Brine's den, in the Vale a first delve, here a small dungeon of three rooms in the sea-cliffs at the end of the cliff road: **the Net Run**, **the Fish Midden**, **the Warm Hollow**. Keeper **Old Brine**, a scarred sea-wolf mother.
 - **Creatures of the Wendmouth** (`src/data/fauna.js`, the Vale's by name, at this chapter's levels): Wendmouth: **Strand Wolf** (5-6), **Reed Boar** (6-7), **Dyke Weaver** (6-7). Sallowfen: **Sallow Bogling** (6-7), **Sallow Hog** (7-8), **Eel Lurker** (8-9). Gullhead: **Heath Wolf** (7-8), **Crag Boar** (8-9), **Windhound** (9-10).
 - **Old Mother Sedge**: the map's one elite, in Sallowfen, level 10.
-- Name notes: Wendmouth, Sallowfen, Gullstrand, Stiltmere, the Low Bridge, the Sallow Vaults and the Gull Cliff Den are shared with the old Vale on purpose (#1013: the Vale is redrawn as chapter maps and retired when the last lands); no campaign holds both. **Gullhead** and **the Wend Road** are new.
+- Name notes: Wendmouth, Sallowfen, Gullstrand, Stiltmere, the Low Bridge, the Sallow Vaults and the Gull Cliff Den are shared with the old Vale on purpose (#1013: the Vale is redrawn as chapter maps and retired when the last lands); no campaign holds both. Old Mother Sedge, Old Brine and Captain Dane Sallow come over from the Vale too. The Vale's own lines (Gullstrand at the river's mouth below Aldermere, the Wendmouth as the region of four home towns) stay on the Vale map: do not copy them into this chapter. **Gullhead** and **the Wend Road** are new.
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.

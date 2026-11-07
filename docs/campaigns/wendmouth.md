@@ -3,8 +3,8 @@
 DM-only. The heroes never read this; reveal it through narrate, npc_say, hooks, staged scenes and marks. This is the second chapter, levels 5 to 10: a company walks in from the Hollin Reach up the Drovers' Road, around level 6, with a Reach's worth of small troubles behind it. Two towns a long day apart, one bridge, one sea. Keep it wider than the Reach, not busier.
 
 ## Premise
-- **Where The Road Comes Out**: The Drovers' Road ends on the south bank of the Wend. For a company out of Oldstead this is the first country that does not know their names. Nobody here has heard of the Hollin Reach except as the place the stock comes from. tags: premise, company
-- **One Bridge**: The Low Bridge is the only way over the Wend on this map, and it stands under Gullstrand's quay. Everything between the harbour and the fen pays for that: in time, in tolls, in who gets to say what the river is doing. tags: premise, bridge
+- **Where The Road Comes Out**: The Drovers' Road comes up onto the south bank of the Wend. For a company out of Oldstead this is the first country that does not know their names. Nobody here has heard of the Hollin Reach except as the place the stock comes from. tags: premise, company
+- **One Bridge**: The Low Bridge is the only way over the Wend on this map, and it stands under Gullstrand's south wall. Everything between the harbour and the fen pays for that: in time, in tolls, in who gets to say what the river is doing. tags: premise, bridge
 - **A River That Runs Downhill**: Whatever goes wrong upriver reaches the mouth last, and the mouth is where people notice. Fishers at Gullstrand say the Wend runs a hand's breadth off its old line each morning. Nobody has walked the Wend Road to ask why. tags: premise, river
 
 ## Threads
