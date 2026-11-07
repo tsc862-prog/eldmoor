@@ -193,6 +193,7 @@ export function strike(a,t,o){
   if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}
   return d}
 
+export const DUEL_MAX=90; // game seconds
 export function priestHeal(a,list){if(!CLS[a.cls].heal)return;if(a.healCd>0){tendAlly(a,list);return}let low=null; // spell on cooldown: a potion for a member nearly down (sim/inv.js)
   let lm=0;for(const b of list){if(b.state==='ghost'||dist(a,b)>(b.state==='downed'?5:4))continue;const bm=maxHp(b);if(b.hp<bm*.55*tm(a,'mercy')&&(!low||b.hp/bm<low.hp/lm)){low=b;lm=bm}} // each max HP read once (#730)
   if(!low&&(a.state==='hunt'||a.state==='follow')&&reflexMay(a))low=woundedMate(a,list); // nothing presses: a scripted healer tends a wounded mate (#656)
@@ -284,6 +285,8 @@ export function updAgent(a,dt){
   case 'return':{if(steerClear(a,dt,moveTo))break;if(checkEncounter(a,dt))break;const c=homeOf(a);if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.townStep=0;a.wait=.5}break}
   case 'downed':case 'aid':downedStep(a,dt);break; // at zero HP, and the one who came to help (sim/downed.js)
   case 'duel':{const b=a.target;if(!b||b.state!=='duel'||b.target!==a){a.state='hunt';a.target=null;break}
+    if(a.duelWith!==b||S.gameMin-(a.duelLast||0)>3){a.duelWith=b;a.duelAge=0}a.duelLast=S.gameMin;a.duelAge+=dt; // #1062: a duel that outlasts DUEL_MAX (two healers outhealing each other) is a draw: both walk away
+    if(a.duelAge>DUEL_MAX&&b.duelAge>DUEL_MAX){a.state=b.state='hunt';a.target=b.target=null;a.dest=b.dest=null;a.duelWith=b.duelWith=null;a.spotCd=b.spotCd=45;log(a,' and ',b,' broke off a duel neither could win in '+ZONES[zoneAt(a.x,a.y)]+'.');break}
     const r=CLS[a.cls].range,d=dist(a,b);a.face=b.x>a.x?1:-1;
     if(d>r){moveTo(a,b.x,b.y,dt,2.4);break}a.moving=false;priestHeal(a,[a]);
     {const mv=fightMoves(a,b,[a],a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,b);a.cd=1.1}}

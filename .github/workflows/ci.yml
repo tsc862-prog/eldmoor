@@ -108,6 +108,7 @@ jobs:
         with: {node-version: 20, cache: npm}
       - run: npm ci
       - {name: Paths check, run: npm run pathcheck}
+      - {name: Duel stall check, run: npm run duelstallcheck}
       - {name: Gathering nodes, run: npm run nodecheck}
       - {name: Pack and inventory, run: npm run invcheck}
       - {name: Hero trades, run: npm run tradecheck}
