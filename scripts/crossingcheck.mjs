@@ -14,7 +14,11 @@
 //   7. a save with a frozen map, at the moment of the switch and after play there, replayed in a fresh process that boots on the first map.
 //   8. a full roster on five maps against the store: mock IndexedDB under the real ui/savestore.js, a localStorage that refuses past 5 MB;
 //      the page's save, load, export, import and the move out of localStorage through the real ui/save.js.
-// The crossing itself is a later slice. Usage: npm run crossingcheck
+// Part 3 (slice 3): the crossing.
+//   9. on the TESTLINK fixtures: the leader's word and nothing else opens a road; every hold in words; go, wait, turn back as a vote; all or
+//      none; the company spread at the entry, what it leaves behind, the arrival; frozen state identical on return; a fallen member on the far
+//      map; the DM at both tables; mock runners holding real claims across it, one mid-wait; a save mid-crossing in a fresh process.
+// Usage: npm run crossingcheck
 import {spawnSync} from 'node:child_process';
 import {readFileSync, writeFileSync, readdirSync} from 'node:fs';
 import {join, dirname, resolve} from 'node:path';
@@ -417,6 +421,280 @@ if (mode === '--store') { // the page's save, load, export and import on Indexed
   process.exit(fail ? 1 : 0);
 }
 
+// ---- part 3 (slice 3): the crossing ----
+// A company on the TESTLINK fixtures, every seat held, walking and voting through the real tools; the world stepped by hand, except where
+// mock runners hold real claims at the relay.
+async function crossTools() {
+  const T = await packTools(), {S, SIM, M} = T, {setRunnerLinks, setReflexAck, playerAct, dmAct, setDmSeat} = SIM;
+  const CO = await import('../src/sim/company.js'), CN = await import('../src/sim/council.js'), TB = await import('../src/sim/table.js'), SC = await import('../src/sim/scenewait.js');
+  const CR = await import('../src/sim/crossing.js'), PC = await import('../src/sim/pace.js'), {tableView} = TB, home = M.MAP_ID;
+  const act = (a, tool, args) => {a.playRate = []; return playerAct(a.id, tool, args || {})};
+  const steps = (n = 1) => {for (let i = 0; i < n; i++) SIM.step(1 / 60)};
+  const until = (f, max = 60 * 400) => {for (let i = 0; i < max; i++) {if (f()) return true; SIM.step(1 / 60)} return !!f()};
+  const calm = () => {for (const m of S.mobs) {m.alive = false; m.respawn = 1e9; m.target = null}}; // nothing bites while the table is tested
+  // A fresh world on the first map, every member's runner live. o.others 'none' for the flows; the full roster for what freezes.
+  const world = (o = {others: 'none'}) => {M.setWorld(home); reseed(); TB.TABLE.mode = 'auto'; TB.TABLE.speed = 1; TB.TABLE.drop = null; TB.TABLE.liveMs = 120000; setRunnerLinks(() => 'connected'); setReflexAck(() => false); SIM.init(o);
+    const F = CO.slotted(); setDmSeat(true); calm(); return F ? {F, mem: CO.slotHeroes(F), lead: CN.leaderOfC(F)} : {}};
+  const exit = () => M.EXITS[0], off = a => Math.hypot(a.x - exit().x, a.y - exit().y);
+  const at = (L, p = exit()) => L.forEach((a, i) => {a.x = p.x - 1 - (i % 3) * .5; a.y = p.y - 1 + Math.floor(i / 3); a.zone = M.zoneAt(a.x, a.y); a.state = 'hunt'; a.dest = null; a.target = null; a.moving = false; a.pq = []});
+  const scene = C => TB.sceneFor(C);
+  const opened = (C, kind) => until(() => {const s = scene(C); return !!s && s.kind === kind && s.phase === 'turn' && !SC.framing(s) && !!s.wk && !!s.wk.done}, 60 * 60);
+  const byId = id => S.agents.find(a => a.id === id);
+  const answers = (C, pick) => scene(C).ids.map(byId).map((a, i) => act(a, 'scene_act', {option: typeof pick === 'function' ? pick(a, i) : pick, line: ''}));
+  const closed = C => until(() => !scene(C), 60 * 60);
+  const go = (F, mem, lead) => {at(mem); act(lead, 'move_to', {target: exit().name}); if (!opened(F, 'crossing')) return false; answers(F, 'go'); return until(() => M.MAP_ID !== home, 60 * 60)};
+  const {knowsPlace: knows} = await import('../src/sim/lore.js'), {homeOf} = await import('../src/data/races.js');
+  return {...T, knows, homeOf, home, CO, CN, TB, SC, CR, PC, tableView, act, steps, until, calm, world, exit, off, at, scene, opened, answers, closed, go, byId, setRunnerLinks, setReflexAck};
+}
+if (mode === '--road') { // when the scene opens, what holds it, what it asks and what comes of it
+  const X = await crossTools(), {S, SIM, M, home, CO, CN, TB, PC, tableView, act, steps, until, world, exit, off, at, scene, opened, answers, closed, setRunnerLinks, setReflexAck} = X;
+  const {learnPlace} = await import('../src/sim/lore.js'), {setGateHold} = await import('../src/sim/prep.js'), far = exit().to.map;
+
+  console.log('\nnever on proximity');
+  {const {F, mem, lead} = world(); at(mem); steps(600);
+    ok(!F.road && !scene(F) && M.MAP_ID === home, 'a company standing at the road with no order is asked nothing, ten seconds on');
+    at(mem); act(lead, 'hunt', {}); steps(60); ok(!F.road && !scene(F), 'nor a company hunting there');
+    at(mem); const r = act(mem[1] === lead ? mem[0] : mem[1], 'move_to', {target: exit().name}); ok(r.ok && !F.road, 'a follower may walk there, and that opens nothing: ' + r.note);
+    act(lead, 'intent', {goal: 'hunt the mead', why: 'for coin'}); steps(60); ok(!F.road, 'an aim that names no road makes none');
+    setRunnerLinks(null); F.road = {exit: exit().id, by: lead.id, at: 0}; at(mem); steps(120); ok(!scene(F) && M.MAP_ID === home, 'a world with no host never opens one, whatever is written'); delete F.road; setRunnerLinks(() => 'connected')}
+
+  console.log('the leader\'s word');
+  {const {F, mem, lead} = world(), town = M.EXITS[0].to.map, beyondTown = (await import('../src/world/spec.js')).MAPS[town].towns[0].name;
+    const r = act(lead, 'move_to', {target: beyondTown}); ok(!r.ok && !F.road, 'a place beyond the road nobody has heard of is refused: ' + (r.error || '').slice(0, 70));
+    learnPlace(lead, beyondTown, 'told'); const r2 = act(lead, 'move_to', {target: beyondTown}); ok(r2.ok && F.road && F.road.exit === exit().id, 'heard of, it walks to the road that leads there: ' + r2.going);
+    act(lead, 'move_to', {target: 'gate'}); ok(!F.road, 'an order elsewhere ends it');
+    lead.pq = []; act(lead, 'intent', {goal: 'take ' + exit().name + ' out of here', why: 'the hall is too small'}); ok(F.road && F.road.aim === lead.intent.n && lead.intent.order && lead.intent.order.label === exit().name, 'a stated aim that names the road carries it, and autopilot walks it');
+    act(lead, 'hunt', {}); ok(!!F.road, 'a hunt on the way does not end an aim\'s road');
+    act(lead, 'intent', {goal: 'hunt the mead', why: 'for coin'}); ok(!F.road, 'a new aim does');
+    act(lead, 'intent', {goal: 'reach ' + beyondTown + ' and see the water', why: 'an old promise'}); ok(!!F.road, 'an aim that names a place beyond the road carries it too');
+    act(lead, 'intent', {done: 'yes', why: 'not today'}); ok(!F.road, 'setting the aim down ends it');
+    const e0 = exit(), was = e0.to; e0.to = {map: null, heard: 'lands not yet seen'}; const c = act(lead, 'move_to', {target: e0.name}); ok(!c.ok && /not yet open/.test(c.error) && !F.road, 'a road with no map behind it is refused in words: ' + c.error); e0.to = was}
+
+  console.log('the walk');
+  {const {F, mem, lead} = world(), r = act(lead, 'lead_to', {target: exit().name}); ok(r.ok && !!F.road, 'lead_to names the road: ' + r.leading + ', ' + r.followers + ' following');
+    ok(until(() => scene(F)), 'the company walks there and the scene opens when the leader reaches it');
+    ok(scene(F).kind === 'crossing' && scene(F).all === true && TB.PLAY.crossing === 'all' && off(lead) <= exit().r + .1, 'kind crossing, everyone at once, ' + off(lead).toFixed(1) + ' tiles from the road (it reaches ' + exit().r + ')')}
+
+  console.log('the holds, each in words');
+  {const {F, mem, lead} = world(), m = mem.filter(a => a !== lead);
+    const fresh = () => {at(mem); F.road = {exit: exit().id, by: lead.id, at: Math.round(S.gameMin)}};
+    const once = (k, re, what, setup, undo) => {fresh(); setup(); steps(1); const h = F.road && F.road.hold, b = PC.paceBrief(lead.id).brief;
+      ok(!(scene(F) && scene(F).kind === 'crossing') && !!h && h.k === k && re.test(h.text) && M.MAP_ID === home, what + ': ' + (h && h.text)); ok(b.crossing_waits === (h && h.text), 'the leader\'s header carries it');
+      undo(); delete F.road; steps(2)};
+    const foe = S.mobs[0];
+    once('split', /off on their own/, 'a split-off member', () => {m[1].splitUntil = S.gameMin + 300}, () => {delete m[1].splitUntil});
+    once('down', /down/, 'a member downed', () => {m[0].state = 'downed'; m[0].down = {s: 0, f: 0, stable: true, wake: S.gameMin + 9999, at: S.gameMin, by: {}}; m[0].hp = 0}, () => {m[0].state = 'hunt'; delete m[0].down; m[0].hp = 40});
+    once('fight', /is fighting/, 'a fight', () => {Object.assign(foe, {alive: true, hp: 1e6, maxhp: 1e6, x: m[2].x + .4, y: m[2].y, target: m[2], respawn: 0}); m[2].state = 'fight'; m[2].target = foe}, () => {foe.alive = false; foe.target = null; foe.respawn = 1e9; m[2].state = 'hunt'; m[2].target = null});
+    once('camp', /camped/, 'a camp', () => {F.camp = {phase: 'rest', ids: [], x: lead.x, y: lead.y, zone: 0}}, () => {delete F.camp});
+    once('vote', /still open/, 'an open vote', () => {(F.props || (F.props = [])).unshift({id: 9001, kind: 'other', details: 'We hold here', by: lead.id, at: S.gameMin, until: S.gameMin + 900, votes: {}, status: 'open'})}, () => {F.props.shift()});
+    once('off', /table is closed/, 'the table closed (Watch mode)', () => {TB.TABLE.mode = 'off'}, () => {TB.TABLE.mode = 'auto'});
+    {fresh(); setGateHold(true); steps(3); const h = F.road.hold; ok(!scene(F) && h && h.k === 'held', 'the world held: ' + (h && h.text)); setGateHold(false); steps(2); ok(!!scene(F) && scene(F).kind === 'crossing', 'and the moment it lets go the scene opens'); opened(F, 'crossing'); answers(F, 'wait'); closed(F)}
+    {fresh(); const a = m[3], x0 = a.x; a.x = lead.x - 25; a.playEv = []; steps(3); const h = F.road.hold; ok(!scene(F) && h && h.k === 'far' && h.away.includes(a.id), 'a member out of shouting range: ' + (h && h.text));
+      ok((a.playEv || []).some(e => e.u && /Walk there now/.test(e.text)), 'who is away is told, urgently: ' + ((a.playEv || []).find(e => /Walk there/.test(e.text)) || {}).text); ok(PC.paceBrief(a.id).brief.crossing_waits === h.come, 'and carries it in the header');
+      const lines = (lead.playEv || []).filter(e => /out of shouting/.test(e.text)).length; steps(60); ok((lead.playEv || []).filter(e => /out of shouting/.test(e.text)).length === lines && !!F.road.hold, 'told once, not every tick');
+      const r = act(a, 'follow', {who: lead.name}); a.x = x0; a.pq = []; steps(3); ok(!!scene(F) && scene(F).kind === 'crossing' && !F.road.hold, 'back in range the scene opens with everyone: ' + scene(F).ids.length + ' at it'); opened(F, 'crossing'); answers(F, 'wait'); closed(F)}
+    {at(mem); act(lead, 'move_to', {target: exit().name}); const a = m[3]; a.x = lead.x - 25; steps(3); ok(!!F.road.hold, 'held, the leader may change its mind'); act(lead, 'move_to', {target: 'gate'}); ok(!F.road, 'an order elsewhere ends the wait')}}
+
+  console.log('all or none: a second company on the map');
+  {const {F, mem, lead} = world({}), o = S.agents.find(a => a.state !== 'dead' && !CO.companyOf(a)); SIM.markPlayer(o, true); ok(CO.companyOf(o) && CO.companyOf(o) !== F, o.name + ' rides alone on this map');
+    at(mem); act(lead, 'move_to', {target: exit().name}); at(mem); steps(3); ok(!scene(F) && F.road.hold && F.road.hold.k === 'others', 'the road waits, in words: ' + (F.road.hold && F.road.hold.text));
+    o.state = 'dead'; steps(3); ok(!!scene(F) && scene(F).kind === 'crossing', 'once they are gone the scene opens')}
+
+  console.log('wait, and turn back');
+  {const {F, mem, lead} = world(), goal = 'take ' + exit().name; at(mem); act(lead, 'intent', {goal, why: 'onward'}); ok(opened(F, 'crossing'), 'the scene opens on the aim');
+    const b = mem.find(a => a !== lead), v = tableView(b); ok(v && v.options.length === 3 && v.options.every(o => /^(go|wait|turn_back) = /.test(o)) && v.everyone_answers, 'every member has go, wait, turn_back at once: ' + v.options.map(o => o.split(' = ')[0]).join(', '));
+    ok(v.frame.includes(exit().name) && !(await import('../src/world/spec.js')).MAPS[far].towns.some(t => v.frame.includes(t.name)), 'the frame names the road and nothing unheard of beyond it: ' + v.frame);
+    answers(F, a => a === lead ? 'go' : a === b ? 'go' : 'wait'); ok(closed(F), 'settled'); steps(120);
+    ok(!F.road && M.MAP_ID === home && !!lead.intent.done, 'two for going, three against: they stay, and the aim that brought them is done: ' + (lead.intent.done && lead.intent.done.why));
+    at(mem); steps(600); ok(!scene(F) && !F.road, 'standing there, nobody is asked again');
+    act(lead, 'move_to', {target: exit().name}); ok(opened(F, 'crossing'), 'the same order anew asks again');
+    answers(F, 'turn_back'); ok(closed(F), 'settled'); const d0 = off(lead); ok(!F.road && lead.pq.length === 1 && lead.pq[0].label === M.CITY[0].name, 'turn back walks the leader to ' + lead.pq[0].label); steps(240); ok(!F.road && !scene(F) && off(lead) > d0 + 2, 'away from the road, and it is not asked again');
+    at(mem); act(lead, 'move_to', {target: exit().name}); ok(opened(F, 'crossing'), 'asked again'); const two = mem.filter(a => a !== lead).slice(0, 2); answers(F, a => a === lead || two.includes(a) ? 'go' : 'wait');
+    ok(until(() => M.MAP_ID !== home, 120), 'three for going, two against: the leader settles it and the whole company goes')}
+
+  console.log('a word taken and the leader gone');
+  {const {F, mem, lead} = world(); at(mem); act(lead, 'move_to', {target: exit().name}); opened(F, 'crossing'); answers(F, 'go'); until(() => F.road && F.road.phase === 'go'); lead.x -= 15; ok(until(() => !F.road, 200) && M.MAP_ID === home, 'a leader who walks off between the vote and the road takes the word with it')}
+
+  console.log('any company: a solo, and two who ride together');
+  for (const n of [1, 2]) {world({fellowship: false}); const L = S.agents.filter(a => a.fac === 0 && a.state !== 'dead').slice(0, n); for (const a of L) {a.town = M.CITY[0].name; SIM.markPlayer(a, true)}
+    let C = CO.companyOf(L[0]); if (n > 1) {for (const a of L) if (a !== L[0]) CO.joinCompany(C, a)}
+    for (const a of S.agents) if (!L.includes(a) && CO.companyOf(a)) SIM.markPlayer(a, false);
+    const ld = CN.leaderOfC(C); at(L); act(ld, 'move_to', {target: exit().name}); ok(opened(C, 'crossing'), (n === 1 ? ld.name + ' alone' : C.name || 'the pair') + ': the road opens with ' + scene(C).ids.length + ' at it'); answers(C, 'go'); ok(until(() => M.MAP_ID === far, 300) && L.every(a => S.agents.includes(a)), 'and they cross'); ok(opened(C, 'farside'), 'to an arrival'); answers(C, 'look'); ok(closed(C), 'and on')}
+
+  console.log('a tie goes to the leader');
+  {const {F, mem, lead} = world(); F.ids.includes(mem[4].id); at(mem); act(lead, 'move_to', {target: exit().name}); opened(F, 'crossing'); const sc = scene(F);
+    const up = mem.filter(a => a !== lead).slice(0, 1); sc.ids = sc.ids.filter(id => id === lead.id || id === up[0].id); answers(F, a => a === lead ? 'wait' : 'go'); closed(F); steps(60); ok(M.MAP_ID === home && !F.road, 'one each, the leader says wait: they wait')}
+
+  console.log('a silent table, a gone runner');
+  {const {F, mem, lead} = world(); TB.TABLE.liveMs = 400; at(mem); act(lead, 'move_to', {target: exit().name}); ok(until(() => !!scene(F), 60), 'the scene opens'); ok(closed(F) && !F.road && M.MAP_ID === home, 'five live agents who run out the clock: their reflexes wait, and nobody crosses');
+    setRunnerLinks(() => 'none'); setReflexAck(() => true); at(mem); steps(600); ok(!F.road && !scene(F), 'a company on its reflexes walks to no road and opens nothing');
+    at(mem); F.road = {exit: exit().id, by: lead.id, at: 0}; ok(until(() => M.MAP_ID !== home, 600), 'a road ordered before the runners went, and the owner resumed: their reflexes may go on')}
+  process.exit(fail ? 1 : 0);
+}
+
+if (mode === '--over') { // the crossing itself, and the far side
+  const X = await crossTools(), {S, SIM, M, home, A, P, CO, CN, TB, CR, PC, tableView, act, steps, until, world, exit, at, scene, opened, answers, closed, go, byId, json, comparable, dmAct} = X;
+  const {MAPS} = await import('../src/world/spec.js'), far = exit().to.map, farTown = MAPS[far].towns[0].name, Q = await import('../src/sim/questlog.js'), H = await import('../src/sim/heroes.js');
+  const open = (x, y) => !(M.solid && M.solid[M.I(Math.floor(x), Math.floor(y))]);
+
+  console.log('\nthe company goes, all of it');
+  {const {F, mem, lead} = world(); at(mem); const ids = mem.map(a => a.id).sort();
+    lead.adv = 777; (S.adventures || (S.adventures = [])).push({id: 777, phase: 'active', mem: mem.map(a => a.id), lead: lead.id, title: 'The Old Errand', foes: [], data: {}, scenes: [{type: 'travel', at: {x: exit().x - 12, y: exit().y}}], idx: 0, stage: 'go', log: [], z: 0, town: M.CITY[0].name}); for (const a of mem) a.adv = 777;
+    const ok1 = dmAct('watch', {trigger: 'enter_town', on: {town: M.CITY[0].name}, note: 'home again', hours: 72}), ok2 = dmAct('watch', {trigger: 'after_hours', on: {h: 48}, note: 'a clock', hours: 72}); ok(ok1.ok && ok2.ok, 'the DM has left a place-bound watch and a timed one');
+    lead.goal = {type: 'pilgrim', zone: 0, text: 'To walk ' + M.ZONES[0], need: 1, minLvl: 1, progress: 0, tier: 0}; lead.playGround = 0;
+    act(lead, 'intent', {goal: 'take ' + exit().name, why: 'onward'}); ok(opened(F, 'crossing'), 'the scene opens');
+    answers(F, 'go'); ok(until(() => F.road && F.road.phase === 'go'), 'everyone says go'); ok(M.MAP_ID === home && !!scene(F), 'the outcome stays on the table; nobody has moved');
+    ok(until(() => M.MAP_ID === far, 120), 'then the map turns over');
+    ok(CO.slotHeroes(F).map(a => a.id).sort().join() === ids.join() && mem.every(a => S.agents.includes(a) && a.state !== 'dead'), 'all five stand on ' + far);
+    ok(!A.frozenHeroes().some(a => ids.includes(a.id)), 'nobody of theirs is left on the map behind');
+    const entry = exit(), spots = new Set(mem.map(a => a.x.toFixed(2) + ',' + a.y.toFixed(2)));
+    ok(spots.size === mem.length, 'spread out, not on one spot: ' + mem.map(a => a.x.toFixed(1) + ',' + a.y.toFixed(1)).join(' '));
+    ok(mem.every(a => open(a.x, a.y) && a.x > 0 && a.y > 0 && a.x < 32 && a.y < 24 && Math.hypot(a.x - entry.x, a.y - entry.y) < 8), 'on open ground by ' + entry.name);
+    ok(mem.every(a => !a.pq.length && !a.target && !a.adv && a.playGround === undefined), 'orders, targets and the old ground are gone: ' + JSON.stringify(mem.map(a => [a.pq.length, !!a.target, a.adv, a.playGround])));
+    ok(mem.every(a => !a.intent || !!a.intent.done), 'aims of the old land are done: ' + (lead.intent.done && lead.intent.done.why));
+    {const v = S.maps[home].adventures.find(x => x.id === 777); ok(v && v.held === lead.id && v.away && v.mem.join() === String(lead.id), 'the adventure is set aside with its map, held by the leader');
+      ok(act(lead, 'quests').left_behind.join() === 'The Old Errand', 'and the quest log says where it was left')}
+    ok(!F.road && !F.wait, 'the road is spent');
+    {const w = S.dmAgent.when; ok(w.list.length === 1 && w.list[0].trigger === 'after_hours' && w.parked[home].list[0].trigger === 'enter_town', 'the watch on a place parks with its map, the timed one goes with the DM');
+      ok(dmAct('dm_status').campaign.waiting_on_other_maps[MAPS[home].name] === 1, 'and the DM can see it waits')}
+    {const g = lead.goal, r = act(lead, 'status'); ok(g.zoneMap === home && g.zoneName === MAPS[home].regions[0].name, 'an oath\'s region keeps its map and its name');
+      ok(A.oathZone(g) === null && M.zoneAt(lead.x, lead.y) === 0 && !g.done, 'and index 0 of the far map is not the place sworn to')}
+    ok(mem.every(a => a.lore == null || X.knows(a, M.ZONES[0])), 'they know the ground they stand on');
+    console.log('the far side');
+    ok(opened(F, 'farside'), 'an arrival scene opens at once'); const b = mem.find(a => a !== lead), v = tableView(b), sc = scene(F);
+    ok(sc.all === true && sc.ids.length === mem.length, 'everyone present, one round');
+    ok(v.frame.includes(entry.name) && v.frame.includes(M.ZONES[0]) && v.frame.includes(farTown), 'the scripted frame is the entry exit and the map\'s own words: ' + v.frame);
+    ok(sc.calls && sc.calls.length === 1 && sc.calls[0].kind === 'frame' && sc.calls[0].by === 'scripted' && (b.chat || []).some(e => e.dm && e.text.includes(entry.name)), 'with no DM listening the scripted line is spoken, the land opens in words');
+    ok(mem.every(a => (a.playEv || []).some(e => /You have crossed/.test(e.text))), 'each member has the crossed event');
+    answers(F, (a, i) => i ? 'look' : 'speak'); ok(closed(F), 'one round, and the table closes');
+    ok((lead.playEv || []).some(e => /Where you go/.test(e.text)), 'the leader is told the next move is theirs');
+    ok(S.chronicle.some(e => e.parts.map(p => p && p.t || p).join('').includes(MAPS[far].name)) && S.dmLog.some(e => e.detail && e.detail.crossing && e.detail.to === far), 'the Chronicle and the DM log have it');
+    const bad = []; for (const t of X.PLAYER_TOOLS) if (!t.act) {const r = act(lead, t.name, {}); if (BROKEN.test(said(r))) bad.push(t.name)} for (const t of X.DM_TOOLS) if (!t.act) {const r = dmAct(t.name, {}); if (BROKEN.test(said(r))) bad.push('dm ' + t.name)}
+    ok(!bad.length, 'every hero and DM read answers on the far side' + (bad.length ? ': ' + bad.join(', ') : ''));
+    const r = act(lead, 'move_to', {target: farTown}); ok(r.ok, 'the leader can walk to ' + farTown + ': ' + r.going); steps(600); ok(until(() => !lead.pq.length, 3000) && lead.state !== 'dead', 'and does');
+
+    console.log('frozen state identical on return');
+    {const packed = () => JSON.stringify(json().campaign.maps[home]), p0 = packed(); steps(60 * 30); ok(packed() === p0, 'a frozen map does not move while the company plays elsewhere');
+      const back = exit(), when0 = S.dmAgent.when.parked[home].list[0], until0 = when0.until, gone = S.gameMin; at(mem, back); act(lead, 'move_to', {target: back.name}); ok(opened(F, 'crossing'), 'the road home opens the same way');
+      const fr = tableView(b).frame; ok(/walked it before/.test(fr), 'and says they know it: ' + fr); answers(F, 'go'); ok(until(() => M.MAP_ID === home, 300), 'home');
+      ok(opened(F, 'farside') && /^Back in /.test(scene(F).title), 'with an arrival of its own: ' + scene(F).title); answers(F, 'look'); closed(F);
+      const w = S.dmAgent.when; ok(!w.parked && w.list.some(e => e.trigger === 'enter_town') && w.list.find(e => e.trigger === 'enter_town').until > until0, 'the parked watch is back, its hours stopped while they were away');
+      ok(S.adventures.find(x => x.id === 777).held === lead.id, 'the adventure is there to take up');
+      const v0 = S.adventures.find(x => x.id === 777); lead.pq = []; lead.state = 'hunt'; lead.x = v0.scenes[0].at.x; lead.y = v0.scenes[0].at.y; ok(until(() => lead.adv === 777, 30), 'and is taken up on the spot'); for (const a of mem) a.adv = null; S.adventures.splice(S.adventures.indexOf(v0), 1); // a stand-in with no scenes of its own: its work here is done
+      ok(A.oathZone(lead.goal) === 0, 'the oath reads its region again')}}
+
+  console.log('there and straight back, a full roster');
+  {const {F, mem, lead} = world({}), Tmode = TB.TABLE; SIM.step(1 / 60); for (let i = 0; i < 60 * 120; i++) {if (S.table) break; SIM.step(1 / 60)} while (TB.sceneFor(F)) {answersAny(X, F); SIM.step(1 / 60)}
+    Tmode.mode = 'off'; const live = mem.filter(a => a.state !== 'dead'); at(live);
+    const a0 = json(), dead0 = new Set(S.agents.filter(a => a.state === 'dead').map(a => a.id)); CR.cross(F, exit()); ok(M.MAP_ID === far, 'there'); CR.cross(F, exit()); ok(M.MAP_ID === home, 'and back');
+    const scrub = s => {const o = comparable(s, dead0), go = new Set(o.agents.filter(a => a.company != null || a.player || a.companion != null || a.hire).map(a => a.id));
+      for (const a of o.agents) if (go.has(a.id)) for (const k of ['history', 'pq', 'intent', 'lore', 'memory', 'playEv', 'playEvN', 'playGround', 'goal', 'adv']) delete a[k];
+      for (const k of ['chronicle', 'timeline', 'gameMin']) delete o[k]; for (const c of o.companies) {delete c.log; delete c.road; delete c.seq} return o};
+    const d = firstDiffs(scrub(a0), scrub(json())); ok(!d.length, 'every key of the save, the company\'s own road aside (' + a0.agents.length + ' heroes, ' + a0.mobs.length + ' mobs)' + (d.length ? '\n    ' + d.join('\n    ') : ''))}
+
+  console.log('a fallen member on the far map');
+  {const {F, mem, lead} = world(); ok(go(F, mem, lead), 'the company crosses'); opened(F, 'farside'); answers(F, 'look'); closed(F); const hall = F.hall; ok(!M.CITY.some(c => c.name === hall), 'its hall ' + hall + ' is on the map behind');
+    ok(A.townNear(hall, lead) === farTown, 'the town near them stands in for it: ' + A.townNear(hall, lead)); const c = M.CITY[0]; for (const a of mem) {a.x = c.gate.x; a.y = c.gate.y; a.state = 'town'; a.pq = []}
+    const lost = mem.find(a => a !== lead); H.slay(lost, {kind: 'boss', name: 'a test', id: 0}); ok(lost.state === 'dead' && until(() => F.arrivals && F.arrivals.length === 1 || TB.sceneFor(F), 60), lost.name + ' falls, and a seat waits');
+    ok(until(() => TB.sceneFor(F) && TB.sceneFor(F).kind === 'arrival', 600), 'the newcomer comes to the town they are in'); const sc = TB.sceneFor(F), n = byId(sc.ctx.recruit);
+    ok(n && n.town === farTown && X.homeOf(n).name === farTown && Math.hypot(n.x - c.gate.x, n.y - c.gate.y) < 2, n.name + ' is at the gate of ' + n.town + ', and that is home')}
+
+  console.log('a world with a second map whose hero is not of the map\'s people');
+  {const {F, mem, lead} = world(); const was = lead.town; ok(go(F, mem, lead), 'the company crosses'); ok(lead.town === was && X.homeOf(lead).name === farTown, 'a.town keeps ' + was + ' for the record; home here is ' + X.homeOf(lead).name)}
+  process.exit(fail ? 1 : 0);
+}
+function answersAny(X, F) {const sc = X.TB.sceneFor(F); if (!sc) return; for (const id of sc.ids) {const a = X.byId(id); if (a && !sc.acts[id] && a.state !== 'dead') {const o = X.TB.optionsFor(sc, a)[0]; if (o) X.act(a, 'scene_act', {option: o.k, line: ''})}}}
+
+if (mode === '--voice') { // the DM at both tables; what it reads
+  const X = await crossTools(), {S, M, home, CO, TB, act, steps, until, world, exit, at, scene, opened, answers, closed, dmAct} = X;
+  const {MAPS} = await import('../src/world/spec.js'), far = exit().to.map, {sceneCall} = await import('../src/sim/arrival.js');
+  console.log('\nthe DM frames both ends of the road');
+  const {F, mem, lead} = world(); at(mem);
+  {const st = dmAct('dm_status'); ok(st.campaign.map === home && st.campaign.visited.join() === MAPS[home].name && st.campaign.roads.length === 1 && st.campaign.roads[0].name === exit().name && st.campaign.roads[0].open && st.campaign.roads[0].to === MAPS[far].name, 'dm_status.campaign: the map, what was walked, the roads: ' + JSON.stringify({map: st.campaign.map, visited: st.campaign.visited, roads: st.campaign.roads})); ok('loaded' in st.campaign, 'beside the campaign seed it always showed')}
+  const voice = text => {let got = null; const r = until(() => {const c = dmAct('table_call'); if (c.call) {got = c; return true} return false}, 60 * 10); if (!r) return null; const a = dmAct('table_answer', {call: got.call.id, key: got.call.key, text}); return {call: got.call, a}};
+  const sig0 = dmAct('dm_status').fellowship_change; act(lead, 'move_to', {target: exit().name}); steps(2); ok(!!scene(F), 'the scene opens');
+  {const c = dmAct('dm_status').crossing; ok(c && c.road === exit().name && c.phase === 'table', 'dm_status.crossing says where they stand: ' + JSON.stringify(c))}
+  {const v = voice('Grey milestones go off over the rise, and a wind comes back along them.'); ok(v && v.call.kind === 'frame' && v.a.ok && v.call.about.includes(MAPS[far].name), 'table_call asks for the frame, and tells the DM alone what lies beyond'); }
+  ok(opened(F, 'crossing'), 'the members are woken once it is set'); ok(/Grey milestones/.test(X.tableView(mem[0]).frame), 'and read the DM\'s frame');
+  answers(F, 'go'); ok(until(() => M.MAP_ID === far, 300), 'they go');
+  {const v = voice('The road drops into a green bowl of land, and far off there are walls.'); ok(v && v.call.kind === 'frame' && /first time/.test(v.call.about) && v.a.ok, 'the far side is framed by the DM: the first view of a new land')}
+  ok(opened(F, 'farside'), 'the arrival waits for it'); ok(/green bowl/.test(X.tableView(mem[0]).frame), 'and the members read it'); answers(F, 'look'); closed(F);
+  {const st = dmAct('dm_status'); ok(st.fellowship_change !== sig0 && st.fellowship_change.endsWith('@' + far), 'fellowship_change carries the map, so the DM takes an event turn: ' + st.fellowship_change);
+    ok(st.campaign.map === far && st.campaign.visited.length === 2 && st.campaign.roads[0].walked === true, 'dm_status.campaign reads the far map, both lands walked')}
+  {const r = dmAct('read_dm_log', {n: 12}); ok(JSON.stringify(r).includes('crossed from'), 'the DM log has the crossing')}
+  process.exit(fail ? 1 : 0);
+}
+
+if (mode === '--mid') { // a save between the vote and the road, played on in a fresh process. args: '-' (the original) or the save, then the out file
+  const [saveFile, outFile] = args, X = await crossTools(), {S, M, home, CO, TB, act, steps, until, world, exit, at, scene, answers, opened, closed, json, restore, setRunnerLinks, setReflexAck} = X;
+  const on = () => {const F = CO.slotted(); until(() => M.MAP_ID !== home, 600); opened(F, 'farside'); answers(F, 'look'); closed(F); steps(120); return JSON.stringify(json())};
+  if (saveFile === '-') {const {F, mem, lead} = world(); at(mem); act(lead, 'move_to', {target: exit().name}); opened(F, 'crossing'); answers(F, 'go'); until(() => F.road && F.road.phase === 'go');
+    const s = json(); writeFileSync(outFile + '.save', JSON.stringify(s)); ok(!!s.table && s.companies.find(c => c.slots).road.phase === 'go', 'saved with the vote taken and the map not yet changed'); restore(JSON.parse(JSON.stringify(s))); reseed(); writeFileSync(outFile, on()); process.exit(fail ? 1 : 0)} // restored here too, as --away does: the pool of names a save does not hold starts the same
+  setRunnerLinks(() => 'connected'); setReflexAck(() => false); restore(JSON.parse(readFileSync(saveFile, 'utf8'))); ok(M.MAP_ID === home && CO.slotted().road.phase === 'go', 'a fresh process has the vote and the map as they were'); reseed(); writeFileSync(outFile, on()); process.exit(fail ? 1 : 0);
+}
+
+if (mode === '--runners') { // mock runners hold real claims at the relay across a crossing, one mid-wait, and the DM mid-poll
+  const X = await crossTools(), {S, SIM, M, home, CO, CN, TB, CR, act, steps, until, world, exit, at, scene, opened, answers, closed, byId} = X;
+  const http = (await import('node:http')).default, {attachPlay} = await import('./relay-mcp.mjs'), {localBackend} = await import('./play-headless.mjs'), {hostCall, hostDm} = await import('../src/sim/player-host.js');
+  console.log('\nmock runners across a crossing');
+  const {F, mem, lead} = world(); at(mem);
+  const server = http.createServer((q, s) => {s.writeHead(404); s.end()}), play = attachPlay(server, {backend: localBackend(), log: () => {}});
+  await new Promise(r => server.listen(0, '127.0.0.1', r)); const base = `http://127.0.0.1:${server.address().port}`;
+  const post = async (path, body) => (await fetch(base + path, {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(body)})).json();
+  const health = async () => (await fetch(base + '/play/health')).json(), run = a => 'runner-' + a.id;
+  for (const a of mem) await post('/play/claim', {hero: a.id, runner: run(a)});
+  const dmC = await post('/play/claim', {role: 'dm', runner: 'runner-dm'}); ok(dmC.ok !== false, 'the DM seat is claimed');
+  const h0 = await health(); ok(h0.map === home && h0.heroes.filter(h => h.claimed).length === 5, '/play/health: map ' + h0.map + ', five seats claimed');
+  const call = (a, tool, args = {}) => post('/play/call', {hero: a.id, runner: run(a), tool, args});
+  const clock = setInterval(() => {for (let i = 0; i < 40; i++) SIM.step(1 / 60); play.tick && play.tick()}, 5); // the world runs while the runners talk
+  const sleep = ms => new Promise(r => setTimeout(r, ms)), waitFor = async (f, ms = 20000) => {const t0 = Date.now(); while (Date.now() - t0 < ms) {if (await f()) return true; await sleep(10)} return false};
+  await waitFor(async () => (await health()).heroes.every(h => h.link === 'waiting' || h.link === 'connected'));
+  ok(await call(lead, 'move_to', {target: exit().name}).then(r => r.ok), 'the leader orders the road over /play/call'); ok(await waitFor(() => scene(F) && scene(F).kind === 'crossing' && !X.SC.framing(scene(F)) && scene(F).wk && scene(F).wk.done), 'the scene is up');
+  const r = await Promise.all(mem.map(a => call(a, 'scene_act', {option: 'go', line: ''}))); ok(r.every(x => x.ok), 'five runners answer go: ' + r.map(x => x.chose).join(','));
+  ok(await waitFor(() => M.MAP_ID !== home), 'the map turns over');
+  const h1 = await health(); ok(h1.map === exit().id ? false : h1.map === M.MAP_ID && h1.heroes.map(h => h.id).join() === h0.heroes.map(h => h.id).join() && h1.heroes.every(h => h.claimed && h.alive), '/play/health: map ' + h1.map + ', the same five, every claim held');
+  ok((await post('/play/claim', {hero: lead.id, runner: 'runner-other'})).ok !== true, 'a seat stays its runner\'s across the road');
+  ok(await waitFor(() => scene(F) && scene(F).kind === 'farside' && !X.SC.framing(scene(F)) && scene(F).wk && scene(F).wk.done), 'the arrival is up'); const r2 = await Promise.all(mem.map(a => call(a, 'scene_act', {option: 'look', line: ''}))); ok(r2.every(x => x.ok), 'and they answer it through the same claims');
+  ok(await waitFor(() => !scene(F)), 'the table closes');
+  // a wait and a DM long-poll in flight as the world changes under them
+  const b = mem.find(a => a !== lead); TB.TABLE.mode = 'off'; let done = null; const w = call(b, 'wait', {minutes: 60}).then(x => {done = x}); const poll = hostDm('table_call', {wait_ms: 400}); await sleep(30);
+  ok(done === null, 'a member is mid-wait'); const was = M.MAP_ID; CR.cross(F, exit()); ok(M.MAP_ID !== was, 'the company crosses back with the wait pending'); await w; const p = await poll;
+  ok(done && done.ok !== false && !BROKEN.test(said(done)) && done.hp, 'the wait comes home whole on the other map: ' + (done && done.why)); ok(!BROKEN.test(said(p)), 'and the DM\'s poll answers');
+  ok(await call(b, 'look').then(x => x.ok !== false), 'the next read is of the map they stand on');
+  clearInterval(clock); server.close(); play.close && play.close(); process.exit(fail ? 1 : 0);
+}
+
+if (mode === '--channel') { // npm run channelcheck runs this: the crossing's texts against the seats' private words
+  const X = await crossTools(), {S, M, home, TB, PC, tableView, act, steps, until, world, exit, at, scene, opened, answers, closed, dmAct, PLAYER_TOOLS} = X;
+  const {MAPS} = await import('../src/world/spec.js'), far = exit().to.map, farName = MAPS[far].name, farTown = MAPS[far].towns[0].name;
+  console.log('\nthe crossing\'s texts');
+  const {F, mem, lead} = world(); at(mem);
+  const plant = {notes: 'QZXnote', plan: 'QZXplan', intent: 'QZXintent', watch: 'QZXwatch', reason: 'QZXreason'};
+  ok(dmAct('notes_write', {section: 'secrets', op: 'add', text: 'The far town hides ' + plant.notes, about: lead.name}).ok, 'a DM secret');
+  ok(dmAct('notes_write', {section: 'plans', op: 'add', text: 'Waiting in ' + farName + ': ' + plant.plan}).ok, 'a DM plan for the far map');
+  dmAct('log_intent', {text: 'They will cross: ' + plant.intent});
+  ok(dmAct('watch', {trigger: 'enter_town', on: {town: M.CITY[0].name}, note: plant.watch, hours: 72}).ok, 'a parked watch');
+  ok(dmAct('when', {trigger: 'after_hours', on: {h: 40}, action: 'narrate', args: {text: 'Rain.', near: M.CITY[0].name}, reason: plant.reason, hours: 72}).ok, 'a when with a reason');
+  const heard = [], reads = PLAYER_TOOLS.filter(t => !t.act).map(t => t.name);
+  const gather = what => {for (const a of mem) {heard.push({what, text: JSON.stringify([tableView(a), PC.paceBrief(a.id), a.playEv, a.chat])}); for (const t of reads) heard.push({what: what + ' ' + t, text: JSON.stringify(act(a, t, {}))})}};
+  const leak = re => heard.filter(h => re.test(h.text)).map(h => h.what);
+  // the hold
+  const b = mem.find(a => a !== lead); act(lead, 'move_to', {target: exit().name}); at(mem); b.x = lead.x - 25; steps(3); ok(!!F.road.hold, 'held at the road'); gather('the hold'); b.x = lead.x - 1; steps(1);
+  // the leaving, with the DM at the table
+  let call = null; ok(until(() => {const c = dmAct('table_call'); if (c.call) call = c.call; return !!call}, 600), 'the DM is asked to frame the leaving');
+  ok(call.about.includes(plant.plan) && call.about.includes(farName), 'its call carries what is its alone: the far map and its plan for it');
+  ok(dmAct('table_answer', {call: call.id, key: call.key, text: 'The milestones go on over the rise.'}).ok, 'the DM answers'); ok(opened(F, 'crossing'), 'the scene is up'); gather('the leaving');
+  ok(!leak(new RegExp(farName + '|' + farTown)).length, 'nobody at the table is told what lies beyond a road they never heard of' + leak(new RegExp(farName + '|' + farTown)).slice(0, 3).join(', '));
+  answers(F, 'go'); ok(until(() => M.MAP_ID === far, 300), 'they cross');
+  call = null; ok(until(() => {const c = dmAct('table_call'); if (c.call) call = c.call; return !!call}, 600) && call.about.includes(plant.plan), 'the far side\'s call carries the plan as well');
+  ok(dmAct('table_answer', {call: call.id, key: call.key, text: 'A green bowl of land.'}).ok, 'the DM frames it'); ok(opened(F, 'farside'), 'the arrival is up'); gather('the far side');
+  ok(tableView(lead).frame.includes('green bowl'), 'what the DM said reaches them, and that is the channel');
+  answers(F, 'look'); closed(F); gather('after');
+  const L = leak(/QZX/); ok(!L.length, L.length ? 'LEAKS: ' + L.slice(0, 8).join('; ') : heard.length + ' hero-side texts of the crossing: no DM note, plan, log line, watch or when reason among them');
+  ok(!leak(/waiting_on_other_maps|table_call|DM log|dm_status/).length, 'nor a word of the DM\'s tools');
+  process.exit(fail ? 1 : 0);
+}
+
 // ---- 1. every key is placed ----
 console.log('\nEldmoor crossingcheck\n');
 console.log('every key of S is per map, with the company or campaign-wide (sim/atlas.js)');
@@ -504,6 +782,19 @@ for (const [from, to] of [['testlinka', 'testlinkb'], ['eldmoor', 'testlinkb']])
   const r = spawnSync(process.execPath, [HERE, '--size', process.env.CROSSING_DAYS || '6', '2'], {env: env('vale'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
   process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
   ok(r.status === 0, 'five maps fit the store');
+}
+// ---- 9. the crossing ----
+for (const [m, what] of [['--road', 'when a road opens, what holds it and what it asks'], ['--over', 'the crossing, the far side and home again'], ['--voice', 'the DM at both tables'], ['--runners', 'mock runners hold their claims across it']]) {
+  const r = spawnSync(process.execPath, [HERE, m], {env: env('testlinka'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 240000});
+  process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
+  ok(r.status === 0, what);
+}
+{ // a save between the vote and the road, in a fresh process
+  const out = join(dir, 'mid.json'), o = spawnSync(process.execPath, [HERE, '--mid', '-', out], {env: env('testlinka'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+  process.stdout.write(o.stdout || ''); if (o.status !== 0) ok(false, 'the save mid-crossing: ' + (o.stderr || '').trim().slice(-500));
+  else {const end = out + '.end', c = spawnSync(process.execPath, [HERE, '--mid', out + '.save', end], {env: env('testlinka'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+    process.stdout.write(c.stdout || ''); if (c.status !== 0) ok(false, 'mid-crossing, fresh process: ' + (c.stderr || '').trim().slice(-500));
+    else {const d = firstDiffs(JSON.parse(readFileSync(out, 'utf8')), JSON.parse(readFileSync(end, 'utf8'))); ok(!d.length, 'saved mid-crossing, a fresh process crosses and plays on exactly as the original did' + (d.length ? '\n    ' + d.join('\n    ') : ''))}}
 }
 console.log(fail ? `\n${fail} FAILED` : '\ncrossingcheck ok');
 process.exit(fail ? 1 : 0);
