@@ -538,7 +538,7 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 
 - **The Withy**: the river of the Reach, one long bend along the map's south edge. A *withy* is a willow wand. No bridge and no ford: the far bank is out of reach.
 - **The Crossways**: where the three roads part, a long walk east of the gate.
-- **The Drovers' Road** (north) and **the Fell Road** (east): the two roads off the map, each ending at a last milestone. The Drovers' Road goes on to the Wendmouth, and a company may cross by it, all together, at the table. Nothing is built past the Fell Road yet: an order to walk it is refused in words, and heroes have heard only that it leads to lands not yet seen.
+- **The Drovers' Road** (north) and **the Fell Road** (east): the two roads off the map, each ending at a last milestone. The Drovers' Road goes on to the Wendmouth, and a company may cross by it, all together, at the table. The Fell Road goes on to the Hawkwold, and a company may cross by it, all together, at the table.
 - **The wood road**: runs from the Crossways into Withywood and ends at the first delve.
 - **First delve of the Reach** (`src/data/prologues.js`): **the Tithe Grange** (Oldstead, ruin, keeper **Cellarer Thrupp**, who kept the tithe for a priory nobody remembers and never stopped counting; rooms **the Cart Bay**, **the Undercroft**, **the Cellarer's Count**). Once a company's, at the wood road's end.
 - **The Quarry Cellars** (Crowfell, entry 3): the Reach's one real dungeon, cut under a quarry that shut before anyone in Oldstead was born; somewhere for a level 3-5 company to go while the roads are closed. Keeper **Foreman Ruddock**, who still takes the shift's names on a slate; rooms **the Cut Stair**, **the Wedge Store**, **the Foreman's Tally**.
@@ -562,12 +562,56 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 
 - **The Low Bridge**: the only way over the Wend on this map, under Gullstrand's south wall.
 - **The Crossways** of the Wendmouth: where the Drovers' Road parts, west to the Low Bridge and east into the flats.
-- **The Drovers' Road** (south): the same road as the Reach's, coming up onto the south bank; it runs both ways. **The Wend Road** (east): runs on past Stiltmere toward the old weir. Nothing is built past it yet: an order to walk it is refused in words.
+- **The Drovers' Road** (south): the same road as the Reach's, coming up onto the south bank; it runs both ways. **The Wend Road** (east): runs on past Stiltmere to the Weirgate, and a company may cross by it, all together, at the table.
 - **The Sallow Vaults** (Sallowfen, entry 5): as in the Vale, at the end of their own turning off the fen road; the first dungeon a company passes. Keeper **Captain Dane Sallow**.
 - **The Gull Cliff Den** (Gullhead, entry 7): Old Brine's den, in the Vale a first delve, here a small dungeon of three rooms in the sea-cliffs at the end of the cliff road: **the Net Run**, **the Fish Midden**, **the Warm Hollow**. Keeper **Old Brine**, a scarred sea-wolf mother.
 - **Creatures of the Wendmouth** (`src/data/fauna.js`, the Vale's by name, at this chapter's levels): Wendmouth: **Strand Wolf** (5-6), **Reed Boar** (6-7), **Dyke Weaver** (6-7). Sallowfen: **Sallow Bogling** (6-7), **Sallow Hog** (7-8), **Eel Lurker** (8-9). Gullhead: **Heath Wolf** (7-8), **Crag Boar** (8-9), **Windhound** (9-10).
 - **Old Mother Sedge**: the map's one elite, in Sallowfen, level 10.
 - Name notes: Wendmouth, Sallowfen, Gullstrand, Stiltmere, the Low Bridge, the Sallow Vaults and the Gull Cliff Den are shared with the old Vale on purpose (#1013: the Vale is redrawn as chapter maps and retired when the last lands); no campaign holds both. Old Mother Sedge, Old Brine and Captain Dane Sallow come over from the Vale too. The Vale's own lines (Gullstrand at the river's mouth below Aldermere, the Wendmouth as the region of four home towns) stay on the Vale map: do not copy them into this chapter. **Gullhead** and **the Wend Road** are new.
+
+### The Hawkwold (third chapter, #1013)
+`HAWKWOLD` in `src/world/spec.js` is a 150x66 map for levels 6 to 11, the land up the Fell Road from the Hollin Reach: open sheepwalks and windswept upland with the Wend, the same river that reaches the sea at the Wendmouth, a stream here, running across the middle of it. It takes the Vale's towns, rooms and creatures, and Hollin's density: two towns, two small dungeons, one elite, most of a day's road between them, nothing near a wall. The old Wending Vale stays loadable beside it; a name here is that place as this chapter tells it. No raid and no great dungeon. Sides are lore, so any company may rest in either town.
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Foldlands | 6-8 | Sheepwalks and furze on both banks in the west, from the road in off the Reach to the edge of the heights, with a wood on the south bank. The Herders' Cairn stands on a ridge in its north. |
+| Hawkwold | 7-10 | Windy highland of heath, tors and crags on the north bank, east of the Foldlands. Hawkstead and the Kestrel Barrow are in it. |
+| Hornmoor | 8-11 | Broken moor and scarp on the south bank in the east, with Hornridge on its slope. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Hawkstead | Concord | Tarrow | The falconers' upland town on terraces, as the Vale built it: the chapel on the hall's shoulder, a stair up the middle and the notice board at its head. Its gate faces east, and the road comes round its south wall. |
+| Hornridge | Warband | Thornhide | The horn-and-bone hold on a long slope on the south bank, as the Vale built it: the gate at the top and two terraces down to the inn. |
+
+- **The Wend Bridge**: the one way over the stream on this map, on the road between Hawkstead and Hornridge.
+- **The Fell Road** (west): the same road as the Reach's, coming in off Crowfell; it runs both ways. It parts at the crossroads in the Foldlands, north to the cairn and east to Hawkstead. **The Hawk Road** (east): runs on past the Barrow's turning to the map's edge, and on to the Weirgate: a company may cross by it, all together, at the table.
+- **The Herders' Cairn** (Foldlands, entry 6): in the Vale a first delve, here a small barrow of three rooms on a ridge above the sheepwalks, at the end of its own spur off the Fell Road: **the Dog Run**, **the Fold Chamber**, **the Last Fold**. Keeper **Shepherd Wick**, an old herder who will not be told the last flock is gone.
+- **The Kestrel Barrow** (Hawkwold, entry 7): as in the Vale, a falconer-lord's grassed mound in the hills east of Hawkstead, four rooms (**the Low Door**, **the Kestrel Niches**, **the Hawk Ossuary**, **the Falconer's Mews**), boss **Lord Merrin Hawkwright**.
+- **Creatures of the Hawkwold** (`src/data/fauna.js`, this chapter's own names for the Vale's upland creatures): Foldlands: **Fold Wolf** (6-7), **Furze Boar** (7-8), **Cairn Spinner** (7-8). Hawkwold: **Wold Stalker** (8-9), **Tor Boar** (8-9), **Ridgehound** (9-10). Hornmoor: **Horn Wolf** (9-10), **Scarp Boar** (10-11), **Horn Hound** (10-11).
+- **Greymane, the Pack-Father of the Hawkwold**: the map's one elite, level 11, in the Hawkwold, the Vale's wolf again at this chapter's levels.
+- Name notes: Hawkwold, Hawkstead, Hornridge, the Kestrel Barrow, the Herders' Cairn, Shepherd Wick, Lord Merrin Hawkwright and Greymane are shared with the old Vale on purpose (the Vale is redrawn as chapter maps and retired when the last lands); no campaign holds both. The Vale's own lines (Hawkwold as a 3-8 region facing Sallowfen across the water, the first delve at Hawkstead) stay on the Vale map: do not copy them into this chapter. **Foldlands**, **Hornmoor**, **the Wend Bridge** and **the Hawk Road** are new. Campaign seed: `docs/campaigns/hawkwold.md`.
+
+### The Weirgate (fourth chapter, #1013)
+`WEIRGATE` in `src/world/spec.js` is a 150x68 map for levels 10 to 15, the land where the Wend can be waded: old meadow and wood on both banks of a quiet river, round the one place it can be crossed on foot. Two roads come in, the Wend Road from the Wendmouth in the west and the Hawk Road from the Hawkwold in the north, and meet at the ford; a third, the Kilnway, leaves east. It takes the Vale's towns, rooms and creatures, and Hollin's density: two towns a long walk apart, one great dungeon, one elite, nothing near a wall. The old Wending Vale stays loadable beside it; a name here is that place as this chapter tells it. No raid. Sides are lore, so any company may rest in either town.
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Wendreach | 10-12 | Meadow and hedgerow on the north bank and the whole west of the map, from both roads in to the edge of the old wood. Aldermere stands in it. |
+| Greywood | 11-14 | The old wood and the meadow round the ford, on both banks. The Drowned Weir and Weirgate Watch are in it, and the forge town stands at its eastern edge. |
+| The Ashmarch | 12-15 | Heath and broken ground in the far east, where the Kilnway leaves the map. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Aldermere | Concord | Hallowan | The alder-shaded market town, as the Vale built it: a green inside the walls, the forge and halls fronting a paved lane, the inn on the green's west edge. Here it stands on the north bank, well back from the river; its gate faces east and the Hawk Road comes round its north wall to it. |
+| Brandhold | Warband | Ashfolk | The brand-marked forge town, as the Vale built it: the gate in the north wall, one straight street to the yard before the inn. Here it stands on the south bank at the east end of the map, off the Kilnway. |
+
+- **The Weirgate ford**: the one place the Wend can be waded on this map, with a causeway of planks laid over its two deepest tiles; the same crossing the old Vale called the Weirgate ford.
+- **The Wend Road** (west): the same road as the Wendmouth's, coming in along the south bank. **The Hawk Road** (north): the same road as the Hawkwold's, coming down off the heights and round Aldermere's north wall. Both run both ways, and both meet at the ford. **The Kilnway** (east): runs along the south bank past the turning for Brandhold to the map's edge. Nothing is built past it yet: an order to walk it is refused in words, and heroes have heard only that it leads to lands not yet seen.
+- **The Drowned Weir** (Greywood, entry 10, south bank beside the ford): the Vale's great delve at this chapter's levels, five chambers, a flooded sluice-works of green stone, at the end of its own turning off the road to the ford: **the Sluice Stair**, **the Millrace Gallery**, **the Weighing Hall**, **the Flooded Granary**, **the Weir-Warden's Chair**. Boss **Weir-Warden Orsk**.
+- **Weirgate Watch** (outpost, Greywood): the old guard-post on the north bank by the ford.
+- **Creatures of the Weirgate** (`src/data/fauna.js`, this chapter's own names for the Vale's creatures of the middle vale): Wendreach: **Reach Wolf** (10-11), **Hedge Boar** (11-12), **Mill Spinner** (11-12). Greywood: **Green Weaver** (11-12), **Briar Boar** (12-13), **Ford Stalker** (13-14). The Ashmarch: **March Wolf** (12-13), **Cinder Boar** (13-14), **Marchhound** (14-15).
+- **Thornback, the Boar-King of the Greywood**: the map's one elite, level 14, in the old wood: a tusked boar with a back like a hedge.
+- Name notes: Aldermere, Brandhold, Greywood, the Drowned Weir, Weirgate Watch, Weir-Warden Orsk and Thornback are shared with the old Vale on purpose (the Vale is redrawn as chapter maps and retired when the last lands); no campaign holds both. The Vale's own lines (Aldermere and Brandhold as the first home towns at the river's mouth, Greywood as a middle region of 6-11) stay on the Vale map: do not copy them into this chapter. **Wendreach** (a reach is a stretch of river; here the land beside it), **the Ashmarch** and **the Kilnway** are new; the ford's causeway is nameless. Campaign seed: `docs/campaigns/weirgate.md`.
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.

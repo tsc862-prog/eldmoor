@@ -542,7 +542,7 @@ const QUARRY_CAPTAIN='The quarry on Crowfell shut before my time, and the cellar
 // No faction gating (#1012): sides are lore here, so any company may rest in Oldstead, and no other side walks this map. No raid, no great dungeon, nothing above level 5; one small dungeon up on the fell for a company past its first delve.
 export const HOLLIN={
   name:'The Hollin Reach',
-  blurb:'One small walled town, a long road through fields and a wood, an old quarry up on the fell, and a river nobody crosses. Where a company begins; the Drovers\' Road runs north to the sea at the Wendmouth, and the Fell Road east past the last milestone, to lands not yet seen.',
+  blurb:'One small walled town, a long road through fields and a wood, an old quarry up on the fell, and a river nobody crosses. Where a company begins; the Drovers\' Road runs north to the sea at the Wendmouth, and the Fell Road east up onto the Hawkwold.',
   size:{w:118,h:64},
   seeds:{terrain:61,detail:83},
   sides:'lore',
@@ -589,7 +589,7 @@ export const HOLLIN={
   },
   exits:[
     {id:'north',name:'the Drovers\' Road',to:{map:'wendmouth',exit:'south'},edge:{side:'N',from:66,to:69}},
-    {id:'east',name:'the Fell Road',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:17,to:20}},
+    {id:'east',name:'the Fell Road',to:{map:'hawkwold',exit:'west'},edge:{side:'E',from:17,to:20}},
   ],
   roads:[
     {from:'Oldstead',to:'crossways'},
@@ -685,7 +685,7 @@ export const WENDMOUTH={
   },
   exits:[
     {id:'south',name:"the Drovers' Road",to:{map:'hollin',exit:'north'},edge:{side:'S',from:66,to:69}},
-    {id:'east',name:'the Wend Road',to:{map:null,heard:'the old weir upriver'},edge:{side:'E',from:26,to:29}},
+    {id:'east',name:'the Wend Road',to:{map:'weirgate',exit:'west'},edge:{side:'E',from:26,to:29}},
   ],
   roads:[
     {from:'south',via:['droveBend'],to:'crossways'},
@@ -704,11 +704,205 @@ export const WENDMOUTH={
   labels:[['WENDMOUTH',78,56],['SALLOWFEN',112,60],['GULLHEAD',100,6],['GULLSTRAND',53,15.2],['STILTMERE',127.5,36.2]],
 };
 
+// The Herders' Cairn's chambers: a small barrow on a ridge above the sheepwalks. Shepherd Wick and his dogs, as the Vale's first delve told them, pitched like the Vale's small delves at a level 6 company.
+const HERDERS_CAIRN_ROOMS=[
+  {id:'dogs',name:'The Dog Run',frame:'Bones of the herd-dogs rattle up from the straw of the cairn passage and come at you low.',
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.315,rounds:2},
+  {id:'fold',name:'The Fold Chamber',frame:'Two old herdsmen rise from their niches, still holding their crooks, and put themselves between you and the lower fold.',
+    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.39,rounds:2},
+  {id:'last',name:'The Last Fold',frame:'One bell still rings here. The thing that wears it turns slowly, counting a flock that is not there.',
+    foes:[{type:'shambler',n:1,name:'Shepherd Wick',hits:4,atk:1.5},{type:'tombskit',n:1,hits:1}],lvl:1,hit:.5,rounds:2,boss:true},
+];
+
+// The Kestrel Barrow's chambers on this map: the Vale's, with the boss room a round shorter and every blow harder (#1054 balance review).
+const HAWK_BARROW_ROOMS=[
+  {id:'door',name:'The Low Door',frame:'A low door in a grassed mound, its lintel cut with kestrels. Cold air comes out of it, and the rattle of small claws.',
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.37,rounds:2},
+  {id:'niches',name:'The Kestrel Niches',frame:'Every niche holds a stone bird and a heap of bone. One of the heaps gets up, still holding the lure-glove.',
+    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.46,rounds:2},
+  {id:'ossuary',name:'The Hawk Ossuary',frame:'Skulls of hawks and the falconers who loved them are stacked to the roof in rows. Bowstrings creak somewhere among them, and a long-dead hand hauls itself upright.',
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:1,hit:.48,rounds:2},
+  {id:'mews',name:"The Falconer's Mews",frame:'The last chamber is a mews with the perches still in it. The lord who bred the birds sits among them and does not intend to be disturbed.',
+    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:4,atk:1.5},{type:'boneshot',n:1,hits:1}],lvl:2,hit:.61,rounds:3,boss:true},
+];
+
+// ---- The Hawkwold: the third chapter (#1013 slice 7c, levels 6-11) ----
+// A company comes up the Fell Road from the Hollin Reach onto the sheepwalks of the Foldlands, with the Wend a stream running west to east across the middle of the map.
+// North of it the road climbs to Hawkstead on its terraces and on past the Kestrel Barrow; south of it, a long way east, stands the hold at Hornridge; one bridge joins them.
+// The Vale's towns and rooms, Hollin's density: two towns a long walk apart, thin creatures, nothing near a wall. The Hawk Road runs on past the Barrow; it is not open yet.
+export const HAWKWOLD={
+  name:'The Hawkwold',
+  blurb:"High open country above the Wend: sheepwalks and a herders' cairn in the west, a falconers' town on its terraces, a barrow in the hills, and across a bridge a hold on a long slope. Come up the Fell Road from the Hollin Reach, at about level 6 or 7.",
+  size:{w:150,h:66},
+  seeds:{terrain:71,detail:97},
+  sides:'lore',
+  chapter:true,
+  ladder:{step:2},
+  curves:{
+    // The Wend: a stream here, west to east across the middle, wandering a little.
+    river:{axis:'x',base:31,sin:[[44,3.5,.4],[11,1.3,1]]},
+    fold:{axis:'y',base:50,noise:{seed:23,scale:6,amp:6,slice:2.1}},    // the Foldlands' east edge
+    horn:{axis:'y',base:92,noise:{seed:29,scale:6,amp:6,slice:3.7}},    // Hornmoor's west edge, on the south bank
+  },
+  regions:[
+    {id:'foldlands',name:'Foldlands',band:[6,8],biome:'lea',mask:{kind:'all'}},
+    {id:'hawkrise',name:'Hawkwold',band:[7,10],biome:'highland',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'fold'},{kind:'north-of-curve',curve:'river'}]}},
+    {id:'hornmoor',name:'Hornmoor',band:[8,11],biome:'highland',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'horn'},{kind:'south-of-curve',curve:'river'}]}},
+  ],
+  river:{curve:'river',width:2},
+  scenery:{
+    wash:{foldlands:'meadow',hawkrise:'heath',hornmoor:'heath'},
+    dress:{'The Kestrel Barrow':'barrow',"The Herders' Cairn":'barrow'},
+    bridges:{'100,32':'stone'},
+    fields:[[44,26,8,3,'wheat'],[53,27,7,3,'plough'],[8,36,9,4,'cabbage'],[12,42,8,3,'wheat'],[28,48,9,3,'plough'],[108,25,7,3,'wheat'],[104,48,8,3,'plough']],
+  },
+  towns:[
+    // Hawkstead, as the Vale built it: a ridge town on terraces; the chapel on the hall's shoulder, a stair up the middle with the notice board at its head, cottages under the second terrace.
+    {name:'Hawkstead',fac:0,x0:54,y0:9,w:19,h:13,gate:'E',gateAt:5,race:'tarrow',spots:{square:[15.5,8.1]},grave:[16.5,8.6],notch:[[16,11,3,2]],clear:3,homes:[[1.5,11.5],[13.5,11.5]],
+      torches:[[17.5,4.5],[17.5,7.5],[5,6],[11,6],[14,8],[6,11]],
+      buildings:townPlan(54,9,[['smithy-great',1,7],['auction-great',8,1],['hall-great',1,1],['chapel-hill',14,1],['inn-great',5,7],['board',14,7],['house-tall',11,7]]),
+      ground:[[1,6,17,1],[8,5,10,1],[1,11,14,1]]},
+    // Hornridge, as the Vale built it: a hold on a long slope, the gate at the top and two terraces down to the inn.
+    {name:'Hornridge',fac:1,x0:124,y0:44,w:21,h:13,gate:'N',gateAt:5,race:'thornhide',spots:{square:[19.5,8.1]},grave:[19.5,9.6],notch:[[19,0,2,4]],clear:3,homes:[[1.5,11.5],[19,11.5]],
+      torches:[[4,1],[8,1],[5,6],[12,6],[17,6],[10,11]],
+      buildings:townPlan(124,44,[['auction-great',4,7],['smithy-great',1,1],['hall-great',7,1],['chapel-hill',14,1],['inn-great',10,7],['board',19,5],['house-tall',1,7],['house-tall',16,7]]),
+      ground:[[5,1,2,5],[1,6,19,1],[1,5,6,1],[1,11,19,1]]},
+  ],
+  landmarks:[
+    // The first dungeon up the road: a grassed herders' cairn on a ridge, at the end of its own spur off the Fell Road. entry: the level a background group first goes down.
+    {kind:'crypt',name:"The Herders' Cairn",boss:'Shepherd Wick',x:30.5,y:6.1,mouth:{x0:29,y0:4,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:HERDERS_CAIRN_ROOMS,entry:6},
+    // The falconer-lord's barrow, in the hills east of Hawkstead.
+    {kind:'crypt',name:'The Kestrel Barrow',boss:'Lord Merrin Hawkwright',x:133.5,y:12.1,mouth:{x0:132,y0:10,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:HAWK_BARROW_ROOMS,entry:7},
+  ],
+  points:{
+    foldCross:[38,22],             // where the Fell Road parts: north to the cairn, east to Hawkstead
+    foldBend:[34,13],              // the cairn spur keeps to the ridge
+    cairnEnd:[31,9],               // the spur's end, under the cairn's mouth
+    townSouth:[62,25],             // the Hawkstead road passes south of its wall to the east gate
+    fordN:[100,27],fordS:[100,37],   // the Wend Bridge: the one way over the stream on this map
+    barrowFoot:[114,17],           // where the Hawk Road passes the Barrow's turning
+    barrowEnd:[133,16],            // the turning's end, under the Barrow's door
+  },
+  exits:[
+    {id:'west',name:'the Fell Road',to:{map:'hollin',exit:'east'},edge:{side:'W',from:20,to:23}},
+    {id:'east',name:'the Hawk Road',to:{map:'weirgate',exit:'north'},edge:{side:'E',from:22,to:25}},
+  ],
+  roads:[
+    {from:'west',to:'foldCross'},
+    {from:'foldCross',via:['foldBend'],to:'cairnEnd'},
+    {from:'foldCross',via:['townSouth'],to:'Hawkstead'},
+    {from:'Hawkstead',via:['barrowFoot'],to:'east'},
+    {from:'barrowFoot',to:'barrowEnd'},
+    {from:'Hawkstead',to:'fordN'},
+    {from:'fordN',to:'fordS'},{from:'Hornridge',to:'fordS'},
+  ],
+  roadClear:[1,3],
+  glades:[[30.5,8,4.5],[133.5,15,4.5],[5,21.5,6],[100,27,3.5],[100,37,3.5]], // the two mouths, the road's end where a company comes in from the Hollin Reach, and the bridge's banks
+  lights:{townTorches:[[10.5,3.4]]},
+  spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of a wall
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{foldlands:{herb:6,ore:1,hide:5,fish:3},hawkrise:{herb:3,ore:6,hide:4,fish:2},hornmoor:{herb:3,ore:6,hide:4,fish:1}}},
+  labels:[['FOLDLANDS',20,40],['HAWKWOLD',96,10],['HORNMOOR',108,56],['HAWKSTEAD',63.5,7.2],['HORNRIDGE',134.5,42.2]],
+};
+
+// The Drowned Weir's chambers on this map: the Vale's five, pitched for a company of level 10 and up (entry 10, #1013), every blow harder than the Vale's, as the Hawkwold's were (#1054).
+const WEIR_ROOMS=[
+  {id:'sluice',name:'The Sluice Stair',frame:'A stair of green stone runs down beside the old sluice. Water chatters in the dark and something small and many-legged answers it.',
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.48,rounds:2},
+  {id:'millrace',name:'The Millrace Gallery',frame:'The millrace still turns, driving nothing. Things the river gave up stand along the walls and begin to move.',
+    foes:[{type:'shambler',n:2}],lvl:0,hit:.62,rounds:2},
+  {id:'weighing',name:'The Weighing Hall',frame:'Great scales hang from the roof, tipped by what lies in the pans. Dry bowstrings creak from the beams.',
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.62,rounds:3},
+  {id:'granary',name:'The Flooded Granary',frame:'Black water lies knee-deep between the grain bins. Wardens stand in it, still guarding a harvest that rotted a century ago.',
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.8,rounds:2},
+  {id:'chair',name:"The Weir-Warden's Chair",frame:"The last chamber is a round pool with the weir-keeper's chair standing in it. The one who sits there has held the river back a very long time.",
+    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.91,rounds:3,boss:true},
+];
+
+// ---- The Weirgate: the fourth chapter (#1013 slice 7b, levels 10-15) ----
+// Two roads come in, the Wend Road along the river from the Wendmouth in the west and the Hawk Road down off the Hawkwold in the north, and meet at the one place the Wend can be waded.
+// North of the ford, Aldermere under its alders; south of it the Drowned Weir at the end of its own turning, and a long way east along the Kilnway, the forge town at Brandhold.
+// The Vale's towns and rooms, Hollin's density: two towns a long day apart, thin creatures, nothing near a wall. The Kilnway runs on east past Brandhold; it is not open yet.
+export const WEIRGATE={
+  name:'The Weirgate',
+  blurb:'Old meadow and wood round the one place the Wend can be waded: an alder-shaded market town on the north bank, a drowned weir of green stone on the south, and far off down the Kilnway a forge town. Come by the Wend Road from the Wendmouth or the Hawk Road from the Hawkwold, at about level 10.',
+  size:{w:150,h:68},
+  seeds:{terrain:73,detail:101},
+  sides:'lore',
+  chapter:true,
+  ladder:{step:2},
+  curves:{
+    // The Wend: a quiet river here, west to east across the middle, wandering a little.
+    river:{axis:'x',base:33,sin:[[46,3.6,.9],[10,1.2,2]]},
+    wood:{axis:'y',base:70,noise:{seed:37,scale:6,amp:6,slice:2.5}},    // the Greywood's west edge
+    ash:{axis:'y',base:142,noise:{seed:41,scale:6,amp:4,slice:3.9}},    // the Ashmarch's west edge
+  },
+  regions:[
+    {id:'wendreach',name:'Wendreach',band:[10,12],biome:'meadow',mask:{kind:'all'}},
+    {id:'oldwood',name:'Greywood',band:[11,14],biome:'meadow',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'wood'},{kind:'west-of-curve',curve:'ash'}]}},
+    {id:'ashmarch',name:'The Ashmarch',band:[12,15],biome:'highland',mask:{kind:'east-of-curve',curve:'ash'}},
+  ],
+  river:{curve:'river',width:2,fords:[74]},
+  scenery:{
+    wash:{wendreach:'meadow',oldwood:'woods',ashmarch:'heath'},
+    dress:{'The Drowned Weir':'weir'},
+    fields:[[22,10,8,4,'wheat'],[22,15,7,3,'plough'],[64,26,8,3,'cabbage'],[96,53,8,3,'wheat'],[96,57,7,3,'plough']],
+  },
+  towns:[
+    // Aldermere, as the Vale built it: a market green; the forge and the halls front a paved lane, the inn on the green's west edge.
+    {name:'Aldermere',fac:0,x0:30,y0:9,w:31,h:15,gate:'E',gateAt:5,race:'hallowan',spots:{square:[17.5,8.1]},grave:[27.5,7.6],
+      notch:[[26,0,5,3],[0,13,14,2]],clear:3,torches:[[29.5,4.5],[29.5,7.5],[15,7],[20,7],[17,13],[8,11]],
+      buildings:townPlan(30,9,[['auction-great',19,1],['smithy-great',4,1],['hall-great',12,1],['house-tall',1,1],['house-wide',8,1],['chapel-great',23,7],['house-tall',27,9],['inn-great',6,7],['house-manor',1,7],['board',14,7],['fountain',16,9]]),
+      ground:[[1,5,29,2],[1,11,11,1],[23,13,7,1]]},
+    // Brandhold, as the Vale built it: a forge town. The gate is in the north wall and a straight street runs to the yard; the inn fronts the cross lane, a cottage and a croft stand behind it.
+    {name:'Brandhold',fac:1,x0:106,y0:48,w:29,h:15,gate:'N',gateAt:12,race:'ashfolk',spots:{square:[15.5,8.1]},grave:[26.5,7.6],notch:[[0,13,11,2]],clear:3,homes:[[1.5,11.5],[10.5,11.5]],
+      torches:[[11,1],[15,1],[10,7],[21,7],[15,13],[6,11]],
+      buildings:townPlan(106,48,[['smithy-great',1,1],['hall-great',14,1],['auction-great',21,1],['chapel-great',21,7],['board',12,7],['inn-great',5,7],['house-manor',5,1],['house-narrow',10,1],['house-wide',1,7],['house-tall',25,9],['fountain',14,9]]),
+      ground:[[12,1,2,5],[1,5,26,2],[1,11,10,1],[21,13,7,1]]},
+  ],
+  landmarks:[
+    // The great dungeon, beside the ford on the south bank, at the end of its own turning. entry: the level a background group first goes down.
+    {kind:'crypt',name:'The Drowned Weir',boss:'Weir-Warden Orsk',x:81.5,y:41.1,mouth:{x0:80,y0:39,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:WEIR_ROOMS,entry:10,
+      sign:CRYPT_SIGN,captain:CRYPT_CAPTAIN},
+  ],
+  outposts:[
+    {id:'weirwatch',name:'Weirgate Watch',x:77.5,y:25.5,r:3.5},
+  ],
+  points:{
+    fordN:[74,31],fordS:[74,38],   // the ford: the one way over the Wend on this map
+    hawkBend:[64,5],               // the Hawk Road keeps to the heights and comes round Aldermere's north wall to its east gate
+    kilnJoin:[118,41],             // where Brandhold's road meets the Kilnway
+    weirBend:[81,38],
+    wendA:[22,40],wendB:[42,41],wendC:[60,40], // the Wend Road keeps to the river's south bank, not round the wood
+  },
+  exits:[
+    {id:'west',name:'the Wend Road',to:{map:'wendmouth',exit:'east'},edge:{side:'W',from:38,to:41}},
+    {id:'north',name:'the Hawk Road',to:{map:'hawkwold',exit:'east'},edge:{side:'N',from:40,to:43}},
+    {id:'east',name:'the Kilnway',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:40,to:43}},
+  ],
+  roads:[
+    {from:'west',via:['wendA','wendB','wendC'],to:'fordS'},
+    {from:'north',via:['hawkBend'],to:'Aldermere'},
+    {from:'Aldermere',to:'fordN'},{from:'fordN',to:'fordS'},
+    {from:'fordS',via:['kilnJoin'],to:'east'},
+    {from:'Brandhold',to:'kilnJoin'},
+    {from:'fordS',via:['weirBend'],to:'The Drowned Weir'},
+  ],
+  roadClear:[1,3],
+  glades:[[81.5,41,5],[5,40,5],[41.5,5,5],[74,28,4],[74,38,4]], // the mouth, the two roads' ends where a company comes in, and the ford's banks
+  lights:{townTorches:[[10.5,3.4]]},
+  spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of a wall
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{wendreach:{herb:6,ore:2,hide:5,fish:5},oldwood:{herb:8,ore:4,hide:7,fish:4},ashmarch:{herb:3,ore:7,hide:5,fish:1}}},
+  labels:[['WENDREACH',20,24],['GREYWOOD',100,38],['THE ASHMARCH',144,24],['ALDERMERE',45.5,7.2],['BRANDHOLD',120,46.5],['THE WEIRGATE',78,31]],
+};
+
 // ---- choosing the world ----
 // `?world=stepping` in the browser, ELDMOOR_WORLD=stepping in Node (or globalThis.ELDMOOR_WORLD
 // set before the first import, for tests); default eldmoor. Everything that needs the map size
 // or the spec goes through ACTIVE_SPEC / WORLD_ID so the choice is made exactly once.
-export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH};
+export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH,hawkwold:HAWKWOLD,weirgate:WEIRGATE};
 function pickWorld(){
   let id=null;
   try{if(typeof location!=='undefined'&&location.search)id=new URLSearchParams(location.search).get('world')}catch(e){}

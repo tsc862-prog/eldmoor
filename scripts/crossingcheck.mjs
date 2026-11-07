@@ -439,8 +439,8 @@ async function crossTools() {
   // A fresh world on the first map, every member's runner live. o.others 'none' for the flows; the full roster for what freezes.
   const world = (o = {others: 'none'}) => {M.setWorld(home); reseed(); TB.TABLE.mode = 'auto'; TB.TABLE.speed = 1; TB.TABLE.drop = null; TB.TABLE.liveMs = 120000; setRunnerLinks(() => 'connected'); setReflexAck(() => false); SIM.init(o);
     const F = CO.slotted(); setDmSeat(true); calm(); return F ? {F, mem: CO.slotHeroes(F), lead: CN.leaderOfC(F)} : {}};
-  const X_H = () => T.T.H, exit = () => M.EXITS[0], off = a => Math.hypot(a.x - exit().x, a.y - exit().y);
-  const at = (L, p = exit()) => L.forEach((a, i) => {a.x = p.x - 1 - (i % 3) * .5; a.y = Math.min(X_H() - 1.5, Math.max(1.5, p.y - 1 + Math.floor(i / 3))); a.zone = M.zoneAt(a.x, a.y); a.state = 'hunt'; a.dest = null; a.target = null; a.moving = false; a.pq = []});
+  const X_H = () => T.T.H, exit = () => process.env.XROAD && M.MAP_ID === (process.env.XMAP || 'hollin') ? M.EXITS.find(e => e.id === process.env.XROAD) : process.env.XBACK && M.MAP_ID !== (process.env.XMAP || 'hollin') ? M.EXITS.find(e => e.id === process.env.XBACK) : M.EXITS[0], off = a => Math.hypot(a.x - exit().x, a.y - exit().y);
+  const at = (L, p = exit()) => L.forEach((a, i) => {a.x = Math.max(1.5, p.x - 1 - (i % 3) * .5); a.y = Math.min(X_H() - 1.5, Math.max(1.5, p.y - 1 + Math.floor(i / 3))); a.zone = M.zoneAt(a.x, a.y); a.state = 'hunt'; a.dest = null; a.target = null; a.moving = false; a.pq = []});
   const scene = C => TB.sceneFor(C);
   const opened = (C, kind) => until(() => {const s = scene(C); return !!s && s.kind === kind && s.phase === 'turn' && !SC.framing(s) && !!s.wk && !!s.wk.done}, 60 * 60);
   const byId = id => S.agents.find(a => a.id === id);
@@ -493,36 +493,42 @@ if (mode === '--party') { // a company stays a party (#1048): through a walk to 
   {const {F, mem, lead} = world(); at(mem); act(lead, 'move_to', {target: exit().name}); ok(opened(F, 'crossing'), 'at the road the order is spent and the table still opens'); answers(F, 'wait'); closed(F)}
   console.log(fail ? fail + ' failed' : 'the party holds'); process.exit(fail ? 1 : 0);
 }
-if (mode === '--real') { // the first real road, on the real maps: a company of Oldstead takes the Drovers' Road to the Wendmouth and comes home
+if (mode === '--real' || mode === '--real-fell' || mode === '--real-weir') { // the real roads: a company of Oldstead takes the Drovers' Road to the Wendmouth or the Fell Road to the Hawkwold, one of the Wendmouth or the Hawkwold takes the Wend Road or the Hawk Road to the Weirgate, and comes home
+  const LEGS = {
+    drovers: {home: 'hollin', far: 'wendmouth', name: 'The Wendmouth', road: "the Drovers' Road", entry: 'south', towns: 'Gullstrand,Stiltmere', lo: 5, cap: 10, walk: 200, seed: 6, homeCap: 5, only: 'spider@2', onlyName: 'Crag Spinner', onlyRe: /Crag Spinner.*\(3\/4\).*Hollin|Crag Spinners.*Hollin/, from: 'Hollin'},
+    fell: {home: 'hollin', far: 'hawkwold', name: 'The Hawkwold', road: 'the Fell Road', entry: 'west', towns: 'Hawkstead,Hornridge', lo: 6, cap: 11, walk: 120, seed: 6, homeCap: 5, only: 'spider@2', onlyName: 'Crag Spinner', onlyRe: /Crag Spinner.*\(3\/4\).*Hollin|Crag Spinners.*Hollin/, from: 'Hollin'},
+    wend: {home: 'wendmouth', far: 'weirgate', name: 'The Weirgate', road: 'the Wend Road', entry: 'west', towns: 'Aldermere,Brandhold', lo: 10, cap: 15, walk: 130, seed: 11, homeCap: 10, only: 'bog@1', onlyName: 'Sallow Bogling', onlyRe: /Sallow Bogling.*\(3\/4\).*Wendmouth|Sallow Boglings.*Wendmouth/, from: 'Wendmouth'},
+    hawk: {home: 'hawkwold', far: 'weirgate', name: 'The Weirgate', road: 'the Hawk Road', entry: 'north', towns: 'Aldermere,Brandhold', lo: 10, cap: 15, walk: 130, seed: 12, homeCap: 11, only: 'rimehound@1', onlyName: 'Ridgehound', onlyRe: /Ridgehound.*\(3\/4\).*Hawkwold|Ridgehounds.*Hawkwold/, from: 'Hawkwold'},
+  }, W = LEGS[process.env.XLEG || (mode === '--real-fell' ? 'fell' : 'drovers')];
   const X = await crossTools(), {S, SIM, M, home, CO, TB, act, steps, until, calm, world, exit, at, scene, opened, answers, closed, go} = X;
   const H = await import('../src/sim/heroes.js'), {MOBS} = await import('../src/data/mobs.js'), {snapshotFor} = await import('../src/sim/brain.js');
-  const fen = M.EXITS.find(e => e.to.map == null), far = exit().to.map;
+  const fen = M.EXITS.find(e => e.to.map == null), far = exit().to.map; // both of Hollin's roads are open now: `fen` is undefined
   const gains = (a, n) => {const x = a.xp; H.gainXp(a, n); const d = a.xp - x; a.xp = x; return d};
   const reads = a => {let e = null; try {for (const t of ['status', 'quests', 'look']) act(a, t); snapshotFor(a, 'townPlan')} catch (x) {e = x.stack} return e};
-  console.log('\nHollin to the Wendmouth');
+  console.log('\n' + W.from + ' to ' + W.name);
   const {F, mem, lead} = world(), b = mem.find(a => a !== lead), c = mem.find(a => a !== lead && a !== b);
-  ok(home === 'hollin' && far === 'wendmouth' && exit().name === "the Drovers' Road", 'the Drovers\' Road leads on to ' + far);
-  for (const a of mem) H.seedLevel(a, 6);
-  ok(M.LVL_CAP === 5 && gains(lead, 600) === 102, 'at level 6 the Reach pays a sixth of the XP: ' + gains(lead, 600) + ' of 600');
-  {const r = act(lead, 'move_to', {target: fen.name}); ok(r.ok === false && /not yet open/.test(JSON.stringify(r)) && !F.road, fen.name + ' stays closed: ' + (r.error || '').slice(0, 70))}
-  const only = Object.keys(MOBS).find(k => k === 'spider@2'); ok(only && MOBS[only].name === 'Crag Spinner', 'a creature of the Reach with no row on the far map: ' + only);
+  ok(home === W.home && far === W.far && exit().name === W.road, W.road + ' leads on to ' + far);
+  for (const a of mem) H.seedLevel(a, W.seed);
+  ok(M.LVL_CAP === W.homeCap && gains(lead, 600) === 102, 'at level ' + W.seed + ' ' + W.from + ' pays a sixth of the XP: ' + gains(lead, 600) + ' of 600');
+  if (fen) {const r = act(lead, 'move_to', {target: fen.name}); ok(r.ok === false && /not yet open/.test(JSON.stringify(r)) && !F.road, fen.name + ' stays closed: ' + (r.error || '').slice(0, 70))}
+  const only = Object.keys(MOBS).find(k => k === W.only); ok(only && MOBS[only].name === W.onlyName, 'a creature of ' + W.from + ' with no row on the far map: ' + only);
   lead.quest = {type: only, need: 4, have: 3, at: 11}; b.quest = {type: only, need: 2, have: 2, at: 12}; c.quest = {type: 'wolf@0', need: 5, have: 1, at: 13};
   ok(go(F, mem, lead), 'the company orders the road, says go, and crosses');
-  ok(M.MAP_ID === far && M.LVL_CAP === 10 && M.CITY.map(t => t.name).join() === 'Gullstrand,Stiltmere', 'it stands on The Wendmouth, whose top band is 10');
-  const entry = exit(); ok(entry.id === 'south' && mem.every(a => a.state !== 'dead' && Math.hypot(a.x - entry.x, a.y - entry.y) < 8 && !M.solid[M.I(Math.floor(a.x), Math.floor(a.y))]), 'all five on open ground at the road\'s end: ' + mem.map(a => a.x.toFixed(0) + ',' + a.y.toFixed(0)).join(' '));
+  ok(M.MAP_ID === far && M.LVL_CAP === W.cap && M.CITY.map(t => t.name).join() === W.towns, 'it stands on ' + W.name + ', whose top band is ' + W.cap);
+  const entry = exit(); ok(entry.id === W.entry && mem.every(a => a.state !== 'dead' && Math.hypot(a.x - entry.x, a.y - entry.y) < 8 && !M.solid[M.I(Math.floor(a.x), Math.floor(a.y))]), 'all five on open ground at the road\'s end: ' + mem.map(a => a.x.toFixed(0) + ',' + a.y.toFixed(0)).join(' '));
   ok(opened(F, 'farside') && scene(F).ids.length === mem.length, 'the far side opens with everyone'); console.log('    ' + X.tableView(lead).frame); answers(F, 'look'); ok(closed(F), 'and closes'); calm();
-  ok(!MOBS[only], 'the creature has no row here'); ok(S.mobs.length > 0 && S.mobs.every(m => MOBS[m.type] && m.lvl >= 5 && m.lvl <= 10), 'the land is stocked at its own levels: ' + S.mobs.length + ' creatures, ' + Math.min(...S.mobs.map(m => m.lvl)) + '-' + Math.max(...S.mobs.map(m => m.lvl)));
+  ok(!MOBS[only], 'the creature has no row here'); ok(S.mobs.length > 0 && S.mobs.every(m => MOBS[m.type] && m.lvl >= W.lo && m.lvl <= W.cap), 'the land is stocked at its own levels: ' + S.mobs.length + ' creatures, ' + Math.min(...S.mobs.map(m => m.lvl)) + '-' + Math.max(...S.mobs.map(m => m.lvl)));
   ok(M.CITY.every(t => S.mobs.every(m => Math.hypot(Math.max(t.x0 - m.spawn.x, 0, m.spawn.x - t.x1), Math.max(t.y0 - m.spawn.y, 0, m.spawn.y - t.y1)) >= 10)), 'and nothing spawns within ten tiles of a wall');
-  ok(gains(lead, 600) === 600, 'XP pays in full here at level 6');
-  ok(mem.every(a => !a.quest), 'kill quests of the old land are parked'); ok(/Crag Spinner.*\(3\/4\).*Hollin|Crag Spinners.*Hollin/.test(act(lead, 'quests').left_behind.join()), 'and the quest log says where: ' + act(lead, 'quests').left_behind.join());
+  ok(gains(lead, 600) === 600, 'XP pays in full here at level ' + W.seed);
+  ok(mem.every(a => !a.quest), 'kill quests of the old land are parked'); ok(W.onlyRe.test(act(lead, 'quests').left_behind.join()), 'and the quest log says where: ' + act(lead, 'quests').left_behind.join());
   ok(!reads(lead) && !reads(b), 'status, the quest log, look and the brain read fine' + (reads(lead) || ''));
   {const g = M.CITY[0], g0 = b.gold, n0 = (b.history || []).length; for (const a of mem) {a.x = g.gate.x; a.y = g.gate.y - 3; a.state = 'town'; a.townStep = 0; a.pq = []} let e = null; try {H.turnIn(b); steps(60 * 60)} catch (x) {e = x.stack}
     ok(!e && b.gold >= g0 - 20 && mem.every(a => a.state !== 'dead'), 'a town visit in ' + g.name + ' plays a minute with the quests parked' + (e || ''));
     delete F.camp; for (const a of mem) {a.x = g.gate.x; a.y = g.gate.y - 3; a.state = 'town'; a.pq = []} const r = act(lead, 'list_jobs'); ok(!r.error, 'the board reads' + (r.error ? ': ' + r.error : '')); ok(!reads(lead), 'and so does everything else')}
-  {const up = M.EXITS.find(e => e.to.map == null), r = act(lead, 'move_to', {target: up.name}); ok(r.ok === false && /not yet open/.test(JSON.stringify(r)) && !F.road, up.name + ' is closed in words: ' + (r.error || '').slice(0, 80))}
+  {const up = M.EXITS.find(e => e.to.map == null), r = up && act(lead, 'move_to', {target: up.name}); if (up) ok(r.ok === false && /not yet open/.test(JSON.stringify(r)) && !F.road, up.name + ' is closed in words: ' + (r.error || '').slice(0, 80))}
   // the walk, town to town, setting out at dawn (a company camps at dusk). Nothing bites, so this measures the road.
   {const [A, B] = M.CITY; calm(); S.gameMin = (Math.floor(S.gameMin / 1440) + 1) * 1440 + 360; delete F.camp; lead.x = A.gate.x; lead.y = A.gate.y; lead.state = 'hunt'; lead.pq = []; lead.dest = null; let on = 0, t = S.gameMin; const r = act(lead, 'move_to', {target: B.name}); steps(2);
-    const walked = until(() => {if (lead.moving) on += S.gameMin - t; t = S.gameMin; return Math.hypot(lead.x - B.gate.x, lead.y - B.gate.y) < 3}, 60 * 900), min = Math.round(on); ok(r.ok && walked && min >= 200, A.name + ' to ' + B.name + ': ' + r.route?.tiles + ' tiles, ' + min + ' game minutes on the move')}
+    const walked = until(() => {if (lead.moving) on += S.gameMin - t; t = S.gameMin; return Math.hypot(lead.x - B.gate.x, lead.y - B.gate.y) < 3}, 60 * 900), min = Math.round(on); ok(r.ok && walked && min >= W.walk, A.name + ' to ' + B.name + ': ' + r.route?.tiles + ' tiles, ' + min + ' game minutes on the move')}
   // #1048 as it was found: autopilot's walk home on this map, nobody with an order, and the leader free to walk straight out again
   {const t = X.homeOf(lead), P = () => CO.slotParty(F), one = () => !!P() && mem.every(a => a.party === P()); calm(); delete F.camp; S.gameMin = (Math.floor(S.gameMin / 1440) + 1) * 1440 + 360; at(mem, {x: entry.x, y: entry.y - 3}); for (const a of mem) a.playActAt = -1e9; steps(5);
     lead.pq = [{kind: 'move', legs: [{x: t.gate.x, y: t.gate.y, st: 'return'}], last: 'town', label: t.name, auto: 'heading home to ' + t.name + ' (the pack is full)'}]; let held = true;
@@ -530,12 +536,12 @@ if (mode === '--real') { // the first real road, on the real maps: a company of 
     const r = act(lead, 'lead_to', {target: M.CITY[0].name === t.name ? M.CITY[1].name : M.CITY[0].name}); ok(r.ok, 'and lead_to takes them on: ' + (r.error || r.leading))}
   console.log('home again');
   calm(); for (const a of mem) {a.pq = []; a.state = 'hunt'} at(mem); act(lead, 'move_to', {target: exit().name}); ok(opened(F, 'crossing'), 'the road home opens'); ok(/walked it before/.test(X.tableView(b).frame), 'and they know it'); answers(F, 'go');
-  ok(until(() => M.MAP_ID === home, 300), 'the Reach again'); ok(opened(F, 'farside'), 'with an arrival'); answers(F, 'look'); closed(F); calm();
+  ok(until(() => M.MAP_ID === home, 300), W.from + ' again'); ok(opened(F, 'farside'), 'with an arrival'); answers(F, 'look'); closed(F); calm();
   ok(lead.quest && lead.quest.type === only && lead.quest.have === 3 && lead.quest.need === 4 && b.quest.have === 2 && c.quest.have === 1 && !lead.questsAway, 'every kill quest is back with its count: ' + mem.filter(a => a.quest).map(a => a.quest.have + '/' + a.quest.need).join(' '));
-  ok(MOBS[only].name === 'Crag Spinner' && M.LVL_CAP === 5 && gains(lead, 600) === 102, 'the Reach\'s creatures and its XP are back');
+  ok(MOBS[only].name === W.onlyName && M.LVL_CAP === W.homeCap && gains(lead, 600) === 102, W.from + '\'s creatures and its XP are back');
   ok(!reads(lead), 'everything reads' + (reads(lead) || ''));
   {const g0 = b.gold, x = b.xp; for (const a of [b]) {const t = M.CITY[0]; a.x = t.gate.x; a.y = t.gate.y; a.state = 'town'} H.turnIn(b); ok(!b.quest && b.gold > g0, 'and a finished one turns in at the gate: +' + (b.gold - g0) + 'g')}
-  ok(!!S.maps[far], 'The Wendmouth waits, frozen');
+  ok(!!S.maps[far], W.name + ' waits, frozen');
   process.exit(fail ? 1 : 0);
 }
 if (mode === '--road') { // when the scene opens, what holds it, what it asks and what comes of it
@@ -974,6 +980,18 @@ for (const [m, what] of [['--road', 'when a road opens, what holds it and what i
   const r = spawnSync(process.execPath, [HERE, '--real'], {env: env('hollin'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 240000});
   process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
   ok(r.status === 0, 'Hollin to the Wendmouth and back');
+}
+{ // and the Fell Road to the Hawkwold
+  const r = spawnSync(process.execPath, [HERE, '--real-fell'], {env: {...env('hollin'), XROAD: 'east'}, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 240000});
+  process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
+  ok(r.status === 0, 'Hollin to the Hawkwold and back');
+}
+{ // the Wend Road, the Wendmouth to the Weirgate, and the Hawk Road from the Hawkwold
+  for (const [leg, map, what] of [['wend', 'wendmouth', 'the Wendmouth to the Weirgate'], ['hawk', 'hawkwold', 'the Hawkwold to the Weirgate']]) {
+    const r = spawnSync(process.execPath, [HERE, '--real-weir'], {env: {...env(map), XLEG: leg, XMAP: map, XROAD: 'east', XBACK: leg === 'hawk' ? 'north' : 'west'}, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 300000});
+    process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
+    ok(r.status === 0, what + ' and back');
+  }
 }
 { // a save between the vote and the road, in a fresh process
   const out = join(dir, 'mid.json'), o = spawnSync(process.execPath, [HERE, '--mid', '-', out], {env: env('testlinka'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
