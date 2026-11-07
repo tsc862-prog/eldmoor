@@ -61,6 +61,7 @@ import {withSituationOrders, ORDERS_FULL, ordersFor} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
+import {noteTurn, recapNote, recapOn} from './session-recap.mjs'; // the last hours of talk across a roll (issue #808)
 import {lazyOn, toolOptions, withLazyEnv, markLazy, lazyLine, searchCount, lazyRec} from './lazy-tools.mjs'; // AGENT_LAZY_TOOLS (issue #808)
 import {PLAYER_TOOLS, toolsFor} from '../src/data/player-tools.js';
 import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, tableHooks, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
@@ -331,7 +332,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // between turns only, and never with a scene open or due, on a reflection, or carrying on after a cut (#787)
     const rd = rollDue(sess, rollAt, {lazy, busy: !!(refl || again || (b0 && (b0.scene || b0.table)))});
     if (rd) {rollSession(sess, setAside); saveSess(); console.log('  ' + rd.line)}
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
+    const recap = !refl && sess.rolled && recapOn(env) ? recapNote(sess, b0) : ''; if (recap) console.log(`  [session recap: ${recap.length} chars]`); // the first prompt of a fresh session (#808)
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + recap + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, member: st.name, tools: () => tools, onLost: () => {if (turnAbort) turnAbort.abort()}, // under the app supervisor: one of the Claude slots for this turn
@@ -345,7 +347,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!refl && b0 && sceneDue(b0.scene, sess)) {let first = null;
       try {first = await forcedScene({b0, w, base, heroId, sess, ask: adapterAsk(anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}), model, 'low'), keep: false, on: sceneOn})}
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}
-      if (first && first.tools) {freeSlot(); pacer.turnDone(); sess.turns++; spent += first.cost; sess.costUsd += first.cost;
+      if (first && first.tools) {freeSlot(); pacer.turnDone(); sess.turns++; spent += first.cost; sess.costUsd += first.cost; noteTurn(sess, b0, first.narration);
         console.log(`[turn ${sess.turns}] scene answer first | ${model} | tokens in ${first.in} / out ${first.out} | ${money(first.cost)} | run ${money(spent)}`);
         reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
         saveSess(); fails.ok(true); continue}}
@@ -405,9 +407,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         if (forced) {spent += forced.cost; sess.costUsd += forced.cost; turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; for (const c of forced.calls) tc.tools.push(c); if (forced.sceneS) sceneS.push(...forced.sceneS);
           console.log(`[scene answer] ${model} | ${forced.tools ? 'scene_act sent' : forced.misses + ' answers missed'} | tokens in ${forced.in} / out ${forced.out} | ${money(forced.cost)} | run ${money(spent)}`)}}
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
+    noteTurn(sess, b0, forced && forced.narration || tc.narration);
     if (refl) {const wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; await closeReflection(base, heroId, RUNNER, refl.id, wrote); console.log(`  [reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}), ...lazyRec(lazy, tc.tools),
-      flags: [...(lazy ? ['lazy-tools'] : []), ...(rd ? ['session-rolled'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(lazy ? ['lazy-tools'] : []), ...(rd ? ['session-rolled'] : []), ...(recap ? ['session-recap'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSess(); if (grab.grabbed() && !failed && !stopReq) resume = true;
     if (fails.ok(!failed && (tools > 0 || !!refl)) && !ended) ended = fails.why();
   }
