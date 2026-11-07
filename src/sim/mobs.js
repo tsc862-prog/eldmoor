@@ -6,7 +6,7 @@ import {rnd,ri,pickA} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {tiles,zone,I,ZONES,LVL_CAP,zonePoint,zoneAt,dist,tileAt} from '../world/map.js';
 import {standAt,solidAt} from '../world/passable.js';
-import {clearLine,noWay} from './path.js'; // paths (#794): a mob walks round what is solid, and gives up what it cannot reach
+import {clearLine,outOfReach} from './path.js'; // paths (#794): a mob walks round what is solid, and gives up what it cannot reach
 import {MOBS,COUNTS,ELITES,ECO,eliteOf} from '../data/mobs.js';
 import {blockOf,ABILITIES,ELITE_TEMPLATE,ELITE_EXTRA,NAMED_KITS,tagMul,heroTag} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
@@ -158,7 +158,7 @@ export function updMob(m,dt){
     if(t.state==='ghost'||t.state==='dead'||!engaged||dist(m,t)>10||held(t)){m.target=null;m.pack=false;m.dest={...m.home};m.hpl=m.hp;return} // a hero held in a scene (#518) is let be
     if(t.state!=='fight'&&t.state!=='downed'){t.state='fight';t.target=m;t.dest=null}
     const d=dist(m,t);m.face=t.x>m.x?1:-1;
-    if(d>B.reach){moveTo(m,t.x,t.y,dt,2.1);if(noWay(m)){m.target=null;m.pack=false;m.dest={...m.home};if(t.target===m&&t.state==='fight'){t.target=null;t.state='hunt'}}m.hpl=m.hp;return}m.moving=false; // no way to it: back home, and it is free of the mob
+    if(d>B.reach){moveTo(m,t.x,t.y,dt,2.1);if(outOfReach(m,t)){m.target=null;m.pack=false;m.dest={...m.home};if(t.target===m&&t.state==='fight'){t.target=null;t.state='hunt'}}m.hpl=m.hp;return}m.moving=false; // no way to it (or only to its own bank, #1060): back home, and it is free of the mob
     for(const id of m.ab||[])if(m.abcd[id]==null)m.abcd[id]=ABILITIES[id].cd*(.4+rnd()*.4); // first use a little way into the fight
     if(B.beh.flee&&!m.fledOnce&&!m.elite&&m.hp<m.maxhp*B.beh.flee){m.fledOnce=true;m.fled=2.5;pop(m.x,m.y-.8,'FLEES','#ffb060');m.hpl=m.hp;return}
     if(m.cd<=0&&(t.state==='downed'||!useAbility(m,t))){m.cd=m.acd*(m.frenzy>0?.8:1);const v=.8+rnd()*.4,cr=rnd()<B.crit;hurt(t,m,unitOf(m)*(m.frenzy>0?1.35:1)*v*(cr?1.6:1),cr)} // the downed get a plain blow, not an ability
