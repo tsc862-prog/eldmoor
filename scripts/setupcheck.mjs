@@ -252,7 +252,8 @@ for (const w of OTHER_WORLDS) {
  const out = runWorld(fileURLToPath(import.meta.url), w, {args: ['--stand', 'any'], capture: true}), m = String(out.stdout).match(/STAND (.*)/);
  if (!m) console.error(String(out.stderr).slice(-800));
  const a = m ? JSON.parse(m[1]) : {cos: [{}]}, A = a.cos[0];
- ok(a.valid === '' && a.cos.length === 1 && A.n === 5 && A.inHall && A.far <= 4 && A.home && A.town && hallTowns(w, 1).includes(A.hall), w + ': the default company of five stands together in one hall town of its faction (' + A.hall + ')')}
+ // far 8: a company already all in its hall is left where it stood (#771), so on a map where everyone's home falls to that town they stand a street apart
+ ok(a.valid === '' && a.cos.length === 1 && A.n === 5 && A.inHall && A.far <= 8 && A.home && A.town && hallTowns(w, 1).includes(A.hall), w + ': the default company of five stands together in one hall town of its faction (' + A.hall + ')')}
 
 // Professions per place (#259): validated, cleaned, seeded through learn(), kept for a replacement.
 {const P = await import('../src/sim/professions.js'), {offerReplacement} = await import('../src/sim/company.js'), S2 = (await import('../src/sim/index.js')).S;
