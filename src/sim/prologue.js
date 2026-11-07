@@ -65,6 +65,7 @@ export function pickRow(town,fac,taken=used()){const free=PROLOGUES.filter(r=>!t
 // It stays in the gate's own region (a new town beside a river or a higher band must not put a green company in the next land) and in
 // a clear walk of the gate (#721's towns: Murkstead's nearest ground lay across the Greywater, Brinereach's in Sedgewater).
 export function mouthNear(c){const g=c.gate||c.qg;if(!g)return null;const gz=zoneAt(g.x,g.y);
+  if(c.delve)return {x:c.delve.x,y:c.delve.y,z:zoneAt(c.delve.x,c.delve.y)}; // a town whose spec stands its delve at a road's end (#1013); worldcheck holds that spot to the road and open ground
   for(const n of [16,64])for(let d=SITE.TOWN_GAP+1;d<=SITE.TOWN_GAP+PRO.FAR;d++)for(let k=0;k<n;k++){const ang=k*2*Math.PI/n,q={x:Math.floor(g.x+Math.cos(ang)*d)+.5,y:Math.floor(g.y+Math.sin(ang)*d)+.5}; // a second, finer look for a town the sixteen rays miss
     if(q.x<1||q.y<1)continue;const z=zoneAt(q.x,q.y);if(z!=null&&z===gz&&!siteSpotErr(q,z)&&onMainLand(q.x,q.y)&&clearLine(g,q))return {...q,z}}
   return null}
@@ -78,7 +79,7 @@ function placeAtMouth(s,L){const p={x:s.x,y:s.y+1.5},T=SITE_THEMES[s.theme];
 function begin(C){const L=memOf(C);if(L.length<2||L.some(a=>a.lvl>PRO.MAX_LVL)||!tableOn()||!companyAtTable(C))return false;
   const town=C.hall||homeOf(L[0]).name,c=CITY.find(x=>x.name===town)||homeOf(L[0]),row=pickRow(town,C.fac),at=row&&mouthNear(c);if(!at)return false;
   const s=raise(row,at);placeAtMouth(s,L);C.prologue={row:row.id,site:s.id,phase:'intro',town};
-  log(gd(C.name||L[0].name+'\'s company'),' stands at the mouth of ',siteTag(s),', a short walk from ',gd(town),'.');return true}
+  log(gd(C.name||L[0].name+'\'s company'),' stands at the mouth of ',siteTag(s),', '+(row.walk||'a short walk')+' from ',gd(town),'.');return true}
 // Every opening still to come that may have one. Called as the DM's prep begins, so the DM reads the place, and by sessionTick
 // for a world with no prep. An opening is looked at once.
 export function readyPrologues(){const O=S.opening;if(!O||!O.queue||!hasLinks()||!prologueOn())return;
@@ -89,7 +90,7 @@ const where=C=>{const s=siteById(C.prologue.site);return s?s.name:'the mouth'};
 const frame=(C,here,ld,oaths)=>{const P=C.prologue,row=rowOf(P.row);
   return [fill(row.scenario,P)+' ',gd(C.name||'The company'),': '+names(here.map(a=>a.name))+'. ',ld?ld.name+' stands in front. ':'',oaths.length?oaths.join('; ')+'. ':'']};
 const about=C=>{const P=C.prologue,row=rowOf(P.row),n=campaignNotes('prologue');
-  return ' This is the first delve: they stand at the mouth of '+where(C)+', a short walk from '+P.town+', and go down when the introductions are done. Behind it (yours alone): '+row.dm+(n?' Your campaign says: '+n:'')};
+  return ' This is the first delve: they stand at the mouth of '+where(C)+', '+(row.walk||'a short walk')+' from '+P.town+', and go down when the introductions are done. Behind it (yours alone): '+row.dm+(n?' Your campaign says: '+n:'')};
 const fillLine=(C,sc)=>{const L=rowOf(C.prologue.row).fill;return L[Math.floor(hash(sc.id|0,7,922)*L.length)%L.length]};
 const ahead=C=>'Below them: '+where(C)+'.';
 const introduced=C=>{C.prologue.phase='descend'};

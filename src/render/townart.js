@@ -229,7 +229,7 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
     const f=FAC[c.fac],ox=(c.x0-2)*T,dy=(c.y0-2)*T;
     if(!hits(c.x0-2,c.y0-2,c.x0+13,c.y0+9,x0,y0,x1,y1))continue; // layout spans tiles x0+2..x0+12, y0+1..y0+7
     const bld=(x,y,roof,wall,sign)=>drawHouse(R,x+ox,y,roof,wall,sign);
-    const plain=q=>!drawn(c,q)&&!(q&&q.kit); // a plan's own hall and auction house stand on their boxes, above
+    const plain=q=>!!q&&!drawn(c,q)&&!q.kit; // a plan's own hall and auction house stand on their boxes, above
     if(plain(building(c,'auction')))bld(4*T,3*T+dy,f.dark,'#c8b890','#f2c14e');
     if(plain(building(c,'hall')))bld(8*T,3*T+dy,'#6a4a3a','#b8a888');
     if(walls||(c.buildings||[]).some(b=>b.kit))cutBanners(ctx,c,x0,y0,x1,y1,R);else for(const gy of [5,8]){const gx=12*T+6+ox,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}

@@ -16,6 +16,10 @@ export const BIOMES={
   fen:(x,y,n,n2)=>n>.6?SWAMP:n2>.63?TREE:(hash(x,y,6)>.5?SGRASS:MUD),
   ash:(x,y,n,n2)=>n>.6?PEAK:n2>.66?LAVA:ROCK,
   tundra:(x,y,n,n2)=>n>.68?PEAK:n2>.64?TREE:vnoise(x/2.5,y/2.5,31)>.74?ICE:hash(x,y,8)>.94?ROCK:SNOW,
+  // Open pasture: the meadow's own noise with most of its trees gone, for ground that must read as room to walk.
+  lea:(x,y,n,n2)=>n>.645?TREE:(hash(x,y,5)>.95?FLOWER:G),
+  // Close woodland with glades, for a wood that must read as one at a glance.
+  wood:(x,y,n,n2)=>n>.47||n2>.6?TREE:(hash(x,y,10)>.93?FLOWER:G),
   // Dry upland: grass, scree and stunted trees, a few crags. Reuses existing tiles.
   highland:(x,y,n,n2)=>n>.66?PEAK:n2>.62?TREE:vnoise(x/3,y/3,41)>.66?ROCK:(hash(x,y,9)>.94?FLOWER:G),
 };
@@ -97,7 +101,7 @@ function mkTown(t){
   for(const k in t.spots||{})if(!spots[k])spots[k]={x:x0+t.spots[k][0],y:y0+t.spots[k][1]};
   for(const k of Object.keys(spots)){const b=buildings.find(q=>q.serves===k);if(b)spots[k]={x:b.door[0]+.5,y:b.door[1]+.5}} // the keeper stands at the door
   return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,buildings,...(t.wall?{wall:t.wall}:{}),...(t.ground?{ground:t.ground}:{}),...(t.notch?{notch:t.notch}:{}),...(t.homes?{homes:t.homes}:{}),
-    spots,npcs:t.npcs||null,ah:spots.quartermaster,qg:spots.gate,gate,grave:t.grave?{x:x0+t.grave[0],y:y0+t.grave[1]}:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
+    ...(t.delve?{delve:{x:t.delve[0],y:t.delve[1]}}:{}),spots,npcs:t.npcs||null,ah:spots.quartermaster,qg:spots.gate,gate,grave:t.grave?{x:x0+t.grave[0],y:y0+t.grave[1]}:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
 // A spec town's outline (#979): `notch: [[dx,dy,w,h], ...]` are rects at its edge left outside the walls, so the wall ring steps round them.
 // The town's x0..y1 stay its bounds, which is all the sim asks of it. With no notch this is the plain rectangle.
 const OPEN_GROUND={fen:SGRASS,ash:ROCK,tundra:SNOW}; // what a felled tree leaves, by biome (else grass)
@@ -245,6 +249,12 @@ export function buildWorld(spec){
       if(!path)throw new Error('world spec: no road route from '+r.from+' to '+r.to);
       ROUTES.push(path);paintPolyline(world,path)}}
 
+  // spec.roadClear [side, south] (a road through a wood): a tree's crown stands three tiles over its root, so the trees just south of a road would hide it. Felled, with
+  // those `side` tiles either way; spec.glades [[x,y,r],...] fells a round clearing. Absent, nothing changes.
+  const fell=(x,y)=>{if(x>=0&&y>=0&&x<w&&y<h&&tiles[I(x,y)]===TREE)tiles[I(x,y)]=OPEN_GROUND[regions[zone[I(x,y)]].biome]??G};
+  if(spec.roadClear){const [sd,so]=spec.roadClear;for(const path of ROUTES)for(const [x,y] of path)for(let j=-sd;j<=so;j++)for(let i=-sd;i<=sd;i++)fell(x+i,y+j)}
+  for(const [gx,gy,gr] of spec.glades||[])for(let y=Math.floor(gy-gr);y<=gy+gr;y++)for(let x=Math.floor(gx-gr);x<=gx+gr;x++)if(Math.hypot(x+.5-gx,y+.5-gy)<=gr)fell(x,y);
+
   // what cannot be walked (solidgrid.js, #794): after the roads, since a road opens what it crosses
   const solid=solidGrid({tiles,I,w,h,CITY,LANDMARKS,fords}),{land,main:mainLand}=landsOf({tiles,I,w,h,CITY},solid);
 
@@ -289,7 +299,7 @@ export function buildWorld(spec){
 
   const OUTPOSTS=(spec.outposts||[]).map(o=>({id:o.id,name:o.name,x:o.x,y:o.y,r:o.r||3.5,z:zoneAt(o.x,o.y)})); // contested outposts (#11): data only, never painted
   const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS,land,mainLand},spec); // gathering nodes (#255): an overlay list, not tiles
-  return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
+  return{name:spec.name,chapter:!!spec.chapter,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
     REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT:CRYPTS[0]||null,CRYPTS,ROUTES,OUTPOSTS,EXITS,
     zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,solid,land,mainLand,fords,
     road:pts=>paintPolyline(world,pts)}}

@@ -523,6 +523,29 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 
 - Name notes: Greywood stands beside Eldmoor's Greywater and Stepping's Greyreach by sound only; the town Wendmere of the test fixture shares the Wend root and stays reserved and unused.
 
+### The Hollin Reach (first chapter, #1013)
+`HOLLIN` in `src/world/spec.js` is a 118x64 map, and the first map made under the owner's rule that a map is part of the world, not the whole of it. *Hollin* is the old word for holly; a *reach* is the near end of a road. It holds one walled town, ground for levels 1 to 5, the first delve and one small dungeon, with long walks between them: the gate stands 56 tiles from the delve, more from the quarry and from either road's end. No raid, no great dungeon, no other side on the map (sides are lore here, so any company may rest in the town).
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Hollinlea | 1-3 | Hedged fields and copses round the town, closed to the south by the Withy. A *lea* is open pasture. |
+| Withywood | 2-4 | Close, dark willow-and-hazel wood in the south-east, down to the river. The wood road runs into it and stops. |
+| Crowfell | 3-5 | Bare upland and crags in the north-east, climbed by the Fell Road. The Quarry Cellars are cut into it. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Oldstead | Concord | Hallowan | The one town of the Reach: a small hall town with an east gate, one street past the hall to the forge, the inn on a lane behind it, a well and notice board on the green. Its market is a quartermaster's table on the green, no auction hall. |
+
+- **The Withy**: the river of the Reach, one long bend along the map's south edge. A *withy* is a willow wand. No bridge and no ford: the far bank is out of reach.
+- **The Crossways**: where the three roads part, a long walk east of the gate.
+- **The Drovers' Road** (north) and **the Fell Road** (east): the two roads off the map, each ending at a last milestone. Nothing is built past them yet: an order to walk one is refused in words, and heroes have heard only that they lead to lands not yet seen.
+- **The wood road**: runs from the Crossways into Withywood and ends at the first delve.
+- **First delve of the Reach** (`src/data/prologues.js`): **the Tithe Grange** (Oldstead, ruin, keeper **Cellarer Thrupp**, who kept the tithe for a priory nobody remembers and never stopped counting; rooms **the Cart Bay**, **the Undercroft**, **the Cellarer's Count**). Once a company's, at the wood road's end.
+- **The Quarry Cellars** (Crowfell, entry 3): the Reach's one real dungeon, cut under a quarry that shut before anyone in Oldstead was born; somewhere for a level 3-5 company to go while the roads are closed. Keeper **Foreman Ruddock**, who still takes the shift's names on a slate; rooms **the Cut Stair**, **the Wedge Store**, **the Foreman's Tally**.
+- **Creatures of the Reach** (`src/data/fauna.js`, stock species under their own names): Hollinlea: **Hedge Wolf** (1-2, Hedge Pelt), **Furrow Boar** (2-3, Furrow Tusk). Withywood: **Withy Weaver** (2-3, Withy Silk), **Briar Boar** (3-4, Briar Tusk), **Underwood Wolf** (3-4, Underwood Pelt). Crowfell: **Fell Wolf** (3-4, Fell Pelt), **Scree Boar** (4-5, Scree Tusk), **Crag Spinner** (4-5, Crag Silk).
+- **Old Crookjaw**, the Terror of Crowfell: the map's one elite, level 5, a very old wolf with a broken jaw healed wrong.
+- Name notes: no region, town or dungeon name is shared with another map. Oldstead stands beside Hawkstead by its ending only. *Hollin* is also a name Tolkien gives a country in English; here it is the plain dialect word for holly, and only with *Reach*.
+
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
 `TESTBARE` in the same file is three 56x36 fixtures on one ground for the checks of a map with no lair or no dungeon (#1013); never in the game or in `WORLDS`. Reserved: the maps **Barefield**, **Cellarfield** and **Denfield**, the regions **Bare Mead** and **Bare Fell**, the towns **Barewick** and **Farwick**, **The Bare Cellar** with **The Bare Reeve**, and **The Bare Den**.

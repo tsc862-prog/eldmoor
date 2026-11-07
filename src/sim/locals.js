@@ -12,7 +12,7 @@
 import {S} from './state.js';
 import {keep} from './kept.js';
 import {CITY,ZONES,dist} from '../world/map.js';
-import {ELITES} from '../data/mobs.js';
+import {eliteOf} from '../data/mobs.js';
 import {ADVENTURES} from '../data/adventures.js';
 import {ROLE_STOCK} from '../data/talk-lines.js';
 import {hash} from '../core/rng.js';
@@ -63,7 +63,7 @@ function reason(p,a,c){const role=p.role;
   const g=a.goal;
   if(g&&!g.done&&g.type==='avenge'&&g.target&&['innkeeper','bard','drover','captain'].includes(role))
     return {topic:'oath',text:g.offered?'I have heard talk of '+g.target+' on the roads; come and ask me, if it means anything to you.':'You have the look of one who hunts '+g.target+'. I have heard talk of it; come and ask me.'}; // a thread is not told back as their oath (#800)
-  const z=huntZone(a),E=ELITES[z];
+  const z=huntZone(a),E=eliteOf(z);
   if(E&&E.name&&['innkeeper','bard','drover','hermit'].includes(role))
     return {topic:'rumour',text:'Hold a moment, traveller. They say '+E.name+' prowls '+ZONES[z]+'. Few who meet it come home whole.'};
   if((ROLE_STOCK[role]||[]).includes('gear')&&a.slots){const k=weakestSlot(a);if(k&&slotLevel(a,k)<a.lvl-1)return {topic:'goods',text:'That '+k+' of yours has seen better days. I have gear that would suit your level; come and look.'}}

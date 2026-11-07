@@ -14,6 +14,7 @@
 //     xp       share of an ordinary site's XP (clearXp): the delve ends about level 2
 //     loot     {gold shared, goods, ilvl, quality}: plain, and no epic
 //     rooms    the crawl's rooms, as a site's (sim/crawl.js): {id, name, frame, foes:[{type, n, name?, hits?, atk?}], alvl, hit, rounds, boss?}
+//     walk     how far the mouth stands from the hall, in words, when it is not a short walk
 //     closing  the words at the hall gate: clear, or left (they came out without finishing it). {crypt} names the great dungeon
 export const PROLOGUE_DEFAULT='delve';
 export const PROLOGUE_VALUES=['delve','none'];
@@ -122,3 +123,13 @@ PROLOGUES.push(
     'denmother','wolf','The Rattling Bed','The deepest hollow, a bed of bone chips. She gets up off her litter and she is bigger than you were told.',
     'The hall gate of {town}, by evening, rattling with bone chips. The gate captain grunts. "A goat thief. Do not get ideas. {crypt} eats better than you."',
     'The hall gate of {town}, by evening, the pit rattling behind you. The gate captain spits. "Beaten by a goat thief. Stay out of {crypt}."'));
+
+// The Hollin Reach's first delve (#1013 slice 7a): the one dungeon on that map, at the end of its road. The same small shape; its closing words look to the roads out, not to a great dungeon.
+PROLOGUES.push({...valeDelve('tithe-grange','Oldstead',0,'ruin','the Tithe Grange','Cellarer Thrupp',
+    'The roofless grange at the end of the wood road, a long walk from {town}. The hall sent word to each of you alone: the tithe carts stopped coming back, and hedge-thieves have the undercroft. The road goes no further than this door.',
+    'Cellarer Thrupp kept the tithe here for a priory nobody remembers, and when the priory stopped sending for it he stayed and went on counting. He lets the thieves sleep below for a share and keeps their takings in his old ledgers. A small, stubborn, hungry man. The first thing a company ever beats, so let it feel like something.',
+    ['Rooks go up from the roofless barn, and something below drops a cask and swears.','Cart ruts run to the cellar door and none run back.'],'Wolf Pelt',
+    ['hedgecaller',2],['The Cart Bay','Two hedge-thieves look up from a broken tithe cart, and one of them whistles for help that does not come.'],['tollbreaker',2],['The Undercroft','Stone vaults and stacked grain, and two big men who were told nobody ever comes this far.'],
+    'captain','hedgecaller',"The Cellarer's Count",'A stub of candle, a wall of ledgers, and an old man who wants to know what you are bringing and whether you have it in writing.',
+    'The hall gate of {town}, by evening, with grain dust on your boots. The gate captain weighs the ledger in one hand. "That is the end of the wood road. The other two have no end anybody here has seen."',
+    'The hall gate of {town}, by evening, with the grange still held behind you. The gate captain shuts the wicket. "One old man and a cellar. There are two more roads out of here, and neither is as short as that one."'),walk:'a long walk'});

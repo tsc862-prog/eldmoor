@@ -23,7 +23,7 @@
 // they reach, a step out of a foe's reach gives it a free blow (cr.free, settled with the foes' turn), a Mage's read is a blast on a square,
 // a ward reaches those near, tending needs their side, and a withdrawal needs the stair. GEO.ON=false, or a room with no grid, plays as before.
 import {rnd,ri,pickA} from '../core/rng.js';
-import {CRYPT,CRYPTS} from '../world/map.js';
+import {CRYPT,CRYPTS,LVL_CAP} from '../world/map.js';
 import {standAt} from '../world/passable.js';
 import {BESTIARY,VARIANTS,ROLES,heroTag,baseId} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
@@ -98,7 +98,7 @@ export function startCrawl(g){if(!crawlFits(g))return false;
 // the Fellowship's five-slot company meets the rooms as written.
 const scaleN=(n,cr)=>{const C=companyById(cr.co);return !C||C.slots||!cr.crew?n:Math.max(1,Math.round(n*cr.crew/5))};
 // A site's room (#69) names its foes' level outright (alvl, plus the site's growth); the Crypt's rooms are relative to the party.
-function buildFoes(room,lvl,cr,D){const out=[],fl=room.alvl!=null?room.alvl+((D&&D.grow)||0):lvl+(room.lvl||0);
+function buildFoes(room,lvl,cr,D){const out=[],fl=Math.min(LVL_CAP,room.alvl!=null?room.alvl+((D&&D.grow)||0):lvl+(room.lvl||0));
   for(const f of room.foes)for(let k=0;k<scaleN(f.n,cr);k++){const h=hitsOf(f);out.push({type:f.type,name:foeName(f),hp:h,hits:h,atk:f.atk||1,lvl:Math.max(1,fl)})}
   return out}
 // A foe above the party hits harder in a site room (its level is its own); the Crypt's rooms keep their written hit.
