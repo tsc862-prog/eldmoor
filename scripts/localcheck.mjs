@@ -358,6 +358,17 @@ ok(h0.heroes.length === 2, `two agent heroes: ${hA.name} #${hA.id}, ${hB.name} #
   ok(c4 === 0 && /> status\(\)/.test(txt.out()) && /4 tool calls \(1 rejected\)/.test(txt.out()), 'a model that writes its calls as text plays too');
 }
 world.p.kill();
+const sysOf = b => String((b.messages && b.messages[0] && b.messages[0].content) || '');
+ok(seen.length > ctxFrom && !seen.slice(ctxFrom).some(b => /Roads between lands|several lands/.test(sysOf(b))), 'on a world of one map no runner prompt speaks of lands (#1013)');
+
+console.log('a local runner on a world with a road to another land (#1013)');
+{
+  const lport = port + 702, LB = `http://127.0.0.1:${lport}`, from = seen.length, lw = start(['scripts/play-headless.mjs', '--port', String(lport), '--agents', '1', '--quiet', '--speed', '8', '--world', join(tmp, 'world-lands.json')], {wait: /^\[play\] headless world at /m, env: {...childEnv, ELDMOOR_WORLD: 'testlinka'}});
+  await lw.until; const [h] = (await health(LB)).heroes;
+  const run = start(['scripts/agent-player.mjs', '--url', LB, '--hero', String(h.id), '--provider', 'ollama', '--model', 'mock-tools:1b', '--max-turns', '1', '--new', '--ollama-url', OLLAMA]), code = await run.done;
+  ok(code === 0 && seen.slice(from).some(b => sysOf(b).includes('Roads between lands: places lists roads_out')), 'its standing orders carry the short line on roads between lands' + (code ? '\n' + run.out().slice(-800) : ''));
+  lw.p.kill();
+}
 
 console.log('npm run fellowship -- --provider ollama (headless Fellowship, no API key)');
 {

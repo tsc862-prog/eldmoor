@@ -30,3 +30,4 @@
 - [Comment code check](comment_code_check.md): #935 trailing // hides code; rulescheck section 8; body margin overflow
 - [Cinema view](cinema_view.md): #979 full-window view, cam.director hooks, director scales, browser test traps
 - [Dungeon loot](dungeon_loot.md): #976 clear record on dunRec rows and site.paid, looted marks, Took lines, shoot --looted
+- [World map](world_map.md): #1013 slice 6 screen, key M, ATLAS table, what may be shown, atlasart.js

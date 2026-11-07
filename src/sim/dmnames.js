@@ -10,6 +10,7 @@
 import {S} from './state.js';
 import {ZONES,CITY,LANDMARKS,dist} from '../world/map.js';
 import {focuses} from './dmfocus.js';
+import {farHint} from './atlas.js';
 
 export const NAMES={NEAR:10,HINT:5,LETTERS:.34};
 export const bareName=s=>String(s==null?'':s).trim().toLowerCase().replace(/^the\s+/,'');
@@ -30,4 +31,4 @@ function edits(a,b){let p=Array.from({length:b.length+1},(_,i)=>i);
 export function nameHints(s,n=NAMES.HINT){const b=bareName(s),W=new Set(words(s)),L=nearFirst(all());
   const close=L.map((o,i)=>{const nm=bareName(o.name),sh=words(o.name).filter(w=>W.has(w)).length,e=edits(b,nm)/Math.max(b.length,nm.length,1);return {o,sh,e,i}}).filter(x=>x.sh>0||x.e<=NAMES.LETTERS).sort((x,y)=>y.sh-x.sh||x.e-y.e||x.i-y.i);
   const out=close.map(x=>x.o.name);for(const o of L)if(out.length<n&&!out.includes(o.name))out.push(o.name);return out.slice(0,n)}
-export function nameHint(s,o={}){const t=String(s==null?'':s).trim().slice(0,40);return ' Real names near the companies: '+nameHints(t).join(', ')+'.'+(o.mark?' "'+t+'" is not on the map yet: mark_place {kind, near, name: "'+t+'", reason} puts it there, then use that name.':'')}
+export function nameHint(s,o={}){const t=String(s==null?'':s).trim().slice(0,40),far=farHint(t);if(far)return far;return ' Real names near the companies: '+nameHints(t).join(', ')+'.'+(o.mark?' "'+t+'" is not on the map yet: mark_place {kind, near, name: "'+t+'", reason} puts it there, then use that name.':'')}

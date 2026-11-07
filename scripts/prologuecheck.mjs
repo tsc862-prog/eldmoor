@@ -76,6 +76,7 @@ ok(pickRow(CITY[0].name, CITY[0].fac, new Set(PROLOGUES.filter(r => r.towns && r
   ok(S.places.some(p => p.id === s.place && p.kind === 'site'), 'it stands on the map');
   const L = SLT.slotHeroes(F); ok(L.every(a => Math.hypot(a.x - s.x, a.y - s.y) < 5), 'the company stands at the mouth');
   const sc = T.openScenes().find(x => x.kind === 'opening'), fr = JSON.stringify(sc.frame); ok(fr.includes('walk from ' + hall) && sc.ctx.prologue, 'the frame is the scenario');
+  ok(until(() => (sc.calls || []).some(c => c.kind === 'frame' && c.done), 2000) && !/walk from/.test(sc.calls.find(c => c.kind === 'frame').text), 'a scripted fill adds its own line, not the frame again (#966)');
   ok(!fr.includes(PROLOGUES.find(r => r.id === s.prologue).dm.slice(0, 30)), 'what lies behind it is the DM\'s alone');
   ok(until(() => kindOpen('crawl'), 20000), 'the crawl opens after the introductions, with no vote');
   ok(F.prologue.phase === 'below' && s.group && s.group.crawl, 'the company is below');
@@ -98,6 +99,7 @@ ok(pickRow(CITY[0].name, CITY[0].fac, new Set(PROLOGUES.filter(r => r.towns && r
       ok(Math.hypot(m.x - g.x, m.y - g.y) <= 12 + PRO.FAR + 1, c.name + ': within the longest walk')}
     ok(until(() => kindOpen('opening'), 2000), c.name + ': session zero opens'); const s = S.sites && S.sites.list.find(x => x.prologue);
     ok(s && F.prologue && F.prologue.town === c.name && Math.hypot(s.x - m.x, s.y - m.y) < 1, c.name + ': the delve is raised at that mouth');
+    if (s) {const at = lives().map(a => a.x + ',' + a.y); ok(lives().every(a => clearLine(s, a)) && new Set(at).size === at.length, c.name + ': everyone stands on the near side of the mouth, each on their own spot (#965): ' + at.join(' '))}
     ok(until(() => kindOpen('crawl'), 20000) && F.prologue && F.prologue.phase === 'below', c.name + ': the company goes down');
     ok(until(() => !F.prologue, 400000), c.name + ': the delve ends'); const gt = c.gate || c.qg; ok(lives().every(a => Math.hypot(a.x - gt.x, a.y - gt.y) < 8), c.name + ': home at its own gate');
   }

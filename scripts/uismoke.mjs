@@ -1820,5 +1820,76 @@ console.log('cinema view');
     ok(low<r-.5,'the road brings a beat: it pulls out ('+low.toFixed(2)+')');ok(Math.abs(late-r)<.1,'and eases back in with the company still walking ('+late.toFixed(2)+')');for(const a of heroes)a.moving=false}
   for(const k of keep){k.a.x=k.x;k.a.y=k.y;k.a.state=k.st;k.a.hidden=k.hid}
   key('Escape');ok(!C.cinemaOn(),'left')}
+// ---- #1013 slice 6: the world map: a one-map world has none; it opens, closes, leaves the page as it was, and shows only what the company knows ----
+console.log('world map');
+{const {S}=await import('../src/sim/index.js'),WM=await import('../src/ui/worldmap.js'),{ATLAS}=await import('../src/data/worldmap.js'),{WORLD_ID}=await import('../src/world/spec.js'),C=await import('../src/ui/cinema.js'),{cam}=await import('../src/render/draw.js');
+  const btn=$('vAtlas'),body=document.body,co=SLT.followed(),heroes=SLT.members(co),leader=SLT.leaderOf(co)||heroes[0];
+  const key=(k,x={})=>{let stop=false;for(const f of document._ls.keydown||[]){if(stop)break;f({key:k,target:body,preventDefault(){},stopPropagation(){},stopImmediatePropagation(){stop=true},...x})}};
+  const page=()=>JSON.stringify({view:cam.view,zoom:cam.zoom,camX:cam.camX,camY:cam.camY,body:body.className,order:[...$('side').children].map(n=>n.id||n.className),rows:$('felbody').children.length,scroll:$('side').scrollTop});
+  ok(btn&&/\bM\b/.test(btn.textContent)&&btn.parentNode===$('vMap').parentNode,'the View group has the world map button and it shows its key: '+(btn&&btn.textContent));
+  ok(btn.hidden&&!WM.worldMapReady(),'a world of one map hides the button');key('m');ok(!WM.worldMapOn(),'and the key does nothing there');
+  ATLAS[WORLD_ID]={lands:[{id:WORLD_ID,x:0,y:0},{id:'testlinkb',x:140,y:0},{id:'hollin',x:140,y:90},{id:'planned',x:0,y:90,w:60,h:40}],roads:[{from:WORLD_ID,to:'testlinkb'},{from:WORLD_ID,to:'planned'}]};
+  uiSlow();ok(!btn.hidden&&WM.worldMapReady(),'a campaign in the table shows the button');
+  const keep=heroes.map(a=>({a,lore:a.lore})),other=S.agents.find(a=>!heroes.includes(a)&&a.state!=='dead'),otherLore=other&&other.lore;
+  for(const a of heroes)a.lore={c:{},p:{}};if(other)other.lore={c:{},p:{Linkb:{how:'told'},Mooring:{how:'told'},'The Hollin Reach':{how:'told'}}}; // a stranger's lore is not the company's
+  const was=page();btn.focus();btn.click();const root=$('worldmap'),text=()=>root.textContent;
+  ok(WM.worldMapOn()&&!root.hidden&&root.parentNode===body&&root.getAttribute('role')==='dialog','the button opens it, over the page');
+  ok(document.activeElement===$('wmClose'),'focus moves to Close');ok(/Esc/.test($('wmClose').textContent),'Close says its key');
+  const v0=WM.atlasView(),st=id=>v0.lands.find(l=>l.id===id).state;
+  ok(st(WORLD_ID)==='here'&&st('testlinkb')==='unknown'&&st('hollin')==='unknown'&&st('planned')==='unknown','the map on screen is here, the rest unknown: '+v0.lands.map(l=>l.state));
+  ok(!/Linkb|Mooring|Hollin|Oldstead|planned/.test(text()),'no name of an unknown land, built or planned, reaches the screen');
+  ok((text().match(/Uncharted/g)||[]).length===3,'three outlines say Uncharted');
+  ok(v0.lands.find(l=>l.id==='testlinkb').band==null&&v0.lands.find(l=>l.id==='testlinkb').spots.length===0,'and carry no levels or places');
+  ok(!!root.querySelector('.wmco')&&!root.querySelector('.wmco').hidden&&root.querySelector('.wmtag').textContent.length>0,'the company has its marker: '+root.querySelector('.wmtag').textContent);
+  ok(/Key/.test(text())&&/Been there/.test(text())&&/Heard of/.test(text())&&/Unknown/.test(text()),'the key names the states');
+  // heard of: the name a member has, and no more
+  heroes[0].lore.p.Linkb={how:'told'};uiSlow();
+  {const l=WM.atlasView().lands.find(x=>x.id==='testlinkb');ok(l.state==='heard'&&l.label==='Linkb'&&!l.band&&!l.blurb&&!l.spots.length,'a name a member heard makes a land heard of, with nothing else');ok(/Linkb/.test(text())&&!/Mooring/.test(text()),'and only that name shows')}
+  // been there: S.maps by its key alone
+  S.maps={testlinkb:{left:0,places:[{name:'SECRETHOLD'}],agents:[],secret:'SECRETNOTE'}};uiSlow();
+  {const l=WM.atlasView().lands.find(x=>x.id==='testlinkb');ok(l.state==='been'&&!!l.band&&!l.spots.length,'a frozen map is been there, its unknown town still unnamed');ok(!/SECRET|Mooring/.test(text()),'what lies frozen on it never shows')}
+  heroes[0].lore.p.Mooring={how:'been'};uiSlow();ok(/Mooring/.test(text()),'a town the company knows is named');
+  // patched, not rebuilt
+  {const l=root.querySelector('[data-land]');l._same=1;leader.x+=1;const left=root.querySelector('.wmco').style.left;uiSlow();ok(root.querySelector('[data-land]')._same===1,'the lands are patched, not rebuilt on the tick');ok(root.querySelector('.wmco').style.left!==left,'the marker follows the company');leader.x-=1}
+  // picking a land
+  {const b=root.querySelector('[data-land="testlinkb"]');b.click();ok(/Levels/.test(root.querySelector('.wminfo').textContent)&&/Linkb/.test(root.querySelector('.wminfo').textContent),'a click reads that land in the side column')}
+  key('c');ok(!C.cinemaOn(),'the keys of the view underneath wait');key('Escape');
+  ok(!WM.worldMapOn()&&root.hidden,'Esc closes it');ok(document.activeElement===btn,'focus goes back to the button');ok(page()===was,'the page is as it was');
+  key('m');ok(WM.worldMapOn(),'M opens it');key('M');ok(!WM.worldMapOn(),'M closes it');key('m',{target:{tagName:'INPUT'}});ok(!WM.worldMapOn(),'typing M in a field is left alone');key('m',{ctrlKey:true});ok(!WM.worldMapOn(),'Ctrl+M is left alone');key('m',{repeat:true});ok(!WM.worldMapOn(),'a held key does not flicker it');
+  // over the cinema view
+  key('c');ok(C.cinemaOn(),'in the cinema view');ok(!$('cinAtlas').hidden&&/\bM\b/.test($('cinAtlas').textContent),'the cinema bar has the button');$('cinAtlas').click();ok(WM.worldMapOn(),'and it opens the map');
+  key('Escape');ok(!WM.worldMapOn()&&C.cinemaOn(),'Esc shuts the map and leaves the cinema view open');key('Escape');ok(!C.cinemaOn(),'the next Esc leaves the view');
+  delete S.maps;delete ATLAS[WORLD_ID];for(const k of keep)k.a.lore=k.lore;if(other)other.lore=otherLore;uiSlow();ok(btn.hidden,'and the button goes again with the campaign')}
+// ---- #1013 slice 4: the page follows a map switch: the road bar, the picker, the selection, the cinema view, the fade's beats. Last, as it leaves the smoke on another map ----
+console.log('map switch');
+{const {renderRoad}=await import('../src/ui/mapswitch.js'),{cam,mapArrived}=await import('../src/render/draw.js'),{crossingView,S}=sim,{switchMap}=await import('../src/sim/mappack.js'),M=await import('../src/world/map.js');
+  const C=await import('../src/ui/cinema.js'),F=await import('../src/render/roadfade.js'),{regionList}=await import('../src/ui/region.js');
+  const co=SLT.followed(),bar=()=>$('roadbar');
+  ok(!!co,'a company to take the road');renderRoad();ok(bar()&&bar().hidden,'with no road named the bar stays hidden');
+  const R0=co.road;co.road={exit:'x',by:co.ids[0],at:1,hold:{k:'far',text:'The road waits: Ann is out of shouting range.',away:[],since:1}};renderRoad();
+  ok(!bar().hidden&&/The road waits: Ann/.test(bar().textContent),'the bar reads crossingView(): what the road waits on: '+bar().textContent);ok(crossingView().waits===co.road.hold.text,'the same words as the DM sees');
+  co.road.phase='table';renderRoad();ok(bar().hidden,'at the table the Table banner says it');delete co.road;if(R0)co.road=R0;renderRoad();ok(bar().hidden,'the road dropped: the bar goes');
+  // a hero of the land left behind, a region picked, the cinema view open
+  const off=S.agents.find(a=>a.state!=='dead'&&!co.ids.includes(a.id)&&a.company==null);select(off);
+  const was=[...$('vReg').querySelectorAll('option')].length;cam.region=1;C.enterCinema();
+  const {MOBS}=await import('../src/data/mobs.js'),mem0=S.agents.find(a=>a.id===co.ids[0]);mem0.quest={type:Object.keys(MOBS)[0],need:6,have:2}; // a hunt taken on the land left behind
+  const WMs=await import('../src/ui/worldmap.js'),{ATLAS:AT}=await import('../src/data/worldmap.js'),{WORLD_ID:WID}=await import('../src/world/spec.js');AT[WID]={lands:[{id:WID,x:0,y:0}]};ok(WMs.openWorldMap(),'the world map open as the company crosses');
+  const to='testlinka';ok(switchMap(to)&&M.MAP_ID===to,'the map switches under the page, with no reload');ok(cam.region==null,'the picked region goes with the land');
+  mapArrived('aim');const opts=[...$('vReg').querySelectorAll('option')].map(o=>o.textContent);
+  ok(opts.length===regionList().length+1&&opts.slice(1).join()===M.ZONES.join()&&was!==opts.length,'the region list is rebuilt: '+opts.join(', '));
+  ok(co.ids.includes(cam.sel&&cam.sel.id),'a hero left frozen on the old map is no longer selected: the company is');
+  mem0.quest.type='nothing-here';select(mem0);ok(true,'a member whose hunt names a creature of the land left behind still opens in the hero panel');delete mem0.quest;
+  ok(cam.director.fade===1,'the cinema view: the director starts over in the dark');mapArrived('shown');ok(cam.director.fade===1,'and fades up when the picture is back');
+  WMs.renderWorldMap();{const land=$('worldmap').querySelectorAll('.wmbig'),v=WMs.atlasView();ok([...land].some(n=>/Linka/.test(n.textContent))&&v.lands.find(l=>l.id==='testlinka').state==='here'&&v.lands.find(l=>l.id===WID).state==='been','the world map follows: the land in its panel is the new one, the old one is been there: '+[...land].map(n=>n.textContent).join(', '))}
+  ok(!!WMs.atlasView().marker&&WMs.atlasView().marker.x<=WMs.atlasView().lands.find(l=>l.id==='testlinka').x+32,'and the company\'s marker stands on it');WMs.closeWorldMap();delete AT[WID];
+  uiFast();uiSlow();ok(/Linka Mead/.test($('cinema').querySelector('.cinz').textContent),'the clock names the land on screen: '+$('cinema').querySelector('.cinz').textContent);
+  C.leaveCinema();ok(cam.camX<=32*16&&cam.camY<=24*16,'leaving the view does not put the camera back on the old map ('+Math.round(cam.camX)+', '+Math.round(cam.camY)+')');
+  // the beats, on a fake clock and a fake canvas
+  const real=performance.now,ctx=new Proxy({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)})},{get:(t,k)=>k in t?t[k]:()=>{},set:(t,k,v)=>{t[k]=v;return true}}),cv={width:1280,height:720,getContext:()=>ctx};let now=0,aims=0,shown=0;performance.now=()=>now;
+  const steps=[],pic=document.createElement;document.createElement=t=>t==='canvas'?{width:0,height:0,getContext:()=>ctx}:pic.call(document,t);
+  const at=M.EXITS[0];F.beginFade(cv);ok(F.fading()&&F.fadeBeat()==='out','a switch starts the fade');
+  try{for(let i=0;i<1200&&F.fading();i++){now+=16;F.fadeFrame(ctx,cv,()=>{aims++;return {x:at.x,y:at.y}},()=>[0,0,1,1],()=>{shown++;return false});const b=F.fadeBeat();if(b&&steps[steps.length-1]!==b)steps.push(b)}}catch(e){ok(false,'the fade ran: '+e.message)}
+  performance.now=real;document.createElement=pic;
+  ok(steps.join()==='out,dark,lift,in','the beats come in order: '+steps.join());ok(aims===1&&shown===1,'the camera is aimed once, the picture handed back once');ok(!F.fading(),'and it ends')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

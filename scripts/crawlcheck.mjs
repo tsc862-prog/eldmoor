@@ -333,10 +333,12 @@ if (argv[0] === '--world-child') {
     sok(!CRYPT.group && !S.table && R.some(a => a.state !== 'dead') && R.filter(a => a.state !== 'dead').every(a => a.state === 'return'), 'survivors go home, group and table are free');
   }
   {
-    const W = descend(Math.min(14, LVL_CAP)); const saved = CRYPT.rooms[0], orig = JSON.stringify(saved); // foes stop at a chapter map's top band, so its party does too
+    let W = descend(Math.min(14, LVL_CAP)); const saved = CRYPT.rooms[0], orig = JSON.stringify(saved); // foes stop at a chapter map's top band, so its party does too
     CRYPT.rooms[0] = {...saved, foes: [{type: 'tombskit', n: 14, hits: 4}], hit: 4, rounds: 8};
     try {
       crawl(W, {act: () => 'strike', maxS: 300});
+      // Survivors can fall back and withdraw instead of dying (a dice outcome, as for the clear above): allow up to 3 fresh descents for a full wipe.
+      for (let t = 1; t < 3 && !W.every(a => a.state === 'dead'); t++) {W = descend(Math.min(14, LVL_CAP)); crawl(W, {act: () => 'strike', maxS: 300})}
       sok(W.every(a => a.state === 'dead') && W.every(a => /felled by/.test(a.cause || '')), 'a wipe: everyone falls and each death names the foe');
       sok(!CRYPT.group && !(S.table && S.table.kind === 'crawl'), 'after the wipe the group and the crawl scene are cleared'); // a recruit's own trouble in the world may open a scene by now
     } finally {CRYPT.rooms[0] = JSON.parse(orig)}
