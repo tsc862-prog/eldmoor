@@ -58,12 +58,15 @@ export const ORDERS_SHORT_HAND = [
 // The local variant adds the names-only map (#640); SHORT_BUDGET limits the hand-written part, the map is generated.
 export const ORDERS_SHORT = ORDERS_SHORT_HAND.replace(ORDERS_TAIL, toolMap('hero', true) + '\n' + ORDERS_TAIL);
 
+// Lands (#1013): only a world with a road to another map hears of them (status.land); one map, not a word.
+export const LAND_ORDERS = 'Roads between lands: this land is one of several. places lists the roads out you know (roads_out) and what lies past them; look names one near you, list_jobs gives the gate\'s word, and anyone in town may be asked. move_to or lead_to a road, or a place you have heard of past one, walks to that road, one land at a time. At the road the whole company decides at the table, all or none. What you leave behind waits there: orders, aims and bounties do not cross, and no courier does.';
+export const LAND_ORDERS_SHORT = 'Roads between lands: places lists roads_out; move_to a road, or a place past one, walks there; the company decides at the table.';
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const BLOCK = new RegExp('\\n?' + esc(ORDERS_HEAD) + '[\\s\\S]*?' + esc(ORDERS_TAIL));
 // Put the situations block into a prompt: swapped if one is there, else added before a persona block (pacing.mjs) or at the end.
 // local: the short variant for a local (Ollama) mind.
-export function withSituationOrders(sys, local = false, sides = null) {
-  const s = String(sys || ''), block = ordersFor(local ? ORDERS_SHORT : ORDERS_FULL, sides);
+export function withSituationOrders(sys, local = false, sides = null, land = null) {
+  const s = String(sys || ''), block = ordersFor(local ? ORDERS_SHORT : ORDERS_FULL, sides, land);
   if (BLOCK.test(s)) return s.replace(BLOCK, () => '\n' + block);
   const i = s.indexOf('\nYOUR PERSONA');
   return i >= 0 ? s.slice(0, i) + '\n' + block + s.slice(i) : s + '\n' + block;
@@ -72,4 +75,5 @@ export function withSituationOrders(sys, local = false, sides = null) {
 // Sides as lore (#1025): the orders of a world with no sides. Phrase swaps, so a world with sides reads what it always read.
 const LORE_ORDERS = [['Honour among your own: challenge {hero, to: "first blood" or "yield", text} settles a quarrel with a hero of your faction within 6 tiles', 'Honour among friends: challenge {hero, to: "first blood" or "yield", text} settles a quarrel with a hero within 6 tiles'],
   ['A company puts it to the vote with propose crypt or raid; alone, go_crypt and join_raid, and answer_call when someone has asked you.', 'A company puts it to the vote with propose crypt or raid; alone, go_crypt, and answer_call when someone has asked you. A raid is a company\'s own.']];
-export const ordersFor = (text, sides) => sides === 'lore' ? loreText(LORE_ORDERS.reduce((t, [a, b]) => t.split(a).join(b), text)) : text; // loreText: the tool map inside the orders quotes the tools
+const withLands = (text, land) => land ? text.replace(PRIORITY_HEADING, (text === ORDERS_SHORT ? LAND_ORDERS_SHORT : LAND_ORDERS) + '\n' + PRIORITY_HEADING) : text;
+export const ordersFor = (text0, sides, land = null) => {const text = withLands(text0, land); return sides === 'lore' ? loreText(LORE_ORDERS.reduce((t, [a, b]) => t.split(a).join(b), text)) : text}; // loreText: the tool map inside the orders quotes the tools

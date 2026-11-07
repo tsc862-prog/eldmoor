@@ -24,7 +24,7 @@
 // In-game channels (#123): the watcher's questLog says who made a job (from); the hero's own view (questsView, the
 // quests tool) never does, and nothing here carries a DM note, a lever reason or a staged scene's reason.
 import {S} from './state.js';
-import {oathZoneName,frozenMaps} from './atlas.js';
+import {oathZoneName,frozenMaps,mapName} from './atlas.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // sworn oaths, and the thread on offer (#800)
 import {MOBS} from '../data/mobs.js';
 import {ZONES,dist} from '../world/map.js';
@@ -146,7 +146,7 @@ export function seenQ(q){const o={id:q.id,kind:KIND_SEEN(q),title:q.title,status
   if(q.giver)o.giver=q.giver;if(q.where)o.where=q.where;o.objective=q.objective;if(q.progress)o.progress=q.progress.have+'/'+q.progress.need;if(q.reward)o.reward=q.reward;
   if(q.ends!=null&&q.status!=='done'&&q.status!=='failed'&&q.status!=='abandoned'&&q.status!=='expired')o.ends_in_hours=hoursTo(q.ends);return o}
 // Jobs set aside on a land the hero left (#1013): named, with where they wait. They are taken up on the spot, on return.
-function elsewhere(a){const L=frozenMaps().flatMap(m=>(m.adventures||[]).filter(v=>v.phase==='active'&&v.held===a.id).map(v=>v.title));return L.length?{left_behind:L}:{}}
+function elsewhere(a){const Y=a.questsAway||{},L=[...frozenMaps().flatMap(m=>(m.adventures||[]).filter(v=>v.phase==='active'&&v.held===a.id).map(v=>v.title)),...Object.keys(Y).map(id=>Y[id].text+', back in '+mapName(id))];return L.length?{left_behind:L}:{}}
 export function questsView(a){const L=questLog(a),fq=L.active.find(q=>q.focus);
   return {focus:fq?fq.title:null,active:L.active.map(seenQ),offered:L.offered.length?L.offered.map(seenQ):undefined,done:L.done.slice(0,QL.VIEW_DONE).map(seenQ),
     holding:heldCount(a)+'/'+QL.MAX,...elsewhere(a)}}

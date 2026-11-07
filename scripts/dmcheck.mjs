@@ -1200,6 +1200,7 @@ console.log('DM visibility: hear, carries/quests/knows, survey, world_standing')
   ok(mine && mine.carries && mine.knows && hn.heroes.filter(h => !h.fellowship).every(h => !h.carries), 'heroes_near gives company members carries/quests/knows and background heroes the old line');
   ok(JSON.stringify(m1).length < 4000, 'a member view stays small (' + JSON.stringify(m1).length + ' bytes)');
   r = dmAct('survey', {near: 'fellowship'});
+  {const w = dmAct('when', {trigger: 'enter_map', on: {map: 'Elsewhere'}, action: 'narrate', args: {near: 'table', text: 'x'}, reason: 'x'}), st = dmAct('dm_status'); ok(!w.ok && /one land/.test(w.error) && !('map' in r) && !('roads' in st.campaign) && !('map' in dmAct('regions')), 'one map, not a word of lands: survey, regions and dm_status.campaign as before, and enter_map refused in words (#1013)')}
   ok(r.ok && r.region && r.legal_spots.length >= 1 && r.legal_spots.length <= 6 && Array.isArray(r.roads) && Array.isArray(r.towns_and_landmarks) && r.radius === 12, 'survey near the Fellowship: region, roads, places and ' + (r.legal_spots && r.legal_spots.length) + ' legal spots');
   ok(dmAct('survey', {near: 'x'}).ok === false && dmAct('survey', {near: A.name, radius: 99}).radius === 30 && dmAct('survey', {near: A.name, radius: 1}).radius === 4, 'survey radius is held to 4-30 and an unknown place is refused');
   const {spotErr} = await import('../src/sim/levers.js'), {dist} = await import('../src/world/map.js');

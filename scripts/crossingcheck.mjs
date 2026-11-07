@@ -627,6 +627,94 @@ if (mode === '--voice') { // the DM at both tables; what it reads
   process.exit(fail ? 1 : 0);
 }
 
+if (mode === '--know') { // what heroes and the DM know of other maps (slice 5): a mock leader hears of the far land, orders the walk, crosses, and the DM follows
+  const X = await crossTools(), {S, M, home, CO, TB, act, steps, until, world, exit, at, scene, opened, answers, closed, dmAct, knows, json} = X;
+  const {MAPS} = await import('../src/world/spec.js'), L = await import('../src/sim/lore.js'), A = await import('../src/sim/atlas.js'), DA = await import('./dm-agent.mjs'), OR = await import('./orders.mjs');
+  const far = exit().to.map, farName = MAPS[far].name, farTown = MAPS[far].towns[0].name, third = 'testlinkc', thirdName = MAPS[third].name, thirdTown = MAPS[third].towns[0].name;
+  const inTown = (mem) => {const c = M.CITY[0]; for (const a of mem) {a.x = c.gate.x - 2; a.y = c.gate.y; a.state = 'town'; a.pq = []; a.dest = null; a.zone = M.zoneAt(a.x, a.y)}};
+  const crossNow = (F, mem, lead, target) => {const r = act(lead, 'move_to', {target}); if (!r.ok) return r; const was = M.MAP_ID; at(mem, F.road ? A.exitById(F.road.exit) : exit()); if (!opened(F, 'crossing')) return {ok: false, error: 'no scene'}; answers(F, 'go'); if (!until(() => M.MAP_ID !== was, 3600)) return {ok: false, error: 'no crossing'}; opened(F, 'farside'); answers(F, 'look'); closed(F); return r};
+
+  console.log('\nheroes hear of other lands');
+  {const {F, mem, lead} = world(); inTown(mem); act(lead, 'look');
+    ok(act(lead, 'look').land === MAPS[home].name && act(lead, 'status').land === MAPS[home].name, 'look and status name the land they stand in');
+    const r0 = act(lead, 'move_to', {target: farTown}); ok(!r0.ok && !F.road, 'a far town nobody has told them of is refused: ' + (r0.error || '').slice(0, 60));
+    {const v = act(lead, 'look').roads_out; ok(v && v[0].road === exit().name && !v[0].leads_to && /gate will know/.test(v[0].word), 'in town look names the road and not what lies past it: ' + JSON.stringify(v))}
+    {const j = act(lead, 'list_jobs'), r = j.roads_out[0]; ok(r.road === exit().name && r.leads_to === farName && r.beyond.includes(farTown) && /road|test|blades|going/.test(r.word), 'list_jobs gives the gate\'s word: ' + JSON.stringify(r));
+      ok(knows(lead, farName) && knows(lead, farTown) && !knows(lead, thirdName), 'and it teaches the land past the road and its first town, no further');
+      ok(/gate captain/.test(JSON.stringify(act(lead, 'lore', {about: farTown}).places)), 'the lore tool says who said so')}
+    {const p = act(lead, 'places'), q = act(lead, 'places', {kind: 'road'}); ok(p.roads_out[0].road === exit().name && /tiles/.test(p.roads_out[0].way) && /walks to that road/.test(p.use), 'places lists the roads the hero knows: ' + JSON.stringify(p.roads_out[0]));
+      ok(q.ok && !q.places.length && q.roads_out.length === 1, 'places {kind: road} lists only them'); ok(act(lead, 'places', {about: farTown}).roads_out.length === 1, 'and about finds a place past one')}
+    {const b = mem.find(a => a !== lead); ok(!knows(b, farTown), 'a companion who has not read the gate has not heard'); L.hear(b, 'I hear ' + farTown + ' has good walls.', lead.name); ok(knows(b, farTown), 'until a line names it');
+      const c = mem.filter(a => a !== lead && a !== b)[0], cp = S.npcs.find(p => p.role === 'captain'); c.x = cp.x; c.y = cp.y + .5; const t = act(c, 'talk', {target: 'captain', text: 'Where does the east road lead?'}); ok(knows(c, farName), 'a townsperson asked about the road answers: ' + JSON.stringify(t).slice(0, 140));
+      const d = dmAct('seed_rumour', {town: M.CITY[0].name, text: 'They say the walls of ' + farTown + ' are worth the walk.', about: farTown, reason: 'to draw them on'}); ok(d.ok, 'the DM may seed a rumour about a place on another land: ' + (d.error || ''))}
+
+    console.log('the walk and the crossing');
+    const r = act(lead, 'move_to', {target: farTown}); ok(r.ok && r.going === exit().name && F.road && F.road.exit === exit().id && F.road.bound === farTown, 'move_to ' + farTown + ' goes to the right road: ' + r.note); ok(r.note.includes(farName) && r.note.includes(exit().name), 'and says so in words');
+    {const b = mem.find(a => a !== lead), h = act(b, 'hunt', {where: farTown}); ok(!h.ok && /not in this land/.test(h.error), 'hunt {where} refuses a land it cannot reach: ' + (h.error || '').slice(0, 70))}
+    {const st = dmAct('dm_status'), R = st.campaign.roads[0]; ok(R.to === farName && R.levels === '1-5' && R.towns.includes(farTown) && R.then.includes(thirdName), 'dm_status.campaign says what is next along the road: ' + JSON.stringify(R));
+      const s = dmAct('survey', {near: M.CITY[0].name}), g = dmAct('regions'); ok(s.map === MAPS[home].name && /live map/.test(s.map_note) && g.map === MAPS[home].name && g.roads_out[0].to === farName && g.roads_out[0].open, 'survey and regions name the map, and that it is the live one');
+      const n = dmAct('survey', {near: farTown}), m = dmAct('mark_place', {kind: 'ruin', near: farTown, reason: 'x'}), h = dmAct('hooks', {town: farTown}), w = dmAct('narrate', {near: farTown, text: 'Far off.'}); ok([n, m, h, w].every(x => !x.ok && x.error.includes(farName) && /live map/.test(x.error)), 'near refuses a place of another land and names the land: ' + n.error.slice(-170));
+      const e1 = dmAct('when', {trigger: 'enter_map', on: {map: farName, company: 'fellowship'}, action: 'narrate', args: {near: farTown, text: 'Bells ring in the valley as {who} comes down the road.'}, reason: 'the road\'s end'}); ok(e1.ok && e1.hours === 240 && /read then/.test(e1.note), 'when enter_map takes a place of that land, read when it fires: ' + (e1.error || e1.trigger));
+      const e2 = dmAct('when', {trigger: 'enter_map', on: {map: 'Nowhere Land'}, action: 'narrate', args: {near: 'table', text: 'x'}, reason: 'x'}); ok(!e2.ok && /no land called/.test(e2.error), 'a land the roads do not reach is refused in words');
+      const e3 = dmAct('when', {trigger: 'after_hours', on: {h: 3}, action: 'narrate', args: {near: M.CITY[0].name, text: 'The bell tolls in the empty square.'}, reason: 'home'}); ok(e3.ok, 'a timed when with a place in its action');
+      const e4 = dmAct('when', {trigger: 'after_hours', on: {h: 72}, action: 'narrate', args: {near: lead.name, text: 'The wind turns.'}, reason: 'follows them'}); ok(e4.ok, 'and one that follows the company')}
+    lead.quest = {type: Object.keys((await import('../src/data/mobs.js')).MOBS)[0], need: 5, have: 2, at: 1}; const q0 = lead.quest; {const c = CO.companyOf ? null : null}
+    F.plans = [{id: 1, where: M.CITY[0].name, at: S.gameMin + 30, atText: 'noon', made: S.gameMin, by: lead.id, byName: lead.name, who: mem.map(a => a.id), whoNames: mem.map(a => a.name), status: 'open'}];
+    lead.lore.p['My Cairn'] = {how: 'own', mk: 1, x: 6, y: 6, zone: 0, at: 0, day: 1};
+    at(mem); ok(opened(F, 'crossing'), 'at the road the company is asked'); ok(!tableMentions(X, mem[0], farTown) || knows(mem[0], farTown), 'the frame names nothing they have not heard'); answers(F, 'go'); ok(until(() => M.MAP_ID === far, 3600), 'they cross');
+    ok(opened(F, 'farside'), 'the far side opens'); answers(F, 'look'); ok(closed(F), 'and closes');
+    ok((lead.playEv || []).some(e => e.text.includes(farTown) && /in this land/.test(e.text)), 'the leader is told the place it set out for is in this land');
+    until(() => (S.dmAgent.when.fired || []).some(x => x.tool === 'narrate' && x.ok), 600); {const f = S.dmAgent.when.fired.find(x => x.tool === 'narrate'); ok(f && f.ok && /comes to/.test(f.trigger), 'enter_map fires on arrival, on that land: ' + JSON.stringify(f))}
+    {const w = S.dmAgent.when, P = w.parked[home].list; ok(P.some(e => e.args && e.args.near === M.WORLD_ID) === false && P.length === 1 && P[0].args.near === MAPS[home].towns[0].name, 'the when with a place of the old land parks with it, unfired'); ok(w.list.some(e => e.args && e.args.near === lead.name), 'the one that follows the company goes with the DM');
+      ok(dmAct('dm_status').campaign.waiting_on_other_maps[MAPS[home].name] === 1, 'and the DM can see it waits')}
+    {const st = dmAct('dm_status').campaign; ok(st.map === far && st.visited.length === 2 && st.roads.find(x => x.to === MAPS[home].name).walked === true && !!st.empty_land, 'the DM\'s status follows them: ' + JSON.stringify(st).slice(0, 200))}
+
+    console.log('what does not cross');
+    {const s = act(lead, 'status'), q = act(lead, 'quests'); ok(s.quest === null && !lead.quest, 'the kill quest does not read as if it were here');
+      ok(q.left_behind.some(x => x.includes('2/5') && x.includes(MAPS[home].name)), 'the quest log says where it waits: ' + q.left_behind.join('; '))}
+    {steps(60 * 60); ok(F.plans[0].status === 'left' && !S.chronicle.some(e => /came and went/.test(e.parts.map(p => typeof p === 'string' ? p : p && p.t || '').join(''))), 'a meeting of the old land closes quietly: they are together, and nobody missed it');
+      ok(!CO.openThreads(F).some(t => t.kind === 'meeting'), 'and is no open thread')}
+    {delete F.camp; for (const a of mem) if (a.state === 'camp') a.state = 'hunt'; const r = act(lead, 'move_to', {target: 'My Cairn'}); ok(r.ok && r.going === exit().name, 'a mark of the old land walks to the road home, not to its old numbers: ' + r.going + ' ' + (r.error || ''));  ok(!act(lead, 'places').places.some(x => x.name === 'My Cairn'), 'and places gives it no way from here'); act(lead, 'move_to', {target: 'gate'})}
+
+    console.log('several roads on');
+    world(); }
+  {const {F, mem, lead} = world(); L.learnPlace(lead, thirdTown, 'told'); const r = act(lead, 'move_to', {target: thirdTown}); ok(!r.ok && /not how to get there/.test(r.error) && !F.road, 'a place past a land they know nothing of: heard of, and no way there: ' + (r.error || '').slice(0, 80));
+    L.learnPlace(lead, farName, 'told'); const r2 = act(lead, 'move_to', {target: thirdTown}); ok(r2.ok && r2.going === exit().name && F.road.bound === thirdTown && /2 lands on/.test(r2.note) && r2.note.includes(farName), 'once the land between is known the walk starts: ' + r2.note);
+    at(mem); ok(opened(F, 'crossing'), 'the first road'); answers(F, 'go'); ok(until(() => M.MAP_ID === far, 3600), 'crossed'); opened(F, 'farside'); answers(F, 'look'); closed(F);
+    ok((lead.playEv || []).some(e => e.text.includes(thirdTown) && e.text.includes('the north road')), 'the leader is told the next road in words');
+    const n = M.EXITS.find(e => e.id === 'north'), r3 = crossNow(F, mem, lead, thirdTown); ok(r3.ok && r3.going === n.name && M.MAP_ID === third, 'the same order on the next land takes the next road: ' + M.MAP_ID);
+    const homeTown = MAPS[home].towns[0].name, r4 = act(lead, 'move_to', {target: homeTown}); ok(r4.ok && /2 lands on/.test(r4.note) && r4.going === M.EXITS[0].name, 'and the way home is known, across the land between: ' + JSON.stringify(r4).slice(0, 300)); act(lead, 'move_to', {target: 'gate'});
+    ok(dmAct('dm_status').campaign.visited.length === 3, 'the DM has all three lands walked')}
+  {const {F, mem, lead} = world(); lead.quest = {type: Object.keys((await import('../src/data/mobs.js')).MOBS)[0], need: 5, have: 2, at: 1}; X.CR.cross(F, exit()); ok(!lead.quest && lead.questsAway[home], 'over: the quest waits'); while (TB.sceneFor(F)) {answers(F, 'look'); closed(F)} X.CR.cross(F, exit()); ok(lead.quest && lead.quest.have === 2 && !lead.questsAway, 'back: it is theirs again, count and all')}
+
+  console.log('what the runners are told');
+  {const st = dmAct('dm_status'), withL = OR.ordersFor(OR.ORDERS_FULL, null, farName), sys = DA.dmSystemPrompt(st); ok(withL.includes(OR.LAND_ORDERS) && !OR.ORDERS_FULL.includes('Roads between lands'), 'hero orders carry the lands only with a land to name');
+    ok(sys.includes(DA.DM_MAP_ORDERS) && sys.includes(DA.DM_EMPTY_LAND_ORDERS) && /enter_map/.test(DA.DM_MAP_ORDERS), 'the DM\'s orders say it may prepare the next land, and that an empty world\'s is its own to fill');
+    ok(DA.withDmMapOrders('old prompt', st).includes(DA.DM_MAP_ORDERS) && DA.withDmMapOrders(sys, st) === sys, 'an older session gets the line once')}
+  process.exit(fail ? 1 : 0);
+}
+function tableMentions(X, a, name) {const v = X.tableView(a); return !!v && String(v.frame).includes(name)}
+if (mode === '--hear') { // npm run lorecheck runs this: a far name is a place heard of, by the same ears
+  const X = await crossTools(), {M, act, world, exit, knows} = X, {MAPS} = await import('../src/world/spec.js'), L = await import('../src/sim/lore.js');
+  const far = MAPS[exit().to.map], town = far.towns[0].name, {mem, lead} = world(), b = mem.find(a => a !== lead);
+  ok(!knows(b, town) && !knows(b, far.name), 'nobody has heard of ' + town);
+  ok(L.hear(b, 'Beware of ' + town + ', they say the road there is deadly.', lead.name) > 0 && knows(b, town), 'a line that names it teaches it'); ok(!knows(b, far.name), 'and nothing else of that land');
+  ok(/deadly/.test(act(b, 'lore', {about: town}).places[0].notes.join()), 'the warning is kept with the place');
+  ok(act(b, 'status').places.some(p => p.startsWith(town)), 'status.places lists it, heard of');
+  ok(knows(b, exit().name), 'the road out is known by name from the first');
+  process.exit(fail ? 1 : 0);
+}
+if (mode === '--oneland') { // a world of one map: not a word about lands. Run on the Vale.
+  const {SIM, M} = await sim(); const {S, init, markPlayer, playerAct, dmAct, setDmSeat} = SIM, A = await import('../src/sim/atlas.js'), L = await import('../src/sim/lore.js'), DA = await import('./dm-agent.mjs');
+  init({}); setDmSeat(true); const a = S.agents.find(x => x.kind === 'hero' && x.state !== 'dead'); markPlayer(a, true);
+  ok(!M.EXITS.length && !A.manyMaps() && !A.farNames().length && !A.roadsFrom().size, 'no roads, no far names');
+  const reads = ['look', 'status', 'places', 'quests'].map(t => playerAct(a.id, t, {})), st = dmAct('dm_status'), g = dmAct('regions'), s = dmAct('survey', {near: M.CITY[0].name});
+  ok(reads.every(r => !('land' in r) && !('roads_out' in r)), 'hero reads carry nothing of lands'); ok(!('map' in st.campaign) && !('roads' in st.campaign) && !('map' in g) && !('roads_out' in g) && !('map' in s), 'nor do the DM\'s: ' + JSON.stringify(st.campaign).slice(0, 80));
+  const w = dmAct('when', {trigger: 'enter_map', on: {map: 'Anywhere'}, action: 'narrate', args: {near: 'table', text: 'x'}, reason: 'x'}); ok(!w.ok && /one land/.test(w.error), 'enter_map is refused in words: ' + w.error.slice(0, 60)); ok(!dmAct('whens').triggers.some(t => /enter_map/.test(t)), 'and the trigger list leaves it out');
+  ok(!DA.dmSystemPrompt(st).includes('several lands'), 'the DM\'s orders say nothing of them');
+  process.exit(fail ? 1 : 0);
+}
+
 if (mode === '--mid') { // a save between the vote and the road, played on in a fresh process. args: '-' (the original) or the save, then the out file
   const [saveFile, outFile] = args, X = await crossTools(), {S, M, home, CO, TB, act, steps, until, world, exit, at, scene, answers, opened, closed, json, restore, setRunnerLinks, setReflexAck} = X;
   const on = () => {const F = CO.slotted(); until(() => M.MAP_ID !== home, 600); opened(F, 'farside'); answers(F, 'look'); closed(F); steps(120); return JSON.stringify(json())};
@@ -786,11 +874,12 @@ for (const [from, to] of [['testlinka', 'testlinkb'], ['eldmoor', 'testlinkb']])
   ok(r.status === 0, 'five maps fit the store');
 }
 // ---- 9. the crossing ----
-for (const [m, what] of [['--road', 'when a road opens, what holds it and what it asks'], ['--over', 'the crossing, the far side and home again'], ['--voice', 'the DM at both tables'], ['--runners', 'mock runners hold their claims across it']]) {
+for (const [m, what] of [['--road', 'when a road opens, what holds it and what it asks'], ['--over', 'the crossing, the far side and home again'], ['--voice', 'the DM at both tables'], ['--know', 'what heroes and the DM know of other lands'], ['--runners', 'mock runners hold their claims across it']]) {
   const r = spawnSync(process.execPath, [HERE, m], {env: env('testlinka'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 240000});
   process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
   ok(r.status === 0, what);
 }
+{const r = spawnSync(process.execPath, [HERE, '--oneland'], {env: env('vale'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024}); process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000)); ok(r.status === 0, 'a world of one map hears nothing of lands')}
 { // a save between the vote and the road, in a fresh process
   const out = join(dir, 'mid.json'), o = spawnSync(process.execPath, [HERE, '--mid', '-', out], {env: env('testlinka'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
   process.stdout.write(o.stdout || ''); if (o.status !== 0) ok(false, 'the save mid-crossing: ' + (o.stderr || '').trim().slice(-500));
