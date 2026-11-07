@@ -35,7 +35,7 @@ function postEventHooks(p,def,cid,ctx){const out=[],tpls=(EVENT_HOOKS[p.kind]||[
 export const eventCooling=()=>{const w=S.worldEvent;return w&&w.lastEnd!=null&&S.gameMin<w.lastEnd+EVENT_COOLDOWN_DAYS*1440?w.lastEnd+EVENT_COOLDOWN_DAYS*1440:0};
 
 export function startEvent(p,ctx){
-  const def=EVENTS[p.kind];if(!def)return {ok:false,effect:'unknown event kind '+p.kind+' ('+Object.keys(EVENTS).join(', ')+')'};
+  const def=Object.hasOwn(EVENTS,p.kind)?EVENTS[p.kind]:undefined;if(!def)return {ok:false,effect:'unknown event kind '+p.kind+' ('+Object.keys(EVENTS).join(', ')+')'};
   if(!S.conditions)S.conditions=[];
   {const t=eventCooling();if(t)return {ok:false,effect:'the last world event ended recently; the next may start in '+Math.ceil((t-S.gameMin)/1440)+' game days'}}
   if(S.conditions.some(c=>c.z===p.region))return {ok:false,effect:ZONES[p.region]+' already has a condition'};

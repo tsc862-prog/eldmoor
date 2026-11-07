@@ -73,6 +73,7 @@ import {installSummonLever,summonView,summonedAlive,SUMMON} from './summon.js'; 
 import {installCallLever,lastCall,musterWord,CALL} from './callto.js'; // call_to (#826)
 import {worded} from '../world/words.js'; // usage lines naming the towns and regions of the live map (#1013)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
+import {cleanArgs,polishRefusal} from './argfix.js'; // arguments made to fit the tool's table, refusals that name what is missing (toolfuzz)
 
 // ---- knobs ----
 export const DMA={
@@ -172,7 +173,7 @@ function recordTurn(tool,args,res){const D=dmState(),t=openTurn(D);
   const c=t.tools[tool]||(t.tools[tool]={ok:0,bad:0});c[ok?'ok':'bad']++;
   if(READS.has(tool)&&!NOTEW.has(tool))t.reads[tool]=(t.reads[tool]||0)+1;
   else if(NOTEW.has(tool))t.notes.push({ok,title:cutT(args.title||args.text||(res.note&&res.note.text)||tool,60),sec:args.section||null,why:ok?null:cutT(res.error,100)});
-  else if(tool==='pull_lever'||FLAT_LEVERS[tool])t.levers.push({ok,name:cutT(FLAT_LEVERS[tool]||args.lever||args.name,32),why:cutT(ok?(res.effect||args.reason):res.error,120)});
+  else if(tool==='pull_lever'||FLAT_LEVERS[tool])t.levers.push({ok,name:cutT(FLAT_LEVERS[tool]||args.lever||args.name,32),why:cutT(ok?(res.effect&&typeof res.effect==='object'?Object.entries(res.effect).filter(([,v])=>v!=null&&typeof v!=='object').map(([k,v])=>k+' '+v).join(', '):res.effect)||args.reason:res.error,120)});
   else if(tool==='stage_scene')t.staged.push({ok,kind:cutT(args.kind,16),near:cutT(args.near,24),why:ok?null:cutT(res.error,120)});
   else if(tool==='narrate'||tool==='npc_say'||tool==='npc_offer'&&args.text)t.said.push({ok,who:tool==='narrate'?'Narrator':cutT(res.who||args.npc,24),text:cutT(args.text,140),why:ok?null:cutT(res.error,100)});
   else if(tool==='table_answer')t.said.push({ok,who:'Table',text:cutT(args.line||args.text||args.complication||'answered a call',100),why:ok?null:cutT(res.error,100)});
@@ -196,7 +197,7 @@ export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object
   if(name==='call_to'){const f=focuses().find(x=>x.cid===Number(p.company)),b=f&&f.members.find(a=>a.state!=='town'&&a.hp<maxHp(a)*DMA.PILE_HP); // nobody is asked into the dark with a member badly hurt in the field (#826)
     return b?b.name+' is badly hurt ('+pct(b)+'% HP) out in '+(ZONES[zoneAt(b.x,b.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.':null}
   if(name==='set_condition'&&!DANGER_CONDS.includes(p.kind))return null;
-  if(name==='start_event'){const ev=EVENTS[p.kind];if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
+  if(name==='start_event'){const ev=Object.hasOwn(EVENTS,p.kind)?EVENTS[p.kind]:undefined;if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
   const at=p.at&&typeof p.at==='object'&&Number.isFinite(Number(p.at.x))?{x:Number(p.at.x),y:Number(p.at.y)}:null,z=p.region!=null?regionIdx(p.region):at?zoneAt(at.x,at.y):null;
   const fs=focuses(),five=new Set(slotHeroes(slotted())),coOf=a=>fs.find(f=>f.ids.has(a.id)),who=a=>{if(five.has(a))return ' of the Fellowship';const f=coOf(a);return f&&f.members.length>1?' of '+(f.company.name||'a company'):' (riding alone)'};
   const L=[...slotHeroes(slotted()),...fs.flatMap(f=>f.members).filter(a=>!five.has(a))]; // the Fellowship as before, then every other company's members (#450)
@@ -344,7 +345,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
 function timelineRead(n){return {ok:true,timeline:(S.timeline||[]).slice(0,nOf(n,12,1,30)).map(e=>({day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,text:txt(e.parts)}))}}
 function chronicleRead(n){return {ok:true,news:(S.chronicle||[]).slice(0,nOf(n,12,1,30)).map(e=>e.t+' '+txt(e.parts))}}
 const LOG_KINDS={talk:['talk'],hooks:['hooks','pick'],scenes:['frame','branch','camp'],rolls:['roll','complication'],outcomes:['payoff','fail','abandon','fallback'],levers:['lever'],agent:['agent']};
-function dmLogRead(n,kind){const k=LOG_KINDS[kind]||null,out=[];
+function dmLogRead(n,kind){const k=Object.hasOwn(LOG_KINDS,kind)?LOG_KINDS[kind]:null,out=[]; // own keys only: 'constructor' is not a kind
   for(const e of S.dmLog||[]){if(k&&!(k.includes(e.kind)||kind==='agent'&&e.detail&&e.detail.by==='dm-agent'))continue;
     out.push({id:e.id,day:Math.floor((e.gameMin||0)/DAY)+1,t:e.t,kind:e.kind,town:e.town||null,adventure:e.advId,text:txt(e.summary),...(e.detail&&e.detail.by?{by:e.detail.by}:{})});
     if(out.length>=nOf(n,12,1,30))break}
@@ -824,10 +825,11 @@ export function dmAct(tool,args={}){
   if((tool==='narrator_call'||tool==='narrator_say')&&dmSeatOn())return tool==='narrator_call'?narrCall(args,voiceNotes()):narrSay(args,x=>run('narrate',x)); // the narrator's voice (#1017): the runner's, not a tool of the agent's
   if(tool==='recall'&&args&&args._pool===true&&dmSeatOn())return dmMemory('recall',args); // the relay's ask for the texts it embeds (#553)
   if(!dmSeatOn())return {ok:false,error:'The DM seat is closed: this world has no DM seat open (a played world opens it from the start; headless: play-headless --dm).',offline:true};
-  args=args&&typeof args==='object'?args:{};let r;dmHeard(tool,args);
+  args=cleanArgs(t,args);let r;dmHeard(tool,args);
   const prepping=prepActive();prepCall(tool,args); // a call during the prep counts toward its cap (#437); the cap ends it // a DM present: conversations wait for it a little (#170)
   try{r=run(tool,args)}catch(e){r={ok:false,error:'The DM tool failed: '+String(e&&e.message||e).slice(0,160)}}
   if(!r)r={ok:false,error:'no answer'};
+  if(r.ok===false)polishRefusal(t,args,r);
   if(r.ok===false&&typeof r.error==='string'&&(tool==='mark_place'||tool==='place_person'||tool==='stage_scene'||tool==='mark_danger'||tool==='custom_foe')&&GROUND_ERR.test(r.error)&&!/survey/.test(r.error))r.error+=' Call survey {near} for legal x,y spots (then pass one as "x,y").';
   if(r.ok===false&&tool==='mark_place'&&typeof r.error==='string'&&/\blimit\b.*\bper region\b/.test(r.error))r.error+=' Use a place that stands already ('+mapNames(6).join(', ')+') or leave it for tomorrow with when {trigger: "day_breaks", action: "mark_place", args: {...}}.';
   if(prepping&&!prepActive()&&tool!=='prep_done'&&r&&typeof r==='object')r={...r,prep:'Your prep is over (its '+(prepView().why==='calls'?'calls':'time')+' ran out): the table opens now. End this turn.'};
