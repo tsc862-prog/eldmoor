@@ -14,8 +14,8 @@
 // The old start (28 level-1 heroes in town, no Fellowship) is kept for balance comparisons:
 // ELDMOOR_FELLOWSHIP=0 in Node, ?fellowship=0 in the browser, or init({fellowship:false}).
 import {rnd,ri} from '../core/rng.js';
-import {CITY,LVL_CAP,LVL_FLOOR,ZONES,zoneFor,zonePoint,tileAt} from '../world/map.js';
-import {ACTIVE_SPEC} from '../world/spec.js';
+import {CITY,LVL_CAP,LVL_FLOOR,ZONES,zoneFor,zonePoint,tileAt,MAP_ID} from '../world/map.js';
+import {ACTIVE_SPEC,MAPS} from '../world/spec.js';
 import {WALKABLE} from '../world/tiles.js';
 import {solidAt,standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
@@ -52,7 +52,7 @@ export function sidesStart(o={}){let v=o.sides!=null?o.sides:o.setup&&o.setup.si
   try{if(v==null&&typeof location!=='undefined'&&location.search)v=new URLSearchParams(location.search).get('sides')}catch(e){}
   if(v==null&&typeof globalThis.ELDMOOR_SIDES!=='undefined')v=String(globalThis.ELDMOOR_SIDES);
   if(v==null){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_SIDES!=null)v=p.env.ELDMOOR_SIDES}
-  if(v==null)v=ACTIVE_SPEC.sides; // a map may be lore by nature (#1013)
+  if(v==null)v=(MAPS[MAP_ID]||ACTIVE_SPEC).sides; // a map may be lore by nature (#1013); the live map, not the one the page opened on, so a map crossed into reads its own
   return String(v==null?'':v).trim().toLowerCase()==='lore'?'lore':null}
 
 // The first delve (#922): 'delve' or 'none', or null when nothing asks. init's option wins, then the setup's, then ?prologue= in the browser, then
