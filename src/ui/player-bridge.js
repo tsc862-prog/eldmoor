@@ -13,7 +13,7 @@ import {setAgentTag} from '../sim/chat.js';
 import {makeWatch} from '../sim/behavior.js';
 import {noteDmCall} from './dmturns.js'; // per-turn cards of the DM tab (#181)
 import {companies} from '../sim/company.js';
-import {WORLD_ID} from '../world/map.js';
+import {WORLD_ID,MAP_ID} from '../world/map.js';
 import {mirrorDirty} from '../sim/notebook.js';
 import {sleep as wsleep,every} from './ticker.js';
 import {relayLate,takeAnomalies,pageDigest} from './pagewatch.js'; // the page watchdog (#736)
@@ -54,9 +54,9 @@ export function agentOn(a){if(!a||a.state==='dead')return false;
 export function agentOff(a){markPlayer(a,false);if(!wanted())disconnect();else hello()}
 
 function send(o){if(ws&&ws.readyState===1)ws.send(JSON.stringify(o))}
-function hello(){const hs=playerSeats().map(seatInfo),pv=prepView(),dm={seat:dmSeatOn(),...(pv.state!=='idle'?{prep:{state:pv.state,kind:pv.kind,calls:pv.calls,max_calls:pv.max_calls,...(pv.why?{why:pv.why}:{})}}:{})},k=JSON.stringify([hs,dm,WORLD_ID,S.worldId]); // succeeds: a recruit's fallen predecessor (#452); prep: the DM's prep (#437)
+function hello(){const hs=playerSeats().map(seatInfo),pv=prepView(),dm={seat:dmSeatOn(),...(pv.state!=='idle'?{prep:{state:pv.state,kind:pv.kind,calls:pv.calls,max_calls:pv.max_calls,...(pv.why?{why:pv.why}:{})}}:{})},k=JSON.stringify([hs,dm,WORLD_ID,MAP_ID,S.worldId]); // succeeds: a recruit's fallen predecessor (#452); prep: the DM's prep (#437)
   if(k===lastHello&&status==='connected')return;lastHello=k;if(S.worldId!==sentWid){sentWid=S.worldId;sentMem.clear()}
-  send({type:'hello',heroes:hs,dm,world:WORLD_ID,worldId:S.worldId||null,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
+  send({type:'hello',heroes:hs,dm,world:WORLD_ID,map:MAP_ID,worldId:S.worldId||null,hero:hs.find(h=>h.alive)||hs[hs.length-1]||null})}
 const seat=id=>id!=null?playerSeat(id):playerSeat();
 function connect(){if(ws||typeof WebSocket==='undefined')return;status='connecting';
   try{ws=new WebSocket(bridgeUrl())}catch(e){ws=null;status='offline';later();return}

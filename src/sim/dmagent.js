@@ -27,7 +27,8 @@
 import {S,clockStr,dayNo,noOthers,loreSides} from './state.js';
 import {closedRoads} from './roads.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // what a hero swore aloud, and the thread only offered (#800)
-import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,MAP_ID,WORLD_ID,zoneAt,dist} from '../world/map.js';
+import {campaignMaps,crossingView} from './atlas.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
@@ -245,7 +246,8 @@ function sigOf(fo){const F=fo.company,field=fo.members.filter(a=>a.state!=='town
   return [z,field.length?1:0,(F.past||[]).length,t.scenes||0,done,oaths,companyThreads(F).length,!!S.table].join('|')}
 // One signature per company joined with | (#450): any company's change makes a DM event turn due. One company: its own
 // (the Fellowship alone reads exactly as before).
-export function companiesSig(){const fs=focuses();if(!fs.length)return null;return fs.length===1?sigOf(fs[0]):fs.map(f=>f.cid+':'+sigOf(f)).join('|')}
+export function companiesSig(){const fs=focuses();if(!fs.length)return null;const on=MAP_ID===WORLD_ID?'':'@'+MAP_ID; // the map too (#1013): a crossing is an event turn, and a first map reads as before
+  return (fs.length===1?sigOf(fs[0]):fs.map(f=>f.cid+':'+sigOf(f)).join('|'))+on}
 
 // ---- every company a thread (#450) ----
 // What each company needs from the DM, neediest first: the followed company when it must choose (a scene or vote of its own
@@ -315,7 +317,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
     ...(prologueStatus()?{first_delve:prologueStatus()}:{}), // #922: the place, its rooms and what is behind it, for this seat alone
     prep:{...prepView(),...(openingDue()?{opening_due:true}:{}),...(openingWait()?{opening_waits_for:openingWait().names}:{})}, // #437: while it runs the world is held for you; end it with prep_done
-    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:ourScene().gf?'A scene opens for them: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own line stands).':['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
+    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:ourScene().gf?'A scene opens for them: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own line stands).':['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':['crossing','farside'].includes(ourScene().kind)?'A company stands on a road between lands: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out. Your table voice framed it; narrate near "table" is the most a turn adds.'}):{open:false},
     staged:stagedView(),
@@ -335,7 +337,8 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
-    campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
+    campaign:{...(D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}}),...campaignMaps()}, // the seed, and the maps: where the company is, what it has walked, the roads off this land (#1013)
+    ...(crossingView()?{crossing:crossingView()}:{}), // a company at a road off the map, and what it waits on
     ...whenFields(),
     notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length])),relevant_notes:relevant(dmBook(D),dmContext())}} // relevant_notes: your notes that bear on the moment, {id,title} (#155)
 

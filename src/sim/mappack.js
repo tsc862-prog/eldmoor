@@ -1,6 +1,6 @@
 // The pack (#1013, slice 2): the live map's state moves into S.maps[id] when a company leaves it and back when one returns. Live state
 // is flat on S everywhere else, so nothing reads S.maps but this file, atlas.js (who is away) and save.js (the campaign in the save).
-// switchMap is the one door; slice 3's cross() wraps it. Nothing here runs in a world that never leaves its map: S.maps stays absent.
+// switchMap is the one door; cross() in sim/crossing.js wraps it. Nothing here runs in a world that never leaves its map: S.maps stays absent.
 //
 // A frozen map, S.maps[id]: {left, mapRev?, <the keys of MAP_KEYS it held>, agents, dead, crypts:{<name>:{group, cd}}, kept}.
 // Its entities stay live objects, so whatever names them (a chronicle line, a guild, a hero's nemesis) still does; save.js writes them
@@ -38,7 +38,7 @@ const SPLIT={
 };
 
 // Who goes where the company goes: the living heroes who ride with one, and anyone in a party with them (a party moves as one).
-function crossers(){const go=new Set(S.agents.filter(a=>a.state!=='dead'&&inCompany(a)));
+export function crossers(){const go=new Set(S.agents.filter(a=>a.state!=='dead'&&inCompany(a)));
   for(const a of [...go])if(a.party)for(const b of a.party.mem)go.add(b);return go}
 const whole=a=>a===S.pinned||a.company!=null||!!a.player||a.companion!=null;
 function stub(a){for(const k of Object.keys(a))if(!STUB.has(k))delete a[k];return a}
