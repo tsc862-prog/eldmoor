@@ -13,8 +13,9 @@
 // follow command of #445), the adventure they are on, autopilot (a.playIdle, the command's `auto` words) and the last order.
 import {S} from './state.js';
 import {MOBS} from '../data/mobs.js';
-import {ZONES,CRYPT,LAIR,zoneAt,dist} from '../world/map.js';
+import {ZONES,CRYPT,zoneAt,dist} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
+import {lairSpot} from './lair.js';
 import {homeOf} from '../data/races.js';
 import {maxHp} from './heroes.js';
 import {lookingFor} from './sighthero.js';
@@ -88,9 +89,10 @@ function scriptedPurpose(a,agent){const c=town(a),adv=advOf(a);
   case 'fight':if(a.target)return fightP(a,adv?advWhy(adv):a.quest&&a.target.type===a.quest.type?bounty(a):a.target.target===a?'attacked':'hunting');break;
   case 'duel':if(a.target)return make({kind:'fight',goal:'Duelling',target:a.target.name,why:a.nemesis&&a.nemesis[a.target.id]?'a blood debt':'a chance meeting on the road'});break;
   case 'assist':return make({kind:'fight',goal:'Rushing to help',target:a.target?a.target.name:'a guildmate',why:'a guildmate under attack',to:a.target?{x:a.target.x,y:a.target.y,label:a.target.name,mark:'foe'}:null});
-  case 'raid':return make({kind:'raid',goal:'Raiding',target:'Kragmaw',why:'the wyrm’s hoard',to:LAIR?{x:LAIR.x,y:LAIR.y,label:'Kragmaw’s lair',mark:'foe'}:null});
+  case 'raid':return make({kind:'raid',goal:'Raiding',target:'Kragmaw',why:'the wyrm’s hoard',to:lairSpot()?{...lairSpot(),label:'Kragmaw’s lair',mark:'foe'}:null});
   case 'dungeon':{const st=a.siteIn!=null&&S.sites?S.sites.list.find(x=>x.id===a.siteIn):null;if(st&&a.hidden)return make({kind:'delve',goal:'Delving',target:st.name,why:'toward '+st.boss})} // a DM-made site (#69)
-    {const D=cryptOfHero(a)||CRYPT;return a.hidden?make({kind:'delve',goal:'Delving',target:D.name,why:'toward '+D.boss})
+    {const D=cryptOfHero(a)||CRYPT;if(!D)return make({kind:'wait',goal:'Waiting for a group',why:'a delve'}); // a map with no dungeon: a group gathering at a site (#1013)
+    return a.hidden?make({kind:'delve',goal:'Delving',target:D.name,why:'toward '+D.boss})
     :make({kind:'wait',goal:'Waiting for a group',target:D.name,why:'a Crypt run',wait:{x:D.x,y:D.y,label:D.name},to:{x:D.x,y:D.y,label:D.name,mark:'place'}})}
   case 'camp':return make({kind:'rest',goal:'Resting at camp',target:zn(a),why:a.playDoing&&!a.player?a.playDoing:'the company camps'});
   case 'regroup':return make({kind:'flee',goal:'Pulling back',target:a.dest?zn(a.dest):'',why:'after a skirmish',to:a.dest?{x:a.dest.x,y:a.dest.y,label:'regroup',mark:'place'}:null});

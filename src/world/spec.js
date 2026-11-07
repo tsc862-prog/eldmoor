@@ -178,6 +178,33 @@ export const TESTLINK={
   testlinkb:linkMap('Linkb','Mooring',{id:'west',name:'the west road',edge:{side:'W',from:11,to:13},to:{map:'testlinka',exit:'east'}}),
 };
 
+// A map with no lair and no dungeon (#1013): what a chapter of a campaign may be, a town each for the two peoples and the ground
+// between. Test-only, like TESTLINK; npm run crossingcheck boots it with ELDMOOR_WORLD=testbare and plays a whole game day on it.
+const BARE={size:{w:56,h:36},
+    curves:{fellEdge:{axis:'x',base:34,sin:[[6,1.4,0]]}},
+    regions:[
+      {id:'baremead',name:'Bare Mead',band:[1,3],biome:'meadow',mask:{kind:'all'}},
+      {id:'barefell',name:'Bare Fell',band:[3,5],biome:'fen',mask:{kind:'east-of-curve',curve:'fellEdge'}},
+    ],
+    towns:[
+      {name:'Barewick',fac:0,x0:3,y0:6,w:11,h:9,gate:'E',race:null},
+      {name:'Farwick',fac:1,x0:42,y0:21,w:11,h:9,gate:'W',race:null},
+    ],
+    points:{midway:[28,18]},
+    roads:[{from:'Barewick',to:'midway'},{from:'midway',to:'Farwick'}],
+    nodes:{respawn:{herb:60,ore:120,hide:60,fish:30},regions:{baremead:{herb:3,ore:2,hide:2,fish:2},barefell:{herb:3,ore:2,hide:2,fish:2}}},
+    lights:{townTorches:[[3,3]]},
+    spawn:{townPad:[4,3]},
+};
+export const TESTBARE={
+  testbare:{...BARE,name:'Barefield'},
+  testcellar:{...BARE,name:'Cellarfield',
+    landmarks:[{kind:'crypt',name:'The Bare Cellar',boss:'The Bare Reeve',x:30.5,y:8.1,mouth:{x0:29,y0:6,w:3,h:3},exclude:3.5,cd:25,entry:3}],
+    roads:[...BARE.roads,{from:'midway',to:'The Bare Cellar'}]},
+  testden:{...BARE,name:'Denfield',
+    landmarks:[{kind:'lair',name:'The Bare Den',x:44.5,y:9.5,r:5.4,inner:4,mouth:'W',exclude:7.5}]},
+};
+
 // ---- The Stepping Lands: a 160x100 test continent (issue #36, scaling phase 5) ----
 // Four times the area of Eldmoor: two home towns per faction, six regions on a ladder of
 // overlapping level bands (1-5, 4-9, 8-13, 12-16, 15-19, 18-22), the Sunken Crypt and Kragmaw
@@ -298,33 +325,39 @@ const VALE_WEIR_ROOMS=[
   {id:'weighing',name:'The Weighing Hall',frame:'Great scales hang from the roof, tipped by what lies in the pans. Dry bowstrings creak from the beams.',
     foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.29,rounds:2},
   {id:'granary',name:'The Flooded Granary',frame:'Black water lies knee-deep between the grain bins. Wardens stand in it, still guarding a harvest that rotted a century ago.',
-    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:3},
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:2},
   {id:'chair',name:"The Weir-Warden's Chair",frame:"The last chamber is a round pool with the weir-keeper's chair standing in it. The one who sits there has held the river back a very long time.",
-    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:4,boss:true},
+    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:3,boss:true},
 ];
 const VALE_KESTREL_ROOMS=[
   {id:'door',name:'The Low Door',frame:'A low door in a grassed mound, its lintel cut with kestrels. Cold air comes out of it, and the rattle of small claws.',
-    foes:[{type:'tombskit',n:2}],lvl:-1,hit:.22,rounds:2},
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.23,rounds:2},
   {id:'niches',name:'The Kestrel Niches',frame:'Every niche holds a stone bird and a heap of bone. One of the heaps gets up, still holding the lure-glove.',
-    foes:[{type:'shambler',n:1},{type:'tombskit',n:1}],lvl:0,hit:.27,rounds:2},
+    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.29,rounds:2},
+  {id:'ossuary',name:'The Hawk Ossuary',frame:'Skulls of hawks and the falconers who loved them are stacked to the roof in rows. Bowstrings creak somewhere among them, and a long-dead hand hauls itself upright.',
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:1,hit:.30,rounds:2},
   {id:'mews',name:"The Falconer's Mews",frame:'The last chamber is a mews with the perches still in it. The lord who bred the birds sits among them and does not intend to be disturbed.',
-    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:3,atk:1.4},{type:'boneshot',n:1,hits:1}],lvl:1,hit:.32,rounds:3,boss:true},
+    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:4,atk:1.5},{type:'boneshot',n:1,hits:1}],lvl:2,hit:.38,rounds:3,boss:true},
 ];
 const VALE_VAULT_ROOMS=[
   {id:'eel',name:'The Eel Cellar',frame:'Sunken cellars under a burnt kiln, the floor a foot deep in brown water. Fen-smugglers have made a guardroom of the first one.',
-    foes:[{type:'reedcutter',n:2,hits:2}],lvl:-1,hit:.24,rounds:3},
+    foes:[{type:'reedcutter',n:3,hits:2}],lvl:-1,hit:.25,rounds:3},
   {id:'tally',name:'The Salt Tally',frame:'Barrels of grey salt and a tally-board scratched in charcoal. Two big men get up from the table and reach for their cudgels.',
-    foes:[{type:'tollbreaker',n:2,hits:2}],lvl:0,hit:.29,rounds:3},
+    foes:[{type:'tollbreaker',n:2,hits:2},{type:'reedcutter',n:1,hits:2}],lvl:0,hit:.31,rounds:3},
+  {id:'count',name:'The Counting Room',frame:'A low room of ledgers and scales, where every cargo that passed the fen was weighed and taxed. A hedge-witch sits on the strongbox and the tollmen stand up around her.',
+    foes:[{type:'tollbreaker',n:2,hits:2},{type:'hedgecaller',n:1,hits:2}],lvl:1,hit:.34,rounds:3},
   {id:'cold',name:'The Cold Store',frame:'A vaulted cold-store, and the smuggler-captain who has made himself king of it. He counts you, and the count is not kind.',
-    foes:[{type:'captain',n:1,name:'Captain Dane Sallow',hits:4,atk:1.4},{type:'hedgecaller',n:1,hits:1}],lvl:1,hit:.34,rounds:4,boss:true},
+    foes:[{type:'captain',n:1,name:'Captain Dane Sallow',hits:5,atk:1.6},{type:'hedgecaller',n:1,hits:2}],lvl:2,hit:.40,rounds:4,boss:true},
 ];
 const VALE_KILN_ROOMS=[
   {id:'flue',name:'The Flue Gallery',frame:'Heat rolls up the great flue. Slag motes drift down it like sparks and gather on the stone.',
-    foes:[{type:'slagmote',n:3}],lvl:-1,hit:.24,rounds:2},
+    foes:[{type:'slagmote',n:4}],lvl:-1,hit:.25,rounds:2},
   {id:'ash',name:'The Ash Floor',frame:'A floor of drifted ash, cooling, and the crawlers who live in it come up out of the drifts all at once.',
-    foes:[{type:'cavecrawler',n:2,hits:1},{type:'golem',n:1,hits:2}],lvl:0,hit:.3,rounds:3},
+    foes:[{type:'cavecrawler',n:2,hits:1},{type:'golem',n:1,hits:2}],lvl:0,hit:.31,rounds:2},
+  {id:'quench',name:'The Quench Pool',frame:'A stone basin where the finished ware was drowned to set it. The water is long gone to steam, and the two clay giants standing in the dry basin turn their heads together.',
+    foes:[{type:'golem',n:2,hits:2}],lvl:1,hit:.38,rounds:2},
   {id:'heart',name:'The Kiln Heart',frame:'The last firing-chamber, still red at the heart. What tends it was built to, and has never been told it can stop.',
-    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.5},{type:'slagmote',n:1}],lvl:2,hit:.4,rounds:4,boss:true},
+    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.6},{type:'slagmote',n:2}],lvl:2,hit:.43,rounds:3,boss:true},
 ];
 // Town plans for the Vale (epic #940 slice C). The LPC building kit (scripts/art/packcut-buildings.mjs, PR #914) cuts one art piece per
 // style and piece, to the footprint and door the plans give it, so every Vale town keeps these shapes (TOWN_KIT: footprint in
@@ -494,8 +527,8 @@ function pickWorld(){
   if(!id&&typeof globalThis.ELDMOOR_WORLD==='string')id=globalThis.ELDMOOR_WORLD;
   if(!id){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_WORLD)id=p.env.ELDMOOR_WORLD}
   id=String(id||'eldmoor').toLowerCase();
-  return WORLDS[id]?id:'eldmoor'}
+  return MAPS[id]?id:'eldmoor'}
 // Every map a campaign may live on, by id: the playable worlds and the fixtures (#1013). Looped over, never counted.
-export const MAPS={...WORLDS,...TESTLINK};
+export const MAPS={...WORLDS,...TESTLINK,...TESTBARE};
 export const WORLD_ID=pickWorld();
-export const ACTIVE_SPEC=WORLDS[WORLD_ID];
+export const ACTIVE_SPEC=MAPS[WORLD_ID];

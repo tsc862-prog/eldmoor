@@ -35,7 +35,8 @@
 // heading back) simply resumes the adventure from the same scene on the next trip out.
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
-import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPT,ZPTS,zoneAt,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,ZPTS,zoneAt,dist} from '../world/map.js';
+import {hasCrypt,cryptTitle,cryptZone,cryptMouth} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {homeOf} from '../data/races.js';
@@ -323,7 +324,7 @@ function oathTpl(a){const g=a.goal;if(!g||g.done)return null;
   case 'avenge':{const E=S.mobs.find(m=>m.elite&&m.alive&&!m.gone&&m.name===g.target);
     return E?{tpl:'hunt',zone:MOBS[E.type].z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl}}:null}
   case 'heirloom':case 'heirloomCrypt':return {tpl:'relic',thing:'a clue to the '+g.target,data:{heirloom:g.target}};
-  case 'pilgrimCrypt':return CRYPT&&g.minLvl!=null&&a.lvl>=g.minLvl?{tpl:'deliver',zone:zoneAt(CRYPT.x,CRYPT.y),thing:'a candle for the drowned dead',data:{dest:{x:CRYPT.x,y:CRYPT.y+1.2},place:CRYPT.name}}:null;
+  case 'pilgrimCrypt':return hasCrypt()&&g.minLvl!=null&&a.lvl>=g.minLvl?{tpl:'deliver',zone:cryptZone(),thing:'a candle for the drowned dead',data:{dest:cryptMouth(1.2),place:cryptTitle()}}:null;
   case 'pilgrimFar':{if(g.minLvl==null||a.lvl<g.minLvl||g.zone==null)return null;const p=nearestPt(ZPTS[g.zone],homeOf(a).gate);
     return p?{tpl:'deliver',zone:g.zone,thing:'a pilgrim’s token',data:{dest:p,place:'the edge of '+ZONES[g.zone]}}:null}
   case 'hoard':return {tpl:'escort'};

@@ -24,7 +24,8 @@
 // Tiers: a recruit's first oath is tier 0; each kept oath rolls the next tier (max 2). An oath
 // whose target dies first is void and re-rolled at the same tier. Counts live on S.goals.
 import {rnd,ri,pickA} from '../core/rng.js';
-import {CRYPT,ZONES,REGIONS,ZPTS,zoneAt,zoneFor,dist} from '../world/map.js';
+import {ZONES,REGIONS,ZPTS,zoneAt,zoneFor,dist} from '../world/map.js';
+import {cryptName,cryptZone,cryptMouth,nearCrypt} from './crypts.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {ELITES} from '../data/mobs.js';
@@ -50,8 +51,7 @@ const bump=(o,k)=>{o[k]=(o[k]||0)+1};
 
 // Lowest level that hunts in zone z (from the zoneFor ladder), so goals can speak in bands.
 const bandMin=z=>{for(let l=1;l<=20;l++)if(zoneFor(l)===z)return l;return 99};
-const farZone=()=>ZONES.indexOf(PILGRIM_ZONE)>=0?ZONES.indexOf(PILGRIM_ZONE):REGIONS.findIndex(r=>r.far), // a spec can mark its far region with far:true
-  cryptZone=()=>CRYPT?zoneAt(CRYPT.x,CRYPT.y):-1;
+const farZone=()=>ZONES.indexOf(PILGRIM_ZONE)>=0?ZONES.indexOf(PILGRIM_ZONE):REGIONS.findIndex(r=>r.far); // a spec can mark its far region with far:true
 let FAR=farZone(),CRYPT_Z=cryptZone();
 onWorld(()=>{FAR=farZone();CRYPT_Z=cryptZone()},()=>({goalFar:FAR,goalCryptZone:CRYPT_Z})); // another map (#1013)
 const alive=x=>x&&x.state!=='dead';
@@ -140,7 +140,7 @@ export function goalEvent(a,kind,x){
   case 'kill':if(g.type==='avenge'&&x.elite&&x.name===g.target)complete(a);break;
   case 'epic':if(g.type.indexOf('heirloom')===0&&x===g.target)complete(a);break;
   case 'level':if(g.type==='ascend'){g.progress=a.lvl;if(a.lvl>=g.need)complete(a)}else if(g.type==='rival')checkRival(a);break;
-  case 'crypt':if(g.type==='delve'&&(g.dun||CRYPT.name)===x)complete(a);break; // x: the dungeon cleared; an oath is to one dungeon (#891)
+  case 'crypt':if(g.type==='delve'&&(g.dun||cryptName())===x)complete(a);break; // x: the dungeon cleared; an oath is to one dungeon (#891)
   case 'boss':if(g.type==='legend')complete(a);break;
   case 'died':if(rnd()<.5&&!g.offered)log(a,' died with the oath unkept: ',{t:g.text,c:'dm'},'.');break;
   }}
@@ -153,10 +153,10 @@ export const raidPull=a=>a.goal&&!a.goal.done&&(a.goal.type==='legend'||a.goal.t
 // heads for the goal point instead of a random hunting spot. a.zone is left alone, so a low
 // hero crossing a higher zone neither stops to hunt there nor picks its monsters. On arrival
 // the oath is kept and, if the zone is above their band, they turn for home.
-function goalPoint(a,g){if(g.type==='pilgrimCrypt')return{x:CRYPT.x,y:CRYPT.y+1};
+function goalPoint(a,g){if(g.type==='pilgrimCrypt')return cryptMouth(1);
   const gate=homeOf(a).gate;let best=null,bd=1e9;for(const p of ZPTS[g.zone]){const d=dist(p,gate);if(d<bd){bd=d;best=p}}return best}
 function pilgrimStep(a,g){
-  const arrived=g.type==='pilgrimCrypt'?dist(a,CRYPT)<2.6:zoneAt(a.x,a.y)===g.zone,thread=g.offered&&hasLinks(); // in real play a thread walks nobody anywhere (#800); a world with no host keeps its dice
+  const arrived=g.type==='pilgrimCrypt'?nearCrypt(a,2.6):zoneAt(a.x,a.y)===g.zone,thread=g.offered&&hasLinks(); // in real play a thread walks nobody anywhere (#800); a world with no host keeps its dice
   if(arrived&&a.state!=='ghost'){complete(a);if(!thread&&huntZone(a)!==g.zone&&(a.state==='hunt'||a.state==='travel'))goHome(a);return}
   if(thread)return;
   if(a.lvl<g.minLvl||a.party||(a.state!=='travel'&&a.state!=='hunt'))return;
