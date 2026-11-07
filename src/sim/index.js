@@ -5,7 +5,7 @@ import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
 import {S,newWorldId,resetS} from './state.js';
 import {GOODS} from '../data/items.js';
-import {CRYPTS,ZONES,zoneAt} from '../world/map.js';
+import {CITY,CRYPTS,ZONES,zoneAt} from '../world/map.js';
 import {lairRegion} from './lair.js';
 import {ACTIVE_SPEC} from '../world/spec.js';
 import {reserveNames} from '../data/races.js';
@@ -122,7 +122,7 @@ export function init(o={}){resetWorld();
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
   const none=othersStart(o)==='none',lore=sidesStart(o)==='lore';if(none||lore)S.setup={...(none?{others:'none'}:{}),...(lore?{sides:'lore'}:{})}; // no background heroes (#780): the opening makes only the setup's; sides as lore (#1025)
   spawnAll();
-  if(!none)for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5);
+  if(!none)for(let f=0;f<2;f++)if(CITY.some(c=>c.fac===f))for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5); // a side with no town on this map has no heroes on it (#1013)
   try{opening(o)}finally{if(seeded)seedRng(null)}
   if(none)S.setup={...S.setup,others:'none'}; // the opening writes its own record of the setup
   if(lore)S.setup={...S.setup,sides:'lore'};

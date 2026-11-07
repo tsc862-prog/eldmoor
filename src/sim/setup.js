@@ -63,7 +63,7 @@ export const SETUP_VERSION=2;
 export const MODES=['together','apart'];
 export const OTHERS=['full','none']; // other heroes in the world (#780)
 export const SIDES=['war','lore']; // what the factions are (#1025); only 'lore' is ever stored
-const lore=s=>!!s&&s.sides==='lore';
+const lore=s=>!!s&&(s.sides==='lore'||(WORLDS[s.world]||{}).sides==='lore'); // a map may be lore by nature (#1013)
 const sidesField=s=>lore(s)?{sides:'lore'}:{};
 // The first delve (#922): what a setup's opening is. Absent = the default, so only a difference is ever stored.
 export const prologueOf=s=>s&&PROLOGUE_VALUES.includes(s.prologue)?s.prologue:PROLOGUE_DEFAULT;
@@ -172,7 +172,7 @@ function mindProblem(m,what,modes=MIND_MODES){if(!m||typeof m!=='object'||!modes
 const townOf=(name,fac)=>CITY.find(c=>c.name===name&&(fac==null||c.fac===fac))||null; // fac null: any town (#1025)
 // The towns a together company of this faction may found its hall in (#771), from the world spec: the page may be choosing
 // for another map than the one it stands on. fac null: every town of the map (sides as lore, #1025).
-export const hallTowns=(world,fac)=>((WORLDS[world]||{}).towns||CITY).filter(t=>fac==null||t.fac===fac).map(t=>t.name);
+export const hallTowns=(world,fac)=>((WORLDS[world]||{}).towns||CITY).filter(t=>fac==null||(WORLDS[world]||{}).sides==='lore'||t.fac===fac).map(t=>t.name);
 // The hall a setup chose, when it is a town of this world (undefined: the leader's home town, as ever).
 export const hallOf=s=>s&&s.hall&&townOf(s.hall,lore(s)?null:s.fac)?s.hall:undefined;
 const regionOf=name=>{const i=REGIONS.findIndex(r=>r.name===name);return i<0?null:{i,r:REGIONS[i]}};
