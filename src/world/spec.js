@@ -685,7 +685,7 @@ export const WENDMOUTH={
   },
   exits:[
     {id:'south',name:"the Drovers' Road",to:{map:'hollin',exit:'north'},edge:{side:'S',from:66,to:69}},
-    {id:'east',name:'the Wend Road',to:{map:null,heard:'the old weir upriver'},edge:{side:'E',from:26,to:29}},
+    {id:'east',name:'the Wend Road',to:{map:'weirgate',exit:'west'},edge:{side:'E',from:26,to:29}},
   ],
   roads:[
     {from:'south',via:['droveBend'],to:'crossways'},
@@ -787,7 +787,7 @@ export const HAWKWOLD={
   },
   exits:[
     {id:'west',name:'the Fell Road',to:{map:'hollin',exit:'east'},edge:{side:'W',from:20,to:23}},
-    {id:'east',name:'the Hawk Road',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:22,to:25}},
+    {id:'east',name:'the Hawk Road',to:{map:'weirgate',exit:'north'},edge:{side:'E',from:22,to:25}},
   ],
   roads:[
     {from:'west',to:'foldCross'},
@@ -806,11 +806,103 @@ export const HAWKWOLD={
   labels:[['FOLDLANDS',20,40],['HAWKWOLD',96,10],['HORNMOOR',108,56],['HAWKSTEAD',63.5,7.2],['HORNRIDGE',134.5,42.2]],
 };
 
+// The Drowned Weir's chambers on this map: the Vale's five, pitched for a company of level 10 and up (entry 10, #1013), every blow harder than the Vale's, as the Hawkwold's were (#1054).
+const WEIR_ROOMS=[
+  {id:'sluice',name:'The Sluice Stair',frame:'A stair of green stone runs down beside the old sluice. Water chatters in the dark and something small and many-legged answers it.',
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.48,rounds:2},
+  {id:'millrace',name:'The Millrace Gallery',frame:'The millrace still turns, driving nothing. Things the river gave up stand along the walls and begin to move.',
+    foes:[{type:'shambler',n:2}],lvl:0,hit:.62,rounds:2},
+  {id:'weighing',name:'The Weighing Hall',frame:'Great scales hang from the roof, tipped by what lies in the pans. Dry bowstrings creak from the beams.',
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.62,rounds:3},
+  {id:'granary',name:'The Flooded Granary',frame:'Black water lies knee-deep between the grain bins. Wardens stand in it, still guarding a harvest that rotted a century ago.',
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.8,rounds:2},
+  {id:'chair',name:"The Weir-Warden's Chair",frame:"The last chamber is a round pool with the weir-keeper's chair standing in it. The one who sits there has held the river back a very long time.",
+    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.91,rounds:3,boss:true},
+];
+
+// ---- The Weirgate: the fourth chapter (#1013 slice 7b, levels 10-15) ----
+// Two roads come in, the Wend Road along the river from the Wendmouth in the west and the Hawk Road down off the Hawkwold in the north, and meet at the one place the Wend can be waded.
+// North of the ford, Aldermere under its alders; south of it the Drowned Weir at the end of its own turning, and a long way east along the Kilnway, the forge town at Brandhold.
+// The Vale's towns and rooms, Hollin's density: two towns a long day apart, thin creatures, nothing near a wall. The Kilnway runs on east past Brandhold; it is not open yet.
+export const WEIRGATE={
+  name:'The Weirgate',
+  blurb:'Old meadow and wood round the one place the Wend can be waded: an alder-shaded market town on the north bank, a drowned weir of green stone on the south, and far off down the Kilnway a forge town. Come by the Wend Road from the Wendmouth or the Hawk Road from the Hawkwold, at about level 10.',
+  size:{w:150,h:68},
+  seeds:{terrain:73,detail:101},
+  sides:'lore',
+  chapter:true,
+  ladder:{step:2},
+  curves:{
+    // The Wend: a quiet river here, west to east across the middle, wandering a little.
+    river:{axis:'x',base:33,sin:[[46,3.6,.9],[10,1.2,2]]},
+    wood:{axis:'y',base:70,noise:{seed:37,scale:6,amp:6,slice:2.5}},    // the Greywood's west edge
+    ash:{axis:'y',base:142,noise:{seed:41,scale:6,amp:4,slice:3.9}},    // the Ashmarch's west edge
+  },
+  regions:[
+    {id:'wendreach',name:'Wendreach',band:[10,12],biome:'meadow',mask:{kind:'all'}},
+    {id:'oldwood',name:'Greywood',band:[11,14],biome:'meadow',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'wood'},{kind:'west-of-curve',curve:'ash'}]}},
+    {id:'ashmarch',name:'The Ashmarch',band:[12,15],biome:'highland',mask:{kind:'east-of-curve',curve:'ash'}},
+  ],
+  river:{curve:'river',width:2,fords:[74]},
+  scenery:{
+    wash:{wendreach:'meadow',oldwood:'woods',ashmarch:'heath'},
+    dress:{'The Drowned Weir':'weir'},
+    fields:[[22,10,8,4,'wheat'],[22,15,7,3,'plough'],[64,26,8,3,'cabbage'],[96,53,8,3,'wheat'],[96,57,7,3,'plough']],
+  },
+  towns:[
+    // Aldermere, as the Vale built it: a market green; the forge and the halls front a paved lane, the inn on the green's west edge.
+    {name:'Aldermere',fac:0,x0:30,y0:9,w:31,h:15,gate:'E',gateAt:5,race:'hallowan',spots:{square:[17.5,8.1]},grave:[27.5,7.6],
+      notch:[[26,0,5,3],[0,13,14,2]],clear:3,torches:[[29.5,4.5],[29.5,7.5],[15,7],[20,7],[17,13],[8,11]],
+      buildings:townPlan(30,9,[['auction-great',19,1],['smithy-great',4,1],['hall-great',12,1],['house-tall',1,1],['house-wide',8,1],['chapel-great',23,7],['house-tall',27,9],['inn-great',6,7],['house-manor',1,7],['board',14,7],['fountain',16,9]]),
+      ground:[[1,5,29,2],[1,11,11,1],[23,13,7,1]]},
+    // Brandhold, as the Vale built it: a forge town. The gate is in the north wall and a straight street runs to the yard; the inn fronts the cross lane, a cottage and a croft stand behind it.
+    {name:'Brandhold',fac:1,x0:106,y0:48,w:29,h:15,gate:'N',gateAt:12,race:'ashfolk',spots:{square:[15.5,8.1]},grave:[26.5,7.6],notch:[[0,13,11,2]],clear:3,homes:[[1.5,11.5],[10.5,11.5]],
+      torches:[[11,1],[15,1],[10,7],[21,7],[15,13],[6,11]],
+      buildings:townPlan(106,48,[['smithy-great',1,1],['hall-great',14,1],['auction-great',21,1],['chapel-great',21,7],['board',12,7],['inn-great',5,7],['house-manor',5,1],['house-narrow',10,1],['house-wide',1,7],['house-tall',25,9],['fountain',14,9]]),
+      ground:[[12,1,2,5],[1,5,26,2],[1,11,10,1],[21,13,7,1]]},
+  ],
+  landmarks:[
+    // The great dungeon, beside the ford on the south bank, at the end of its own turning. entry: the level a background group first goes down.
+    {kind:'crypt',name:'The Drowned Weir',boss:'Weir-Warden Orsk',x:81.5,y:41.1,mouth:{x0:80,y0:39,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:WEIR_ROOMS,entry:10,
+      sign:CRYPT_SIGN,captain:CRYPT_CAPTAIN},
+  ],
+  outposts:[
+    {id:'weirwatch',name:'Weirgate Watch',x:77.5,y:25.5,r:3.5},
+  ],
+  points:{
+    fordN:[74,31],fordS:[74,38],   // the ford: the one way over the Wend on this map
+    hawkBend:[64,5],               // the Hawk Road keeps to the heights and comes round Aldermere's north wall to its east gate
+    kilnJoin:[118,41],             // where Brandhold's road meets the Kilnway
+    weirBend:[81,38],
+    wendA:[22,40],wendB:[42,41],wendC:[60,40], // the Wend Road keeps to the river's south bank, not round the wood
+  },
+  exits:[
+    {id:'west',name:'the Wend Road',to:{map:'wendmouth',exit:'east'},edge:{side:'W',from:38,to:41}},
+    {id:'north',name:'the Hawk Road',to:{map:'hawkwold',exit:'east'},edge:{side:'N',from:40,to:43}},
+    {id:'east',name:'the Kilnway',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:40,to:43}},
+  ],
+  roads:[
+    {from:'west',via:['wendA','wendB','wendC'],to:'fordS'},
+    {from:'north',via:['hawkBend'],to:'Aldermere'},
+    {from:'Aldermere',to:'fordN'},{from:'fordN',to:'fordS'},
+    {from:'fordS',via:['kilnJoin'],to:'east'},
+    {from:'Brandhold',to:'kilnJoin'},
+    {from:'fordS',via:['weirBend'],to:'The Drowned Weir'},
+  ],
+  roadClear:[1,3],
+  glades:[[81.5,41,5],[5,40,5],[41.5,5,5],[74,28,4],[74,38,4]], // the mouth, the two roads' ends where a company comes in, and the ford's banks
+  lights:{townTorches:[[10.5,3.4]]},
+  spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of a wall
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{wendreach:{herb:6,ore:2,hide:5,fish:5},oldwood:{herb:8,ore:4,hide:7,fish:4},ashmarch:{herb:3,ore:7,hide:5,fish:1}}},
+  labels:[['WENDREACH',20,24],['GREYWOOD',100,38],['THE ASHMARCH',144,24],['ALDERMERE',45.5,7.2],['BRANDHOLD',120,46.5],['THE WEIRGATE',78,31]],
+};
+
 // ---- choosing the world ----
 // `?world=stepping` in the browser, ELDMOOR_WORLD=stepping in Node (or globalThis.ELDMOOR_WORLD
 // set before the first import, for tests); default eldmoor. Everything that needs the map size
 // or the spec goes through ACTIVE_SPEC / WORLD_ID so the choice is made exactly once.
-export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH,hawkwold:HAWKWOLD};
+export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH,hawkwold:HAWKWOLD,weirgate:WEIRGATE};
 function pickWorld(){
   let id=null;
   try{if(typeof location!=='undefined'&&location.search)id=new URLSearchParams(location.search).get('world')}catch(e){}
