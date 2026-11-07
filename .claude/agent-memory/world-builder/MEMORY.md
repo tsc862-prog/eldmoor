@@ -22,3 +22,4 @@
 - [Wendmouth](project_wendmouth.md) — #1013 7b second chapter 5-10: sea, shared Vale names, LVL_FLOOR, first real road, Vite cacheDir, rounds not hit
 - [Hawkwold](project_hawkwold.md) — #1013 7c third chapter 6-11: bridge not ford, towns pushed apart, crawl driven-back numbers, --real-fell
 - [Weirgate](project_weirgate.md) — #1013 7d fourth chapter 10-15: Weir and Thornback numbers, sidesStart fix, crossingcheck legs
+- [Wend's Head](project_wendshead.md) — #1013 7e last chapter 14-22: Kiln and Grimbrand numbers, kragmaw-head template, heroes cap at 20

@@ -75,6 +75,19 @@ export const FAUNA={
     {n:5,sp:'wolf',pack:2,name:'March Wolf',pl:'March Wolves',lv:[12,13],loot:'March Pelt',q:'Wolves on the March'},
     {n:3,sp:'boar',pack:3,name:'Cinder Boar',pl:'Cinder Boars',lv:[13,14],loot:'Cinder Tusk',q:'Tusks from the Cinders'},
     {n:2,sp:'rimehound',pack:2,name:'Marchhound',pl:'Marchhounds',lv:[14,15],loot:'Marchhound Sinew',q:'Marchhounds on the Heath'}]},
+  // The Wend's Head (#1013 slice 7b, the last chapter): the Vale's creatures of the upper vale at this chapter's levels, under Hollin's rule: small groups, far apart, and the Slagmoor, the Kilnlands and the Crownfell have ids of their own (the Vale's ashenfold and rimecrown keep their rows). Levels stay inside each band; one elite on the map, Grimbrand among the kilns. Names are this chapter's own.
+  slagmoor:  {tier:2,count:4,roadMinX:999,goods:[['Slag Pelt',56],['Clinker Tusk',60],['Soot Silk',64]],species:[
+    {n:5,sp:'wolf',pack:2,name:'Slag Wolf',pl:'Slag Wolves',lv:[14,15],loot:'Slag Pelt',q:'Wolves on the Slagmoor'},
+    {n:4,sp:'boar',pack:2,name:'Clinker Boar',pl:'Clinker Boars',lv:[15,16],loot:'Clinker Tusk',q:'Tusks from the Clinker'},
+    {n:3,sp:'spider',pack:3,name:'Soot Weaver',pl:'Soot Weavers',lv:[16,17],loot:'Soot Silk',q:'Webs in the Soot'}]},
+  kilnlands: {tier:2,count:4,roadMinX:999,goods:[['Brick Core',70],['Flue Fur',74],['Kiln Silk',78]],elite:{name:'Grimbrand',title:'the Kiln-Golem of the Kilnlands',base:'golem',fixLvl:21,scale:10,hit:4,ready:['slam']},species:[
+    {n:5,sp:'golem',pack:2,name:'Brick Golem',pl:'Brick Golems',lv:[16,17],loot:'Brick Core',q:'Cores from the Brickyards'},
+    {n:4,sp:'wolf',pack:2,name:'Flue Hound',pl:'Flue Hounds',lv:[17,18],loot:'Flue Fur',q:'Hounds of the Flues'},
+    {n:3,sp:'spider',pack:3,name:'Kiln Weaver',pl:'Kiln Weavers',lv:[18,19],loot:'Kiln Silk',q:'Webs in the Kilns'}]},
+  crownfell: {tier:3,count:4,roadMinX:999,goods:[['Snowrun Pelt',84],['Tarn Rime',90],['Rime Marrow',96]],species:[
+    {n:5,sp:'wolf',pack:2,name:'Snowrun Wolf',pl:'Snowrun Wolves',lv:[18,19],loot:'Snowrun Pelt',q:'Wolves in the Snowrun'},
+    {n:4,sp:'rimehound',pack:2,name:'Tarn Hound',pl:'Tarn Hounds',lv:[19,21],loot:'Tarn Rime',q:'Hounds of the Tarn'},
+    {n:3,sp:'wight',pack:2,name:'Rime Wight',pl:'Rime Wights',lv:[20,22],loot:'Rime Marrow',q:'What the Rime Keeps'}]},
   // The Wending Vale (epic #940, slice D): each region has its own creatures, levels, names and trade goods. Entries are objects
   // {n: how many live (#988: thinned to about half, in uneven groups), sp: stock species (its sprite and stat block), name, pl, lv, loot, q}. Only species the LPC creature slice draws (wolf, boar,
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the

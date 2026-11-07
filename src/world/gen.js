@@ -220,7 +220,7 @@ export function buildWorld(spec){
         if(d<=inner)tiles[I(x,y)]=ROCK;
         else if(d<=r){const along=m==='W'?-dx:m==='E'?dx:m==='N'?-dy:dy,perp=(m==='W'||m==='E')?dy:dx;
           tiles[I(x,y)]=(along>2.5&&Math.abs(perp)<1.6)?ROCK:LAVA}}
-      const o={kind:'lair',name:L.name,x:L.x,y:L.y,r,inner,opening:m,exclude:L.exclude||0,light:L.light||null};LANDMARKS.push(o);if(!LAIR)LAIR={x:L.x,y:L.y,name:L.name}}
+      const o={kind:'lair',name:L.name,x:L.x,y:L.y,r,inner,opening:m,exclude:L.exclude||0,light:L.light||null};LANDMARKS.push(o);if(!LAIR)LAIR={x:L.x,y:L.y,name:L.name,...(L.boss?{boss:L.boss}:{})}}
     else if(L.kind==='crypt'){const mo=L.mouth,mouth=mo?{x0:mo.x0,y0:mo.y0,x1:mo.x0+mo.w-1,y1:mo.y0+mo.h-1}:null;
       if(mouth)for(let y=mouth.y0;y<=mouth.y1;y++)for(let x=mouth.x0;x<=mouth.x1;x++)if(x>=0&&y>=0&&x<w&&y<h)tiles[I(x,y)]=ROCK;
       const rooms=roomsOf(L);

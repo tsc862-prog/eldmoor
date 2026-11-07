@@ -498,6 +498,7 @@ if (mode === '--real' || mode === '--real-fell' || mode === '--real-weir') { // 
     drovers: {home: 'hollin', far: 'wendmouth', name: 'The Wendmouth', road: "the Drovers' Road", entry: 'south', towns: 'Gullstrand,Stiltmere', lo: 5, cap: 10, walk: 200, seed: 6, homeCap: 5, only: 'spider@2', onlyName: 'Crag Spinner', onlyRe: /Crag Spinner.*\(3\/4\).*Hollin|Crag Spinners.*Hollin/, from: 'Hollin'},
     fell: {home: 'hollin', far: 'hawkwold', name: 'The Hawkwold', road: 'the Fell Road', entry: 'west', towns: 'Hawkstead,Hornridge', lo: 6, cap: 11, walk: 120, seed: 6, homeCap: 5, only: 'spider@2', onlyName: 'Crag Spinner', onlyRe: /Crag Spinner.*\(3\/4\).*Hollin|Crag Spinners.*Hollin/, from: 'Hollin'},
     wend: {home: 'wendmouth', far: 'weirgate', name: 'The Weirgate', road: 'the Wend Road', entry: 'west', towns: 'Aldermere,Brandhold', lo: 10, cap: 15, walk: 130, seed: 11, homeCap: 10, only: 'bog@1', onlyName: 'Sallow Bogling', onlyRe: /Sallow Bogling.*\(3\/4\).*Wendmouth|Sallow Boglings.*Wendmouth/, from: 'Wendmouth'},
+    kiln: {home: 'weirgate', far: 'wendshead', name: "The Wend's Head", road: 'the Kilnway', entry: 'west', towns: 'Kilnmark', lo: 14, cap: 22, walk: 0, seed: 16, homeCap: 15, only: 'mudboar@1', onlyName: 'Briar Boar', onlyRe: /Briar Boar.*\(3\/4\).*Weirgate|Briar Boars.*Weirgate/, from: 'Weirgate', lair: true},
     hawk: {home: 'hawkwold', far: 'weirgate', name: 'The Weirgate', road: 'the Hawk Road', entry: 'north', towns: 'Aldermere,Brandhold', lo: 10, cap: 15, walk: 130, seed: 12, homeCap: 11, only: 'rimehound@1', onlyName: 'Ridgehound', onlyRe: /Ridgehound.*\(3\/4\).*Hawkwold|Ridgehounds.*Hawkwold/, from: 'Hawkwold'},
   }, W = LEGS[process.env.XLEG || (mode === '--real-fell' ? 'fell' : 'drovers')];
   const X = await crossTools(), {S, SIM, M, home, CO, TB, act, steps, until, calm, world, exit, at, scene, opened, answers, closed, go} = X;
@@ -520,6 +521,7 @@ if (mode === '--real' || mode === '--real-fell' || mode === '--real-weir') { // 
   ok(!MOBS[only], 'the creature has no row here'); ok(S.mobs.length > 0 && S.mobs.every(m => MOBS[m.type] && m.lvl >= W.lo && m.lvl <= W.cap), 'the land is stocked at its own levels: ' + S.mobs.length + ' creatures, ' + Math.min(...S.mobs.map(m => m.lvl)) + '-' + Math.max(...S.mobs.map(m => m.lvl)));
   ok(M.CITY.every(t => S.mobs.every(m => Math.hypot(Math.max(t.x0 - m.spawn.x, 0, m.spawn.x - t.x1), Math.max(t.y0 - m.spawn.y, 0, m.spawn.y - t.y1)) >= 10)), 'and nothing spawns within ten tiles of a wall');
   ok(gains(lead, 600) === 600, 'XP pays in full here at level ' + W.seed);
+  if (W.lair) {const LR = await import('../src/sim/lair.js'); ok(LR.hasLair() && S.boss.alive && S.boss.tpl === 'kragmaw-head' && S.boss.maxhp === 26000, 'the wyrm is awake here and sized for this map: ' + S.boss.maxhp + ' hp'); const r = act(lead, 'go_crypt', {dungeon: 'The Wend nowhere'}); ok(!!r, 'the Crypt order reads')}
   ok(mem.every(a => !a.quest), 'kill quests of the old land are parked'); ok(W.onlyRe.test(act(lead, 'quests').left_behind.join()), 'and the quest log says where: ' + act(lead, 'quests').left_behind.join());
   ok(!reads(lead) && !reads(b), 'status, the quest log, look and the brain read fine' + (reads(lead) || ''));
   {const g = M.CITY[0], g0 = b.gold, n0 = (b.history || []).length; for (const a of mem) {a.x = g.gate.x; a.y = g.gate.y - 3; a.state = 'town'; a.townStep = 0; a.pq = []} let e = null; try {H.turnIn(b); steps(60 * 60)} catch (x) {e = x.stack}
@@ -527,10 +529,10 @@ if (mode === '--real' || mode === '--real-fell' || mode === '--real-weir') { // 
     delete F.camp; for (const a of mem) {a.x = g.gate.x; a.y = g.gate.y - 3; a.state = 'town'; a.pq = []} const r = act(lead, 'list_jobs'); ok(!r.error, 'the board reads' + (r.error ? ': ' + r.error : '')); ok(!reads(lead), 'and so does everything else')}
   {const up = M.EXITS.find(e => e.to.map == null), r = up && act(lead, 'move_to', {target: up.name}); if (up) ok(r.ok === false && /not yet open/.test(JSON.stringify(r)) && !F.road, up.name + ' is closed in words: ' + (r.error || '').slice(0, 80))}
   // the walk, town to town, setting out at dawn (a company camps at dusk). Nothing bites, so this measures the road.
-  {const [A, B] = M.CITY; calm(); S.gameMin = (Math.floor(S.gameMin / 1440) + 1) * 1440 + 360; delete F.camp; lead.x = A.gate.x; lead.y = A.gate.y; lead.state = 'hunt'; lead.pq = []; lead.dest = null; let on = 0, t = S.gameMin; const r = act(lead, 'move_to', {target: B.name}); steps(2);
+  if (M.CITY.length > 1) {const [A, B] = M.CITY; calm(); S.gameMin = (Math.floor(S.gameMin / 1440) + 1) * 1440 + 360; delete F.camp; lead.x = A.gate.x; lead.y = A.gate.y; lead.state = 'hunt'; lead.pq = []; lead.dest = null; let on = 0, t = S.gameMin; const r = act(lead, 'move_to', {target: B.name}); steps(2);
     const walked = until(() => {if (lead.moving) on += S.gameMin - t; t = S.gameMin; return Math.hypot(lead.x - B.gate.x, lead.y - B.gate.y) < 3}, 60 * 900), min = Math.round(on); ok(r.ok && walked && min >= W.walk, A.name + ' to ' + B.name + ': ' + r.route?.tiles + ' tiles, ' + min + ' game minutes on the move')}
   // #1048 as it was found: autopilot's walk home on this map, nobody with an order, and the leader free to walk straight out again
-  {const t = X.homeOf(lead), P = () => CO.slotParty(F), one = () => !!P() && mem.every(a => a.party === P()); calm(); delete F.camp; S.gameMin = (Math.floor(S.gameMin / 1440) + 1) * 1440 + 360; at(mem, {x: entry.x, y: entry.y - 3}); for (const a of mem) a.playActAt = -1e9; steps(5);
+  if (M.CITY.length > 1) {const t = X.homeOf(lead), P = () => CO.slotParty(F), one = () => !!P() && mem.every(a => a.party === P()); calm(); delete F.camp; S.gameMin = (Math.floor(S.gameMin / 1440) + 1) * 1440 + 360; at(mem, {x: entry.x, y: entry.y - 3}); for (const a of mem) a.playActAt = -1e9; steps(5);
     lead.pq = [{kind: 'move', legs: [{x: t.gate.x, y: t.gate.y, st: 'return'}], last: 'town', label: t.name, auto: 'heading home to ' + t.name + ' (the pack is full)'}]; let held = true;
     ok(until(() => {held = held && one(); return lead.state === 'town'}, 60 * 900), 'autopilot goes home to ' + t.name); for (let i = 0; i < 300; i++) {steps(); held = held && one()} ok(held, 'one party all the way, and after');
     const r = act(lead, 'lead_to', {target: M.CITY[0].name === t.name ? M.CITY[1].name : M.CITY[0].name}); ok(r.ok, 'and lead_to takes them on: ' + (r.error || r.leading))}
@@ -540,6 +542,7 @@ if (mode === '--real' || mode === '--real-fell' || mode === '--real-weir') { // 
   ok(lead.quest && lead.quest.type === only && lead.quest.have === 3 && lead.quest.need === 4 && b.quest.have === 2 && c.quest.have === 1 && !lead.questsAway, 'every kill quest is back with its count: ' + mem.filter(a => a.quest).map(a => a.quest.have + '/' + a.quest.need).join(' '));
   ok(MOBS[only].name === W.onlyName && M.LVL_CAP === W.homeCap && gains(lead, 600) === 102, W.from + '\'s creatures and its XP are back');
   ok(!reads(lead), 'everything reads' + (reads(lead) || ''));
+  if (W.lair) {const LR = await import('../src/sim/lair.js'); S.boss.respawn = 0; steps(60 * 60); ok(!LR.hasLair() && !S.boss.alive && S.boss.tpl === 'kragmaw', 'no wyrm stirs on ' + W.from + ' (a dormant record, no lair, an hour on)')}
   {const g0 = b.gold, x = b.xp; for (const a of [b]) {const t = M.CITY[0]; a.x = t.gate.x; a.y = t.gate.y; a.state = 'town'} H.turnIn(b); ok(!b.quest && b.gold > g0, 'and a finished one turns in at the gate: +' + (b.gold - g0) + 'g')}
   ok(!!S.maps[far], W.name + ' waits, frozen');
   process.exit(fail ? 1 : 0);
@@ -987,7 +990,7 @@ for (const [m, what] of [['--road', 'when a road opens, what holds it and what i
   ok(r.status === 0, 'Hollin to the Hawkwold and back');
 }
 { // the Wend Road, the Wendmouth to the Weirgate, and the Hawk Road from the Hawkwold
-  for (const [leg, map, what] of [['wend', 'wendmouth', 'the Wendmouth to the Weirgate'], ['hawk', 'hawkwold', 'the Hawkwold to the Weirgate']]) {
+  for (const [leg, map, what] of [['wend', 'wendmouth', 'the Wendmouth to the Weirgate'], ['hawk', 'hawkwold', 'the Hawkwold to the Weirgate'], ['kiln', 'weirgate', 'the Weirgate to the Wend head']]) {
     const r = spawnSync(process.execPath, [HERE, '--real-weir'], {env: {...env(map), XLEG: leg, XMAP: map, XROAD: 'east', XBACK: leg === 'hawk' ? 'north' : 'west'}, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 300000});
     process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
     ok(r.status === 0, what + ' and back');

@@ -6,5 +6,6 @@ import {LAIR,ZONES,zoneAt,dist} from '../world/map.js';
 export const NO_LAIR='No great beast keeps a lair on this land: there is nothing here to raid. Look to the town board (list_jobs).';
 export const hasLair=()=>!!LAIR;
 export const nearLair=(p,r)=>!!LAIR&&dist(p,LAIR)<r;
+export const lairBoss=()=>(LAIR&&LAIR.boss)||'kragmaw'; // the BOSSES template this map's lair holds (spec lair `boss`); Eldmoor's own rows name none
 export const lairSpot=()=>LAIR?{x:LAIR.x,y:LAIR.y}:null;
 export const lairRegion=()=>LAIR?ZONES[zoneAt(LAIR.x,LAIR.y)]:null;

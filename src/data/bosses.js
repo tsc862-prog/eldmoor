@@ -26,6 +26,18 @@ export const BOSSES=worded(()=>({
     enrage:null,
     loot:{xp:400,gold:40,epics:BOSS_EPICS,p:.4,src:'Kragmaw'},
   },
+  // Kragmaw on the Wend's Head (#1013): the same wyrm for a company of level 16-20 (the Eldmoor row above was tuned for the background muster and stays as it is).
+  // Twice the body and half again the blows: measured on the real-time raid with five heroes, a level 18-20 company kills it about six times in ten and breaks off the rest,
+  // a level 16 company about four in ten, and under one raid in ten costs a life.
+  'kragmaw-head':{
+    id:'kragmaw-head',name:'Kragmaw',full:'Kragmaw the Cinder Wyrm',family:'wyrm',lvl:20,maxhp:26000,respawn:600,
+    wake:' stirs again in its '+WORDS.lairRegion+' lair.',
+    attack:{cd:1.6,dmg:[83,45]},
+    abilities:[{id:'cinderbreath',fx:'breath',cd:7,dmg:[33,12],radius:4.6,tag:'fire',color:'#ffa040',name:'Cinder Breath'}],
+    phases:[{at:1,name:'The lair'}],
+    enrage:null,
+    loot:{xp:400,gold:40,epics:BOSS_EPICS,p:.4,src:'Kragmaw'},
+  },
   // The Sunken Crypt's lich. Not yet fought by the sim (the Crypt resolves by dice); the crawl rework
   // (#65) fights it with this. Sized for a group of 4-5 at level 9-12: about 3000 hp, hits of 18-30.
   vesk:{

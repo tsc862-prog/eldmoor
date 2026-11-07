@@ -815,7 +815,7 @@ const WEIR_ROOMS=[
   {id:'weighing',name:'The Weighing Hall',frame:'Great scales hang from the roof, tipped by what lies in the pans. Dry bowstrings creak from the beams.',
     foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.62,rounds:3},
   {id:'granary',name:'The Flooded Granary',frame:'Black water lies knee-deep between the grain bins. Wardens stand in it, still guarding a harvest that rotted a century ago.',
-    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.8,rounds:2},
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.52,rounds:3},
   {id:'chair',name:"The Weir-Warden's Chair",frame:"The last chamber is a round pool with the weir-keeper's chair standing in it. The one who sits there has held the river back a very long time.",
     foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.91,rounds:3,boss:true},
 ];
@@ -880,7 +880,7 @@ export const WEIRGATE={
   exits:[
     {id:'west',name:'the Wend Road',to:{map:'wendmouth',exit:'east'},edge:{side:'W',from:38,to:41}},
     {id:'north',name:'the Hawk Road',to:{map:'hawkwold',exit:'east'},edge:{side:'N',from:40,to:43}},
-    {id:'east',name:'the Kilnway',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:40,to:43}},
+    {id:'east',name:'the Kilnway',to:{map:'wendshead',exit:'west'},edge:{side:'E',from:40,to:43}},
   ],
   roads:[
     {from:'west',via:['wendA','wendB','wendC'],to:'fordS'},
@@ -898,11 +898,96 @@ export const WEIRGATE={
   labels:[['WENDREACH',20,24],['GREYWOOD',100,38],['THE ASHMARCH',144,24],['ALDERMERE',45.5,7.2],['BRANDHOLD',120,46.5],['THE WEIRGATE',78,31]],
 };
 
+// The Brandwright Kiln's chambers on the Wend's Head: the Vale's four, pitched for a company of level 14 and up (entry 14, #1013), every blow harder than the Vale's, as the Weir's were (#1055).
+const KILN_ROOMS=[
+  {id:'flue',name:'The Flue Gallery',frame:'Heat rolls up the great flue. Slag motes drift down it like sparks and gather on the stone.',
+    foes:[{type:'slagmote',n:4}],lvl:-1,hit:.35,rounds:2},
+  {id:'ash',name:'The Ash Floor',frame:'A floor of drifted ash, cooling, and the crawlers who live in it come up out of the drifts all at once.',
+    foes:[{type:'cavecrawler',n:2,hits:1},{type:'golem',n:1,hits:2}],lvl:0,hit:.43,rounds:2},
+  {id:'quench',name:'The Quench Pool',frame:'A stone basin where the finished ware was drowned to set it. The water is long gone to steam, and the two clay giants standing in the dry basin turn their heads together.',
+    foes:[{type:'golem',n:2,hits:2}],lvl:1,hit:.52,rounds:3},
+  {id:'heart',name:'The Kiln Heart',frame:'The last firing-chamber, still red at the heart. What tends it was built to, and has never been told it can stop.',
+    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.6},{type:'slagmote',n:2}],lvl:2,hit:.6,rounds:4,boss:true},
+];
+
+// ---- The Wend's Head: the fifth and last chapter (#1013 slice 7b, levels 14-22) ----
+// The Kilnway comes in from the Weirgate in the far west and runs on east past Kilnmark, the one town, through the slag and brick of the old kilns to the cold crown where the Wend rises
+// from its spring pool; beyond the pool Kragmaw keeps the one lair, and it is the one place a raid goes. The end of the road: no exit on. Hollin's density at the biggest scale: one
+// town, one great dungeon, one elite, a long walk between every one of them, and creatures only where the band needs them.
+export const WENDSHEAD={
+  name:'The Wend\'s Head',
+  blurb:'The end of the Kilnway: a waystation town, the old brick kilns with a clay warden still tending the fire, and beyond them a cold crown of snow where the Wend rises from its spring, and a wyrm sleeps in a ring of lava at the river\'s head. Come by the Kilnway from the Weirgate, at about level 14.',
+  size:{w:160,h:76},
+  seeds:{terrain:89,detail:113},
+  sides:'lore',
+  chapter:true,
+  final:true,
+  ladder:{step:2},
+  curves:{
+    // The Wend, young here: east to west across the middle, narrow and wandering, rising from the spring pool in the east.
+    river:{axis:'x',base:33,sin:[[41,3.1,.4],[9.5,1,1.3]]},
+    kiln:{axis:'y',base:72,noise:{seed:51,scale:6,amp:6,slice:2.3}},   // the Kilnlands' west edge
+    crown:{axis:'y',base:114,noise:{seed:57,scale:6,amp:5,slice:3.7}}, // the Crownfell's west edge
+  },
+  regions:[
+    {id:'slagmoor',name:'The Slagmoor',band:[14,17],biome:'highland',mask:{kind:'all'}},
+    {id:'kilnlands',name:'The Kilnlands',band:[16,19],biome:'ash',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'kiln'},{kind:'west-of-curve',curve:'crown'}]}},
+    {id:'crownfell',name:'The Crownfell',band:[18,22],biome:'tundra',pools:{sx:6,sy:4.4,at:.66,seed:31},
+      sky:[['clear',.45],['snow',.2],['squall',.35]], // squalls off the crown
+      mask:{kind:'east-of-curve',curve:'crown'}},
+  ],
+  // The Wend rises from a spring pool under the rock (pool); no road runs over its water and there is no ford.
+  river:{curve:'river',width:2,span:[0,133],pool:{x:134,y:33,r:2.7}},
+  scenery:{
+    wash:{slagmoor:'heath',kilnlands:'ash',crownfell:'ash'},
+    dress:{'The Brandwright Kiln':'kiln',Kragmaw:'lair'},
+    head:{x:134,y:33},
+  },
+  towns:[
+    // Kilnmark: a ridge waystation on the Kilnway, the last roof for a long way. The Hawkstead plan: the chapel on the hall's shoulder, a stair up the middle, the notice board at its head.
+    {name:'Kilnmark',fac:0,x0:44,y0:43,w:19,h:13,gate:'E',gateAt:5,race:'tarrow',spots:{square:[15.5,8.1]},grave:[16.5,8.6],notch:[[16,11,3,2]],clear:3,homes:[[1.5,11.5],[13.5,11.5]],
+      torches:[[17.5,4.5],[17.5,7.5],[5,6],[11,6],[14,8],[6,11]],
+      buildings:townPlan(44,43,[['smithy-great',1,7],['auction-great',8,1],['hall-great',1,1],['chapel-hill',14,1],['inn-great',5,7],['board',14,7],['house-tall',11,7]]),
+      ground:[[1,6,17,1],[8,5,10,1],[1,11,14,1]]},
+  ],
+  landmarks:[
+    // The great dungeon, far down the Kilnway in the old kilns. entry: the level a background group first goes down.
+    {kind:'crypt',name:'The Brandwright Kiln',boss:'The Kiln-Warden',x:100.5,y:52.1,mouth:{x0:99,y0:50,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:KILN_ROOMS,entry:14},
+    // The raid lair, at the river's head beyond the spring pool.
+    {kind:'lair',name:'Kragmaw',boss:'kragmaw-head',x:148.5,y:33.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
+  ],
+  outposts:[
+    {id:'coldwatch',name:'Coldwatch',x:121.5,y:40.5,r:3.5},
+  ],
+  points:{
+    kmN:[53,40],            // the Kilnway rounds the north wall of Kilnmark to its east gate
+    kilnBend:[88,50],       // the Kiln's turning
+    coldGate:[121,41],      // the post at the crown's edge
+    poolS:[134,40],         // keeps the road to the lair on the south of the spring pool
+    lairGate:[142,33],
+  },
+  exits:[
+    {id:'west',name:'the Kilnway',to:{map:'weirgate',exit:'east'},edge:{side:'W',from:40,to:43}},
+  ],
+  roads:[
+    {from:'west',via:['kmN'],to:'Kilnmark'},
+    {from:'Kilnmark',via:['kilnBend'],to:'The Brandwright Kiln'},
+    {from:'Kilnmark',to:'coldGate'},{from:'coldGate',to:'poolS'},{from:'poolS',to:'lairGate'},
+  ],
+  roadClear:[1,3],
+  glades:[[100.5,50,5],[5,41,5],[142,33,4]], // the Kiln's mouth, where the Kilnway comes in, and the lair's gate
+  lights:{townTorches:[[10.5,3.4]]},
+  spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of a wall
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{slagmoor:{herb:5,ore:6,hide:5,fish:3},kilnlands:{herb:2,ore:9,hide:4,fish:1},crownfell:{herb:2,ore:6,hide:5,fish:0}}},
+  labels:[['THE SLAGMOOR',24,24],['THE KILNLANDS',92,62],['THE CROWNFELL',130,14],['KILNMARK',53.5,41.2]],
+};
+
 // ---- choosing the world ----
 // `?world=stepping` in the browser, ELDMOOR_WORLD=stepping in Node (or globalThis.ELDMOOR_WORLD
 // set before the first import, for tests); default eldmoor. Everything that needs the map size
 // or the spec goes through ACTIVE_SPEC / WORLD_ID so the choice is made exactly once.
-export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH,hawkwold:HAWKWOLD,weirgate:WEIRGATE};
+export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH,hawkwold:HAWKWOLD,weirgate:WEIRGATE,wendshead:WENDSHEAD};
 function pickWorld(){
   let id=null;
   try{if(typeof location!=='undefined'&&location.search)id=new URLSearchParams(location.search).get('world')}catch(e){}

@@ -1,11 +1,11 @@
 // All mutable simulation state in one object, so every sim module and the
 // renderer, UI and headless harness read the same world. No DOM here.
-import {hasLair,lairSpot} from './lair.js';
+import {hasLair,lairSpot,lairBoss} from './lair.js';
 import {BOSSES} from '../data/bosses.js';
 import {onWorld} from './kept.js';
 
 // The map's lair boss. A map with no lair keeps a dormant record, so S.boss is never null (#1013).
-const freshBoss=(at=lairSpot())=>({kind:'boss',tpl:'kragmaw',name:'Kragmaw',x:at?at.x:0,y:at?at.y+.6:0,lvl:BOSSES.kragmaw.lvl,maxhp:BOSSES.kragmaw.maxhp,hp:BOSSES.kragmaw.maxhp,alive:hasLair(),respawn:0,cd:0,breath:7,dmg:[0,0],face:-1});
+const freshBoss=(at=lairSpot(),tpl=lairBoss(),T=BOSSES[tpl])=>({kind:'boss',tpl,name:'Kragmaw',x:at?at.x:0,y:at?at.y+.6:0,lvl:T.lvl,maxhp:T.maxhp,hp:T.maxhp,alive:hasLair(),respawn:0,cd:0,breath:7,dmg:[0,0],face:-1});
 
 const fresh=()=>({
   worldVoice:'dm', // issue #164: 'dm' = background heroes and townsfolk say no scripted lines (only the DM voices world characters who meet the Fellowship); 'scripted' brings the old barks back (Settings)
