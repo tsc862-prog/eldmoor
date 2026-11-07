@@ -802,14 +802,16 @@ const BY_NAME=new Map(DM_TOOLS.map(t=>[t.name,t]));
 // or create_npc_placeholder) is pointed at pull_lever with that lever's contract; anything else lists the tools.
 const flatOf=lv=>Object.keys(FLAT_LEVERS).find(t=>FLAT_LEVERS[t]===lv)||null;
 // survey: the ground around a point; near reads like the place tools' (a hero, "fellowship", "x,y", a town, a region, a landmark, a place)
-function surveyRead(near,radius){const s=clean(near,60),lo=s.toLowerCase();if(!s)return {ok:false,error:'survey needs near: '+NEAR_FORMS+'.'};
-  let p=placeOf(s);
+function surveyRead(near,radius,to){const s=clean(near,60);if(!s)return {ok:false,error:'survey needs near: '+NEAR_FORMS+'.'};
+  const p=surveyPoint(s);if(!p)return {ok:false,error:'Unknown place "'+s+'".'+nameHint(s)+' '+nearTakes()};
+  const t=clean(to,60),q=t?surveyPoint(t):null;if(t&&!q)return {ok:false,error:'Unknown place "'+t+'" for to. '+nearTakes()};
+  const r=surveyAt(p,radius,q);if(r&&r.ok&&EXITS.length){const near=EXITS.filter(e=>dist(p,e)<=r.radius+e.r);if(near.length)r.roads_out=near.map(roadOut)}
+  return r&&r.ok?{...landHead(),...r}:r}
+function surveyPoint(s){const lo=s.toLowerCase();let p=placeOf(s);
   if(!p&&(lo==='fellowship'||lo==='party'||lo==='the fellowship')){const fo=focus();if(fo)p={x:fo.x,y:fo.y,label:'around the Fellowship'}}
   if(!p){const lm=LANDMARKS.find(l=>l.name.toLowerCase()===lo||l.name.toLowerCase().replace(/^the /,'')===lo.replace(/^the /,''));if(lm)p={x:lm.x,y:lm.y,label:'around '+lm.name}}
   if(!p){const pl=markNamed(s);if(pl)p={x:pl.x,y:pl.y,label:'around '+pl.name}}
-  if(!p)return {ok:false,error:'Unknown place "'+s+'".'+nameHint(s)+' '+nearTakes()};
-  const r=surveyAt(p,radius);if(r&&r.ok&&EXITS.length){const near=EXITS.filter(e=>dist(p,e)<=r.radius+e.r);if(near.length)r.roads_out=near.map(roadOut)}
-  return r&&r.ok?{...landHead(),...r}:r}
+  return p||null}
 // A place tool that was refused for the ground names survey as the fix (#558).
 const GROUND_ERR=/open ground|walkable|tiles of|inside|too close|off the map|unknown place|not a road|on the |outside /i;
 export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();
@@ -874,7 +876,7 @@ function run0(tool,args){let r;
     case 'hooks':r=hooksRead(args.town,args.region);break;
     case 'levers':r=leversRead();break;
     case 'hear':r=hearRead(dmState(),args);break;
-    case 'survey':r=surveyRead(args.near,args.radius);break;
+    case 'survey':r=surveyRead(args.near,args.radius,args.to);break;
     case 'world_standing':r=worldStanding();break;
     case 'notes_read':r=notesRead(args.section);break;
     case 'notes_write':r=notesWrite(args);break;

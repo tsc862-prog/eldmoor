@@ -49,7 +49,8 @@ import {S,clockStr,dayNo,loreSides,ownTown,sameSide,foeOf,mayFight} from './stat
 import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
-import {route,doorAt,clearLine} from './path.js'; // the way a walk goes (#794)
+import {route,blockedBy,doorAt,clearLine} from './path.js'; // the way a walk goes (#794)
+import {GROUND,groundScan,groundLines,roadLine,routeFacts,wayWords,wayNow,betweenWords,compass} from './ground.js'; // the land and the way in words (#797)
 import {partyMates,leaderOf,leaveParty,keeps} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {whisperTo,emoteAct} from './aside.js'; // whisper and emote (#627)
@@ -132,7 +133,7 @@ onSafetyChange((a,before,after,why)=>histNote(a,'gambits',before,after,why)); //
 
 // ---- knobs ----
 export const PK={
-  SIGHT:12,          // tiles a hero can see in clear weather
+  SIGHT:GROUND.SIGHT, // tiles a hero can see in clear weather
   TALK:4,            // tiles to a townsperson or hero to talk (keep equal to EAR.TALK in sim/earshot.js, #395)
   JOIN:6,            // tiles to a hero to join their party
   FLEE:.15,          // reflex: break off a fight below this share of max HP (no command says otherwise)
@@ -633,6 +634,14 @@ const enemyNear=(a,p,r=12)=>!loreSides()&&CITY.some(c=>c.fac!==a.fac&&(dist(p,c.
 // ("gate in Highgate", "the inn", "Lowmark (home)", "(4, 5)", "Highgate (town; Lowmark around it)"), a known region inside longer
 // words ("Lowmark Forest"), the world's own name, or a companion in sight; an unknown place gets the nearest name the hero knows.
 // Only places this hero knows are ever named back to it (#188).
+// A plan to read and not to walk (survey {to}): a region is its nearest ground, not a dice-picked point, so a look draws nothing from the RNG.
+let PEEK=false;
+function peekPlan(a,target){PEEK=true;try{return plan(a,target)}finally{PEEK=false}}
+// The nearest sampled ground of a region, or where you stand inside it; null for a region with none.
+function zoneNear(z,from){if(zoneAt(from.x,from.y)===z)return {x:from.x,y:from.y};const pts=ZPTS[z]||[],st=Math.max(1,Math.floor(pts.length/60));let best=null,bd=Infinity;
+  for(let i=0;i<pts.length;i+=st){const d=Math.hypot(pts[i].x-from.x,pts[i].y-from.y);if(d<bd){bd=d;best=pts[i]}}return best}
+// What the hero can see of the ground (#797): the scan within its sight, as lines; a crossing named only when it knows the region.
+function groundHere(a,max){const r=sightOf(a),scan=groundScan(a,Math.round(r));return {r,scan,lines:groundLines(scan,{max,region:c=>c.region&&knowsPlace(a,c.region)?c.region:null})}}
 function plan(a,target){const raw=clean(target,60),t0=raw.toLowerCase().trim();
   if(!t0)return {error:'Say where to go.'};
   {const e=closedRoad(t0);if(e)return {error:roadWords(e)}} // a road with no far side yet (sim/roads.js, #1013)
@@ -701,7 +710,7 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   // Places by name only when this hero knows them: its home region, where it has been, what it saw or was told (#188).
   const unknown=n=>({error:'You have never been to '+n+' nor heard of it. Ask around (talk, the town criers, your companions), or explore a direction ("north", "east", ...) or "x,y".'});
   const z=ZONES.findIndex(n=>n.toLowerCase()===t);
-  if(z>=0){if(!knowsPlace(a,ZONES[z]))return unknown(ZONES[z]);let p=zonePoint(z,null,c.gate);for(let i=0;i<8&&enemyNear(a,p);i++)p=zonePoint(z,null,c.gate); // a region around both towns (#411): pick again, away from the enemy wall
+  if(z>=0){if(!knowsPlace(a,ZONES[z]))return unknown(ZONES[z]);if(PEEK){const q=zoneNear(z,a);return q?toField(q,ZONES[z]):{error:'That land has no ground to walk to.'}}let p=zonePoint(z,null,c.gate);for(let i=0;i<8&&enemyNear(a,p);i++)p=zonePoint(z,null,c.gate); // a region around both towns (#411): pick again, away from the enemy wall
     if(enemyNear(a,p))return {error:'That part of '+ZONES[z]+' is under an enemy town wall.'};
     const r=toField(p,ZONES[z]);const w=placeMemory(a,ZONES[z]);if(w)r.warn=w;return r}
   {const D=t==='crypt'||t==='the crypt'?CRYPT:CRYPTS.find(x=>x.name.toLowerCase()===t);if(D){if(!knowsPlace(a,D.name))return unknown(D.name);const r=toField({x:D.x,y:D.y+1.4},D.name+' (the entrance)');const w=placeMemory(a,D.name);if(w)r.warn=w;return r}}
@@ -723,7 +732,7 @@ function planOne(a,t,inT){const c=homeOf(a),here=inTown(a);
   if(m){const p={x:+m[1],y:+m[2]};if(!(p.x>=1&&p.y>=1&&p.x<W-1&&p.y<H-1))return {error:'That is off the map (0-'+W+', 0-'+H+').'};
     if(enemyNear(a,p))return {error:'That is under an enemy town wall.'};
     const ct=cityAt(p);if(ct&&ct===c)return toTown(p,'('+p.x+', '+p.y+') in '+c.name);
-    return toField(p,'('+p.x+', '+p.y+') in '+(ZONES[zoneAt(p.x,p.y)]||'the wilds'))}
+    {const zn=ZONES[zoneAt(p.x,p.y)];return toField(p,'('+p.x+', '+p.y+')'+(zn&&knowsPlace(a,zn)?' in '+zn:''))}} // coordinates name only a region the hero knows (#797)
   const mk=markInSight(a,t);if(mk)return toField({x:mk.x,y:mk.y},mk.name); // a DM-marked place in sight (#414)
   const named=placeNameIn(t);if(named)return unknown(named);
   return null}
@@ -743,14 +752,15 @@ function dangerAhead(a,legs){const here=zoneAt(a.x,a.y);let px=a.x,py=a.y,safe={
       px=ex;py=ey}
     px=l.x;py=l.y}
   return null}
-// The way a walk will go, as facts beside the answer's going and distance (#794; the words are #797's): tiles walked, what stands
-// on the straight line (blocked), the bridges and fords on the way (by: kind, direction and tiles from the hero, the region only
-// when the hero knows it, so a route names no place it has not heard of), the door it ends at, and short when the ground ends it early.
-function routeFacts(a,p){let x=a.x,y=a.y,n=0,blocked=null,short=false;const by=[];
-  for(const l of p.legs){const r=route(x,y,l.x,l.y);if(!r)return null;n+=r.len;blocked=blocked||r.why||null;short=short||!!r.near;
-    for(const c of r.cross||[]){const z=ZONES[zoneAt(c.x,c.y)],o={crossing:c.k,dir:compass(c.x-a.x,c.y-a.y),tiles:Math.round(Math.hypot(c.x-a.x,c.y-a.y))};if(knowsPlace(a,z))o.region=z;by.push(o)}
-    const e=r.pts.length-2;x=r.pts[e];y=r.pts[e+1]}
-  const o={tiles:Math.round(n*10)/10};if(blocked)o.blocked=blocked;if(by.length)o.by=by;const d=doorAt(x,y);if(d)o.door=d.serves||d.piece;if(short)o.ends_short=true;return o}
+// The way a walk will go, beside the answer's going and distance: the route's facts (#794) and the words for them (#797, sim/ground.js).
+// way is there whenever the walk bends, crosses or cannot arrive, so a hero is never walked round something it was not told of.
+function wayOf(a,p,r){const legs=p.legs,o=routeFacts(a,legs),w=wayWords(o,dist(a,legs[legs.length-1]));if(o)r.route=o;if(w)r.way=w;return r}
+// The ways from here to the places the hero knows, nearest first: [{place, dir, way}]. only: just those with something on the straight line.
+function placeWays(a,n,only){loreOf(a);const here=inTown(a)?homeOf(a):null,out=[];
+  for(const x of knownPlaces(a,a).filter(x=>x.dir!=='here'&&!(here&&x.name===here.name)).sort((p,q)=>p.tiles-q.tiles||(p.name<q.name?-1:1))){if(out.length>=n)break;
+    if(only&&!blockedBy(a.x,a.y,x.at.x,x.at.y))continue;
+    out.push({place:x.name,dir:x.dir,way:betweenWords(routeFacts(a,here?[{x:here.gate.x,y:here.gate.y,st:'town'},{x:x.at.x,y:x.at.y,st:'travel'}]:[{x:x.at.x,y:x.at.y,st:'travel'}]))})}
+  return out}
 function dangerWords(a,z){let gw;const n=ZONES[z],known=knowsPlace(a,n),b=bandOf(z),R=REGIONS[z];
   const feel=FEEL[R&&R.biome]||'the beasts here look far beyond you',worse=b[0]-a.lvl>=10;
   const lw=known?placeWarn(a,n):null,tw=npcWarning(a);
@@ -785,21 +795,17 @@ const placeNameIn=t=>{const n=[...LANDMARKS.map(l=>l.name),cryptTitle()].filter(
 // ---- places (#414): the places this hero knows, nearest first, with direction, distance and what it learned there ----
 // Read only and dice-free. Only the hero's known set (the same knownNames move_to and hunt resolve, #188/#399/#411) plus
 // a DM-marked place it can see right now; never DM notes, lever reasons or numbers it could not know.
-const COMPASS=['east','southeast','south','southwest','west','northwest','north','northeast'];
-const compass=(dx,dy)=>Math.hypot(dx,dy)<1.5?'here':COMPASS[((Math.round(Math.atan2(dy,dx)/(Math.PI/4))%8)+8)%8];
 const PL={MAX:12,MIN_PER_TILE:3}; // rough game minutes a tile on foot (roads faster, marsh and snow slower)
 const walkTime=d=>{const m=d*PL.MIN_PER_TILE;return d<1.5?'you are there':m<50?'under an hour on foot':m<90?'about an hour on foot':'about '+Math.round(m/60)+' hours on foot'};
 // DM-marked places (mark_place) the hero sees with its own eyes now; move_to takes them by name while in sight.
 const markInSight=(a,name)=>(S.places||[]).find(p=>p&&p.name&&(name==null||p.name.toLowerCase()===name)&&dist(a,p)<=sightOf(a))||null;
 function knownPlaces(a,from){const L=a.lore&&a.lore.p?a.lore.p:null,c=homeOf(a),out=[];
-  const at=(name,kind,p,how,go)=>{const dx=p.x-from.x,dy=p.y-from.y,d=Math.hypot(dx,dy);out.push({name,kind,how,dir:compass(dx,dy),tiles:Math.round(d),travel:walkTime(d),go:go||name})};
+  const at=(name,kind,p,how,go)=>{const dx=p.x-from.x,dy=p.y-from.y,d=Math.hypot(dx,dy);out.push({name,kind,how,dir:compass(dx,dy),tiles:Math.round(d),travel:walkTime(d),go:go||name,at:{x:p.x,y:p.y}})};
   for(const name of knownNames(a)){
     const town=CITY.find(x=>x.name===name);if(town){at(name,'town',town.gate,town===c?'your home town':'a town of your people');continue}
     const p=L&&L[name],how=!p?'you know of it':p.how==='home'?'your home region':p.how==='been'?'you have been there':p.how==='seen'?'you have seen it':'only heard of it';
     const z=ZONES.indexOf(name);
-    if(z>=0){const pts=ZPTS[z]||[];let best=null,bd=Infinity;const st=Math.max(1,Math.floor(pts.length/60));
-      for(let i=0;i<pts.length;i+=st){const d=Math.hypot(pts[i].x-from.x,pts[i].y-from.y);if(d<bd){bd=d;best=pts[i]}}
-      if(zoneAt(from.x,from.y)===z)best={x:from.x,y:from.y};if(!best)continue;at(name,'region',best,how);continue}
+    if(z>=0){const best=zoneNear(z,from);if(!best)continue;at(name,'region',best,how);continue}
     if(p&&p.mk&&p.x!=null){if(spotHere(p))at(name,'mark',p,markHow(p));continue} // yours, or told by a companion (#632); one on another land has no way from here
     const lm=LANDMARKS.find(l=>l.name===name)||cryptIf(n=>n===name);
     if(lm){at(lm.kind==='lair'?name+"'s lair":name,'landmark',lm,how,name);continue}
@@ -987,11 +993,22 @@ const T={
       weather:weatherName(z),you:{hp:pct(a.hp,maxHp(a))+'%',state:a.state,doing:a.playDoing||null},sight:here?'the whole town':Math.round(sightOf(a))+' tiles',...s};
     const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv;
     const near=LANDMARKS.filter(l=>dist(a,l)<20).map(l=>l.name+' ('+r1(dist(a,l))+' tiles)');if(near.length)r.landmarks=near;
+    {const g=groundHere(a,GROUND.LOOK),w=wayNow(a);if(g.lines.length)r.ground=g.lines;if(w)r.your_way=w; // what bars the ground in sight, and what the walk is going round (#797)
+      if(!here){const b=placeWays(a,GROUND.BETWEEN,true);if(b.length)r.between=b.map(x=>x.place+': '+x.way)}}
     {const road=roadLook(a);if(road.length)r.on_the_road=road} // carts, travellers and guards in sight, in words (#796)
     if(manyMaps())r.land=mapName(MAP_ID);{const ro=roadsSeen(a,!!here);if(ro.length)r.roads_out=ro} // the roads off this land, and what is said of them (#1013)
     {const f=followLine(a);if(f)r.following=f;const by=followersOf(a);if(by.length)r.walks_with_you=by.map(b=>b.name+' walks with you')} // follow (#445)
     lookInvites(a,r); // the trainer, what sells, gathering spots, whether you can attempt (#872, #864)
     lookSnap(a);return r},
+  // The lay of the land in sight, or the way to one place (#797). Read only: no dice, no walking, nothing learned.
+  survey(a,{to}={}){if(to!=null&&String(to).trim()){const p=peekPlan(a,to);if(p.error)throw new Rule(p.error);
+      const r=wayOf(a,p,{ok:true,to:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))});if(!r.way)r.way='Plain going, straight there.';
+      const dz=dangerAhead(a,p.legs);if(dz)r.warning=dangerWords(a,dz.z);if(p.warn)r.warning=(r.warning?r.warning+' ':'')+p.warn;return r}
+    const g=groundHere(a,GROUND.SURVEY),rl=roadLine(g.scan);
+    const r={ok:true,where:inTown(a)?'inside '+homeOf(a).name:(ZONES[zoneAt(a.x,a.y)]||'the wilds'),sight:Math.round(g.r)+' tiles',ground:g.lines.length?g.lines:['Open ground as far as you can see.']};if(rl)r.roads=rl;
+    if(g.scan.crossings.length)r.crossings=g.scan.crossings.slice(0,4).map(c=>(c.region&&knowsPlace(a,c.region)?'the '+c.region+' ':'a ')+c.k+', '+c.dir+', '+Math.round(c.d)+' tiles off');
+    const w=wayNow(a);if(w)r.your_way=w;const L=placeWays(a,GROUND.WAYS,false);if(L.length)r.ways=L.map(x=>x.place+' ('+x.dir+'): '+x.way);
+    r.use='survey {to} tells the way to one place before you set out; to takes what move_to takes.';return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
     const r={ok:true,name:a.name,...(titleOf(a)?{known_as:styled(a)}:{}),people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,...(loreSides()?{sides:'lore'}:{}),home:c.name,world:WORDS.world,...(manyMaps()?{land:mapName(MAP_ID)}:{}),level:a.lvl,
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
@@ -1071,7 +1088,7 @@ const T={
     const p0=plan(a,target);if(p0.error)throw new Rule(p0.error);
     const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);const p=g.p; // a region far above the hero: stop at its edge first (#465)
     if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const r={ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))},rt=routeFacts(a,p);if(rt)r.route=rt;if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;
+    const r=wayOf(a,p,{ok:true,going:p.label,distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))});if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;
     if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;return r},
   talk(a,{target,text}){const t=clean(target,60).toLowerCase();need(t,'Talk to whom?');
     ensureNpcs();const here=cityAt(a);
@@ -1272,12 +1289,12 @@ const T={
       if(p0.bound)throw new Rule(p0.bound+' is not in this land: there is no hunting it from here. move_to it to walk to '+p0.label+'.'+gl());
       if(p0.last==='town')throw new Rule(p0.label+' is inside the town walls: hunt out in the world.'+gl()+' Or a direction ("north") or "x,y".');
       const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);if(g.stopped){a.pq=[{kind:'move',legs:g.p.legs,last:'hunt',label:g.p.label}];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
-        return {ok:true,going:g.p.label,stops_short:true,warning:g.p.warn,hunting:'not yet: you stop at the edge first',apart:apartNote(a,g.p)||undefined}}
+        return wayOf(a,g.p,{ok:true,going:g.p.label,stops_short:true,warning:g.p.warn,hunting:'not yet: you stop at the edge first',apart:apartNote(a,g.p)||undefined})}
       const p=g.p; // #465
       const z=ZONES.indexOf(p.label);if(z>=0)hunt.ground=z; // the region named is the ground, wherever the walk ends (#934)
       if(z>=0&&fieldState(a)&&!inTown(a)&&!cityAt(a)&&zoneAt(a.x,a.y)===z){a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;return {ok:true,hunting:what+' in '+ZONES[z],note:'You are already in '+ZONES[z]+'.'}}
       a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label},hunt];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
-      const r={ok:true,going:'going to '+p.label+' to hunt',hunting:what+' once there',distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))},rt=routeFacts(a,p);if(rt)r.route=rt;if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r}
+      const r=wayOf(a,p,{ok:true,going:'going to '+p.label+' to hunt',hunting:what+' once there',distance:r1(p.legs.reduce((t,l,i)=>t+dist(i?p.legs[i-1]:a,l),0))});if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;if(p.explore)r.explore=true;return r}
     a.pq=[{...hunt,k0:a.kills}];a.state='hunt';a.dest=null;
     return {ok:true,hunting:what+' in '+ZONES[zoneAt(a.x,a.y)]}},
   flee(a){need(['fight','duel','assist'].includes(a.state),'You are not in a fight.');flee(a,false);return {ok:true,fleeing_to:homeOf(a).name,hp:pct(a.hp,maxHp(a))+'%'}},
@@ -1404,7 +1421,7 @@ const T={
     {const ld=a.party?a.party.leader:leaderFor(a);need(ld,'You ride with no company.');need(ld===a,'Only the leader ('+ld.name+') leads the party.')} // any company; with nobody near it is a walk of your own, and not_told says who was left
     need(legal.includes(a.state),'You cannot lead from here ('+a.state+').');need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
-    const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};const far=outOfRange(a);if(far.length)r.not_told=nameList(far)+' too far away to hear the order; they stay where they are until you are together or a courier reaches them.';if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;return r},
+    const n=followLead(a,p.label);const r=wayOf(a,p,{ok:true,leading:p.label,followers:n});const far=outOfRange(a);if(far.length)r.not_told=nameList(far)+' too far away to hear the order; they stay where they are until you are together or a courier reaches them.';if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;return r},
   post_notice(a,{text}){need(inTown(a),'Notices are pinned at your town board. Go home first.');need(!notEnglish(text),ENGLISH);const c=homeOf(a),n=postNotice(a,text,c.name);need(!n.error,n.error);
     record(a,'Pinned a notice at ',c.name,'.');return {ok:true,posted:n.text,town:c.name,lapses_in_days:SIGHT.NOTICE_DAYS,note:'Anyone who reads the board at '+c.name+' learns your name and this text. Ask for them at the inn.'}},
   send_courier(a,{to,text}){need(companyOf(a),'Only an agent hero can hire a courier.');need(!notEnglish(text),ENGLISH);const r=sendCourier(a,to,text);if(r.error)throw new Rule(r.error);

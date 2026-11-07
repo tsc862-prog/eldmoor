@@ -191,10 +191,12 @@ export function talkText(b) {
 // The roads line (brief.roads, src/sim/lore.js roadsLine, #539): what the hero knows of where it is, where it goes and the places it knows to fear.
 export const roadsNote = b => b && typeof b.roads === 'string' && b.roads ? `
 What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more; look before you leave).` : '';
+// The way (brief.way, sim/ground.js wayNow, #797): what the walk is going round. Only while something stands on the straight line; absent on plain going.
+export const wayNote = b => b && typeof b.way === 'string' && b.way ? `\nYour way: ${b.way.slice(0, 120)}.` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
   return gatherNote(b) + crossingNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + (b && b.growth ? `
-${b.growth}` : '') + askedNote(b) + aimNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `
+${b.growth}` : '') + askedNote(b) + aimNote(b) + wayNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `
 Your memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }
 // The hero's stated aim (brief.aim, src/sim/intent.js aimBrief, issue #535): "Your aim: ... (set 3 h ago)" in every turn
