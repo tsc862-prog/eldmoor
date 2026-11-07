@@ -30,6 +30,8 @@ const clearGroups = () => {for (const D of CRYPTS) D.group = null};
 const SAFE = () => {for (const m of S.mobs || []) m.alive = false; rebuild()};
 // a faction's heroes in town at raid level, so both musters have all they want
 const field = f => {for (const a of S.agents) if (a.fac === f && living(a)) {const c = homeOf(a); put(a, c.gate.x, c.gate.y - 1, 'town'); a.lvl = 15; a.gear = 12; a.townStep = 2; a.wait = 9}};
+// Only the company (and whoever it hired) is fielded: with several dungeons the faction's other heroes would fill every one before the draft reached the company, which says nothing of the draft.
+const fieldCo = F => {for (const a of CO.members(F)) if (living(a)) {const c = homeOf(a); put(a, c.gate.x, c.gate.y - 1, 'town'); a.lvl = 15; a.gear = 12; a.townStep = 2; a.wait = 9}};
 const company = () => CO.slotted();
 const fresh = o => {setRunnerLinks(null); setReflexAck(null); T.TABLE.mode = 'auto'; T.TABLE.speed = 1; T.TABLE.drop = null; init(o); delete S.opening; S.boss.alive = true;
   clearGroups()};
@@ -159,7 +161,7 @@ section('C. a solo: go_crypt, join_raid');
 section('D. no host: the reflex draft');
 {
   fresh({}); T.TABLE.mode = 'off'; const F = company(), M = CO.members(F), f = F.fac; let went = false, P = null;
-  for (let k = 0; k < 60 * 300 && !went; k++) {if (!(k % 60)) {field(f); for (const D of CRYPTS) D.cd = 0} step(1 / 60); P = P || (F.props || []).find(q => q.kind === 'crypt'); went = CRYPTS.some(D => D.group && M.every(a => D.group.mem.includes(a)))}
+  for (let k = 0; k < 60 * 300 && !went; k++) {if (!(k % 60)) {fieldCo(F); for (const D of CRYPTS) D.cd = 0} step(1 / 60); P = P || (F.props || []).find(q => q.kind === 'crypt'); went = CRYPTS.some(D => D.group && M.every(a => D.group.mem.includes(a)))}
   ok(went && P && P.src === 'call', 'the company votes by reflex and goes whole: ' + (P && P.details));
 }
 
