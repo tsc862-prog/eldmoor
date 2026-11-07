@@ -11,5 +11,5 @@ export const SNAPSHOTS = {
   wendmouth: {zone: 'ccc10dc1', tiles: 'dd4e6959', minSpawn: 150},
   hawkwold: {zone: '47133cab', tiles: 'bd88e28b', minSpawn: 150},
   weirgate: {zone: 'f8609ff3', tiles: '2daca9c0', minSpawn: 150},
-  wendshead: {zone: '7f6abe99', tiles: 'ecff486a', minSpawn: 150},
+  wendshead: {zone: '7f6abe99', tiles: '410a6a95', minSpawn: 150},
 };

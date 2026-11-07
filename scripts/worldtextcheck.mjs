@@ -38,6 +38,7 @@ const namesOf = sp => {const o = new Set(), add = n => {if (typeof n === 'string
 const own = namesOf(WORLDS.vale), foreign = new Set();
 for (const [id, sp] of Object.entries(WORLDS)) if (id !== 'vale') for (const n of namesOf(sp)) if (!own.has(n)) foreign.add(n);
 foreign.delete('Kragmaw'); // the wyrm is every world's (the lair is the Vale's too)
+foreign.delete('Kilnmark'); // the Wend's Head's town is the Vale's outpost Kilnmark Cross grown up (docs/LORE.md); the word is shared on purpose
 const words = [...foreign, 'Eldmoor'].map(n => n.replace(/^The /, ''));
 // Exempt: item names that carry an Eldmoor region (ids shared by every world and kept in saved packs), and the homeland and hamlet names of the
 // peoples (a people's own past, canon in docs/LORE.md, not a place on this map).

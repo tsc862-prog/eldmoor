@@ -966,6 +966,7 @@ export const WENDSHEAD={
     coldGate:[121,41],      // the post at the crown's edge
     poolS:[134,40],         // keeps the road to the lair on the south of the spring pool
     lairGate:[142,33],
+    northTrack:[121,18],    // a track up from Coldwatch over the young Wend to the empty north bank
   },
   exits:[
     {id:'west',name:'the Kilnway',to:{map:'weirgate',exit:'east'},edge:{side:'W',from:40,to:43}},
@@ -974,6 +975,7 @@ export const WENDSHEAD={
     {from:'west',via:['kmN'],to:'Kilnmark'},
     {from:'Kilnmark',via:['kilnBend'],to:'The Brandwright Kiln'},
     {from:'Kilnmark',to:'coldGate'},{from:'coldGate',to:'poolS'},{from:'poolS',to:'lairGate'},
+    {from:'coldGate',to:'northTrack'},
   ],
   roadClear:[1,3],
   glades:[[100.5,50,5],[5,41,5],[142,33,4]], // the Kiln's mouth, where the Kilnway comes in, and the lair's gate

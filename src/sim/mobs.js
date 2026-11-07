@@ -104,6 +104,11 @@ export function mobBlow(m,t,mul=1){const h=t.hp,v=.8+rnd()*.4,cr=rnd()<blk(m).cr
 const alliesHurt=m=>nearMobs(m.x,m.y,6,o=>o!==m&&o.alive&&!o.gone&&o.hp<o.maxhp*.5)[0]||null;
 const packNear=m=>nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&(o.target||m.target)).length>0;
 const liveAdds=m=>S.mobs.reduce((n,o)=>n+(o.add&&o.parent===m.id&&o.alive&&!o.gone?1:0),0);
+export const trickUnit=(m,t)=>unitOf(m)/(t&&inSlots(t)?hitRamp(m):1); // a trick's unit of damage on t, the Fellowship's cut in it (poison at the Table, which does not go through hurt)
+export function trickHurt(m,t,units){const h=t.hp;hurt(t,m,units*unitOf(m));return Math.max(0,Math.round(h-Math.max(0,t.hp)))}
+// A Table round's ready test (#1056): the real-time one, except that an elite howls with no kin near: it is the pack.
+export const trickReady=(m,A,id)=>A.when==='pack'&&m.elite?(m.abcd[id]||0)<=0:ready(m,A,id);
+export const mendAlly=(m,A)=>{const o=alliesHurt(m);if(o){o.hp=Math.min(o.maxhp,o.hp+o.maxhp*A.amount);o.hpl=o.hp}return o};
 function ready(m,A,id){if((m.abcd[id]||0)>0)return false;
   switch(A.when){case 'hurt':return m.hp<m.maxhp*(A.hp||.5)&&(A.fx!=='summon'||liveAdds(m)<A.max);case 'pack':return packNear(m);case 'ally':return !!alliesHurt(m);default:return true}}
 // Fire one ability at t. Returns true when it used the mob's attack turn.
@@ -115,12 +120,14 @@ function useAbility(m,t){for(const id of m.ab||[]){const A=ABILITIES[id];if(!A||
     case 'slow':case 'root':case 'fear':t.cd+=A.lose;hurt(t,m,A.dmg*u);pop(t.x,t.y-.9,A.fx==='slow'?'SLOWED':A.fx==='root'?'ROOTED':'FEAR','#9ad0ff');break;
     case 'knockback':{hurt(t,m,A.dmg*u);if(t.hp>0){const dx=t.x-m.x,dy=t.y-m.y,d=Math.hypot(dx,dy)||1,nx=t.x+dx/d*A.push,ny=t.y+dy/d*A.push;
       if(WALKABLE.includes(tileAt(nx,ny))&&!solidAt(nx,ny)&&zoneAt(nx,ny)===zoneAt(t.x,t.y)){t.x=nx;t.y=ny}t.cd+=A.lose;pop(t.x,t.y-.9,'KNOCKED BACK','#ffd080')}break}
-    case 'summon':{for(let k=0;k<A.n&&liveAdds(m)<A.max;k++){const a=spawnMob(m.type,null,{variant:m.v,lvl:Math.max(1,m.lvl-3),hpMul:.4,hitMul:.6,abilities:[],add:true,parent:m.id});
-      Object.assign(a,standAt(m.x+(rnd()-.5)*1.4,m.y+(rnd()-.5)*1.4));a.home={x:a.x,y:a.y};a.spawn={x:a.x,y:a.y};a.target=t;a.pack=true}pop(m.x,m.y-.8,'KIN','#c0e090');break}
+    case 'summon':bringKin(m,t,A);break;
     case 'heal':{const o=alliesHurt(m);if(!o)break;o.hp=Math.min(o.maxhp,o.hp+o.maxhp*A.amount);o.hpl=o.hp;pop(o.x,o.y-.6,'+'+Math.round(o.maxhp*A.amount),'#7dce5a');break}
     case 'breath':{S.fx.push({type:'ring',x:m.x,y:m.y-.5,life:.5});for(const h of nearHeroes(m.x,m.y,A.radius,h=>h===t||h.target===m))hurt(h,m,A.dmg*u);break}
   }
   m.cd=m.acd*(m.frenzy>0?.8:1);return true}return false}
+// Summon: lesser kin at its side, each set on t. Returns them (a Table round seats them in the fight).
+export function bringKin(m,t,A){const out=[];for(let k=0;k<A.n&&liveAdds(m)<A.max;k++){const a=spawnMob(m.type,null,{variant:m.v,lvl:Math.max(1,m.lvl-3),hpMul:.4,hitMul:.6,abilities:[],add:true,parent:m.id});
+    Object.assign(a,standAt(m.x+(rnd()-.5)*1.4,m.y+(rnd()-.5)*1.4));a.home={x:a.x,y:a.y};a.spawn={x:a.x,y:a.y};a.target=t;a.pack=true;out.push(a)}pop(m.x,m.y-.8,'KIN','#c0e090');return out}
 function tickDots(m,dt){const L=m.dots;for(let i=L.length-1;i>=0;i--){const d=L[i],h=d.h;
   if(!h||h.state==='dead'||h.state==='ghost'||h.state==='town'||h.hp<=0){L.splice(i,1);continue}
   d.acc=(d.acc||0)+d.dps*Math.min(dt,d.rem);d.rem-=dt;
