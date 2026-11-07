@@ -75,7 +75,7 @@ import {moment,talked,REFLECT} from './reflect.js'; // reflection moments (#179)
 // making camp is a reflection moment for each agent-played member at the fire (camp.js event 'make', #178/#179)
 onCamp((kind,g,d)=>{if(kind!=='make'||!g)return;for(const id of g.ids||[])moment(S.agents.find(x=>x.id===id),'camp',d&&d.zone)});
 import {reflexMay,agentLive,hasLinks} from './runlink.js';
-import {guildJoinFor,guildFoundFor} from './guilds.js';
+import {guildJoinFor,guildFoundFor,guildLeaveFor,guildWord} from './guilds.js';
 import {notEnglish} from './lang.js';
 import {fileWish,wishInvite} from './wish.js'; // a note for the people who build the game (#663)
 import {lookInvites,sellsBest} from './invite.js'; // tools nothing else invites (#872, #864)
@@ -1142,8 +1142,8 @@ const T={
     for(const j of supplyJobs())if(j.phase==='open'&&j.town===c.name&&supplyMay(a,j))out.push({id:j.id,job:supplyText(j),goods:true,giver:j.giver?j.giver.name:'the gate captain',where:c.name,wants:supplyWant(j),pays:supplyReward(j),you_carry:supplyHave(a,j.want),for_you:j.for!=null?j.for===a.id:undefined,expires_in_min:Math.max(0,Math.round(j.until-S.gameMin))}); // a goods job (#720): take_quest {id} to hold it, turn_in to hand the goods in
     const bounties=bountiesAt(c).filter(b=>MOBS[b.type]).map(b=>({bounty:MOBS[b.type].q,kill:b.need+' '+MOBS[b.type].pl,where:ZONES[b.z],giver:b.giver,yours:a.quest&&a.quest.bounty===b.id||undefined,expires_in_min:Math.max(0,Math.round(b.until-S.gameMin))}));
     const sg=sightingLines(a,c.name),nt=noticesAt(a,c.name);for(const x of sg)if(x.bound)learnPlace(a,x.bound,'told');
-    const gw=gateWord(a,c.name),ro=gateRoads(a); // the gate's word: what the town is saying (#637), and where the roads out go (#1013)
-    return {ok:true,jobs:out,...(gw.length?{word_at_the_gate:gw}:{}),...(ro.length?{roads_out:ro}:{}),bounties:bounties.length?bounties:undefined,sightings:sg.length?sg.map(x=>x.text):undefined,notices:nt.length?nt.map(({poster,...r})=>r):undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
+    const gw=gateWord(a,c.name),gwd=guildWord(a),ro=gateRoads(a); // the gate's word: what the town is saying (#637), the guilds (hint), and where the roads out go (#1013)
+    return {ok:true,jobs:out,...(gw.length?{word_at_the_gate:gw}:{}),...(gwd?{guilds:gwd}:{}),...(ro.length?{roads_out:ro}:{}),bounties:bounties.length?bounties:undefined,sightings:sg.length?sg.map(x=>x.text):undefined,notices:nt.length?nt.map(({poster,...r})=>r):undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
     need(!(a.party&&a.party.leader!==a),'In the Fellowship the party decides: propose {kind:"job", job_id:'+(Number.isFinite(id)?id:'N')+'} (vote; the leader settles it).');
     const mine=advOf(a);
@@ -1439,6 +1439,8 @@ const T={
     const r=guildJoinFor(a,guild);need(r.ok,r.why);return r},
   guild_found(a){need(inTown(a),'A banner is raised in town, with comrades beside you. Walk to a friendly town first.');
     const r=guildFoundFor(a);need(r.ok,r.why);return r},
+  guild_leave(a){need(inTown(a),'Your name is struck from the roll in town. Walk to a friendly town first.');
+    const r=guildLeaveFor(a);need(r.ok,r.why);return r},
   smith(a,args={}){const ct=cityAt(a),here=inTown(a)||!!(ct&&ownTown(ct,a));const r=smithTool(a,args,{inTown:here});need(r.ok,r.why);return r},
   craft(a,{recipe,count,for:forWho}={}){need(recipe!=null&&String(recipe).trim()!=='','Which recipe? craft {recipe: "meal-perch"}; recipes lists yours, what each needs and how many you carry.');
     need(!['fight','duel','assist','dead','ghost'].includes(a.state),'Not now ('+a.state+').');
