@@ -189,6 +189,48 @@ sc = open('ambush', {mob: m9.id, mobs: [m9.id, m10.id], hero: M[0].id, edge: 'no
   for (let i = 0; i < M.length; i++) M[i] = S.agents.find(a => a.id === M[i].id)}
 close(sc);
 
+// ---- #1056: a foe in rounds on the open map hits as it does in real time ----
+{const RD = await import('../src/sim/tableround.js'), {CLS} = await import('../src/data/classes.js'), {combatStats} = await import('../src/sim/stats.js'), {ABILITIES} = await import('../src/data/bestiary.js');
+  const eliteAt = (p, o = {}) => {const m = beast(p.x, p.y);Object.assign(m, {elite: true, name: 'Test Elite', hp: 4000, maxhp: 4000, hpl: 4000, ab: [], abcd: {}, acd: 1}, o);return m};
+  const line = [[-1, 0], [-1, 1], [-1, -1], [-2, 1], [-2, -1]], turn = (sc, m) => RD.foeTurn(sc, [m], M.filter(a => a.state !== 'dead'));
+  // Defense counts once: the roll is AC, so a blow that lands is not cut by Defense again, on the map; off it, it is.
+  stand(plain, line);let m = eliteAt(plain);let sc = open('elite', {mob: m.id, hero: M[0].id});
+  ok(sc.fp && RD.blowForce(sc, m, M[0]) > 1 && Math.abs(RD.blowForce(sc, m, M[0]) * (1 - combatStats(M[0]).defense) - 1) < 1e-9, 'on the map Defense does not come off a blow a second time');
+  ok(RD.blowForce({}, m, M[0]) === 1, 'off the map the blow is as before');ok(RD.blowForce(sc, S.boss || {kind: 'boss'}, M[0]) === 1, 'and Kragmaw keeps his');ok(RD.blowForce(sc, M[0], m) === 1, 'a blow on a creature is untouched');
+  // the swing clock: an elite answers the blades against it, a slow biter sits a round out
+  {let n = 0;for (let i = 0; i < 8; i++) n += turn(sc, m).filter(b => b.k === 'attack').length;ok(n === Math.round(8 * RD.TR.ELITE_PACE), 'an elite swings TR.ELITE_PACE a round against five: ' + n + ' in 8 rounds');
+    for (const a of M) a.hp = maxHp(a);const L2 = M.slice(0, 2);sc.sw = {};n = 0;for (let i = 0; i < 8; i++) n += RD.foeTurn(sc, [m], L2).filter(b => b.k === 'attack').length;for (const a of M) a.hp = maxHp(a);
+    ok(n < 8, 'and less often against two: ' + n + ' in 8 rounds')}
+  close(sc);
+  stand(plain, line);m = beast(plain.x, plain.y);m.acd = 2;m.ab = [];m.abcd = {};m.hp = m.maxhp = 4000;sc = open('elite', {mob: m.id, hero: M[0].id});
+  {const B = [];for (let i = 0; i < 6; i++) B.push(...turn(sc, m));for (const a of M) a.hp = maxHp(a);ok(B.filter(b => b.k === 'attack').length === 3 && B.filter(b => b.k === 'gather').length === 3, 'a slow biter swings every other round, and a beat says so')}
+  close(sc);
+  // a ready opener fires at once, a trick off cooldown waits, and it takes a swing
+  stand(plain, line);m = eliteAt(plain, {ab: ['howl'], abcd: {howl: 0}});sc = open('elite', {mob: m.id, hero: M[0].id});
+  {const B = turn(sc, m), t = B.find(b => b.k === 'trick');ok(t && t.text === ABILITIES.howl.name, 'a ready opener fires in the first round: ' + (t && t.res));ok(m.abcd.howl > 0, 'and goes on cooldown');
+    const before = m.abcd.howl;turn(sc, m);ok(m.abcd.howl === before - RD.TR.ROUND_S, 'its cooldown runs down a round at a time');
+    ok(sc.beats !== undefined && !turn(sc, m).some(b => b.k === 'trick'), 'it does not fire again while cooling');for (const a of M) {a.hp = maxHp(a);if (a.eff) delete a.eff.stun}}
+  close(sc);
+  // hatch waits for its `when`, then seats kin in the fight, on the ground, on the rolls
+  stand(plain, line);m = eliteAt(plain, {ab: ['hatch'], abcd: {hatch: 0}});sc = open('elite', {mob: m.id, hero: M[0].id});
+  {ok(!turn(sc, m).some(b => b.k === 'trick'), 'hatch waits until she is hurt');m.hp = m.maxhp * .7;const t = turn(sc, m).find(b => b.k === 'trick');ok(t && t.text === 'Hatch', 'hurt, she hatches kin: ' + (t && t.res));
+    const add = S.mobs.find(x => x.add && x.parent === m.id);ok(add && sc.ctx.adds.includes(add.id), 'the kin is in the scene');ok(sc.fp.pos['f' + add.id] && sc.fp.foes.some(r => r.id === add.id), 'and has a tile');
+    ok(PT.fieldOf(sc).foes.length === 2, 'the rules read it');const snap = JSON.stringify(snapshot());restore(JSON.parse(snap));sc = S.table;ok(sc && sc.ctx.adds.length === 1, 'a save mid-scene keeps it');
+    for (let i = 0; i < M.length; i++) M[i] = S.agents.find(a => a.id === M[i].id);m = S.mobs.find(x => x.id === m.id);const a2 = S.mobs.find(x => x.add && x.parent === m.id);if (a2) a2.alive = false;for (const a of M) a.hp = maxHp(a)}
+  close(sc);
+  // gore hurls one back on the ground
+  stand(plain, [[-1, 0], [-3, 2], [-3, -2], [-3, 3], [-3, -3]]);m = eliteAt(plain, {ab: ['gore'], abcd: {gore: 0}});m.target = M[0];sc = open('elite', {mob: m.id, hero: M[0].id});
+  {const p0 = {...sc.fp.pos[M[0].id]}, h0 = M[0].hp, t = turn(sc, m).find(b => b.k === 'trick'), p1 = sc.fp.pos[M[0].id];ok(t && t.text === 'Gore', 'gore fires in rounds: ' + (t && t.res));ok(M[0].hp < h0, 'it hurts');
+    ok(/hurled/.test(t.res) ? p1.x !== p0.x || p1.y !== p0.y : true, 'and moves its target when the ground lets it');ok(Math.floor(M[0].x) - sc.fp.ox === p1.x, 'in the world too');for (const a of M) {a.hp = maxHp(a);if (a.eff) delete a.eff.stun}}
+  close(sc);
+  // the plain heal needs a breath, unless someone lies down
+  stand(plain, line);m = eliteAt(plain);sc = open('elite', {mob: m.id, hero: M[0].id});
+  {const h = M.find(a => CLS[a.cls].heal), keys = () => T.optionsFor(sc, h).map(o => o.k), low = M.find(a => a !== h);low.hp = Math.round(maxHp(low) * .5);ok(keys().includes('heal'), 'a healer can heal');
+    sc.hl = {[h.id]: sc.rd};ok(!keys().includes('heal'), 'not again the next round');sc.rd += RD.TR.HEAL_GAP;ok(keys().includes('heal'), 'and again after TR.HEAL_GAP rounds');sc.rd -= RD.TR.HEAL_GAP;const fp = sc.fp;sc.fp = null;ok(keys().includes('heal'), 'off the map it is ready every round');sc.fp = fp;low.hp = maxHp(low)}
+  close(sc);
+}
+
+
 if (S.boss && S.boss.alive) {const b = S.boss, bx = b.x, by = b.y;for (const a of M) {a.state = 'raid';a.target = b;a.hp = maxHp(a)}
   stand({x: b.x, y: b.y}, [[-3, 0], [-3, 1], [-3, -1], [3, 1], [3, -1]]);for (const a of M) a.state = 'raid';
   sc = open('boss', {});ok(sc && sc.fp, 'Kragmaw plays on a patch');ok(b.x === bx && b.y === by, 'the wyrm keeps its place in the world');
