@@ -58,7 +58,7 @@
     "src/render/draw.js": {"n": 8, "why": "the lair's embers and label, drawn only while S.boss.alive, which a map with no lair never is"},
     "src/render/memorials.js": {"n": 10, "why": "the cooled lair, behind the lair landmark being found on this map"},
     "src/ui/panels.js": {"n": 4, "why": "the View the raid button, behind if(LAIR)"},
-    "src/ui/probe.js": {"n": 4, "why": "a dev probe that writes the dungeon's group, behind if(!CRYPT) return"},
+    "src/ui/probe.js": {"n": 8, "why": "dev probes that write the dungeon group, each behind if(!CRYPT) return or CRYPT&&"},
     "src/ui/table.js": {"n": 1, "why": "the Table banner's way to the raid arena, behind &&LAIR"},
     "src/ui/timeline.js": {"n": 2, "why": "the timeline's Inside link, behind &&LAIR and &&CRYPT"}
   },

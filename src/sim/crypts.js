@@ -54,3 +54,10 @@ export function cryptFor(a){if(CRYPTS.length<2)return CRYPT;const fit=CRYPTS.fil
 const ROW=()=>({runs:0,clears:0,wipes:0,driven:0,withdrawn:0,lost:0});
 export const cryptRow=D=>(S.dunRec&&S.dunRec[D.name])||ROW(); // read only
 export function cryptRun(D,end,lost=0){const R=S.dunRec||(S.dunRec={}),r=R[D.name]||(R[D.name]=ROW());r.runs++;r[end]++;r.lost+=lost}
+// What a clear paid (#976): plain data for the watcher, written as it is paid, no dice. {at, by, gold (the party's total),
+// goods:{name:n}, items:[{name, who}], run}. A row keeps its last clear as r.paid; run is that clear's number in r.runs (the
+// clear is counted just after it is paid), so r.paid.run===r.runs says the last run on the record was this clear. An older
+// save has no r.paid: the view says "not recorded", never "nothing". A DM-made site keeps the same record as site.paid.
+export const paidNew=by=>({at:Math.round(S.gameMin),by:by||null,gold:0,goods:{},items:[]});
+export const paidGood=(P,id,n)=>{if(n)P.goods[id]=(P.goods[id]||0)+n};
+export function cryptPaid(D,P){const R=S.dunRec||(S.dunRec={}),r=R[D.name]||(R[D.name]=ROW());P.run=r.runs+1;r.paid=P}
