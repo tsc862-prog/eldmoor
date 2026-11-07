@@ -20,6 +20,9 @@ export const FAUNA={
   cinderreach:{tier:2,species:['golem','drake','spider'],count:14,roadMinX:0,elite:'Scoriath'},
   rimeholt:  {tier:3,species:['rimehound','shaghorn','wolf'],count:12,roadMinX:0,elite:{name:'Whitemaw',title:'the Snow-Hound of Rimeholt',base:'rimehound'}},
   palereach: {tier:3,species:['rimehound','shaghorn','wight'],count:11,roadMinX:0,elite:'Ulfryn Coldmarrow'},
+  linkmead:  {tier:0,species:['wolf','boar'],count:3,roadMinX:0,elite:'Hollowfang'}, // the TESTLINK fixtures (spec.js), so a crossing check spawns on them
+  baremead:  {tier:0,species:['wolf','boar'],count:4,roadMinX:0,elite:'Hollowfang'}, // the TESTBARE fixture (spec.js): no lair, no dungeon
+  barefell:  {tier:0,species:['wolf','spider'],count:4,roadMinX:0,elite:'Hollowfang'},
   // The Wending Vale (epic #940, slice D): each region has its own creatures, levels, names and trade goods. Entries are objects
   // {sp: stock species (its sprite and stat block), name, pl, lv, loot, q}. Only species the LPC creature slice draws (wolf, boar,
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the
@@ -57,9 +60,18 @@ export const VALE_GOODS=[['Strandpelt',4],['Reed-Tusk',5],['Dyke Silk',7],['Sall
   ['Heath Pelt',6],['Crag Tusk',8],['Gale Sinew',12],['Oak Silk',13],['Thicket Hide',15],['Greywood Fur',18],
   ['Ash Silk',20],['Slag Core',24],['Ember Fur',28],['Squall Pelt',30],['Crown Rime',34],['Crown Marrow',40]];
 
+// The stock tables as they stood before any world touched them (#1013): the tables below are rewritten in place, and a second
+// map in one process must start from these, not from the first map's rows. Rows are shared, never written to.
+const STOCK={mobs:{...MOBS},counts:{...COUNTS},elites:ELITES.slice(),epics:EPICS.slice(),roadMinX:ECO.roadMinX};
+const put=(t,rows)=>{for(const k of Object.keys(t))delete t[k];Object.assign(t,rows)};
+let rewritten=false; // the tables hold a world's rows, not the stock
+
 export function applyFauna(regions){
-  if(!regions.some(r=>FAUNA[r.id]))return false;
-  const stock={...MOBS},stockElites=ELITES.slice(),stockEpics=EPICS.slice();
+  if(!regions.some(r=>FAUNA[r.id])){
+    if(rewritten){put(MOBS,STOCK.mobs);put(COUNTS,STOCK.counts);ELITES.length=0;ELITES.push(...STOCK.elites);EPICS.length=0;EPICS.push(...STOCK.epics);ECO.roadMinX=STOCK.roadMinX;rewritten=false}
+    return false}
+  rewritten=true;
+  const stock=STOCK.mobs,stockElites=STOCK.elites,stockEpics=STOCK.epics;
   for(const k of Object.keys(MOBS))delete MOBS[k];
   for(const k of Object.keys(COUNTS))delete COUNTS[k];
   ELITES.length=0;EPICS.length=0;ECO.roadMinX=[];

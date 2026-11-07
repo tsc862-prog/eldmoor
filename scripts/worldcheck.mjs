@@ -4,7 +4,7 @@
 // checks; a new world needs only a row in scripts/world-snapshots.mjs.
 // Usage: npm run worldcheck
 // If you changed a map on purpose, paste the new hashes into scripts/world-snapshots.mjs.
-import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS, MAPS, TESTLINK, TOWN_KIT} from '../src/world/spec.js';
+import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS, MAPS, TESTLINK, TESTBARE, TOWN_KIT} from '../src/world/spec.js';
 import {buildWorld} from '../src/world/gen.js';
 import {RACES} from '../src/data/races.js';
 import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
@@ -184,7 +184,7 @@ function exitFaults(maps) {
   for (const b of exitFaults(MAPS)) {console.error('FAIL: ' + b); fail++}
   const n = Object.values(MAPS).reduce((a, sp) => a + (sp.exits || []).length, 0);
   console.log('  exits: ' + n + ' exit(s) over ' + Object.keys(MAPS).length + ' maps, all on road and linked both ways');
-  if (Object.keys(TESTLINK).some(k => WORLDS[k])) {console.error('FAIL: a TESTLINK fixture is in WORLDS'); fail++}
+  if (Object.keys({...TESTLINK, ...TESTBARE}).some(k => WORLDS[k])) {console.error('FAIL: a test fixture is in WORLDS'); fail++}
   const a = TESTLINK.testlinka, b = TESTLINK.testlinkb;
   const doctored = [
     {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: 'nowhere', exit: 'x'}}]}},

@@ -14,7 +14,7 @@
 // Home hamlets per faction (index = faction). Concord villages sit in the hedged farmland
 // around Highgate; Warband camps and holds are strung along the ridges and gullies south of
 // Grimhold.
-import {WORDS} from '../world/words.js';
+import {WORDS,worded} from '../world/words.js';
 export const HAMLETS=[
   ['Hollowmere','Wendell’s Ford','Thistledown','Larkhollow','Brackenby','Oldwick','Brinereach','Fallow Cross'],
   ['Skullrock','Red Gully','Gnashfang Hollow','Ironmaw','Bonepile','Scarhide Camp','Thornteeth','Grukk’s Ditch'],
@@ -65,7 +65,7 @@ export const ORIGINS=[
 // "swears to " + lower-cased text reads as an oath. Placeholders: {target} the named elite,
 // epic or hero, {victim} the guildmate being avenged, {fac} the rival's faction, {need} the
 // level or gold to reach, {zone} the pilgrimage zone.
-export const GOAL_TEXT={
+export const GOAL_TEXT=worded(()=>({
   avenge:'Slay {target}',
   avengeHero:'Avenge {victim} by slaying {target}',
   heirloom:'Recover the {target}',
@@ -78,10 +78,10 @@ export const GOAL_TEXT={
   legend:'Slay Kragmaw the Cinder Wyrm',
   hoard:'Bank {need} gold',
   delve:'Clear '+WORDS.crypt,
-};
+}));
 
 // Chronicle lines on completion per type (the coloured hero name comes first).
-export const GOAL_DONE={
+export const GOAL_DONE=worded(()=>({
   avenge:' has kept the oath: {target} is dead.',
   avengeHero:'’s oath is kept: {target} lies dead and {victim} is avenged.',
   heirloom:' holds the {target} at last. The oath is kept.',
@@ -94,12 +94,12 @@ export const GOAL_DONE={
   legend:' saw Kragmaw fall. The oath is kept, and a legend begins.',
   hoard:' has banked {need} gold, as sworn.',
   delve:' walked out of '+WORDS.crypt+' victorious, as sworn.',
-};
+}));
 
 // An offered thread (#800): what an agent-played hero is given in place of a rolled oath, told as the past and never as a
 // promise. {name} the hero; the others as GOAL_TEXT ({zone} a region's name, {fac} a faction's). Only the hero and the DM read
 // it; it becomes an oath when the hero swears it aloud.
-export const THREAD_TEXT={
+export const THREAD_TEXT=worded(()=>({
   avenge:'{name} has not forgotten {target}, and {target} is still out there.',
   avengeHero:'{name} carries a grudge: {victim} fell to {target}, and nobody has answered for it.',
   heirloom:'{name}’s family once held the {target}. It was lost, and they never stopped speaking of it.',
@@ -112,4 +112,4 @@ export const THREAD_TEXT={
   legend:'{name} was raised on tales of Kragmaw the Cinder Wyrm.',
   hoard:'{name} knows what it is to go without gold.',
   delve:'{name} has heard what lies in '+WORDS.crypt+' and cannot leave it alone.',
-};
+}));

@@ -11,7 +11,7 @@ import {rnd} from '../core/rng.js';
 import {ZONES,zoneFor,zonePoint,dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
 import {homeOf} from '../data/races.js';
-import {S} from './state.js';
+import {S,foeOf} from './state.js';
 import {log} from './chronicle.js';
 import {MOBS} from '../data/mobs.js';
 import {maxHp,gainXp} from './heroes.js';
@@ -37,7 +37,7 @@ export function steerClear(a,dt,moveTo){if(!a.party||a.party.leader!==a)return f
   if(!a.dest||!a.dest.away||dist(a.dest,foe)<=dist(a,foe)){a.dest=awayPoint(a,foe);a.dest.away=true}
   if(moveTo(a,a.dest.x,a.dest.y,dt,2.3))a.dest=null;return true}
 const afield=b=>b.state==='travel'||b.state==='hunt'||b.state==='fight'||b.state==='return'||b.state==='duel'||b.state==='assist';
-export function nearestFoe(a,r){return nearestHero(a.x,a.y,r,b=>b.fac!==a.fac&&afield(b))} // #730: no list built (sim/spatial.js)
+export function nearestFoe(a,r){return nearestHero(a.x,a.y,r,b=>foeOf(a,b)&&afield(b))} // #730: no list built (sim/spatial.js)
 export function awayPoint(a,foe){let best=null,bd=-1;for(let i=0;i<8;i++){const p=zonePoint(a.zone,a);const d=dist(p,foe);if(d>bd){bd=d;best=p}}return best}
 
 const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.length-2)out.push(', ');else if(i===list.length-2)out.push(' and ')});return out};
