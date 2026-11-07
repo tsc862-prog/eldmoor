@@ -403,8 +403,15 @@ if (mode === '--store') { // the page's save, load, export and import on Indexed
   ls.setItem(save.SAVE_KEY, 'old'); ls.setItem(save.SAVE_KEY + '.at', '1'); idb.dump().set(save.SAVE_KEY + '.at', '999');
   const page2 = await import('../src/ui/savestore.js?page=2'); await page2.openSaves();
   ok(page2.saveStore().getItem(save.SAVE_KEY) !== 'old' && !ls.getItem(save.SAVE_KEY), 'an older copy left in localStorage does not beat IndexedDB');
-  let failed = 0; page2.onSaveFail(() => failed++); idb.fail = true; page2.saveStore().setItem(save.SAVE_KEY, 'last gasp'); await page2.whenSaved(); idb.fail = false;
-  ok(failed === 1 && ls.getItem(save.SAVE_KEY) === 'last gasp', 'a write IndexedDB refuses is said, and kept in localStorage for the next open');
+  let failed = 0, kept = null; page2.onSaveFail((e, k) => {failed++; kept = k}); idb.fail = true; page2.saveStore().setItem(save.SAVE_KEY, 'last gasp'); await page2.whenSaved(); idb.fail = false;
+  ok(failed === 1 && kept === true && ls.getItem(save.SAVE_KEY) === 'last gasp' && +ls.getItem(save.SAVE_KEY + '.at') > 1e12, 'a write IndexedDB refuses is said, and kept in localStorage with its time for the next open');
+  // A build without IndexedDB played on after this one: its newer slot wins, and the slot it displaces is kept once. A tie goes to localStorage.
+  idb.dump().set(save.SAVE_KEY, 'from idb'); idb.dump().set(save.SAVE_KEY + '.at', '5'); ls.setItem(save.SAVE_KEY, 'from an older build'); ls.setItem(save.SAVE_KEY + '.at', '9');
+  const page3 = await import('../src/ui/savestore.js?page=3'); await page3.openSaves();
+  ok(page3.saveStore().getItem(save.SAVE_KEY) === 'from an older build' && idb.dump().get(save.SAVE_KEY + '.replaced') === 'from idb' && !ls.getItem(save.SAVE_KEY), 'a newer slot left in localStorage wins, and the IndexedDB slot it displaces is kept as .replaced');
+  idb.dump().set(save.SAVE_KEY + '.at', '9'); ls.setItem(save.SAVE_KEY, 'tied'); ls.setItem(save.SAVE_KEY + '.at', '9');
+  const page4 = await import('../src/ui/savestore.js?page=4'); await page4.openSaves();
+  ok(page4.saveStore().getItem(save.SAVE_KEY) === 'tied' && !ls.getItem(save.SAVE_KEY), 'a tie goes to the localStorage copy, which is only there because IndexedDB refused it');
   process.exit(fail ? 1 : 0);
 }
 

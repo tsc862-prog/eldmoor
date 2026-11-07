@@ -106,7 +106,7 @@ export function importFile(file,say=status){if(!file)return;const r=new FileRead
   r.onerror=()=>say('Could not read the file');r.readAsText(file)}
 
 export function initSaveUI(){
-  onSaveFail(()=>status('Save failed: storage full?'));
+  onSaveFail((e,kept)=>status(kept?'IndexedDB refused the save; kept in localStorage instead, so nothing is lost':'Save failed: the browser refused to store it (storage full?)'));
   const on=(id,f)=>{const el=$(id);if(el)el.onclick=f};
   on('wSave',()=>writeSave());
   on('wLoad',()=>{if(!hasSave()){status('No save yet');return}suppress=true;skipNext();afterReset(()=>location.reload())}); // boot() restores the save; progress since then is dropped
