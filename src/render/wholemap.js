@@ -5,6 +5,8 @@ import {U as T} from './tile.js';
 import {FAC} from '../data/factions.js';
 import {MARK} from './palette.js';
 import {companies,members,followed} from '../sim/company.js';
+import {EXITS} from '../world/map.js';
+import {W,H} from '../world/tiles.js';
 
 // The company's name for a tag: its own, else its members' names (a solo: the hero's name).
 export function tagName(C,L){if(C.name)return C.name;const n=L.map(a=>a.name);return n.length>2?n[0]+' and '+(n.length-1)+' more':n.join(' and ')}
@@ -17,7 +19,18 @@ export function companySpots(){const F=followed(),out=[];
     out.push({C,x,y,r:Math.max(3,r+1.5),name:tagName(C,L),followed:C===F,fac:C.fac})}
   return out}
 
+// Where a road leaves the map (#1049): a plate with its name just inside the edge and a mark pointing off the map. Every exit of the map on screen: the watcher sees all of it,
+// and the world map names the roads of a land walked the same way. A road that leaves inland (`at`) has a plate over its spot and no mark.
+const EXIT_INK='#e8c878',OUT={N:[0,-1],S:[0,1],E:[1,0],W:[-1,0]};
+function drawExits(ctx,cam){const px=cam.dpr/cam.sc,fs=20*px,h=fs*1.05,pad=5*px,arrow=7*px,gap=arrow+5*px;ctx.save();ctx.font=fs+'px VT323, monospace';ctx.textAlign='center';
+  for(const e of EXITS||[]){const d=e.edge?OUT[e.edge.side]:[0,1],w=ctx.measureText(e.name).width+pad*2,ex=e.x*T,ey=e.y*T,cx=Math.max(w/2+gap,Math.min(W*T-w/2-gap,ex-d[0]*(w/2+gap))),cy=Math.max(h/2+gap,Math.min(H*T-h/2-gap,ey-d[1]*(h/2+gap)));
+    ctx.fillStyle='rgba(8,10,20,.88)';ctx.fillRect(cx-w/2,cy-h/2,w,h);ctx.strokeStyle=EXIT_INK;ctx.lineWidth=1.5*px;ctx.strokeRect(cx-w/2,cy-h/2,w,h);ctx.fillStyle=EXIT_INK;ctx.fillText(e.name,cx,cy+h*.3);
+    if(!e.edge)continue;const tx=d[0]?cx+d[0]*(w/2+arrow+px):ex,ty=d[1]?cy+d[1]*(h/2+arrow+px):ey,sx=d[1]*arrow*.8,sy=d[0]*arrow*.8; // the mark: a triangle off the plate, its point at the map's edge
+    ctx.beginPath();ctx.moveTo(tx+d[0]*arrow,ty+d[1]*arrow);ctx.lineTo(tx+sx,ty+sy);ctx.lineTo(tx-sx,ty-sy);ctx.closePath();ctx.fillStyle=EXIT_INK;ctx.fill()}
+  ctx.restore()}
+
 export function drawWholeMap(ctx,cam,blink){
+  drawExits(ctx,cam);
   const spots=companySpots();if(!spots.length)return;
   const sc=cam.sc,px=cam.dpr/sc,pulse=(Math.sin(performance.now()/380)+1)/2;
   const put=[]; // tag boxes in world px, so two companies close together stack their tags
