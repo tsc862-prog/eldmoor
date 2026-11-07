@@ -27,6 +27,7 @@ import {log} from './chronicle.js';
 import {record,timeline,onRecord} from './history.js';
 import {makeHero,maxHp,goHome,seedLevel} from './heroes.js';
 import {leaveParty} from './party.js';
+import {hasLinks} from './runlink.js';
 import {moment} from './reflect.js'; // reflection moments (#179)
 import {disableBrain,askRelay} from './brain.js';
 import {markPlayer} from './player.js';
@@ -408,9 +409,13 @@ export function editSheet(a,which,field,text,F=slotted()){if(!a)return false;con
   return false}
 
 // ---- the tick ----
+// With a host a company forms up wherever it stands, round the highest level who has a companion near (#1048): after a fall, a Crypt or a raid
+// it may be nowhere near a town, and nothing else would make it a party again. With no host only in town, as ever, so no seeded hash moves.
+function formUp(L){const free=L.filter(b=>!b.splitUntil&&!b.hidden&&(b.state==='town'||loose(b))).sort((x,y)=>y.lvl-x.lvl);
+  for(const ld of free){const g=free.filter(b=>b===ld||b.state==='town'||dist(b,ld)<12);if(g.length>1)return g}return []}
 function muster(F){const L=slotHeroes(F);let P=slotParty(F);
   for(const b of L)if(b.party&&b.party!==P)leaveParty(b);
-  if(!P){const inTown=L.filter(b=>b.state==='town'&&!b.splitUntil);if(inTown.length<2)return;
+  if(!P){const inTown=hasLinks()?formUp(L):L.filter(b=>b.state==='town'&&!b.splitUntil);if(inTown.length<2)return;
     let lead=inTown[0];for(const b of inTown)if(b.lvl>lead.lvl)lead=b;
     P=linkParty({id:++S.uid,fac:F.fac,leader:lead,mem:inTown.slice(),zone:zoneFor(Math.min(...inTown.map(b=>b.lvl)),homeOf(lead).gate),home:false,company:F.id});
     for(const b of inTown)b.party=P;S.parties.push(P);return}

@@ -174,6 +174,9 @@ export function buildWorld(spec){
         if(d<po.r)tiles[I(x,y)]=RIVER;
         else if(d<po.r+1.6&&dx>0&&tiles[I(x,y)]!==LAVA)tiles[I(x,y)]=hash(x,y,75)>.45?ROCK:ICE;
         else if(d<po.r+3&&dx>1.5&&hash(x,y,76)>.6&&tiles[I(x,y)]!==LAVA)tiles[I(x,y)]=PEAK}}}
+  // spec.sea {curve} (a curve along y): open water west of the shore it draws, the same tile as the river, so a map can have a coast (#1013). Absent, nothing changes.
+  if(spec.sea){const c=curves[spec.sea.curve];if(!c)throw new Error('world spec: unknown sea curve '+spec.sea.curve);
+    for(let y=0;y<h;y++){const x1=Math.min(w,c.fn(y));for(let x=0;x<x1;x++)tiles[I(x,y)]=RIVER}}
   // fords (#794): spec.river.fords, places along the river (a y on a north-south river, an x on an east-west one) where it
   // can be waded. The tiles stay RIVER, so they keep its slow pace; the solid grid leaves them open.
   const fords=[];

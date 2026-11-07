@@ -36,6 +36,19 @@ export const FAUNA={
     {sp:'wolf',pack:3,name:'Fell Wolf',pl:'Fell Wolves',lv:[3,4],loot:'Fell Pelt',q:'Wolves on the Fell'},
     {sp:'boar',pack:3,name:'Scree Boar',pl:'Scree Boars',lv:[4,5],loot:'Scree Tusk',q:'Tusks from the Scree'},
     {sp:'spider',pack:3,name:'Crag Spinner',pl:'Crag Spinners',lv:[4,5],loot:'Crag Silk',q:'Spinners in the Crags'}]},
+  // The Wendmouth (#1013 slice 7b): the Vale's creatures of these lands at this chapter's levels, under Hollin's rule: small groups, far apart. Levels stay inside each band; one elite on the map, Old Mother Sedge in the flats.
+  wendstrand:{tier:1,count:4,roadMinX:999,goods:[['Strandpelt',10],['Reed-Tusk',12],['Dyke Silk',13]],species:[
+    {n:6,sp:'wolf',pack:2,name:'Strand Wolf',pl:'Strand Wolves',lv:[5,6],loot:'Strandpelt',q:'Wolves on the Strand'},
+    {n:4,sp:'boar',pack:2,name:'Reed Boar',pl:'Reed Boars',lv:[6,7],loot:'Reed-Tusk',q:'Tusks from the Reeds'},
+    {n:3,sp:'spider',pack:3,name:'Dyke Weaver',pl:'Dyke Weavers',lv:[6,7],loot:'Dyke Silk',q:'Sweep the Dykes'}]},
+  sallowflats:{tier:1,count:4,roadMinX:999,goods:[['Sallow Moss',14],['Willow Hide',16],['Eel Venom',19]],elite:'Old Mother Sedge',species:[
+    {n:6,sp:'bog',pack:3,name:'Sallow Bogling',pl:'Sallow Boglings',lv:[6,7],loot:'Sallow Moss',q:'Boglings in the Willows'},
+    {n:4,sp:'mudboar',pack:2,name:'Sallow Hog',pl:'Sallow Hogs',lv:[7,8],loot:'Willow Hide',q:'Hides from the Flats'},
+    {n:2,sp:'lurker',pack:2,name:'Eel Lurker',pl:'Eel Lurkers',lv:[8,9],loot:'Eel Venom',q:'Venom for the Stilt-Healers'}]},
+  gullhead:  {tier:1,count:3,roadMinX:999,goods:[['Heath Pelt',17],['Crag Tusk',20],['Gale Sinew',24]],species:[
+    {n:4,sp:'wolf',pack:2,name:'Heath Wolf',pl:'Heath Wolves',lv:[7,8],loot:'Heath Pelt',q:'Wolves on the Heath'},
+    {n:3,sp:'boar',pack:3,name:'Crag Boar',pl:'Crag Boars',lv:[8,9],loot:'Crag Tusk',q:'Tusks from the Crags'},
+    {n:2,sp:'rimehound',pack:2,name:'Windhound',pl:'Windhounds',lv:[9,10],loot:'Gale Sinew',q:'Windhounds on the Ridge'}]},
   // The Wending Vale (epic #940, slice D): each region has its own creatures, levels, names and trade goods. Entries are objects
   // {n: how many live (#988: thinned to about half, in uneven groups), sp: stock species (its sprite and stat block), name, pl, lv, loot, q}. Only species the LPC creature slice draws (wolf, boar,
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the
