@@ -32,7 +32,7 @@
 // asserts it; in a world of lore sides (#1025) every town is home. With no such town (a fixture) these all read CITY[0], which still walks.
 //
 // State (plain data, saved with the company):
-//   C.road {exit, by, at, aim?, phase?:'table'|'go', since?, hold?:{k, text, come?, since, away:[id]}}
+//   C.road {exit, by, at, aim?, walk?, phase?:'table'|'go', since?, hold?:{k, text, come?, since, away:[id]}}
 import {S,dayNo,inCompany,ownTown} from './state.js';
 import {MAP_ID,ZONES,CITY,zoneAt,dist} from '../world/map.js';
 import {W,H} from '../world/tiles.js';
@@ -66,6 +66,7 @@ import {voicedKind,pushCall,resolveCall,voiceLive,openingLead} from './arrival.j
 export const CROSS={
   VOTE_MIN:240, // game minutes a go stands while something holds the company at the road; then it lapses and the leader must order it anew
   IN:2.5,       // tiles inside the map's edge the company comes to on an edge exit
+  SPENT:4,      // tiles past a road's reach that still count as at it for an aim ended on arrival (INTENT.NEAR can end the walk short of the reach)
 };
 const BUSY={fight:'is fighting',duel:'is in a duel',assist:'is in a fight',raid:'rides in a raid',dungeon:'is below ground',aid:'is tending someone',ghost:'is gone'};
 const gd=t=>({t,c:'gd'}),nar=t=>({t,c:'nar'});
@@ -205,12 +206,16 @@ setSceneKind('farside',{options:()=>[{k:'look',text:'Take in the land ahead'},{k
   outcome:sc=>settleFar(companies().find(x=>x.id===sc.company),sc.ctx,sc.ids),dm:DM_FAR});
 voicedKind('farside',null);
 
+// Away from the road, something must still be taking the leader there (#1048): an order's road lasts while its walk does (a camp, a fight
+// order or a flight clears it, and the leader is then on no road), an aim's while the aim stands, which autopilot carries on.
+const onTheWay=(R,ld,e)=>R.aim==null?(ld.pq||[]).some(c=>c.kind==='move'&&c.label===R.walk):!ld.intent.done||dist(ld,e)<=e.r+CROSS.SPENT;
+
 // ---- once per step, ahead of everything that reads the map (sim/index.js) ----
 export function crossingTick(){const CS=S.companies;if(!CS||!CS.some(C=>C.road)||!hasLinks())return;
   for(const C of companies()){const R=C.road;if(!R)continue;const ld=openingLead(C),e=exitById(R.exit),L=memOf(C);
     if(!ld||!e||!exitOpen(e)||R.phase!=='go'&&R.by!==ld.id||!R.phase&&!roadHolds(R,ld)){delete C.road;continue}
     if(R.phase==='table'){if(!sceneFor(C))delete R.phase;continue} // a scene closed with no outcome: the road is back as the leader left it
-    if(!R.phase&&dist(ld,e)>e.r){delete R.hold;continue}
+    if(!R.phase&&dist(ld,e)>e.r){delete R.hold;if(!onTheWay(R,ld,e))delete C.road;continue}
     if(R.phase==='go'&&sceneFor(C))continue; // the outcome is still on the table
     if(R.phase==='go'&&dist(ld,e)>e.r){delete C.road;notify(ld,'You walked away from '+e.name+', and the company\'s word to take it goes with you. Order it anew when you are ready.',true,2);continue}
     const h=holdOf(C,ld,e,L);

@@ -1250,6 +1250,7 @@ console.log('the DM prepares the table');
   ok(sv.sceneOpen()&&sv.sceneMode()==='outdoor'&&!box().hidden&&box().classList.contains('scout')&&$('screen').classList.contains('scopen'),'scene maps: an ambush opens the terrain cut over the world');
   ok(!!cut&&cut.foes.includes(wild)&&mem.every(a=>cut.members.includes(a))&&Math.abs(cut.cx-m0.x)<cut.w/2&&Math.abs(cut.cy-m0.y)<cut.h/2,'scene maps: the cut frames the members where they stand and the foe ('+(cut?Math.round(cut.w)+'x'+Math.round(cut.h)+' tiles':'none')+')'+(cut&&mem.every(a=>cut.members.includes(a))&&cut.foes.includes(wild)?'':' -- saw foe '+wild.name+' '+wild.state+' hidden='+wild.hidden+' alive='+wild.alive+' at '+Math.round(wild.x)+','+Math.round(wild.y)+', members in cut '+(cut?cut.members.length:0)+'/'+mem.length+', foes '+(cut?cut.foes.length:0)));
   ok([...box().querySelectorAll('li')].some(li=>li.textContent===wild.name)&&/to act|acts/.test(box().querySelector('.dgname').textContent)&&!/AMBUSH/i.test(box().querySelector('.dgname').textContent),'scene maps: the bar says whose turn it is (not the title) and who is in it ('+box().querySelector('.dgname').textContent+')');
+  {const all=[...mem,wild],at=all.map(e=>e.y);all.forEach((e,i)=>{e.y=.6+i*.3});sv.sceneTick(FOL);const c=sv.sceneCut();ok(!!c&&c.cy-c.h/2>=0&&!c.edge&&c.members.length===mem.length&&all.every(e=>e.y>=c.cy-c.h/2&&e.y<=c.cy+c.h/2),'scene maps: at the edge of the map (the end of a road) the cut frames the land and still holds everyone, not what lies past the last row');all.forEach((e,i)=>{e.y=at[i]});sv.sceneTick(FOL)}
   box().querySelector('.dgback').click();sv.sceneTick(FOL);
   ok(!sv.sceneOpen()&&box().hidden&&!$('screen').classList.contains('scopen'),'scene maps: Back to world closes it, and it stays closed for that scene');
   sv.openSceneView();ok(sv.sceneOpen(),'scene maps: it opens again by hand');S.table=null;sv.sceneTick(FOL);
@@ -1696,6 +1697,12 @@ console.log('page watchdog');
   const big=PW.takeAnomalies();ok(big.length===1&&big[0].severity==='bad'&&/froze for 3\.2 s/.test(big[0].text),'a 3.2 s frame is a page-stall anomaly at once');
   ok(ML.linkOf(a)==='pagebusy'&&/page busy \(3\.2 s frame\)/.test(ML.mindLabel(a).text),'the member label reads page busy, not connecting: '+ML.mindLabel(a).text);
   {const was=sim.dmSeatOn();sim.setDmSeat(true);const d=dmFrameData();sim.setDmSeat(was);ok(d.link==='pagebusy'&&d.linkText==='page busy (3.2 s frame)','the DM frame reads page busy too ('+d.linkText+')')}
+  // a long frame changes the words, never the state (#1049): no false Reflex, no false "No DM runner", and the DM frame keeps its height
+  {const {mindDot}=await import('../src/ui/frames.js'),{mountDmFrame,renderDmFrame}=await import('../src/ui/dmframe.js'),was=sim.dmSeatOn();sim.setDmSeat(true);
+   ok(ML.linkOf(a)==='pagebusy'&&mindDot(a).k!=='reflex','the mind dot keeps its state through a long frame: '+mindDot(a).word);
+   ok(dmFrameData().live===true,'the DM frame still counts its runner as there');
+   BR.bridgeFeed({links:{},runners:{},ready:{},dm:{seat:true,link:'none'}});ok(ML.linkOf(a)==='pagebusy'&&mindDot(a).k==='reflex'&&dmFrameData().live===false,'a runner really gone still reads Reflex under a long frame');
+   BR.bridgeFeed({links,runners:{},ready:{},dm:{seat:true,link:'connected',claimed:true}});sim.setDmSeat(was)}
   const dg=PW.pageDigest();ok(dg.longFrames===4&&dg.worstMs===3200&&/Sunken Crypt/.test(dg.where)&&PW.pageDigest().longFrames===0,'the hour digest carries {longFrames, worstMs, where} and resets');
   PW.resetPageWatch();PW.relayLate({tool:'scene_act',ms:15000,silentMs:16200});
   ok(/page busy \(no answer for 16\.2 s\)/.test(ML.mindLabel(a).text),'a relay time-out on a silent page reads page busy as well: '+ML.mindLabel(a).text);
@@ -1820,12 +1827,14 @@ console.log('world map');
   delete S.maps;delete ATLAS[WORLD_ID];for(const k of keep)k.a.lore=k.lore;if(other)other.lore=otherLore;uiSlow();ok(btn.hidden,'and the button goes again with the campaign')}
 // ---- #1013 slice 4: the page follows a map switch: the road bar, the picker, the selection, the cinema view, the fade's beats. Last, as it leaves the smoke on another map ----
 console.log('map switch');
+ok(/body.wmopen .nwbar{visibility:hidden}/.test(readFileSync(new URL('../src/style.css',import.meta.url),'utf8')),'the New World notice steps aside for the world map, whose Close sits under it (#1049)');
 {const {renderRoad}=await import('../src/ui/mapswitch.js'),{cam,mapArrived}=await import('../src/render/draw.js'),{crossingView,S}=sim,{switchMap}=await import('../src/sim/mappack.js'),M=await import('../src/world/map.js');
   const C=await import('../src/ui/cinema.js'),F=await import('../src/render/roadfade.js'),{regionList}=await import('../src/ui/region.js');
   const co=SLT.followed(),bar=()=>$('roadbar');
   ok(!!co,'a company to take the road');renderRoad();ok(bar()&&bar().hidden,'with no road named the bar stays hidden');
   const R0=co.road;co.road={exit:'x',by:co.ids[0],at:1,hold:{k:'far',text:'The road waits: Ann is out of shouting range.',away:[],since:1}};renderRoad();
   ok(!bar().hidden&&/The road waits: Ann/.test(bar().textContent),'the bar reads crossingView(): what the road waits on: '+bar().textContent);ok(crossingView().waits===co.road.hold.text,'the same words as the DM sees');
+  {const t=$('tbanner'),par=bar().parentNode,h=t.hidden,l=t.offsetLeft,w=par.clientWidth;t.hidden=false;t.offsetLeft=900;par.clientWidth=1200;renderRoad();ok(bar().hidden,'another scene with its banner docked beside the map: the bar goes, not under it');t.hidden=h;t.offsetLeft=l;par.clientWidth=w;renderRoad();ok(!bar().hidden,'and comes back with the banner gone')}
   co.road.phase='table';renderRoad();ok(bar().hidden,'at the table the Table banner says it');delete co.road;if(R0)co.road=R0;renderRoad();ok(bar().hidden,'the road dropped: the bar goes');
   // a hero of the land left behind, a region picked, the cinema view open
   const off=S.agents.find(a=>a.state!=='dead'&&!co.ids.includes(a.id)&&a.company==null);select(off);
@@ -1839,9 +1848,21 @@ console.log('map switch');
   mem0.quest.type='nothing-here';select(mem0);ok(true,'a member whose hunt names a creature of the land left behind still opens in the hero panel');delete mem0.quest;
   ok(cam.director.fade===1,'the cinema view: the director starts over in the dark');mapArrived('shown');ok(cam.director.fade===1,'and fades up when the picture is back');
   WMs.renderWorldMap();{const land=$('worldmap').querySelectorAll('.wmbig'),v=WMs.atlasView();ok([...land].some(n=>/Linka/.test(n.textContent))&&v.lands.find(l=>l.id==='testlinka').state==='here'&&v.lands.find(l=>l.id===WID).state==='been','the world map follows: the land in its panel is the new one, the old one is been there: '+[...land].map(n=>n.textContent).join(', '))}
+  {const v=WMs.atlasView(),L=v.lands.find(l=>l.id==='testlinka'),ld=v.marker.hero,y0=ld.y;ld.y=1;const top=WMs.atlasView().lands.find(l=>l.id==='testlinka').low;WMs.renderWorldMap();const low=!!$('worldmap').querySelector('.wmname.low');ld.y=y0+1000;const foot=WMs.atlasView().lands.find(l=>l.id==='testlinka').low;ld.y=y0;
+   ok(top===true&&low&&foot===false,'the land title steps to the foot of the land while the marker stands under it, and comes back (#1049)')}
   ok(!!WMs.atlasView().marker&&WMs.atlasView().marker.x<=WMs.atlasView().lands.find(l=>l.id==='testlinka').x+32,'and the company\'s marker stands on it');WMs.closeWorldMap();delete AT[WID];
   uiFast();uiSlow();ok(/Linka Mead/.test($('cinema').querySelector('.cinz').textContent),'the clock names the land on screen: '+$('cinema').querySelector('.cinz').textContent);
   C.leaveCinema();ok(cam.camX<=32*16&&cam.camY<=24*16,'leaving the view does not put the camera back on the old map ('+Math.round(cam.camX)+', '+Math.round(cam.camY)+')');
+  // the whole map names each road that leaves it
+  {const {drawWholeMap}=await import('../src/render/wholemap.js'),said=[],pen=new Proxy({measureText:t=>({width:t.length*8}),fillText:t=>said.push(t)},{get:(t,k)=>k in t?t[k]:()=>{},set:(t,k,v)=>{t[k]=v;return true}});
+   drawWholeMap(pen,{sc:1,dpr:1},0);ok(M.EXITS.length>0&&M.EXITS.every(e=>said.includes(e.name)),'the whole map draws every exit by name: '+said.join(', '))}
+  // a region picked and a hero of the land left behind selected: the far side's scene opens once the view has come to the company (#1049)
+  {const SV=await import('../src/render/sceneview.js'),{setView}=await import('../src/ui/controls.js'),here=M.MAP_ID,back=Object.keys(S.maps||{})[0],t0=S.table;
+   const stranger=S.agents.find(a=>a.state!=='dead'&&!co.ids.includes(a.id))||off;select(stranger);setView('region');SV.setSceneAuto(true);SV.closeSceneView(false);
+   ok(switchMap(back)&&M.MAP_ID===back,'the map switches');S.table={id:9049,company:co.id,kind:'farside',title:'Farside',frame:['The land opens ahead.'],ids:co.ids.slice(),beats:[],acts:{},ctx:{},phase:'turn',pause:true,i:0,t:0};
+   ok(!co.ids.includes(cam.sel&&cam.sel.id)&&cam.view==='region','the view is still on the land left behind');SV.sceneTick(cam);ok(!SV.sceneOpen(),'so the first frame after the switch passes the scene by');
+   mapArrived('aim');ok(cam.view==='fellow'&&SV.sceneOpen(),'the view comes to the company and the scene cut opens: '+cam.view+', '+SV.sceneOpen());
+   SV.closeSceneView(false);S.table=t0;SV.sceneTick(cam);setView('map');ok(switchMap(here)&&M.MAP_ID===here,'and on')}
   // the beats, on a fake clock and a fake canvas
   const real=performance.now,ctx=new Proxy({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)})},{get:(t,k)=>k in t?t[k]:()=>{},set:(t,k,v)=>{t[k]=v;return true}}),cv={width:1280,height:720,getContext:()=>ctx};let now=0,aims=0,shown=0;performance.now=()=>now;
   const steps=[],pic=document.createElement;document.createElement=t=>t==='canvas'?{width:0,height:0,getContext:()=>ctx}:pic.call(document,t);

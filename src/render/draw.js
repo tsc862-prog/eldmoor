@@ -192,7 +192,7 @@ export function createRenderer(cv,screenEl){
     const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height)),cin=cam.director,onPatch=!!(cut&&cut.patch),seen=e=>onPatch&&scenePose(e)||e; // cin: the cinema view's director (#979), null in every other view
     if(cut){ // an outdoor scene (#431): the camera frames the scene's cut of the world below the banner and above the bar
       const top=cut.top*cam.dpr,bot=cut.bottom*cam.dpr,rt=(cut.right||0)*cam.dpr,want=Math.max(cam.fit*2,Math.min(Math.max(40,cv.width-rt)/(cut.w*T),Math.max(40,cv.height-top-bot)/(cut.h*T)));
-      if(cin){cam.cut=true;cin.step(cam,cv.width,cv.height,{x:cut.cx*T,y:cut.cy*T,sc:want,dx:rt/2,dy:-(top-bot)/2})} // the cinema view eases into the cut (#979)
+      if(cin){cam.cut=true;cin.step(cam,cv.width,cv.height,{x:cut.cx*T,y:cut.cy*T,sc:want,dx:rt/2,dy:-(top-bot)/2});const v=cv.width/cam.sc,u=cv.height/cam.sc;if(v<W*T)cam.camX=Math.max(cam.camX,v/2);if(u<H*T)cam.camY=clamp(cam.camY,u/2,H*T-u/2)} // the cinema view eases into the cut (#979), and its springs do not look past the map's edge
       else{const first=!cam.cut;cam.cut=true;cam.sc=first?want:cam.sc+(want-cam.sc)*.15;
       const tx=cut.cx*T+rt/2/cam.sc,ty=cut.cy*T-(top-bot)/2/cam.sc; /* the banner docked on the right (#546): the cut fills the room left of it */if(first){cam.camX=tx;cam.camY=ty}else{cam.camX+=(tx-cam.camX)*.15;cam.camY+=(ty-cam.camY)*.15}}
       cam.vw=cv.width/cam.sc;cam.vh=cv.height/cam.sc}
@@ -206,7 +206,7 @@ export function createRenderer(cv,screenEl){
     cam.offX=Math.round((vw/2-cam.camX)*sc);cam.offY=Math.round((vh/2-cam.camY)*sc);
     const vx0=cam.camX-vw/2,vy0=cam.camY-vh/2,vx1=vx0+vw,vy1=vy0+vh;
     const inView=(x,y,m)=>x>vx0-m&&x<vx1+m&&y>vy0-m&&y<vy1+m;
-    if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
+    if(cut&&(cut.edge||vx0<0||vy0<0||vx1>W*T||vy1>H*T)){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
     drawTerrain(sc);warmChunks(cam.camX/T,cam.camY/T);ph(0);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
     gradeAt((S.gameMin/60)%24,skyNow());drawCast(S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)

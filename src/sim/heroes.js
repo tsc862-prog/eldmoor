@@ -19,7 +19,7 @@ import {EPICS,GOODS,price} from '../data/items.js';
 import {S,clockStr,noOthers,sidesOff,raidSide} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
-import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,leaveParty,regroup,steerClear} from './party.js';
+import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,leaveParty,regroup,steerClear,comingIn} from './party.js';
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
@@ -261,7 +261,7 @@ export function updAgent(a,dt){
     if(!a.dest)a.dest=outpostDest(a)||zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
   // Party member at the leader's side: heals, picks off nearby mobs, joins the leader's fights (party tick),
   // hangs back when hurt. Drops to solo hunting (or heads home) the moment there is no leader to follow.
-  case 'follow':{const L=leaderOf(a);if(!L){a.state=a.party&&a.party.home?'return':'hunt';a.dest=null;break}
+  case 'follow':{const L=leaderOf(a);if(!L){a.state=a.party&&comingIn(a.party)?'return':'hunt';a.dest=null;break}
     a.hp=Math.min(mh,a.hp+mh*.025*dt);priestHeal(a,a.party.mem);
     a.scan-=dt;if(a.scan<=0&&a.hp>=mh*.45&&L.state!=='return'){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
     if(dist(a,L)>2){a.dest=followPt(a);moveTo(a,a.dest.x,a.dest.y,dt,L.state==='return'?2.5:2.1)}else{a.dest=null;a.moving=false}break}
