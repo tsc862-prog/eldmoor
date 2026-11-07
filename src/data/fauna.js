@@ -41,7 +41,7 @@ export const FAUNA={
     {n:6,sp:'wolf',pack:2,name:'Strand Wolf',pl:'Strand Wolves',lv:[5,6],loot:'Strandpelt',q:'Wolves on the Strand'},
     {n:4,sp:'boar',pack:2,name:'Reed Boar',pl:'Reed Boars',lv:[6,7],loot:'Reed-Tusk',q:'Tusks from the Reeds'},
     {n:3,sp:'spider',pack:3,name:'Dyke Weaver',pl:'Dyke Weavers',lv:[6,7],loot:'Dyke Silk',q:'Sweep the Dykes'}]},
-  sallowflats:{tier:1,count:4,roadMinX:999,goods:[['Sallow Moss',14],['Willow Hide',16],['Eel Venom',19]],elite:'Old Mother Sedge',species:[
+  sallowflats:{tier:1,count:4,roadMinX:999,goods:[['Sallow Moss',14],['Willow Hide',16],['Eel Venom',19]],elite:{name:'Old Mother Sedge',title:'Matriarch of the Fen',base:'lurker',fixLvl:10,scale:12,hit:2.35,ready:['hatch']},species:[
     {n:6,sp:'bog',pack:3,name:'Sallow Bogling',pl:'Sallow Boglings',lv:[6,7],loot:'Sallow Moss',q:'Boglings in the Willows'},
     {n:4,sp:'mudboar',pack:2,name:'Sallow Hog',pl:'Sallow Hogs',lv:[7,8],loot:'Willow Hide',q:'Hides from the Flats'},
     {n:2,sp:'lurker',pack:2,name:'Eel Lurker',pl:'Eel Lurkers',lv:[8,9],loot:'Eel Venom',q:'Venom for the Stilt-Healers'}]},
