@@ -15,7 +15,8 @@
 //              stats:{seeded, told, lapsed}}
 // DOM-free, no RNG (the wording is picked by a hash of ids). Owned by brain-builder.
 import {S,dayNo} from './state.js';
-import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {ZONES,ZPTS,CITY,LANDMARKS,zoneAt,dist} from '../world/map.js';
+import {cryptIf} from './crypts.js';
 import {MOBS,ELITES} from '../data/mobs.js';
 import {RUMOUR_LINES} from '../data/renown-lines.js';
 import {register,LEVERS} from './levers.js';
@@ -49,7 +50,7 @@ export const rumourState=()=>S.rumours||(S.rumours={seq:0,list:[],stats:{seeded:
 export function aboutOf(text){const s=clean(text,60),lo=s.toLowerCase(),bare=lo.replace(/^the\s+/,'');if(!s)return null;
   const eq=n=>{const x=String(n||'').toLowerCase();return x===lo||x.replace(/^the\s+/,'')===bare};
   const pl=markNamed(s);if(pl)return {kind:'place',name:pl.name,id:pl.id,z:pl.z};
-  const lm=LANDMARKS.find(l=>eq(l.name))||(CRYPT&&eq(CRYPT.name)?CRYPT:null);if(lm)return {kind:'landmark',name:lm.name,z:zoneAt(lm.x,lm.y)};
+  const lm=LANDMARKS.find(l=>eq(l.name))||cryptIf(eq);if(lm)return {kind:'landmark',name:lm.name,z:zoneAt(lm.x,lm.y)};
   const c=CITY.find(x=>eq(x.name));if(c)return {kind:'town',name:c.name};
   const z=ZONES.findIndex(n=>eq(n));if(z>=0)return {kind:'region',name:ZONES[z],z};
   const m=(S.mobs||[]).find(x=>x.alive&&!x.gone&&(x.elite||x.named)&&x.name&&(eq(x.name)||eq(x.name+' '+(x.title||''))));

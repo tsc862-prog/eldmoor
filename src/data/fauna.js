@@ -21,6 +21,8 @@ export const FAUNA={
   rimeholt:  {tier:3,species:['rimehound','shaghorn','wolf'],count:12,roadMinX:0,elite:{name:'Whitemaw',title:'the Snow-Hound of Rimeholt',base:'rimehound'}},
   palereach: {tier:3,species:['rimehound','shaghorn','wight'],count:11,roadMinX:0,elite:'Ulfryn Coldmarrow'},
   linkmead:  {tier:0,species:['wolf','boar'],count:3,roadMinX:0,elite:'Hollowfang'}, // the TESTLINK fixtures (spec.js), so a crossing check spawns on them
+  baremead:  {tier:0,species:['wolf','boar'],count:4,roadMinX:0,elite:'Hollowfang'}, // the TESTBARE fixture (spec.js): no lair, no dungeon
+  barefell:  {tier:0,species:['wolf','spider'],count:4,roadMinX:0,elite:'Hollowfang'},
   // The Wending Vale (epic #940, slice D): each region has its own creatures, levels, names and trade goods. Entries are objects
   // {sp: stock species (its sprite and stat block), name, pl, lv, loot, q}. Only species the LPC creature slice draws (wolf, boar,
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the

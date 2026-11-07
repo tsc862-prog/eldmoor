@@ -30,7 +30,8 @@ import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
 import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,CRYPTS,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
-import {cryptOfHero,cryptOfCtx,cryptCtx,cryptByWord,cryptInWords,cryptNearest} from './crypts.js';
+import {cryptOfHero,cryptOfCtx,cryptCtx,cryptByWord,cryptInWords,cryptNearest,heroCryptName,cryptTitle,cryptIf,hasCrypt,NO_CRYPT} from './crypts.js';
+import {hasLair,NO_LAIR} from './lair.js';
 import {homeOf,raceOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
@@ -400,7 +401,7 @@ export const turnHeld=a=>!!(a&&a.player&&a.playTurn!=null&&S.gameMin-a.playTurn<
 const clockAt=gm=>{const m=Math.floor(gm)%1440;return 'Day '+(Math.floor(gm/1440)+1)+' '+String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')};
 const fighting=a=>(a.state==='fight'||a.state==='duel'||a.state==='assist')&&a.target&&alive(a.target)?a.target:null;
 const whereOf=a=>{const c=cityAt(a);return c?c.name:ZONES[zoneAt(a.x,a.y)]||'the wilds'};
-const stateWord=(s,a)=>({town:'in town',hunt:'out in the field',travel:'on the road',return:'heading home',fight:'fighting',duel:'in a duel',assist:'helping in a fight',follow:'following the party',dungeon:'in '+(a?(cryptOfHero(a)||CRYPT).name:'a dungeon'),raid:'on a raid',ghost:'a ghost'})[s]||s;
+const stateWord=(s,a)=>({town:'in town',hunt:'out in the field',travel:'on the road',return:'heading home',fight:'fighting',duel:'in a duel',assist:'helping in a fight',follow:'following the party',dungeon:'in '+(a?heroCryptName(a):'a dungeon'),raid:'on a raid',ghost:'a ghost'})[s]||s;
 // What the agent saw: game time, place, state, foe, what it was doing (look, status, the turn's state header).
 export function lookSnap(a){if(!a||!a.player)return;const f=fighting(a);
   a.playLook={gm:S.gameMin,x:a.x,y:a.y,state:a.state,where:whereOf(a),doing:a.playDoing||null,foe:f?{id:f.id,name:foeName(a,f)}:null,ev:a.playEvN||0,kills:a.kills}}
@@ -439,7 +440,7 @@ export function playerUpd(a,dt){if(!a.player||a.state==='dead')return false;
   // it again (#148). While a runner holds it, or the owner has not answered yet, autopilot below carries on.
   if(inSlots(a)&&reflexMay(a)){a.playIdle=false;a.playDoing='reflexes (no runner)';return false}
   // A guard: a hero in a group it never chose steps back out (#826: with a host the musters leave agent heroes out; a no-host world still reaches this).
-  if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Stepped back from a group for '+(cryptOfHero(a)||CRYPT).name+' (you go only where you choose).')}
+  if(a.state==='dungeon'&&!a.hidden&&!a.cryptOk){a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Stepped back from a group for '+heroCryptName(a)+' (you go only where you choose).')}
   if(a.state==='raid'&&a.raid&&!a.raidOk){a.raid=false;a.target=null;a.state=cityAt(a)?'town':'hunt';a.dest=null;ev(a,'Stepped back from a raid on Kragmaw (you go only where you choose).')}
   if(a.party&&!a.partyOk&&!partySlotted(a.party)){leaveParty(a);ev(a,'Turned down a party (use join_party to join one).')} // the Fellowship's own party is always theirs
   const adv=advOf(a);
@@ -763,11 +764,11 @@ function apartNote(a,p){const L=a.party&&a.party.leader!==a&&a.party.leader.stat
 const DIRS={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0],northeast:[1,-1],northwest:[-1,-1],southeast:[1,1],southwest:[-1,1]};
 // A place name the agent used that the world has but the hero has not heard of (so the refusal does not confirm others).
 // Which dungeon a hero means (#891): the one it named, else one named in its words, else the nearest it knows. A name that is no dungeon, or one it never heard of, is refused.
-function pickCrypt(a,word,text){const w=clean(word,60).trim(),D=w?cryptByWord(w):cryptInWords(text),known=CRYPTS.filter(x=>knowsPlace(a,x.name));
+function pickCrypt(a,word,text){need(hasCrypt(),NO_CRYPT);const w=clean(word,60).trim(),D=w?cryptByWord(w):cryptInWords(text),known=CRYPTS.filter(x=>knowsPlace(a,x.name));
   if(w&&!D)throw new Rule('There is no dungeon called "'+w+'" that you know of.'+(known.length?' You know of '+known.map(x=>x.name).join(', ')+'.':''));
   if(w&&CRYPTS.length>1&&!known.includes(D))throw new Rule('You have never been to '+D.name+' nor heard of it. Ask around, or explore that way.');
   return D||cryptNearest(a,known)}
-const placeNameIn=t=>{const n=[...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).find(x=>x.toLowerCase()===t);return n||null};
+const placeNameIn=t=>{const n=[...LANDMARKS.map(l=>l.name),cryptTitle()].filter(Boolean).find(x=>x.toLowerCase()===t);return n||null};
 
 // ---- places (#414): the places this hero knows, nearest first, with direction, distance and what it learned there ----
 // Read only and dice-free. Only the hero's known set (the same knownNames move_to and hunt resolve, #188/#399/#411) plus
@@ -788,7 +789,7 @@ function knownPlaces(a,from){const L=a.lore&&a.lore.p?a.lore.p:null,c=homeOf(a),
       for(let i=0;i<pts.length;i+=st){const d=Math.hypot(pts[i].x-from.x,pts[i].y-from.y);if(d<bd){bd=d;best=pts[i]}}
       if(zoneAt(from.x,from.y)===z)best={x:from.x,y:from.y};if(!best)continue;at(name,'region',best,how);continue}
     if(p&&p.mk&&p.x!=null){at(name,'mark',p,markHow(p));continue} // yours, or told by a companion (#632)
-    const lm=LANDMARKS.find(l=>l.name===name)||(CRYPT&&CRYPT.name===name?CRYPT:null);
+    const lm=LANDMARKS.find(l=>l.name===name)||cryptIf(n=>n===name);
     if(lm){at(lm.kind==='lair'?name+"'s lair":name,'landmark',lm,how,name);continue}
     const mk=p&&p.dm!=null?(S.places||[]).find(x=>x.id===p.dm):null;if(mk)at(name,'place',mk,how)} // a DM place it learned (#423)
   for(const m of (S.places||[]))if(m&&m.name&&dist(a,m)<=sightOf(a)&&!out.some(x=>x.name===m.name))at(m.name,'place',m,'in sight now: '+(m.kind||'a marked place'));
@@ -799,7 +800,7 @@ function placesList(a,{about,kind,near}={}){const L=loreOf(a);
     if(m)from={x:+m[1],y:+m[2]};
     else{const hit=all.find(x=>x.name.toLowerCase()===q||x.go.toLowerCase()===q)||all.find(x=>x.name.toLowerCase().includes(q));
       if(!hit)return {ok:false,error:'You know no place called "'+nr+'". Places you know: '+all.map(x=>x.name).slice(0,10).join(', ')+'.'};
-      const town=CITY.find(x=>x.name===hit.go),lm=LANDMARKS.find(l=>l.name===hit.go)||(CRYPT&&CRYPT.name===hit.go?CRYPT:null),z=ZONES.indexOf(hit.go),mk=markInSight(a,hit.go.toLowerCase());
+      const town=CITY.find(x=>x.name===hit.go),lm=LANDMARKS.find(l=>l.name===hit.go)||cryptIf(n=>n===hit.go),z=ZONES.indexOf(hit.go),mk=markInSight(a,hit.go.toLowerCase());
       from=town?town.gate:lm?lm:mk?mk:z>=0&&ZPTS[z]&&ZPTS[z].length?ZPTS[z][Math.floor(ZPTS[z].length/2)]:a;fromLabel=hit.name}
     if(m)fromLabel='('+from.x+', '+from.y+')'}
   let list=knownPlaces(a,from);
@@ -1338,7 +1339,7 @@ const T={
     if(inTown(a)&&p.last==='hunt')writeSighting(a,zoneName(p));a.pq=[{kind:'move',legs:p.legs,last:'hunt',label:p.label}];if(!g.stopped)a.pq.push({kind:'crypt',join:forceYes(join),label:D.name,...cryptCtx(D)});if(a.state==='follow')a.state='hunt';a.dest=null;
     const r={ok:true,going:p.label,note:g.stopped?'You stop short of the mouth.':'You walk to the mouth and go down'+(forceYes(join)?', with the group gathering there if one has room':'')+'. Every chamber is a scene at the table, and you are alone in them.'};
     const w=greenWarn(companyOf(a),'crypt',D);if(w)r.warning=w.trim();if(p.warn)r.warning=(r.warning?r.warning+' ':'')+p.warn;if(g.stopped)r.stops_short=true;const ap=apartNote(a,p);if(ap)r.apart=ap;callTaken(a,'crypt');return r},
-  join_raid(a){soloOrder(a,'raid');need(S.boss.alive,'Kragmaw is not in its lair now.');need(!loreSides(),'There is no muster to fall in with: a raid here is a company\'s own. Ride with enough companions and propose it.');need(S.raidOn[a.fac],'Nobody of your people is raiding Kragmaw now. You can only fall in with a muster that is out; the town criers tell of them (read_chronicle).');
+  join_raid(a){soloOrder(a,'raid');need(hasLair(),NO_LAIR);need(S.boss.alive,'Kragmaw is not in its lair now.');need(!loreSides(),'There is no muster to fall in with: a raid here is a company\'s own. Ride with enough companions and propose it.');need(S.raidOn[a.fac],'Nobody of your people is raiding Kragmaw now. You can only fall in with a muster that is out; the town criers tell of them (read_chronicle).');
     const w=greenWarn(companyOf(a),'raid');joinRaid(a);callTaken(a,'raid');return {ok:true,joined:'the raid on Kragmaw',note:'You ride for the lair with the muster. You break off when badly hurt; until then the raid is your whole order.',...(w?{warning:w.trim()}:{})}},
   // #826: someone in the world asked a solo; the answer is said aloud, and a yes is the order itself
   answer_call(a,{answer,line}){const L=callFor(a),v=String(answer||'').trim().toLowerCase();need(L,'Nobody is waiting on an answer from you. A company answers with vote.');

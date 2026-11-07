@@ -263,6 +263,33 @@ export function scan({root = ROOT, stop = []} = {}) {
   return sites.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
 }
 
+// Where src reads the map's first dungeon or its lair as if it were there (#1013): a map may have neither, and the two are null.
+// A member of it (CRYPT.name), of a fallback ending in it ((x||CRYPT).name), or handing it to a call (dist(p,LAIR)). The readers
+// (sim/crypts.js, sim/lair.js) and the files that build the two are the places that may. A test of it (CRYPT&&, D===CRYPT, x||CRYPT) is
+// not a read. A local or parameter of the name is not it; `D=CRYPT` then `D.x` is out of reach of this, so it is a net, not a proof.
+export const BARE_READERS = new Set(['src/sim/crypts.js', 'src/sim/lair.js', 'src/world/map.js', 'src/world/gen.js']);
+export function bareReads({root = ROOT} = {}) {
+  const out = new Map(), BARE = /^(CRYPT|LAIR)$/;
+  for (const f of ['sim', 'data', 'world', 'core', 'render', 'ui'].flatMap(l => {try {return walkDir(join(root, 'src', l))} catch {return []}}).filter(f => f.endsWith('.js'))) {
+    const rel = relative(root, f).split(sep).join('/'), src = readFileSync(f, 'utf8'), ast = parseAst(src);
+    if (BARE_READERS.has(rel)) continue;
+    const named = new Set();
+    for (const n of ast.body) if (n.type === 'ImportDeclaration' && /(world\/|^\.\/)map\.js$/.test(n.source.value)) for (const s of n.specifiers) if (s.imported && BARE.test(s.imported.name)) named.add(s.local.name);
+    if (!named.size) continue;
+    const hits = [], line = n => src.slice(0, n.start).split('\n').length;
+    const it = (n, sh) => n && n.type === 'Identifier' && named.has(n.name) && !sh.has(n.name);
+    const go = (n, sh) => {
+      if (isFn(n)) sh = new Set([...sh, ...localsOf(n)]);
+      if (n.type === 'MemberExpression' && (it(n.object, sh) || (n.object.type === 'LogicalExpression' && it(n.object.right, sh)))) hits.push(line(n));
+      if (n.type === 'CallExpression') for (const a of n.arguments) if (it(a, sh)) hits.push(line(a));
+      for (const [, c] of kids(n)) go(c, sh);
+    };
+    go(ast, new Set());
+    if (hits.length) out.set(rel, hits);
+  }
+  return out;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const s = scan();
   for (const x of s) console.log(`${x.rebound ? 'ok ' : '   '} ${x.kind.padEnd(7)} ${x.file}:${x.line} ${x.name}${x.by ? ' (by ' + x.by + ')' : ''}`);

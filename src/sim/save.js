@@ -94,7 +94,7 @@ export function snapshot(){
     snap[k]=k in HOMES?(S[k]||[]).map(o=>ser(o,true)):ser(S[k],k==='boss')} // the boss is written in full here, as a reference everywhere else
   snap.GOODS={};for(const n in GOODS)snap.GOODS[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
   snap.MATS={};for(const n in MATERIALS)snap.MATS[n]={supply:MATERIALS[n].supply,prev:MATERIALS[n].prev}; // gathered materials sold at the auction house (#257)
-  snap.CRYPT={group:ser(CRYPT.group,false),cd:CRYPT.cd};
+  if(CRYPT)snap.CRYPT={group:ser(CRYPT.group,false),cd:CRYPT.cd}; // a map may hold no dungeon (#1013)
   if(CRYPTS.length>1){snap.CRYPTS={};for(const D of CRYPTS)if(D!==CRYPT)snap.CRYPTS[D.name]={group:ser(D.group,false),cd:D.cd}}
   snap.kept=keptState(); // the world's state that lives in modules: dice streams and timers (kept.js)
   return snap}
@@ -139,7 +139,7 @@ export function restore(snap){
     else S[k]=v}
   for(const n in snap.GOODS||{}){const g=GOODS[n],s=snap.GOODS[n];if(!g||!s)continue;g.supply=s.supply;g.prev=s.prev!=null?s.prev:price(n)}
   for(const n in MATERIALS){const g=MATERIALS[n],s=snap.MATS&&snap.MATS[n];g.supply=s?s.supply:6;g.prev=s&&s.prev!=null?s.prev:price(n)} // an older save: the table's opening stock
-  if(snap.CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
+  if(snap.CRYPT&&CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
   for(const D of CRYPTS)if(D!==CRYPT){const s=snap.CRYPTS&&snap.CRYPTS[D.name];D.group=s?de(s.group):null;if(s&&s.cd!=null)D.cd=s.cd} // an older save: nobody is down there
     restoreKept(snap.kept);
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load

@@ -25,7 +25,8 @@ import {S} from './state.js';
 import {log} from './chronicle.js';
 import {timeline,record} from './history.js';
 import {tm} from '../data/traits.js';
-import {CRYPT} from '../world/map.js';
+import {cryptName,hasCrypt} from './crypts.js';
+import {hasLair} from './lair.js';
 import {BOSSES} from '../data/bosses.js';
 import {livingGuilds,membersOf,leaderOf} from './guilds.js';
 import {cryptPull,raidPull} from './goals.js';
@@ -55,14 +56,14 @@ export function focusScores(g,L,mem){
   const deep=mem.filter(a=>a.lvl>=RAID_LVL).length,crypt=mem.filter(a=>a.lvl>=CRYPT_LVL).length;
   const sum=f=>mem.reduce((t,a)=>t+f(a),0),bold=tm(L,'bold')>1.1,careful=tm(L,'retreat')>1;
   const out={adventure:1.25+(careful?.5:0)};
-  if(crypt>=3)out.crypt=1.5+cryptPull(L)*2+sum(cryptPull)*.25+Math.min(1,g.clears*.2)-(g.wipes>g.clears+1?.75:0);
-  if(deep>=4)out.raid=2+raidPull(L)*2+sum(raidPull)*.25+(g.bosses?.5:0)+(bold?.25:0);
+  if(crypt>=3&&hasCrypt())out.crypt=1.5+cryptPull(L)*2+sum(cryptPull)*.25+Math.min(1,g.clears*.2)-(g.wipes>g.clears+1?.75:0);
+  if(deep>=4&&hasLair())out.raid=2+raidPull(L)*2+sum(raidPull)*.25+(g.bosses?.5:0)+(bold?.25:0);
   const rv=rivalsOf(g).length,bl=sum(a=>blood(a)?1:0);
   if(blood(L)||rv)out.pvp=.5+(blood(L)?1.5:0)+bl*.3+(rv?1:0)+(bold?.5:0)-(careful?.5:0);
   return out}
 
 function why(f,g,L){switch(f){
-  case 'crypt':return [' turns its banner to the ',{t:FOCUS_NAME.crypt,c:'gd'},': ',L,' will lead them down into ',{t:CRYPT.name,c:'gd'},'.'];
+  case 'crypt':return [' turns its banner to the ',{t:FOCUS_NAME.crypt,c:'gd'},': ',L,' will lead them down into ',{t:cryptName(),c:'gd'},'.'];
   case 'raid':return [' takes up the ',{t:FOCUS_NAME.raid,c:'gd'},': ',L,' means to bring down ',{t:bossName(),c:'gd'},'.'];
   case 'adventure':return [' goes ',{t:FOCUS_NAME.adventure,c:'gd'},': ',L,' sends them after the jobs on the town boards.'];
   case 'pvp':return [' is on the ',{t:FOCUS_NAME.pvp,c:'gd'},': ',L,' wants enemy blood on the roads.']}
