@@ -154,6 +154,9 @@ export function sceneTick(cam,now=clock()){const sc=S.table;
     if(!inside){if(dungeonOpen())closeDungeon();autoDg=false;dgShut=false;dgAt=null}}
   if(speaker&&clock()-speaker.t>SPEAK_S)speaker=null}
 
+// A map switch moved the view after the scene was first seen (ui/mapswitch.js): a region picked or a hero left behind did not follow it then, the company's view does now.
+export function sceneLook(cam){seenId=null;sceneTick(cam)}
+
 // ---- the outdoor cut ----
 // The members and the cast near the anchor, framed with a margin; the world renderer fits it below the banner.
 export function sceneCut(aspect=1.6){if(!open||!spec||spec.mode!=='outdoor'||!spec.anchor)return null;const sc=S.table,fp=(sc&&sc.id===openId&&sc.fp)||PL.fp,an=fp?{x:fp.ox+fp.w/2,y:fp.oy+fp.h/2}:spec.anchor,tallView=aspect<1; // a phone held upright frames a narrower, taller cut

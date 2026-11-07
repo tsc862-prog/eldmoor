@@ -29,6 +29,7 @@ const setText=(n,v)=>{v=v==null?'':String(v);if(n._v!==v){n._v=v;n.textContent=v
 const list=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1];
 export const WORD={here:'The company is here',been:'Been there',heard:'Heard of',unknown:'Unknown'};
 const STUB=34; // tiles a road runs on past its land when no land stands at its far end
+const TITLE_ROOM=.34; // of a land's height from its top: the title and the marker's figure would meet
 
 // ---- what may be seen ----
 // Is there more than one thing to look at? (The table's row, a road off the starter map, or a map left behind.)
@@ -70,6 +71,7 @@ function roadLine(C){const R=C&&C.road,e=R&&EXITS.find(x=>x.id===R.exit);if(!e)r
 export function atlasView(){const plan=ATLAS[WORLD_ID]||{lands:[{id:WORLD_ID,x:0,y:0}]},C=followedCompany(),who=C?members(C):[],knows=n=>who.some(a=>a.town===n||a.lore&&a.lore.p&&a.lore.p[n]);
   const lands=rowsOf(plan).map(r=>landOf(r,knows)),roads=roadsOf(plan,lands,knows,C&&C.road&&C.road.exit),here=lands.find(l=>l.id===MAP_ID),ld=C?leaderOf(C)||who[0]:null;
   for(const l of lands)if(l.state==='heard')l.who=who.filter(a=>[l.label,...l.known].some(n=>a.lore&&a.lore.p&&a.lore.p[n])).map(a=>a.name);
+  if(here&&ld)here.low=ld.y/H<TITLE_ROOM; // the marker stands where the title is: the title goes to the land's foot
   return {lands,roads,box:boxOf(plan,lands,roads),company:C?{name:companyLabel(C),region:ld?ZONES[zoneAt(ld.x,ld.y)]||'':'',road:roadLine(C)}:null,
     marker:ld&&here?{id:ld.id,hero:ld,x:here.x+ld.x/W*here.w,y:here.y+ld.y/H*here.h}:null}}
 
@@ -82,7 +84,7 @@ const pct=(v,b0,b1)=>((v-b0)/b1*100).toFixed(3)+'%';
 const at=(n,x,y)=>{n.style.left=pct(x,box.x,box.w);n.style.top=pct(y,box.y,box.h);return n};
 function landEl(l){const b=keyed(el('button','wmland s-'+l.state+(l.id===sel?' sel':'')),l.id);b.type='button';b.dataset.land=l.id;b.setAttribute('aria-label',l.label+': '+WORD[l.state]);b.setAttribute('aria-pressed',String(l.id===sel));
   at(b,l.x,l.y);b.style.width=(l.w/box.w*100).toFixed(3)+'%';b.style.height=(l.h/box.h*100).toFixed(3)+'%';
-  const n=el('span','wmname',l.label);if(l.band)n.append(el('span','wmband',' '+l.band.join('-')));b.append(n);return b}
+  const n=el('span','wmname'+(l.low?' low':''),l.label);if(l.band)n.append(el('span','wmband',' '+l.band.join('-')));b.append(n);return b}
 function fillMarks(host,v){for(const l of v.lands)host.append(landEl(l));
   for(const l of v.lands)for(const s of l.spots)host.append(at(keyed(el('span','wmspot '+s.kind,s.name),l.id+'/'+s.name),s.x,s.y));
   for(const r of v.roads)if(r.name)host.append(at(keyed(el('span','wmroad'+(r.active?' active':''),r.name),r.k),(r.pa.x+r.pb.x)/2,(r.pa.y+r.pb.y)/2))}
@@ -116,7 +118,7 @@ function moveMarker(v){const m=v.marker;marker.hidden=!m;if(!m)return;at(marker,
   if(faceOf!==m.id){faceOf=m.id;try{const sp=outlined(heroSprite(m.hero,false,0)),x=face.getContext('2d');face.width=sp.width;face.height=sp.height;x.imageSmoothingEnabled=false;x.drawImage(sp,0,0)}catch(e){}}}
 function refresh(){if(!on)return;const v=atlasView(),b=JSON.stringify(v.box);if(!box||JSON.stringify(box)!==b){box=v.box;sigMarks='';fit()}
   const sa=JSON.stringify([v.box,v.lands.map(l=>[l.id,l.state]),v.roads.map(r=>[r.k,r.state,r.active])]);if(sa!==sigArt){sigArt=sa;paintAtlas(art,v)}
-  const sm=JSON.stringify([sel,v.lands.map(l=>[l.id,l.state,l.label,l.band,l.spots]),v.roads.map(r=>[r.k,r.name,r.active])]);if(sm!==sigMarks&&patch(marks,h=>fillMarks(h,v),{anchor:false}))sigMarks=sm;
+  const sm=JSON.stringify([sel,v.lands.map(l=>[l.id,l.state,l.label,l.band,l.spots,l.low]),v.roads.map(r=>[r.k,r.name,r.active])]);if(sm!==sigMarks&&patch(marks,h=>fillMarks(h,v),{anchor:false}))sigMarks=sm;
   const ss=JSON.stringify([sel,v.company,v.lands,v.roads.map(r=>[r.k,r.name,r.to])]);if(ss!==sigSide&&patch(side,h=>fillSide(h,v),{anchor:false}))sigSide=ss;
   moveMarker(v);const t=$('clock');setText(clock,t?t.textContent:'');setText(note,ctl.held?'The world is held: close this to answer.':ctl.speed===0?'Paused':'')}
 const syncBtns=()=>{const r=worldMapReady();for(const id of ['vAtlas','cinAtlas']){const b=$(id);if(b&&b.hidden===r)b.hidden=!r}const b=$('vAtlas');if(b)b.setAttribute('aria-pressed',String(on))};
