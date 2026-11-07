@@ -24,7 +24,7 @@ DM-only. The heroes never read this; reveal it through narrate, npc_say, hooks, 
 ## Plans
 - **Act I, levels 1-3, Hollinlea**: The first delve, the walk home, the gate captain's first jobs. Teach the walk: everything here is a long way off. tags: act1
 - **Act II, levels 3-5, Withywood and Crowfell**: Hunting further out, Old Crookjaw, the milestones, the Quarry Cellars. Let the company grow past the town. tags: act2
-- **The Roads Are Not Open Yet**: There is no crossing: a walk ordered to the Drovers' Road or the Fell Road is refused in words. Keep hinting at what lies past them, and never promise an arrival. tags: roads
+- **The Roads Out**: The Drovers' Road is open: a company that orders it stands at the last milestone and decides, all together, at the table; it comes out on the Wendmouth, a level 5 to 10 land, so let a level 6 company feel the Reach has nothing left for it. The Fell Road is not open: a walk ordered along it is refused in words. Keep hinting at what lies past it, and never promise an arrival. tags: roads
 - **Opening beats, days 1-4**: Day 1: the first delve. Day 2: a name in the ledger. Day 3: a shepherd down from Crowfell with a torn coat. Day 4: a light on the far bank of the Withy. tags: act1
 - **If the company falls**: Death is permanent. A replacement walks in at the next camp or town; let the town notice the empty bed. tags: hardcore
 

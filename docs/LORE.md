@@ -538,13 +538,36 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 
 - **The Withy**: the river of the Reach, one long bend along the map's south edge. A *withy* is a willow wand. No bridge and no ford: the far bank is out of reach.
 - **The Crossways**: where the three roads part, a long walk east of the gate.
-- **The Drovers' Road** (north) and **the Fell Road** (east): the two roads off the map, each ending at a last milestone. Nothing is built past them yet: an order to walk one is refused in words, and heroes have heard only that they lead to lands not yet seen.
+- **The Drovers' Road** (north) and **the Fell Road** (east): the two roads off the map, each ending at a last milestone. The Drovers' Road goes on to the Wendmouth, and a company may cross by it, all together, at the table. Nothing is built past the Fell Road yet: an order to walk it is refused in words, and heroes have heard only that it leads to lands not yet seen.
 - **The wood road**: runs from the Crossways into Withywood and ends at the first delve.
 - **First delve of the Reach** (`src/data/prologues.js`): **the Tithe Grange** (Oldstead, ruin, keeper **Cellarer Thrupp**, who kept the tithe for a priory nobody remembers and never stopped counting; rooms **the Cart Bay**, **the Undercroft**, **the Cellarer's Count**). Once a company's, at the wood road's end.
 - **The Quarry Cellars** (Crowfell, entry 3): the Reach's one real dungeon, cut under a quarry that shut before anyone in Oldstead was born; somewhere for a level 3-5 company to go while the roads are closed. Keeper **Foreman Ruddock**, who still takes the shift's names on a slate; rooms **the Cut Stair**, **the Wedge Store**, **the Foreman's Tally**.
 - **Creatures of the Reach** (`src/data/fauna.js`, stock species under their own names): Hollinlea: **Hedge Wolf** (1-2, Hedge Pelt), **Furrow Boar** (2-3, Furrow Tusk). Withywood: **Withy Weaver** (2-3, Withy Silk), **Briar Boar** (3-4, Briar Tusk), **Underwood Wolf** (3-4, Underwood Pelt). Crowfell: **Fell Wolf** (3-4, Fell Pelt), **Scree Boar** (4-5, Scree Tusk), **Crag Spinner** (4-5, Crag Silk).
 - **Old Crookjaw**, the Terror of Crowfell: the map's one elite, level 5, a very old wolf with a broken jaw healed wrong.
 - Name notes: no region, town or dungeon name is shared with another map. Oldstead stands beside Hawkstead by its ending only. *Hollin* is also a name Tolkien gives a country in English; here it is the plain dialect word for holly, and only with *Reach*.
+
+### The Wendmouth (second chapter, #1013)
+`WENDMOUTH` in `src/world/spec.js` is a 150x68 map for levels 5 to 10, the first land past the Hollin Reach: the sea on its west edge, the Wend sweeping down from the north-east to meet it, and the first half of the Vale's river told again at chapter scale. It takes the Vale's towns, rooms, creatures and dress, and Hollin's density: two towns, two small dungeons, one elite, and most of a day's road between the gates. The old Wending Vale stays loadable beside it; a name here is that place as this chapter tells it, not a second place. No raid and no great dungeon. Sides are lore, so any company may rest in either town.
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Wendmouth | 5-7 | Open pasture on both banks round the mouth of the Wend, from the sea to the edge of the flats. The Drovers' Road comes up into it. |
+| Sallowfen | 6-9 | Fen and willow-flats filling the south-east, with Stiltmere and the Sallow Vaults in them. |
+| Gullhead | 7-10 | Bare cliff-top and crags along the north, from the sea-cliffs behind Gullstrand to the Wend's north bank in the east. A *head* is a headland. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Gullstrand | Concord | Skerrin | The harbour, as the Vale built it: its gate faces the Wend, with a quay and a jetty outside it and the Low Bridge just up the bank. |
+| Stiltmere | Warband | Mirekin | The fen town on planked lanes inside a palisade, its gate on the far east side, where the fen road turns on toward the Wend Road. |
+
+- **The Low Bridge**: the only way over the Wend on this map, under Gullstrand's south wall.
+- **The Crossways** of the Wendmouth: where the Drovers' Road parts, west to the Low Bridge and east into the flats.
+- **The Drovers' Road** (south): the same road as the Reach's, coming up onto the south bank; it runs both ways. **The Wend Road** (east): runs on past Stiltmere toward the old weir. Nothing is built past it yet: an order to walk it is refused in words.
+- **The Sallow Vaults** (Sallowfen, entry 5): as in the Vale, at the end of their own turning off the fen road; the first dungeon a company passes. Keeper **Captain Dane Sallow**.
+- **The Gull Cliff Den** (Gullhead, entry 7): Old Brine's den, in the Vale a first delve, here a small dungeon of three rooms in the sea-cliffs at the end of the cliff road: **the Net Run**, **the Fish Midden**, **the Warm Hollow**. Keeper **Old Brine**, a scarred sea-wolf mother.
+- **Creatures of the Wendmouth** (`src/data/fauna.js`, the Vale's by name, at this chapter's levels): Wendmouth: **Strand Wolf** (5-6), **Reed Boar** (6-7), **Dyke Weaver** (6-7). Sallowfen: **Sallow Bogling** (6-7), **Sallow Hog** (7-8), **Eel Lurker** (8-9). Gullhead: **Heath Wolf** (7-8), **Crag Boar** (8-9), **Windhound** (9-10).
+- **Old Mother Sedge**: the map's one elite, in Sallowfen, level 10.
+- Name notes: Wendmouth, Sallowfen, Gullstrand, Stiltmere, the Low Bridge, the Sallow Vaults and the Gull Cliff Den are shared with the old Vale on purpose (#1013: the Vale is redrawn as chapter maps and retired when the last lands); no campaign holds both. Old Mother Sedge, Old Brine and Captain Dane Sallow come over from the Vale too. The Vale's own lines (Gullstrand at the river's mouth below Aldermere, the Wendmouth as the region of four home towns) stay on the Vale map: do not copy them into this chapter. **Gullhead** and **the Wend Road** are new.
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.
