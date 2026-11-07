@@ -8,5 +8,5 @@ export const SNAPSHOTS = {
   stepping: {zone: '1089eab4', tiles: '2763d8b2', minSpawn: 200},
   vale:     {zone: '258a7280', tiles: 'ca3628f2', minSpawn: 150},
   hollin:   {zone: '7bfcd86f', tiles: 'f2e0d16a', minSpawn: 150},
-  wendmouth: {zone: 'ccc10dc1', tiles: '879e6f1e', minSpawn: 150},
+  wendmouth: {zone: 'ccc10dc1', tiles: 'dd4e6959', minSpawn: 150},
 };

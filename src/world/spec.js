@@ -611,7 +611,7 @@ const GULL_DEN_ROOMS=[
   {id:'nets',name:'The Net Run',frame:"A run trodden through shredded nets, under the roots at the cliff's lip. Half-grown things come down it snapping.",
     foes:[{type:'wolf',n:3}],lvl:-1,hit:.225,rounds:2},
   {id:'midden',name:'The Fish Midden',frame:"A cave heaped with bones and scales, and the sea booming somewhere under the floor. Two boars have taken the den's leavings and defend them.",
-    foes:[{type:'boar',n:2,hits:2},{type:'wolf',n:1}],lvl:0,hit:.28,rounds:2},
+    foes:[{type:'boar',n:2,hits:2},{type:'wolf',n:1}],lvl:0,hit:.28,rounds:3},
   {id:'hollow',name:'The Warm Hollow',frame:'The deepest hollow, warm and reeking. She gets up off her litter and she is bigger than the net-menders said.',
     foes:[{type:'denmother',n:1,name:'Old Brine',hits:4,atk:1.5},{type:'wolf',n:1,hits:1}],lvl:1,hit:.36,rounds:3,boss:true},
 ];
@@ -697,7 +697,7 @@ export const WENDMOUTH={
     {from:'Gullstrand',via:['westWall','cliffRoad'],to:'denEnd'},
   ],
   roadClear:[1,3],
-  glades:[[96.5,59,5],[22.5,9,4],[52,38,7.5]], // the two mouths, and the ground below the quay: a crown stands three tiles over its root and would hide the jetty
+  glades:[[96.5,59,5],[22.5,9,4],[52,38,7.5],[71,62,6.5]], // the two mouths, the ground below the quay (a crown stands three tiles over its root and would hide the jetty), and the road's end, where a company comes in from the Hollin Reach
   lights:{townTorches:[[10.5,3.4]]},
   spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of a wall
   nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{wendstrand:{herb:6,ore:1,hide:5,fish:6},sallowflats:{herb:7,ore:1,hide:4,fish:3},gullhead:{herb:3,ore:6,hide:4,fish:2}}},
