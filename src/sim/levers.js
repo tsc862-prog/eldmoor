@@ -145,7 +145,7 @@ export function bandLvl(z,lvl){const [lo]=band(z),hi=bandHi(z);
   return {lvl:clamp(lvl,lo,hi+2),clamped:lvl<lo||lvl>hi+2}}
 
 // ---- the registry ----
-export const LEVERS={};
+export const LEVERS=Object.create(null); // no prototype: a lever named 'constructor' or '__proto__' is not found
 const IMPL={}; // implementations other systems provide for the stub levers (a future createSite, startEvent, nudgeRelation)
 export function register(def){
   if(!def||typeof def.name!=='string'||typeof def.apply!=='function')throw new Error('lever needs a name and apply()');
@@ -437,8 +437,8 @@ register({name:'take_item',allow:['item'],about:'Take a quest item or token out 
   describe:p=>p.item+' taken from hero #'+p.hero});
 // the old token levers, folded in
 const ALIAS={give_token:'give_item',take_token:'take_item'};
-export const leverAlias=name=>ALIAS[name]||name;
-const aliasRaw=(name,raw)=>{if(!ALIAS[name]||!raw||typeof raw!=='object')return raw;const q={...raw};if('token' in q){q.item=q.token;delete q.token}return q};
+export const leverAlias=name=>Object.hasOwn(ALIAS,name)?ALIAS[name]:name; // own keys only: '__proto__' is no lever
+const aliasRaw=(name,raw)=>{if(!Object.hasOwn(ALIAS,name)||!raw||typeof raw!=='object')return raw;const q={...raw};if('token' in q){q.item=q.token;delete q.token}return q};
 export const aliasParams=aliasRaw;
 
 // Foes for an adventure scene: one monster of the region raised to a named foe, its level kept
