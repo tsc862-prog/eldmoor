@@ -16,6 +16,7 @@
 //     module (rulingTick is a no-op without S.rulings).
 import {S,clockStr,dayNo} from './state.js';
 import {ZONES,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {cryptTitle} from './crypts.js';
 import {solidAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {SKILLS,SKILL_IDS,check,skillMod,trained} from './abilities.js';
@@ -187,7 +188,7 @@ function moveSpot(a,to){const s=lc(to),m=/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d
   const D=Math.hypot(x-a.x,y-a.y);if(D>ATTEMPT.MOVE_MAX+.01)return {err:'move: at most '+ATTEMPT.MOVE_MAX+' tiles (that is '+Math.round(D)+')'};
   for(let f=1;f>0.05;f-=.1){const px=a.x+(x-a.x)*f,py=a.y+(y-a.y)*f;if(open_(px,py))return {x:px,y:py}}
   return {err:'move: no open ground that way'}}
-const placeNames=()=>[...ZONES,...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name,...(S.places||[]).filter(p=>p&&p.name&&!(p.until<S.gameMin)).map(p=>p.name)].filter(Boolean);
+const placeNames=()=>[...ZONES,...LANDMARKS.map(l=>l.name),cryptTitle(),...(S.places||[]).filter(p=>p&&p.name&&!(p.until<S.gameMin)).map(p=>p.name)].filter(Boolean);
 const creatureName=v=>{const s=lc(v);for(const k in MOBS){const M=MOBS[k];if(lc(M.name)===s||M.pl&&lc(M.pl)===s)return M.name}return null};
 // Check one effect for hero a (sc: in a Table scene). Returns {k,t,v} normalised, or {err}.
 export function checkEffect(a,x,sc){const e=parseEffect(x),{k}=e;

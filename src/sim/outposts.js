@@ -13,12 +13,13 @@ import {FAC} from '../data/factions.js';
 import {log} from './chronicle.js';
 import {nearHeroes} from './spatial.js';
 import {combatStats} from './stats.js';
+import {mapKey} from './atlas.js';
 const maxHp=a=>combatStats(a).health;
 
 export const OP={ON:true,RATE:1,AURA:6,HEAL:.012,NEAR:2,GO_P:.1,STEP:.5};
 const alive=a=>a.state!=='dead'&&a.state!=='town'&&a.state!=='camp'&&a.state!=='ghost'&&a.hp>0;
 
-function st(){if(!S.outposts||S.outposts.world!==S.worldId||typeof S.outposts.o!=='object')S.outposts={world:S.worldId,t:0,flips:0,o:{}};
+function st(){if(!S.outposts||S.outposts.world!==mapKey()||typeof S.outposts.o!=='object')S.outposts={world:mapKey(),t:0,flips:0,o:{}};
   for(const p of OUTPOSTS)if(!S.outposts.o[p.id])S.outposts.o[p.id]={ctl:0,hold:-1,contested:false,flips:0,since:0};
   return S.outposts}
 export const holderOf=p=>{const s=st().o[p.id];return s?s.hold:-1};

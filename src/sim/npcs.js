@@ -10,7 +10,7 @@
 // Owned by world-builder (routines and reactions); names and sprites by
 // character-builder; lines by lore-keeper. Canon: docs/LORE.md, "Townsfolk".
 import {pickA} from '../core/rng.js';
-import {keep} from './kept.js';
+import {keep,onWorld} from './kept.js';
 import {CITY,ZONES,dist} from '../world/map.js';
 import {gatheringFor} from './crypts.js';
 import {solidAt,standAt} from '../world/passable.js';
@@ -46,7 +46,8 @@ const fill=(s,p,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?p.name:k==='town'
 const hour=()=>(S.gameMin/60)%24;
 const atWork=R=>{if(!R.hours)return true;const h=hour(),[o,c]=R.hours;return c>o?h>=o&&h<c:h>=o||h<c};
 
-const cityCache={};
+let cityCache={};
+onWorld(()=>{cityCache={}},()=>({npcCityStale:Object.values(cityCache).filter(c=>!CITY.includes(c)).length})); // another map (#1013)
 const cityOf=p=>cityCache[p.town]||(cityCache[p.town]=CITY.find(c=>c.name===p.town)||CITY[0]);
 export const townNpc=(c,role)=>(S.npcs||[]).find(p=>p.town===c.name&&p.role===role)||null;
 

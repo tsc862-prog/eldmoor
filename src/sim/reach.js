@@ -8,7 +8,7 @@
 //   couriers     the one way to reach someone out of range: a paid courier hired at a town gate who takes game
 //                hours to arrive (D&D style: slow, costs gold, arrives as an in-game event and a chat line).
 // Plain data, saved with the world on each company: C.plans [{id,where,at,atText,made,by,byName,who,whoNames,status}], C.post [{id,from,to,text,sent,due,cost}].
-import {S,clockStr,dayNo} from './state.js';
+import {S,clockStr,dayNo,sameSide} from './state.js';
 import {dist,zoneAt,ZONES,CITY} from '../world/map.js';
 import {sightMul} from './weather.js';
 import {companyOf,companies,members,mates,campaign,setWitness,slotted} from './company.js';
@@ -59,7 +59,7 @@ export function sendCourier(a,to,text){const F=companyOf(a);if(!F)return {error:
   const key=String(to==null?'':to).trim().toLowerCase(),mate=members(F).find(x=>x!==a&&(x.name.toLowerCase()===key||String(x.id)===key)),b=mate||metHero(a,key);
   // any hero you have met by name (#446): your company, or someone you spoke with in earshot
   if(!b)return {error:'You have never met "'+clean(to,30)+'": a courier carries word only to someone you know by name (talk to them first, or ride with them).'};
-  if(b.fac!==a.fac)return {error:'No courier of your town will carry word to the '+FAC[b.fac].name+'.'};
+  if(!sameSide(a,b))return {error:'No courier of your town will carry word to the '+FAC[b.fac].name+'.'};
   if(inRange(a,b))return {error:b.name+' is close enough to hear you: use '+(mate?'party_say':'say')+'.'};
   const t=clean(text,REACH.TEXT+1);if(!t)return {error:'Send what?'};
   if(t.length>REACH.TEXT)return {error:'Too long: keep it under '+REACH.TEXT+' characters.'};

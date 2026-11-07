@@ -85,11 +85,16 @@
 - [News survives chatter](news-survives-chatter.md) — localcheck B cause: minor lines evicted unread news; makeRoom/mostNews, Linux tick rate, fixture lessons
 - [Repeat act](repeat-act.md) — #801 runner flag: REPEAT_ACTS allowlist, repeated-act anomaly, mock-pose, act:false not counted
 - [DM every mind](dm-every-mind.md) — #824 PROVIDERS one list, compat DM, mindSwitched, budget in waits, fitTools 1024, dm-mind-cases, pitfalls
+- [Call to](call-to.md) — #826 part 2: call_to lever, answer_call, C.calls, resolveProp hook, musterWord, test pitfalls
 - [Role words](role-words.md) — #863 placeWord(cls): class word for a company place, never Tank/Healer/Damage; personacheck guard
 - [Chatbot voice](chatbot-voice.md) — #837 chatbotVoice guard, refusal note, FP count 0/1646, flag plumbing
 - [Slot stall](slot-stall.md) — #868 turn_over + PostToolUse continue:false, scene slot, lease beats/tickets, real leak, measured calls
 - [Wish invite](wish-invite.md) — #829 refusal sentence once a day, dusk schema wish object, DM evening note, route check
+- [Lazy tools](lazy-tools.md) — #808 AGENT_LAZY_TOOLS: tools:[] blocks ToolSearch, alwaysLoad list, mock pitfalls, figures, live test needs
 - [Voice seconds left](voice-seconds-left.md) — #885 left N s on [ruling]/[table] lines; abort math
 - [sessioncheck scene flake](sessioncheck-scene-flake.md) — #898 fresh-line/roll flake = real Table scene holds the roll; play-headless --watch fix
-- [Nightly mock scenes](nightly-mock-scenes.md) — #822 reflex-scenes cause: mock-tools never answered scenes; mock-table, near-copy lines, 60 calls/min cap
+- [Nightly mock scenes](nightly-mock-scenes.md) — #822 three layers: mock answered no scene, hunt crossed the river to deadly prey, no supervisor in the nightly
 - [Long company run](long-company-run.md) — #926 longrun.mjs harness, scene dedupe key + wake spam + --warm fixes, what mock minds do and do not prove
+- [Empty-world DM](empty-world-dm.md) — others none prep: dm_status.others wording, first-turn clause, mock run, SUMMON limits kept
+- [Turn waste](turn-waste.md) — scene_act refusals cause, one-wait order, emoteAct name regex bug
+- [DM on stage](dm-on-stage.md) — #1017 causes of a silent DM, call keys, sceneframe, narrator voice protocol and caps, names, measured cost
