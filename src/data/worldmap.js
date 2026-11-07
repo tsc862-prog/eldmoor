@@ -18,9 +18,8 @@ export const ATLAS={
       {id:'wendshead',x:510,y:80,w:160,h:76},
     ],
     roads:[
-      {from:'hollin',exit:'north',to:'wendmouth'},
       {from:'hollin',exit:'east',to:'hawkwold'},
-      {from:'wendmouth',to:'weirgate'},
+      {from:'wendmouth',exit:'east',to:'weirgate'},
       {from:'hawkwold',to:'weirgate'},
       {from:'weirgate',to:'wendshead'},
     ],
