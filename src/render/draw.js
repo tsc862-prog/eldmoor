@@ -34,7 +34,7 @@ import {trafficEnts,isTraffic,trafficShadow,drawTrafficEnt} from './traffic.js';
 import {farMarks,gatherFar,drawMarks,homeLane} from './lod.js'; // the whole map's marks (#729)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
-import {getChunk,warmChunks,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terrain.js';
+import {getChunk,peekChunk,warmChunks,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {drawWholeMap} from './wholemap.js'; // company rings and name tags in the whole-map view (#844)
 import {syncSpells,drawSpells} from './spellfx.js';
@@ -43,6 +43,7 @@ import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.
 import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
 import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor,scenePose,sceneFallen,sceneTint} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
+import {gateEnts} from './townart.js';
 import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
 import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
@@ -56,9 +57,12 @@ import {drawMotes} from './motes.js';
 import {drawSheen} from './sheen.js';
 import {FX} from './quality.js';
 import {skyAt} from './life.js';
+import {onWorld} from '../sim/kept.js';
+import {followed,members,leaderOf} from '../sim/company.js';
+import {beginFade,fading,fadeBeat,fadeFrame,paintFade} from './roadfade.js'; // a crossing to another map (#1013)
 const HIT_NUM=/^\d+!?$/; // a blow's number from the sim; a fight on a patch shows it as its beat lands instead (#746)
 const EPZ=[],EPY=[]; // per entity this frame: its pose on a patch (#746), its feet row
-const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
+let TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null,hover:null,icons:true}; // hover, icons: the hovered hero and the Intent icons switch in Settings (#534, render/purposefx.js)
@@ -74,7 +78,12 @@ const ENTS=[],ESPR=[],EG=[],EGF=[],ESW=[],ESH=[],EPX=[],byY=(a,b)=>a.y-b.y; // t
 // BOSS_PAL lives in palette.js (#85: the raid arena draws Kragmaw too)
 
 // ---- camera control (module level so the UI and tools can drive it) ----
-let cvRef=null;const listeners=[];
+let cvRef=null,toldSwitch=null;const listeners=[],arrivals=[];
+// Another map (#1013). The hooks of everything this file imports have run by now. The canvas still shows the land left behind: createRenderer's hook keeps it for the fade.
+onWorld(()=>{TOWNS=new Set(CITY.map(c=>c.name.toUpperCase()));cam.camX=W*T/2;cam.camY=H*T/2;cam.vw=W*T;cam.vh=H*T;cam.cut=false;if(toldSwitch)toldSwitch()},()=>({townLabels:[...TOWNS],camAt:[cam.camX,cam.camY]}));
+// The UI's half of a map switch: fn('aim') once the company stands on the new map, before the camera goes to it; fn('shown') as the picture comes back.
+export const onMapArrive=fn=>{arrivals.push(fn)};
+export const mapArrived=stage=>{for(const f of arrivals)f(stage)};
 export function onCamChange(fn){listeners.push(fn)}
 const changed=()=>{for(const f of listeners)f(cam)};
 // Whole art pixels where it costs under a quarter step, so the generated art stays sharp (art px per unit is ART).
@@ -113,6 +122,18 @@ export function createRenderer(cv,screenEl){
   function resize(){const r=screenEl.getBoundingClientRect();cam.dpr=window.devicePixelRatio||1;cv.width=Math.max(1,Math.round(r.width*cam.dpr));cv.height=Math.max(1,Math.round(r.height*cam.dpr));
     cam.fit=Math.min(cv.width/(W*T),cv.height/(H*T));if(mini)mini.resize()}
   new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();initSceneView();
+  // A map switch (#1013, render/roadfade.js). Everything sized to the map follows here; the rest of the handover is the fade's.
+  let soft=false; // until the first view's chunks are done nothing stops to paint one
+  toldSwitch=()=>{beginFade(cv);resize();if(mini)mini.reset();tKey=tPrev='';tReady=false;soft=true}; // the picture first: resize clears the canvas
+  // Where the view opens: on the company, wherever it was looking before. Far from the camera's last place, so no easing: the view is there when the dark lifts.
+  function aimCamera(){mapArrived('aim');
+    const C=followed(),L=C?members(C).filter(a=>a.state!=='dead'):[],ld=C&&leaderOf(C),on=cam.sel&&S.agents.includes(cam.sel)?cam.sel:null,e=(cam.view==='follow'?on:null)||(ld&&L.includes(ld)?ld:L[0])||on,fr=framed();if(cam.director)return e;
+    if(fr){cam.sc=frameScale(fr);cam.camX=fr.x*T;cam.camY=fr.y*T}else{cam.sc=following()?followScale():cam.fit*cam.zoom;if(e){cam.camX=e.x*T;cam.camY=e.y*T}}
+    clampCam();return e}
+  // The tiles the first frame will show.
+  function firstView(){const a=cv.width/Math.max(1,cv.height),cut=sceneCut(a);if(cut)return [cut.cx-cut.w/2,cut.cy-cut.h/2,cut.cx+cut.w/2,cut.cy+cut.h/2];
+    const hw=cv.width/cam.sc/T/2,hh=cv.height/cam.sc/T/2,x=cam.camX/T,y=cam.camY/T;return [x-hw,y-hh,x+hw,y+hh]}
+  const backOn=()=>{mapArrived('shown');return !!cam.director}; // the cinema view's director takes the last beat
 
   // The sky over the camera, eased so the light turns as weather comes on rather than jumping (#979).
   let cloud=0;const skyNow=()=>{const c=CLOUD[skyAt(cam.camX/T,cam.camY/T)]||0;cloud+=(c-cloud)*.02;return cloud};
@@ -142,17 +163,19 @@ export function createRenderer(cv,screenEl){
   let tKey='',tPrev='',tCache=null,tReady=false;
   function drawTerrain(sc){ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;
     const key=cv.width+'|'+cv.height+'|'+sc+'|'+cam.offX+'|'+cam.offY+'|'+chunkGen;
+    if(soft){paintChunks(ctx,sc);return} // a crossing's first frames: no copy of a picture with holes in it
     if(key===tKey&&tReady){ctx.drawImage(tCache,0,0);return}
     if(key!==tPrev){tPrev=key;tReady=false;paintChunks(ctx,sc);return} // the view moved: draw directly and see if it holds
     if(!tCache||tCache.width!==cv.width||tCache.height!==cv.height){tCache=document.createElement('canvas');tCache.width=cv.width;tCache.height=cv.height}
     const tc=tCache.getContext('2d');tc.setTransform(1,0,0,1,0,0);tc.clearRect(0,0,tCache.width,tCache.height);tc.imageSmoothingEnabled=false;
     paintChunks(tc,sc);tKey=key;tReady=true;ctx.drawImage(tCache,0,0)}
-  function paintChunks(ctx,sc){const cs=CH*T;
+  function paintChunks(ctx,sc){const cs=CH*T;let holes=false;
     const i0=Math.max(0,Math.floor(-cam.offX/sc/cs)),i1=Math.min(CHUNKS_X-1,Math.floor((cv.width-cam.offX)/sc/cs));
     const j0=Math.max(0,Math.floor(-cam.offY/sc/cs)),j1=Math.min(CHUNKS_Y-1,Math.floor((cv.height-cam.offY)/sc/cs));
-    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const c=getChunk(i,j);
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const c=soft?peekChunk(i,j):getChunk(i,j);if(!c){holes=true;continue}
       const x0=Math.round(cam.offX+i*cs*sc),y0=Math.round(cam.offY+j*cs*sc),x1=Math.round(cam.offX+(i*cs+c.uw)*sc),y1=Math.round(cam.offY+(j*cs+c.uh)*sc); // c.uw/uh: the chunk in world units, whatever its resolution
-      ctx.drawImage(c,0,0,c.width,c.height,x0,y0,x1-x0,y1-y0)}}
+      ctx.drawImage(c,0,0,c.width,c.height,x0,y0,x1-x0,y1-y0)}
+    if(!holes&&!fading())soft=false}
 
   // Frame phases for scripts/perfprobe.mjs (#716): off (one null check a phase) unless the probe sets
   // globalThis.__drawPhases={on:true,ms:Float64Array(8),n:0}; then each phase's milliseconds add up in ms[i].
@@ -161,14 +184,15 @@ export function createRenderer(cv,screenEl){
   let PH=null;const ph=i=>{if(PH){const t=performance.now();PH.ms[i]+=t-PH.t;PH.t=t}};
   let blink=0,frameNo=1;
   function draw(){PH=globalThis.__drawPhases&&globalThis.__drawPhases.on?globalThis.__drawPhases:null;if(PH){PH.t=performance.now();PH.n++}
-    trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
+    trackCrawl();trackRaid();sceneTick(cam);if(fading()&&fadeFrame(ctx,cv,aimCamera,firstView,backOn)){if(mini&&!cam.director&&fadeBeat()!=='out')mini.draw(S);return} // a crossing: the road's end, the dark, then the far side
+    if(dungeonOpen()){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
     if(drawSceneView(performance.now()/1000)){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');return} // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
     const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height)),cin=cam.director,onPatch=!!(cut&&cut.patch),seen=e=>onPatch&&scenePose(e)||e; // cin: the cinema view's director (#979), null in every other view
     if(cut){ // an outdoor scene (#431): the camera frames the scene's cut of the world below the banner and above the bar
       const top=cut.top*cam.dpr,bot=cut.bottom*cam.dpr,rt=(cut.right||0)*cam.dpr,want=Math.max(cam.fit*2,Math.min(Math.max(40,cv.width-rt)/(cut.w*T),Math.max(40,cv.height-top-bot)/(cut.h*T)));
-      if(cin){cam.cut=true;cin.step(cam,cv.width,cv.height,{x:cut.cx*T,y:cut.cy*T,sc:want,dx:rt/2,dy:-(top-bot)/2})} // the cinema view eases into the cut (#979)
+      if(cin){cam.cut=true;cin.step(cam,cv.width,cv.height,{x:cut.cx*T,y:cut.cy*T,sc:want,dx:rt/2,dy:-(top-bot)/2});const v=cv.width/cam.sc,u=cv.height/cam.sc;if(v<W*T)cam.camX=Math.max(cam.camX,v/2);if(u<H*T)cam.camY=clamp(cam.camY,u/2,H*T-u/2)} // the cinema view eases into the cut (#979), and its springs do not look past the map's edge
       else{const first=!cam.cut;cam.cut=true;cam.sc=first?want:cam.sc+(want-cam.sc)*.15;
       const tx=cut.cx*T+rt/2/cam.sc,ty=cut.cy*T-(top-bot)/2/cam.sc; /* the banner docked on the right (#546): the cut fills the room left of it */if(first){cam.camX=tx;cam.camY=ty}else{cam.camX+=(tx-cam.camX)*.15;cam.camY+=(ty-cam.camY)*.15}}
       cam.vw=cv.width/cam.sc;cam.vh=cv.height/cam.sc}
@@ -182,10 +206,10 @@ export function createRenderer(cv,screenEl){
     cam.offX=Math.round((vw/2-cam.camX)*sc);cam.offY=Math.round((vh/2-cam.camY)*sc);
     const vx0=cam.camX-vw/2,vy0=cam.camY-vh/2,vx1=vx0+vw,vy1=vy0+vh;
     const inView=(x,y,m)=>x>vx0-m&&x<vx1+m&&y>vy0-m&&y<vy1+m;
-    if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
+    if(cut&&(cut.edge||vx0<0||vy0<0||vx1>W*T||vy1>H*T)){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
     drawTerrain(sc);warmChunks(cam.camX/T,cam.camY/T);ph(0);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
-    gradeAt((S.gameMin/60)%24,skyNow());drawCast(ctx,S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
+    gradeAt((S.gameMin/60)%24,skyNow());drawCast(S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
     if(S.boss.alive&&inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle=MARK.ember;for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
@@ -216,7 +240,7 @@ export function createRenderer(cv,screenEl){
       for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
       for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
       if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
-      lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;
+      lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;if(close)gateEnts(ENTS,inView); // a gatehouse stands among the people passing it (#979)
       if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS)} // road traffic, skipped at whole-map zoom (#856)
     if(onPatch)sceneFallen(ENTS); // a foe whose last blow is still to play, or who is falling
     // whole trees (#834) are painted into the terrain chunk, under everything; one that stands in front of an entity (rooted below its feet)
@@ -230,7 +254,7 @@ export function createRenderer(cv,screenEl){
     const nE=ENTS.length,sunny=close&&G.sunA>.01&&FX.full; // up close what moves throws its own shape along the sun, under the contact shadow
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
     for(let i=0;i<nE;i++){const e=ENTS[i];EPZ[i]=null;
-      if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
+      if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree&&!e.flat)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
       if(isTraffic(e)){trafficShadow(ctx,e,Math.round(e.x*T),Math.round(e.y*T));if(sunny)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),6,22);continue} // its shadow joins the path; the sprite is drawn whole in pass 2
       const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',pz=onPatch?scenePose(e):null,mv=pz?pz.walk:e.moving,fr=mv?Math.floor(blink*6+e.id)%2:0;EPZ[i]=pz;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
@@ -279,7 +303,7 @@ export function createRenderer(cv,screenEl){
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
     };
     for(let i=0;i<nE;i++){const e=ENTS[i];
-      if(e.tree){drawTree(ctx,e);if(FX.full)swayTree(ctx,tf,e); // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
+      if(e.tree||e.veil){if(e.veil)drawEnt(i);else{drawTree(ctx,e);if(FX.full)swayTree(ctx,tf,e)} // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
         for(let j=0;j<i;j++){const o=ENTS[j];if(o.tree||Math.abs(o.x-e.x)>2.4||o.y>=e.y||o.y<e.y-5||!(o===sel||(o.kind==='hero'&&inSlots(o))))continue;ghostA=.45;ctx.globalAlpha=.45;drawEnt(j);ghostA=1;ctx.globalAlpha=1}
         continue}
       drawEnt(i)}
@@ -341,10 +365,10 @@ export function createRenderer(cv,screenEl){
     flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;ph(5);
     const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
     if(whole)drawWholeMap(ctx,cam,blink);
-    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null);
+    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null,!!cin);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)&&!(onPatch&&HIT_NUM.test(p.txt))){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
-    if(mini&&!cin)mini.draw(S);if(cin)cin.paint(ctx,cv.width,cv.height);ph(6);
+    if(mini&&!cin)mini.draw(S);if(cin)cin.paint(ctx,cv.width,cv.height);paintFade(ctx,cv);ph(6);
   }
 
   return {draw,resize,screenToWorld,setZoom,zoomAt,panBy,centerOn,stepZoom,currentZoom,onCamChange};

@@ -10,9 +10,12 @@ import './seed-first.mjs'; // before the sim loads: its import-time dice are fix
 import {runWorlds} from './worlds.mjs';
 import {tiles,I,CITY,LANDMARKS,ZPTS,ZONES,NODES,land,mainLand,zoneAt} from '../src/world/map.js';
 import {W,H,RIVER,BRIDGE} from '../src/world/tiles.js';
+import {ACTIVE_SPEC} from '../src/world/spec.js';
 import {solidAt,solidWhy,nearestOpen,landAt} from '../src/world/passable.js';
 import {init,step,S,snapshot,restore,markPlayer,playerAct} from '../src/sim/index.js';
-import {moveTo} from '../src/sim/heroes.js';
+import {playerUpd} from '../src/sim/player.js';
+import {moveTo,updAgent} from '../src/sim/heroes.js';
+import {ambushMob} from '../src/sim/camp.js';
 import {updMob,spawnMob} from '../src/sim/mobs.js';
 import {MOBS} from '../src/data/mobs.js';
 import {PATH,pathStats,pathTick,route,lineCost,clearLine,noWay,blockedBy} from '../src/sim/path.js';
@@ -40,10 +43,11 @@ ok(NODES.every(n=>!solidAt(n.x,n.y)&&landAt(n.x,n.y)===mainLand),'no gathering n
 for(const L of LANDMARKS)if(L.kind==='lair'){const a=nearestOpen(L.x,L.y,4,p=>landAt(p.x,p.y)===mainLand);ok(a&&Math.hypot(a.x-L.x,a.y-L.y)<=2.5,L.name+': raiders can stand within reach of the wyrm')}
 
 // ---- rivers ----
+const CLOSED=!!(ACTIVE_SPEC.river&&ACTIVE_SPEC.river.closed); // a river as the map's edge (#1013): nothing crosses it, and that is the check
 {let opens=0,crossings=0,offside=0,wet=0;
   for(let i=0;i<W*H;i++)if(tiles[i]===RIVER&&!solidAt(i%W,(i-i%W)/W))opens++;
   for(let i=0;i<W*H;i++)if(tiles[i]===BRIDGE)crossings++;
-  ok(crossings>0,'the river has bridges ('+crossings+' tiles, '+opens+' open river tiles: fords and bridge shoulders)');
+  ok(CLOSED?crossings===0&&opens===0:crossings>0,'the river has '+(CLOSED?'no crossing':'bridges')+' ('+crossings+' tiles, '+opens+' open river tiles: fords and bridge shoulders)');
   // a tile walk of each sampled journey: any water on it is a ford or a bridge's shoulder, and no leg touches solid
   const P=ZPTS.flat();let seen=new Map();
   for(let i=0;i<P.length;i+=Math.ceil(P.length/300))for(const g of gates){const r=route(g.x,g.y,P[i].x,P[i].y);let ax=g.x,ay=g.y;
@@ -51,7 +55,7 @@ for(const L of LANDMARKS)if(L.kind==='lair'){const a=nearestOpen(L.x,L.y,4,p=>la
       for(let q=0;q<=n;q++){const x=ax+(bx-ax)*q/n,y=ay+(by-ay)*q/n;if(solidAt(x,y))wet++;if(tiles[I(Math.floor(x),Math.floor(y))]===RIVER)offside++}ax=bx;ay=by}
     for(const c of r.cross||[])seen.set(c.k+' '+c.x+','+c.y,(seen.get(c.k+' '+c.x+','+c.y)||0)+1)}
   ok(wet===0,'sampled journeys never touch solid ground ('+wet+')');
-  ok(seen.size>0,'journeys cross at: '+[...seen].map(([k,n])=>k+' x'+n).join(', '));
+  ok(CLOSED?seen.size===0:seen.size>0,'journeys cross at: '+[...seen].map(([k,n])=>k+' x'+n).join(', '));
   ok([...seen.keys()].every(k=>/^(bridge|ford) /.test(k)),'every crossing is a bridge or a ford')
   // straight over the water is refused
   let line=0;for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++)if(tiles[I(x,y)]===RIVER&&solidAt(x,y)&&!lineCost(x-3.5,y+.5,x+4.5,y+.5))line++;
@@ -111,6 +115,7 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
 
 // ---- save mid-path ----
 {seedRng(7);init({fellowship:false});for(let i=0;i<1800;i++)step(1/60);
+  for(let i=0;i<7200&&!S.agents.some(h=>h.path);i++)step(1/60); // a thin map may have nobody on a long walk yet
   const a=S.agents.find(h=>h.path&&h.path.pts.length>4)||S.agents.find(h=>h.path);ok(!!a,'somebody is mid-path');
   const snap=JSON.parse(JSON.stringify(snapshot()));const id=a.id,rec=[];
   seedRng(11);for(let i=0;i<200;i++){step(1/60);rec.push(S.agents.find(h=>h.id===id).x)}
@@ -121,13 +126,41 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
 {init({fellowship:false});const a=S.agents.find(h=>h.state!=='dead');markPlayer(a,true);const c=CITY.find(t=>t.fac===a.fac)||CITY[0];
   a.x=c.gate.x;a.y=c.gate.y;a.state='hunt';a.lvl=20;a.adv=null;
   const far=ZPTS.flat().filter(p=>Math.hypot(p.x-a.x,p.y-a.y)>20&&!CITY.some(t=>t.fac!==a.fac&&(Math.hypot(p.x-t.gate.x,p.y-t.gate.y)<14||(p.x>=t.x0-3&&p.x<=t.x1+3&&p.y>=t.y0-3&&p.y<=t.y1+3)))).find(p=>{const r=route(a.x,a.y,p.x,p.y);return r&&r.cross});
+  if(CLOSED)ok(!far,'no journey on this map crosses water');else{
   const r=playerAct(a.id,'move_to',{target:Math.floor(far.x)+','+Math.floor(far.y)}),o=r&&r.result||r;
   ok(o&&o.ok&&o.going&&o.distance!=null,'move_to keeps its line ('+(o&&o.going)+', '+(o&&o.distance)+')');
   ok(o&&o.route&&o.route.tiles>=o.distance-1&&o.route.by&&o.route.by.length>0,'and adds the route: '+JSON.stringify(o&&o.route));
   const z=o&&o.route&&o.route.by&&o.route.by[0];
   a.lore=a.lore||{};const words=JSON.stringify(o.route);const known=ZONES.filter(n=>words.includes(n));
   ok(known.every(n=>{const q=playerAct(a.id,'places',{});return JSON.stringify(q).includes(n)}),'the route names only places the hero knows ('+(known.join(', ')||'none')+')');
-  ok(!!z&&/^(bridge|ford)$/.test(z.crossing),'the crossing is a fact: '+JSON.stringify(z))}
+  ok(!!z&&/^(bridge|ford)$/.test(z.crossing),'the crossing is a fact: '+JSON.stringify(z))}}
+
+// ---- a foe on land the hero cannot reach (#1060) ----
+// A camp ambush once put its creature over a river with no crossing; the company stood in 'fight' on the bank for an hour.
+// The fight ends and the hero hunts on; the creature that cannot reach gives up too; a camp ambush comes from the camp's side.
+{let pair=null;const OPEN=i=>land[i]>=0&&!solidAt(i%W,(i-i%W)/W);
+  for(let i=0;i<W*H&&!pair;i++){if(!OPEN(i)||land[i]===mainLand)continue;const fx=i%W+.5,fy=(i-i%W)/W+.5;
+    for(let dy=-8;dy<=8&&!pair;dy++)for(let dx=-8;dx<=8&&!pair;dx++){const x=Math.floor(fx)+dx,y=Math.floor(fy)+dy;if(x<1||y<1||x>=W-1||y>=H-1)continue;
+      const j=I(x,y),d=Math.hypot(dx,dy);if(d>=4&&OPEN(j)&&land[j]===mainLand&&zoneAt(x,y)!=null&&!clearLine({x:x+.5,y:y+.5},{x:fx,y:fy}))pair={h:{x:x+.5,y:y+.5},f:{x:fx,y:fy}}}}
+  if(!pair)console.log('skip a foe on land out of reach: no other land near the main one on '+world);
+  else{init();const a=S.agents.find(b=>b.company==null&&!b.party)||S.agents[0],type=Object.keys(MOBS).find(t=>MOBS[t].lv&&!MOBS[t].boss),m=spawnMob(type);
+    m.x=pair.f.x;m.y=pair.f.y;m.home={...pair.f};m.path=null;a.x=pair.h.x;a.y=pair.h.y;a.path=null;a.hp=1e6;a.state='fight';a.target=m;m.target=a;
+    let t=-1;for(let i=0;i<600;i++){pathTick();updAgent(a,1/60);updMob(m,1/60);if(a.state!=='fight'){t=i;break}}
+    ok(t>=0&&a.target!==m,'a fight with a foe on other land ('+[pair.h.x,pair.h.y].join(',')+' -> '+[pair.f.x,pair.f.y].join(',')+') ends: '+a.state+' after '+t+' ticks');
+    ok(m.target!==a,'and the creature lets the hero be');
+    m.target=a;a.state='hunt';m.path=null;let u=-1;for(let i=0;i<600;i++){pathTick();updMob(m,1/60);if(m.target!==a){u=i;break}}
+    ok(u>=0,'a creature chasing a hero it cannot reach gives up ('+u+' ticks)');
+    // an agent's own order to fight it ends too, in words
+    markPlayer(a,true);m.target=null;m.x=pair.f.x;m.y=pair.f.y;a.x=pair.h.x;a.y=pair.h.y;a.path=null;a.state='fight';a.target=m;a.pq=[{kind:'fight',id:m.id}];a.playIdle=0;
+    let v=-1;for(let i=0;i<600;i++){pathTick();playerUpd(a,1/60);if(a.state!=='fight'){v=i;break}}
+    ok(v>=0&&!(a.pq||[]).some(c=>c.kind==='fight'),'an agent ordered to fight a foe on other land is told it is out of reach ('+v+' ticks, '+a.state+')');markPlayer(a,false);
+    // a camp with other land 7 tiles off (ambushMob's ring) on many of its sides
+    let g=null,most=0;for(let i=0;i<W*H;i+=3){if(!OPEN(i)||land[i]!==mainLand)continue;const cx=i%W+.5,cy=(i-i%W)/W+.5,z=zoneAt(cx,cy);if(z==null||!Object.values(MOBS).some(M=>M.z===z&&M.lv&&!M.boss))continue;let n=0;
+      for(let k=0;k<16;k++){const x=cx+Math.cos(k*Math.PI/8)*7,y=cy+Math.sin(k*Math.PI/8)*7;if(x>=0&&y>=0&&x<W&&y<H&&OPEN(I(Math.floor(x),Math.floor(y)))&&land[I(Math.floor(x),Math.floor(y))]!==mainLand)n++}
+      if(n>most){most=n;g={x:cx,y:cy,zone:z}}}
+    if(!g)g={x:pair.h.x,y:pair.h.y,zone:zoneAt(pair.h.x,pair.h.y)};let made=0,over=0;
+    for(let k=0;k<200;k++){const q=ambushMob(g,a.lvl);if(!q)continue;made++;if(landAt(q.x,q.y)!==landAt(g.x,g.y))over++;q.gone=true;S.mobs.splice(S.mobs.indexOf(q),1)}
+    ok(over===0,'a camp ambush comes from the camp side of the water ('+made+' made at '+g.x+','+g.y+', '+most+' of 16 sides over it, '+over+' across)')}}
 
 // ---- a long run ---- (20 game minutes in Eldmoor; the other worlds get a shallow pass of PATHCHECK_MINUTES, 5, from the parent: full depth on one world, #940)
 const MINUTES=Number(process.env.PATHCHECK_MINUTES)||20;

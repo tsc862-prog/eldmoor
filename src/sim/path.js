@@ -13,8 +13,9 @@
 import {W,H,SPEED,BRIDGE} from '../world/tiles.js';
 import {tiles,I,solid,land,CITY} from '../world/map.js';
 import {WHY,crossing,stepOpen} from '../world/solidgrid.js';
-import {nearestOpen} from '../world/passable.js';
+import {nearestOpen,landAt} from '../world/passable.js';
 import {S} from './state.js';
+import {onWorld} from './kept.js';
 
 export const PATH={
   PER_TICK:8,    // plans a tick, at most (a tick is 1/60 s at 1x: 8 a tick is far above the need, it guards the worst case)
@@ -34,9 +35,15 @@ let COST=null,N=0,G=null,FROM=null,SEEN=null,stamp=0,HI=null,HF=null,hn=0,used=0
 function ready(){if(COST)return;N=W*H;COST=new Float32Array(N);for(let i=0;i<N;i++)COST[i]=solid[i]?Infinity:1/SPEED[tiles[i]];
   G=new Float32Array(N);FROM=new Int32Array(N);SEEN=new Uint32Array(N);HI=new Int32Array(1024);HF=new Float32Array(1024)}
 
+onWorld(()=>{COST=G=FROM=SEEN=HI=HF=null;N=0},()=>{ready();return {pathN:N,pathCost:Array.from(COST)}}); // another map (#1013): the next walk builds the grids again
+
 // A new tick: the plan budget starts over. step() calls it; a clock that moved does the same for walkers driven outside step().
 export function pathTick(){used=0;usedNodes=0;usedAt=S.gameMin}
 export const noWay=e=>!!(e.path&&e.path.none);
+// No way to t at all from where e stands: no path (noWay), or t stands on other land (a foe across a river with no crossing,
+// #1060; a path there only reaches e's own bank). A chase or a fight that reads this is over: waiting on the bank is not a fight.
+// Asks the land of both tiles, never the path's 'near' flag: a path planned for a solid spot near t is 'near' and still gets there.
+export const outOfReach=(e,t)=>{if(noWay(e))return true;const lt=landAt(t.x,t.y),le=landAt(e.x,e.y);return lt>=0&&le>=0&&lt!==le};
 
 // The time to walk the straight line between two points (tiles at pace 1), or Infinity when it touches solid ground.
 // Tile by tile; a line through the exact corner of two tiles needs both beside it open.

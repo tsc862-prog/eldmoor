@@ -3,6 +3,7 @@
 // the tools already fill. Both sit between ORDERS_HEAD and ORDERS_TAIL so withSituationOrders can swap or add them.
 export const ORDERS_HEAD = 'SITUATIONS (what to do depends on where you are):';
 export const ORDERS_TAIL = '(end of situations)';
+import {loreText} from '../src/data/player-tools.js';
 import {toolMap} from './toolmap.mjs';
 export const SHORT_BUDGET = 1200;
 
@@ -23,7 +24,7 @@ export const ORDERS_FULL = [
   'A vote or offer is open: vote on an open proposal, or accept or decline an offer to ride together, before anything else. Give a reason in your own voice.',
   'Apart from your party: earshot says who hears you. Beyond about 12 tiles your companions do not hear you or your votes; companions tells where they were last seen. Agree where and when to meet before you part (leave_party with where and when_hours), remember it, keep to it; send_courier is the slow way to reach them; follow walks beside a hero you can see.',
   'Quests: quests lists them, take_quest keeps a job, focus_quest picks the one you pursue now, abandon_quest gives one up. Your aim is yours to state: intent {goal, why, until} says what you are trying to do now (your header shows it; autopilot carries it on when you are quiet). When the header asks "What are you trying to do now?", answer with intent first. You begin with no oath: your past is given, an oath is yours to swear (swear_oath, your own words, aloud) or not; nothing nags you if you never do. Your aim and your oath are yours until kept (keep_oath for words the world cannot see).',
-  'The Crypt and Kragmaw: going is your choice, whether the thought is yours or someone asks it of you. A company puts it to the vote with propose crypt or raid; alone, go_crypt and join_raid. Never going is a choice too.',
+  'The Crypt and Kragmaw: going is your choice, whether the thought is yours or someone asks it of you. A company puts it to the vote with propose crypt or raid; alone, go_crypt and join_raid, and answer_call when someone has asked you. Never going is a choice too.',
   'After something notable: (a level, a near death, a friend or enemy) journal_write 1-3 sentences, remember what you want to keep, become if your story changed you.',
   'A companion down: a hero at zero health is downed, not dead: they roll death saves (three failures and they die; four while a healer stands near) and an event tells you where they lie. tend {who} does all you can (your heal from 5 tiles, a potion at their side, then a bandage or a roll); stabilize {who} only stops the bleeding (a Linen Bandage, or d20 + Healing against 10); carry {who, to} takes a stable one to your town, the camp or your leader. Your aid rules decide what you do when you are silent (gambits: a rule "ally downed" with revive ally, stabilize or carry). If you are the one down, you cannot act: your turn is a reflection (remember, journal_write); listen and wait.',
   'Money and places: pay {to, gold, why} hands gold to a companion, a townsperson or a guard within 4 tiles (a share, a tip, a bribe, a debt); mark {name, note} names the spot you stand on so move_to, hunt {where} and lead_to can find it again, and saying its name aloud teaches companions in earshot; unmark {name} forgets it. hire {npc, days} takes a sellsword, drover or guide within 4 tiles on for 4 gold plus your level a day (1-5 days, paid up front): they ride as a companion who never leads or votes, and a guide knows the roads (their warning joins yours at a danger edge); dismiss {npc} pays one off.',
@@ -35,9 +36,9 @@ export const ORDERS_FULL = [
   PRIORITY_HEADING + ' 1. A Table scene outranks everything. 2. A vote or offer. 3. Unread party lines and the narrator. 4. Danger: your HP, a foe. 5. The quest in focus. 6. Travel. 7. Shopping and journaling.',
   '',
   EXAMPLES_HEADING,
-  '- Quiet road: the header says no foe, HP full, Dunmere is known and fits your level. hunt (prey you know), wait 60, end with one line: "Maelell hunts the Dunmere boars to gain a level." One command, one wait.',
+  '- Quiet road: the header says no foe, HP full, a nearby ground is known and fits your level. hunt (prey you know), wait 60, end with one line: "Maelell hunts the nearby boars to gain a level." One command, one wait.',
   '- Camp with a proposal open: the header says camped, break_camp proposal 3 open, you have not voted. vote(3, yes, "the dawn is near and the road is clear") and wait. You do not move_to, and you do not propose a second break_camp.',
-  '- Look before you leave: you are level 2, alone in Highgate, and the roads line says Thornvale has Webspinners more than you can handle. intent {goal: "hunt the Ashen Fields until someone rides with me to Thornvale", why: "too green for webspinners alone"}, party_say asking for company so someone can ride along, and hunt the Ashen Fields meanwhile. You never move_to Thornvale to find out.',
+  '- Look before you leave: you are level 2, alone in town, and the roads line says the next region up has Webspinners more than you can handle. intent {goal: "hunt my own ground until someone rides with me to the next region", why: "too green for webspinners alone"}, party_say asking for company so someone can ride along, and hunt your own ground meanwhile. You never move_to that region to find out.',
   '',
   ANTI_HEADING + ' (1) move_to a far region, read the warning, then move_to back: two calls and a wasted turn to learn what your header already told you. (2) Calling status or look again when the fresh header already says it. (3) Writing a tool call as text instead of calling it: text never runs.',
   '',
@@ -57,13 +58,22 @@ export const ORDERS_SHORT_HAND = [
 // The local variant adds the names-only map (#640); SHORT_BUDGET limits the hand-written part, the map is generated.
 export const ORDERS_SHORT = ORDERS_SHORT_HAND.replace(ORDERS_TAIL, toolMap('hero', true) + '\n' + ORDERS_TAIL);
 
+// Lands (#1013): only a world with a road to another map hears of them (status.land); one map, not a word.
+export const LAND_ORDERS = 'Roads between lands: this land is one of several. places lists the roads out you know (roads_out) and what lies past them; look names one near you, list_jobs gives the gate\'s word, and anyone in town may be asked. move_to or lead_to a road, or a place you have heard of past one, walks to that road, one land at a time. At the road the whole company decides at the table, all or none. What you leave behind waits there: orders, aims and bounties do not cross, and no courier does.';
+export const LAND_ORDERS_SHORT = 'Roads between lands: places lists roads_out; move_to a road, or a place past one, walks there; the company decides at the table.';
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const BLOCK = new RegExp('\\n?' + esc(ORDERS_HEAD) + '[\\s\\S]*?' + esc(ORDERS_TAIL));
 // Put the situations block into a prompt: swapped if one is there, else added before a persona block (pacing.mjs) or at the end.
 // local: the short variant for a local (Ollama) mind.
-export function withSituationOrders(sys, local = false) {
-  const s = String(sys || ''), block = local ? ORDERS_SHORT : ORDERS_FULL;
+export function withSituationOrders(sys, local = false, sides = null, land = null) {
+  const s = String(sys || ''), block = ordersFor(local ? ORDERS_SHORT : ORDERS_FULL, sides, land);
   if (BLOCK.test(s)) return s.replace(BLOCK, () => '\n' + block);
   const i = s.indexOf('\nYOUR PERSONA');
   return i >= 0 ? s.slice(0, i) + '\n' + block + s.slice(i) : s + '\n' + block;
 }
+
+// Sides as lore (#1025): the orders of a world with no sides. Phrase swaps, so a world with sides reads what it always read.
+const LORE_ORDERS = [['Honour among your own: challenge {hero, to: "first blood" or "yield", text} settles a quarrel with a hero of your faction within 6 tiles', 'Honour among friends: challenge {hero, to: "first blood" or "yield", text} settles a quarrel with a hero within 6 tiles'],
+  ['A company puts it to the vote with propose crypt or raid; alone, go_crypt and join_raid, and answer_call when someone has asked you.', 'A company puts it to the vote with propose crypt or raid; alone, go_crypt, and answer_call when someone has asked you. A raid is a company\'s own.']];
+const withLands = (text, land) => land ? text.replace(PRIORITY_HEADING, (text === ORDERS_SHORT ? LAND_ORDERS_SHORT : LAND_ORDERS) + '\n' + PRIORITY_HEADING) : text;
+export const ordersFor = (text0, sides, land = null) => {const text = withLands(text0, land); return sides === 'lore' ? loreText(LORE_ORDERS.reduce((t, [a, b]) => t.split(a).join(b), text)) : text}; // loreText: the tool map inside the orders quotes the tools

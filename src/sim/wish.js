@@ -11,12 +11,13 @@
 // the world for the Agent tab and the DM panel. The host appends each wish to logs/behavior/<world>/wishes.jsonl through the
 // behavior watch (sim/behavior.js drains the outbox below); the outbox is a plain module queue that holds no world state
 // and rolls no dice, so a seeded world is unchanged. No tool reads a wish back.
+import {WORDS} from '../world/words.js';
 import {notEnglish} from './lang.js';
 import {dayNo,clockStr,S} from './state.js';
 
 export const WISH={PER_DAY:3,TOOL_MIN:2,TOOL_MAX:32,WHAT:300,WHY:200,MOMENT:200,KEEP:20,OUT:200};
 const clean=(s,n)=>String(s==null?'':s).replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,n);
-const ENGLISH='Not filed: write it in English, as everyone in Eldmoor speaks.';
+const ENGLISH='Not filed: write it in English, as everyone in '+WORDS.world+' speaks.';
 const out=[];
 // Records for the builders' file (the watch takes them; a host with no watch lets the queue stay short).
 export function takeWishes(){return out.splice(0,out.length)}

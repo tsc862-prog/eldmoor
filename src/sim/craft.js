@@ -19,6 +19,7 @@
 // At camp (campCraft, sim/camp.js) a member whose agent is gone (reflexMay) cooks a meal and brews a draught at supper;
 // agent members are told once, after the fire's talk, what they could make there (campCraftNote). Agents never craft by
 // script or reflex (the always-agents rule): only the craft tool.
+import {WORDS} from '../world/words.js';
 import {S} from './state.js';
 import {RECIPES,RECIPE_BY_ID,recipesFor} from '../data/recipes.js';
 import {PROF,MAX_PROF} from '../data/professions.js';
@@ -54,7 +55,7 @@ const stat=(k,n=1)=>{const s=S.craftStats||(S.craftStats={made:0,units:0,fees:0,
 const norm=s=>String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]/g,'');
 // A recipe by id ("meal-perch"), by what it makes ("Spit-Roast Perch") or by a part of either ("perch"). {r} or {why, list?}.
 export function recipeKey(v){const s=norm(v);if(!s)return {why:'Which recipe? Give its id or what it makes (recipes lists yours).'};
-  if(RECIPE_BY_ID[String(v).trim()])return {r:RECIPE_BY_ID[String(v).trim()]};
+  if(Object.hasOwn(RECIPE_BY_ID,String(v).trim()))return {r:RECIPE_BY_ID[String(v).trim()]};
   const ex=RECIPES.find(r=>norm(r.id)===s||norm(r.out.id)===s);if(ex)return {r:ex};
   const L=RECIPES.filter(r=>norm(r.id).includes(s)||norm(r.out.id).includes(s));
   if(L.length===1)return {r:L[0]};
@@ -213,7 +214,7 @@ export function wornFor(a,v){const s=norm(v);if(!s||!a.slots)return null;const L
   return L.find(it=>norm(it.slot)===s||norm(it.name)===s)||L.find(it=>norm(it.name).includes(s))||null}
 // Agent tool smith {item, do}: inTown says the hero stands in a friendly town.
 export function smithTool(a,{item,do:what}={},{inTown}={}){const d=String(what==null?'upgrade':what).toLowerCase();
-  if(d==='repair')return {ok:false,why:'Gear does not wear in Eldmoor, so there is nothing to repair. Use do: "upgrade" to have the smith temper a piece.'};
+  if(d==='repair')return {ok:false,why:'Gear does not wear in '+WORDS.world+', so there is nothing to repair. Use do: "upgrade" to have the smith temper a piece.'};
   if(d!=='upgrade')return {ok:false,why:'do is "upgrade" (or "repair", which needs nothing here).'};
   if(!inTown)return {ok:false,why:'The smith works in a friendly town.'};
   refreshEpics(a);const it=wornFor(a,item);if(!it)return {ok:false,why:'Which worn piece? item is a slot ('+SLOTS.join(', ')+') or its name.'};

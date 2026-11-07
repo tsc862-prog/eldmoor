@@ -5,7 +5,9 @@ import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
 import {S,newWorldId,resetS} from './state.js';
 import {GOODS} from '../data/items.js';
-import {CRYPTS} from '../world/map.js';
+import {CITY,CRYPTS,ZONES,zoneAt} from '../world/map.js';
+import {lairRegion} from './lair.js';
+import {ACTIVE_SPEC} from '../world/spec.js';
 import {reserveNames} from '../data/races.js';
 import {log,fac} from './chronicle.js';
 import {updFx} from './effects.js';
@@ -24,12 +26,15 @@ import {chatTick,resetChatSeed} from './chat.js';
 import {npcsTick,resetNpcSeed} from './npcs.js';
 import {talkTick,resetTalkSeed} from './talk.js'; // NPC conversations (#170)
 import {compTick} from './compvoice.js'; // scripted companions voiced by the DM (#764)
+import './sceneframe.js'; // the DM's frame of every scene (#1017)
+import {narrTick} from './narrvoice.js'; // the narrator's voice between scenes (#1017)
 import {rulingTick} from './ruling.js'; // free actions ruled by the DM (#522)
 import {downCallTick} from './downcall.js'; // the DM's voice on a downing (#655)
 import './talkscene.js'; // a talk that turns into a decision opens a Table scene (#407)
 import {installRumourLever} from './rumours.js'; // seed_rumour (#637)
 import {installBestowLever} from './epithet.js'; // bestow (#638)
 import {installSummonLever} from './summon.js'; // summon_hero (#780)
+import {installCallLever} from './callto.js'; // call_to (#826)
 import {localsTick,resetLocals} from './locals.js'; // arrival news and hails for the Fellowship's agents
 import {narratorTick} from './narrator.js';
 import {goalsTick} from './goals.js';
@@ -66,7 +71,7 @@ import {iqTick} from './interrogate.js'; // a yielded foe questioned at the tabl
 import {fireTick} from './fireside.js'; // talk round the fire and a debrief after a hard scene (#571) // session zero (#437) and a fallen member's recruit (#452)
 import {legendsTick} from './legends.js';
 import {campTick} from './camp.js';
-import {opening,othersStart,noteProlog} from './opening.js';
+import {opening,othersStart,sidesStart,noteProlog} from './opening.js';
 import {resetMats} from './gather.js'; // gathered materials at the auction house (#257)
 import {questTick} from './questlog.js'; // several quests per hero
 import {held} from './scenes.js'; // the engaged of a live-clock Table scene stay put (#518)
@@ -78,12 +83,13 @@ export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
 export {actionLog,fightSummary,fights} from './actlog.js'; // action log (recording only)
 export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
+export {switchMap} from './mappack.js'; // leave the live map for another (#1013)
 export {enableBrain,disableBrain,brainStatus,setRunnerMind} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
 export {foundSlots,autoPick,disbandSlots,slotMembers,slotHeroes,setSlotMinds,slotted} from './company.js'; // the five places (#588)
 export {TABLE,bannerOf,decisionsWaiting} from './table.js';
 export {setRunnerLinks,setReflexAck,agentLive,reflexMay,ownerHeld,runnerLink} from './runlink.js'; // the Fellowship's decisions wait for its runners (#148)
-export {fellowshipStart,othersStart,prologueStart,START_BANDS} from './opening.js';
+export {fellowshipStart,othersStart,sidesStart,prologueStart,START_BANDS} from './opening.js';
 export {defaultSetup,validateSetup,cleanSetup,applyPreset,OTHERS,prologueOf,PRESETS,suggestName,CLAUDE_MODELS,SETUP_PROVIDERS,slotClasses,slotLabel,planRunners,ARCHETYPE_RANDOM,resolveArchetype,slotsView,asV2,MODES,SHAPE_PRESETS,MIND_PRESETS,SEATS,seatCap,seatNote} from './setup.js'; // New World setup (#133; v2 #453)
 export {dmAct,dmSeatOn,setDmSeat,dmAgentView} from './dmagent.js'; // the DM as an agent (#66)
 export {setDmAlive,gone as dmGone,dmAlive} from './dmreflex.js'; // the DM's reflexes: the host's word on its runner (#561)
@@ -94,14 +100,17 @@ export {planOpening,openingDue,openingPending,openingWait,arrivalsView,ARRIVE} f
 export {PREP,beginPrep,endPrep,prepTick,prepView,prepActive,setPrepHost,setGateHold,worldHeld,holdLine} from './prep.js'; // the DM's prep before the table opens (#437)
 
 setFallHook(executeWill); // a will executes on the final death (#631)
-installRumourLever();installBestowLever();installSummonLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
+installRumourLever();installBestowLever();installSummonLever();installCallLever(); // DM levers that live beside their state (#637, #638); every module has loaded by now
 
 // Populate the world: monsters, 14 heroes per faction, the opening chronicle. By default the
 // Fellowship is founded at level 1 and the others start at varied levels (sim/opening.js, #111);
 // o.fellowship=false (or ELDMOOR_FELLOWSHIP=0 / ?fellowship=0) keeps the old all-level-1 start.
 // What a process starts with outside S: the auction house's opening supply and each dungeon's cooldown (init() puts them back, #507).
 const GOODS0={};for(const n in GOODS)GOODS0[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
-const CRYPT_CD0=CRYPTS.map(D=>D.cd);
+let CRYPT_CD0=CRYPTS.map(D=>D.cd);
+// Another map (#1013): its dungeons' cooldowns, and any trade goods its fauna brought to the one market.
+onWorld(()=>{CRYPT_CD0=CRYPTS.map(D=>D.cd);for(const n in GOODS)if(!GOODS0[n])GOODS0[n]={supply:GOODS[n].supply,prev:GOODS[n].prev}},
+  ()=>({cryptCd0:CRYPT_CD0,goodsUnkept:Object.keys(GOODS).filter(n=>!GOODS0[n])}));
 function resetWorld(){resetS();
   for(const n in GOODS0){GOODS[n].supply=GOODS0[n].supply;GOODS[n].prev=GOODS0[n].prev}
   CRYPTS.forEach((D,i)=>{D.group=null;D.cd=CRYPT_CD0[i]});reserveNames([],[]);
@@ -111,16 +120,17 @@ export function init(o={}){resetWorld();
   resetMats(); // a new world's auction house opens with the materials table's stock
   const seeded=!!(o.setup&&o.setup.seed!=null);
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
-  const none=othersStart(o)==='none';if(none)S.setup={others:'none'}; // no background heroes (#780): the opening makes only the setup's
+  const none=othersStart(o)==='none',lore=sidesStart(o)==='lore';if(none||lore)S.setup={...(none?{others:'none'}:{}),...(lore?{sides:'lore'}:{})}; // no background heroes (#780): the opening makes only the setup's; sides as lore (#1025)
   spawnAll();
-  if(!none)for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5);
+  if(!none)for(let f=0;f<2;f++)if(CITY.some(c=>c.fac===f))for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5); // a side with no town on this map has no heroes on it (#1013)
   try{opening(o)}finally{if(seeded)seedRng(null)}
   if(none)S.setup={...S.setup,others:'none'}; // the opening writes its own record of the setup
+  if(lore)S.setup={...S.setup,sides:'lore'};
   noteProlog(o); // the first delve (#922): stored only when it differs, so a setup world on the default keeps today's state
   if(o.setup||prologueOn())planOpening(); // a new world from the setup page opens with session zero, once a host with runners holds it (#437)
   ensureCampaign(); // the DM's notes start from the world's campaign seed, when the host provided one
-  log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond Cinderpass.');
-  log('No guild yet holds a banner, and ',{t:'The Sunken Crypt',c:'gd'},' waits beneath Mirefen.');
+  if(lairRegion())log({t:'Kragmaw the Cinder Wyrm',c:'gd'},' sleeps in its lair beyond '+lairRegion()+'.'); // the lair's and the first dungeon's own region and name, not Eldmoor's (the Vale has neither Cinderpass nor a Sunken Crypt)
+  if(CRYPTS[0])log('No guild yet holds a banner, and ',{t:CRYPTS[0].name,c:'gd'},' waits beneath '+ZONES[zoneAt(CRYPTS[0].x,CRYPTS[0].y)]+'.');
   log({t:'Hardcore rules:',c:'gd'},' every hero has one life. The fallen stay fallen.');
 }
 
@@ -128,9 +138,14 @@ export function init(o={}){resetWorld();
 import {outpostsTick} from './outposts.js';
 import {pathTick} from './path.js';
 import {trafficTick} from './traffic.js'; // carts, travellers and guard patrols on the roads (#796)
+import {onWorld} from './kept.js';
+import {crossingTick} from './crossing.js'; // a company takes a road off the map (#1013)
+export {cross} from './crossing.js';
+export {crossingView} from './atlas.js';
 export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
   if(holdTick(dt)){updFx(dt);return} // a gambit hold stops the clock until the agent acts (#630)
   if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
+  crossingTick(); // before anything reads the map: a crossing swaps it (no-op without a road named)
   S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
@@ -140,6 +155,6 @@ export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lap
   // agent-played heroes (sim/player.js) run a reduced machine first
   partyTick();slotsTick(dt);estateTick();companionTick();hireTick();challengeTick();councilTick();campTick(dt);tableTick();sessionTick();prologueTick();fireTick();iqTick();for(const m of S.mobs)if(!held(m))updMob(m,dt);ecologyTick(dt);weatherTick(dt);encountersTick(dt);
   woundTick();updBoss(dt);raidCheck(dt);pvpCheck(dt);outpostsTick(dt);dungeonCheck(dt);siteTick(dt);updMarket(dt);
-  trafficTick(dt);chatTick(dt);npcsTick(dt);talkTick();compTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
+  trafficTick(dt);chatTick(dt);npcsTick(dt);talkTick();compTick();narrTick();localsTick(dt);goalsTick(dt);guildsTick(dt);rivalsTick();focusTick();
   narratorTick(dt);bondsTick(dt);brainTick(dt);dmTick(dt);dreamTick();questTick();leverTick(dt);legendsTick(dt);memorialsTick(dt);
   updFx(dt)}

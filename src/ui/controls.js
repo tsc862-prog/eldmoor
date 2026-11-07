@@ -60,9 +60,10 @@ export function setView(v){if(cam.view==='cinema')return; // the director holds 
 export function pickRegion(v){const i=v===''||v==null?null:+v;setRegion(i);
   if(i==null){if(cam.view==='region')setView('map')}else setView('region');
   renderTops();renderConditions();refreshChronicle();syncView()}
-function initRegionPicker(){const vr=$('vReg');if(!vr)return;
-  for(const r of regionList()){const o=document.createElement('option');o.value=String(r.i);o.textContent=r.name;vr.append(o)}
-  vr.onchange=()=>pickRegion(vr.value)}
+// fillRegionPicker again after a map switch (#1013): the first option is All regions, the rest are this map's.
+export function fillRegionPicker(){const vr=$('vReg');if(!vr)return;while(vr.children.length>1)vr.removeChild(vr.lastChild);
+  for(const r of regionList()){const o=document.createElement('option');o.value=String(r.i);o.textContent=r.name;vr.append(o)}}
+function initRegionPicker(){const vr=$('vReg');if(!vr)return;fillRegionPicker();vr.onchange=()=>pickRegion(vr.value)}
 
 // The living hero nearest a world point (tiles), within a pick radius that shrinks as the view zooms in; null for none.
 export function heroAt(wx,wy){let best=null,bd=cam.view==='follow'?1.2:Math.max(1.2,2.2/cam.zoom);

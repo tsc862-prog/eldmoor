@@ -4,6 +4,8 @@
 //
 //   POST /mcp            MCP over streamable HTTP (stateless, JSON responses): the tools of
 //                        src/data/player-tools.js. Any MCP client can connect here.
+//                        ?lazy=1 (issue #808): tools/list marks the tools to keep in the prompt (scripts/lazy-tools.mjs)
+//                        ?sides=lore (issue #1025): the tool text of a world with no sides
 //   WS   /play           the browser page connects here while any hero is agent-played
 //                        (src/ui/player-bridge.js); tool calls are forwarded to it and the
 //                        page answers through src/sim/player.js.
@@ -22,7 +24,7 @@
 //                        holds it. provider/model (issue #97) name the mind behind the runner
 //                        (anthropic + a Claude id, ollama + a local tag) so the UI can tag it
 //   POST /play/release   {hero, runner}: the runner lets go (on exit)
-//   GET  /play/health    {connected, hero, heroes:[{id,name,alive,link,claimed,runner?,ready,warm?}], calls}
+//   GET  /play/health    {connected, map, hero, heroes:[{id,name,alive,link,claimed,runner?,ready,warm?}], calls}
 //   POST /play/ready     {hero|role:'dm', runner, state:'warming'|'ready'|'failed', model?, ms?, error?}: the seat's
 //                        warm-up model call (issue #222, start gate); only the claiming runner; ready = null until then
 //   POST /play/behavior/turn {hero | role:'dm', runner, rec}: a runner's turn line for the behavior logs (issue
@@ -66,8 +68,9 @@ import {WebSocketServer} from 'ws';
 import {z} from 'zod';
 import {McpServer} from '@modelcontextprotocol/sdk/server/mcp.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import {PLAYER_TOOLS, ATTEMPT_INVITE} from '../src/data/player-tools.js';
+import {PLAYER_TOOLS, ATTEMPT_INVITE, toolsFor} from '../src/data/player-tools.js';
 import {DM_TOOLS} from '../src/data/dm-tools.js';
+import {lazyMeta} from './lazy-tools.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 export const PLAY_LOG = join(ROOT, 'logs', 'play.jsonl');
@@ -80,6 +83,7 @@ export const LATE_MS = 30000, LATE_MAX_MS = 5 * 60000, PAGE_SILENT_MS = 5000;
 // not offline. The turn ends here (turn_over, #868: nobody keeps a Claude slot for a wait) and pacing starts the next one.
 export const HELD_WAIT = {ok: true, waited_min: 0, held: true, turn_over: true, why: 'the game has not answered this wait yet; your turn is over: end it here, you will be woken when something needs you (the world is not offline)'};
 export const DM_VOICE_MS = 10000; // the longest a voice call counts as pending without its answer (#682)
+export const RUNNER_DM_TOOLS = new Set(['narrator_call', 'narrator_say']); // the narrator's voice (#1017): the runner's plain JSON route only, never an MCP tool of the agent's
 export const DM_WAIT_MAX = 25000; // the longest long poll of table_call / npc_call / ruling_call {wait_ms} (#680; src/sim/player-host.js DM_WAIT.MAX)
 // What an agent hears while the game page is away (#399): a pause in the world, not advice to a human ("Press Agent ...", which
 // models read as something they must do). offline:true marks it for the runners (not the model's mistake, scripts/local-agent.mjs).
@@ -109,7 +113,7 @@ export const defaultHero = heroes => (heroes.find(h => h.alive) || heroes[heroes
 // callMs, waitMs, lateMs, silentMs: the time-outs above (checks shorten them). onPageLate({tool, ms, silentMs, seat}): a call the
 // page did not answer in time while it was silent (no beat, no message for silentMs): the page's thread was busy (#736).
 export function browserBackend({log = () => {}, onBehavior = null, onWorld = null, onMirror = null, onHello = null, onPageLate = null, callMs = CALL_MS, waitMs = WAIT_MS, lateMs = LATE_MS, silentMs = PAGE_SILENT_MS, now = () => Date.now()} = {}) {
-  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false, dmPrep = null, worldId = null, heardAt = 0;
+  let sock = null, heroes = [], seq = 0, lastLinks = '', dmSeat = false, dmPrep = null, worldId = null, mapId = null, heardAt = 0;
   const waiting = new Map();
   const send = o => {if (sock && sock.readyState === 1) sock.send(JSON.stringify(o))};
   // Late answers (#736): key (seat, tool, args) -> {id, at, done, result, joined: [{res, t}]} for calls the relay gave up on; lateOf: call id -> key.
@@ -156,6 +160,7 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
           const seat = m.dm === true || !!(m.dm && m.dm.seat); if (seat !== dmSeat) log(`[play] DM seat ${seat ? 'open' : 'closed'}`); dmSeat = seat;
           dmPrep = m.dm && m.dm.prep && typeof m.dm.prep === 'object' ? {state: String(m.dm.prep.state || '').slice(0, 12), kind: String(m.dm.prep.kind || '').slice(0, 12), calls: Number(m.dm.prep.calls) || 0, max_calls: Number(m.dm.prep.max_calls) || 0, ...(m.dm.prep.why ? {why: String(m.dm.prep.why).slice(0, 12)} : {})} : null; // the DM's prep (#437)
           worldId = typeof m.worldId === 'string' ? m.worldId : null; // the instance id of the world the page plays (#691)
+          mapId = typeof m.map === 'string' ? m.map : null; // the map on screen (#1013)
           if (onWorld && typeof m.world === 'string') onWorld(m.world, typeof m.worldId === 'string' ? m.worldId : null); // the behavior logs' folder (issue #129)
           if (onHello) try {onHello()} catch {} // the links at once: a page that (re)connected never shows 'no runner' while it waits for the next tick (#563)
         } else if (m.type === 'behavior' && onBehavior && typeof m.kind === 'string') {try {onBehavior(m.kind, m.rec)} catch (e) {log('[play] behavior log: ' + e.message)}}
@@ -163,12 +168,12 @@ export function browserBackend({log = () => {}, onBehavior = null, onWorld = nul
         else if (m.type === 'result' && waiting.has(m.id)) {const w = waiting.get(m.id); waiting.delete(m.id); clearTimeout(w.t); w.res(m.result)}
         else if (m.type === 'result' && lateOf.has(m.id)) lateResult(m.id, m.result); // answered after the relay gave up: kept for the retry (#736)
       });
-      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; dmPrep = null; worldId = null; log('[play] game page disconnected');
+      ws.on('close', () => {if (sock !== ws) return; sock = null; heroes = []; dmSeat = false; dmPrep = null; worldId = null; mapId = null; log('[play] game page disconnected');
         for (const [id, w] of waiting) {clearTimeout(w.t); w.res(paused('page went away')); waiting.delete(id)}
         for (const L of late.values()) for (const j of L.joined.splice(0)) {clearTimeout(j.t); j.res(paused('page went away'))}
         late.clear(); lateOf.clear()});
     },
-    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat, ...(worldId ? {worldId} : {}), ...(dmPrep ? {dmPrep} : {})}),
+    info: () => ({connected: !!sock, heroes: heroes.slice(), dm: dmSeat, ...(worldId ? {worldId} : {}), ...(mapId ? {map: mapId} : {}), ...(dmPrep ? {dmPrep} : {})}),
     page: () => ({silentMs: sock ? silent() : null, ...stats, kept: late.size}), // the page's liveness and the late-answer counts (#736)
     // A DM tool call (issue #66), answered by the page through src/sim/dmagent.js.
     dmCall(tool, args) {
@@ -216,10 +221,12 @@ export function buildDmMcp(call) {
   }
   return server;
 }
-export function buildMcp(call) {
+// lazy (issue #808): the runner asked for lazy tools (?lazy=1): the tools to keep in the prompt say so, the rest are deferred by the CLI.
+export function buildMcp(call, {lazy = false, sides = null} = {}) {
   const server = new McpServer({name: 'eldmoor-player', version: '1.1.0'}, {instructions: INSTRUCTIONS});
-  for (const t of PLAYER_TOOLS) {
-    server.registerTool(t.name, {description: t.desc, inputSchema: zodFor(t), annotations: {readOnlyHint: !t.act, destructiveHint: false, openWorldHint: false}},
+  for (const t of toolsFor(sides)) {
+    const meta = lazy ? lazyMeta(t.name) : undefined;
+    server.registerTool(t.name, {description: t.desc, inputSchema: zodFor(t), annotations: {readOnlyHint: !t.act, destructiveHint: false, openWorldHint: false}, ...(meta ? {_meta: meta} : {})},
       async args => {const r = await call(t.name, args || {}); return {content: [{type: 'text', text: JSON.stringify(r)}], isError: !!(r && r.offline)}});
   }
   return server;
@@ -316,7 +323,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
   // The DM's voice is answering a call (#682): a voice poll handed it a call (table/talk/ruling) and its answer has not come
   // yet. The runner supervisor lets a hero's Claude slot request yield DM_FIRST_MS meanwhile (scripts/runners.mjs).
   let dmVoiceAt = 0;
-  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call', 'companion_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say', 'companion_say']);
+  const VOICE_POLLS = new Set(['table_call', 'npc_call', 'ruling_call', 'companion_call']), VOICE_ANSWERS = new Set(['table_answer', 'ruling_answer', 'npc_say', 'companion_say']); // the narrator's voice never holds the world, so it does not ask a hero's slot request to yield (#1017)
   const dmVoiceBusy = () => dmVoiceAt > 0 && now() - dmVoiceAt < DM_VOICE_MS;
   // A DM tool call (issue #66): counted, logged, never thrown.
   async function dmCall(tool, args) {
@@ -334,7 +341,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
     if (!r || typeof r !== 'object') r = {ok: false, error: 'no answer'};
     if (r.ok === false) stats.errors++;
     if (VOICE_POLLS.has(tool) && r.ok && r.call && Number(r.call.seconds_left) > 0) dmVoiceAt = now(); else if (VOICE_ANSWERS.has(tool) && (tool !== 'npc_say' || (args && args.conv != null))) dmVoiceAt = 0;
-    if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call' || tool === 'companion_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
+    if ((tool === 'table_call' || tool === 'npc_call' || tool === 'ruling_call' || tool === 'companion_call' || tool === 'narrator_call') && r.ok && !r.call) return r; // the runner's idle poll of the table (issue #132): not worth a log line
     log(`[play] DM ${tool}${args && Object.keys(args).length ? ' ' + JSON.stringify(args).slice(0, 200) : ''} -> ${r.ok === false ? 'x ' + String(r.error).slice(0, 80) : 'ok'}${note} (${now() - t0} ms)`);
     vlog({ts: new Date().toISOString(), role: 'dm', tool, args, result: r, ms: now() - t0});
     return r;
@@ -403,11 +410,11 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         return;
       }
       if (path === '/play/health' && req.method === 'GET') {const i = be.info(), hs = i.heroes || [], d = defaultHero(hs);
-        return send(200, {ok: true, connected: i.connected, hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id), rd = readyOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {}), ready: rd ? rd.state : null, ...(rd ? {warm: rd} : {})}}), dm: dmInfo(), ...(be.page ? {page: be.page()} : {}), ...stats})}
+        return send(200, {ok: true, connected: i.connected, ...(i.map ? {map: i.map} : {}), hero: d ? {id: d.id, name: d.name, alive: d.alive} : null, heroes: hs.map(h => {const r = runnerOf(h.id), rd = readyOf(h.id); return {...h, link: linkOf(h.id), claimed: !!claimOf(h.id), ...(r ? {runner: r} : {}), ready: rd ? rd.state : null, ...(rd ? {warm: rd} : {})}}), dm: dmInfo(), ...(be.page ? {page: be.page()} : {}), ...stats})}
       if (path === '/mcp') {
         if (req.method !== 'POST') return send(405, {jsonrpc: '2.0', error: {code: -32000, message: 'Method not allowed (stateless server: POST only).'}, id: null});
         const body = await readBody(req);
-        const mcp = buildMcp((tool, args) => call(hero, tool, args, rid)), transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
+        const mcp = buildMcp((tool, args) => call(hero, tool, args, rid), {lazy: q.get('lazy') === '1', sides: q.get('sides')}), transport = new StreamableHTTPServerTransport({sessionIdGenerator: undefined, enableJsonResponse: true});
         res.on('close', () => {transport.close(); mcp.close()});
         await mcp.connect(transport);
         await transport.handleRequest(req, res, body);
@@ -432,7 +439,7 @@ export function attachPlay(server, {backend = null, origin = 'http://localhost:5
         pushLinks(); return send(200, {ok: true, ready: readyOf(id)})}
       if (path === '/play/behavior/turn') return send(...await behaviorTurn(b, b.hero !== undefined ? heroParam(b.hero) : hero, rid, dmAsked));
       if (path === '/play/dm') {
-        if (typeof b.tool !== 'string' || !DM_TOOLS.some(t => t.name === b.tool)) return send(400, {error: 'unknown DM tool'});
+        if (typeof b.tool !== 'string' || !(DM_TOOLS.some(t => t.name === b.tool) || RUNNER_DM_TOOLS.has(b.tool))) return send(400, {error: 'unknown DM tool'});
         // seats stay apart (issue #123): a hero's runner has no DM tools, and a held DM seat answers only its runner
         if (role === 'hero' || b.role === 'hero' || hero != null || b.hero != null || heroClaimOf(rid)) return send(403, {ok: false, error: 'Heroes have no DM tools: a hero hears the DM only in the game.'});
         const dh = heldBy(DM_KEY, rid); if (dh) return send(409, {ok: false, refused: true, error: `The DM seat is held by another runner (${dh}).`});

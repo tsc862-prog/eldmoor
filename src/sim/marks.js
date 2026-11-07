@@ -5,8 +5,10 @@
 // the speaker as its source (hearMarks, called where a hero reads what it heard). A scripted townsperson never learns it.
 // Agent heroes only (lore's learner); no RNG; the seeded world is unchanged.
 import {S} from './state.js';
-import {dist,zoneAt,ZONES,CITY,LANDMARKS,CRYPT} from '../world/map.js';
+import {dist,zoneAt,ZONES,CITY,LANDMARKS} from '../world/map.js';
+import {cryptIf} from './crypts.js';
 import {loreOf} from './lore.js';
+import {spotHere} from './atlas.js';
 
 export const MARK={MAX:12,NAME_MIN:3,NAME_MAX:40,NOTE_MAX:120,SIGHT:6};
 const inTown=p=>CITY.some(c=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5);
@@ -18,7 +20,7 @@ const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 
 // Names a mark may not take: a region, a town, a landmark, a DM place, or a place the hero already knows by another source.
 function taken(a,name){const k=key(name);
-  if(ZONES.some(z=>z&&key(z)===k)||CITY.some(c=>key(c.name)===k)||LANDMARKS.some(l=>key(l.name)===k)||(CRYPT&&key(CRYPT.name)===k))return 'That is already the name of a land you could not rename.';
+  if(ZONES.some(z=>z&&key(z)===k)||CITY.some(c=>key(c.name)===k)||LANDMARKS.some(l=>key(l.name)===k)||cryptIf(n=>key(n)===k))return 'That is already the name of a land you could not rename.';
   if((S.places||[]).some(p=>p&&p.name&&key(p.name)===k))return 'A marked place already goes by that name.';
   for(const n of Object.keys(loreOf(a).p)){if(key(n)!==k)continue;const e=loreOf(a).p[n];if(!e.mk)return 'You already know a place called '+n+'.'}
   return null}
@@ -53,7 +55,7 @@ export function unmarkPlace(a,{name}){const n=findOwn(a,name);
 
 // The walkable spot of a marked or told place by name (any case, "the" optional), or null (planOne).
 export function markAt(a,t){if(!a||!a.lore)return null;const k=key(t);if(!k)return null;
-  for(const n of Object.keys(a.lore.p)){const e=a.lore.p[n];if(!e.mk||e.x==null||key(n)!==k)continue;return {x:e.x,y:e.y,name:n,warn:e.note?n+': '+e.note+'.':null}}
+  for(const n of Object.keys(a.lore.p)){const e=a.lore.p[n];if(!e.mk||e.x==null||key(n)!==k||!spotHere(e))continue;return {x:e.x,y:e.y,name:n,warn:e.note?n+': '+e.note+'.':null}}
   return null}
 
 // Words for lists: places and lore.
@@ -66,5 +68,5 @@ export function hearMarks(b,speaker,text){if(!b||!speaker||speaker===b||speaker.
   for(const nm of own(speaker)){const e=speaker.lore.p[nm];if(!new RegExp('(^|[^A-Za-z])'+reEsc(bare(nm))+'($|[^A-Za-z])','i').test(t))continue;
     const L=loreOf(b).p,mine=Object.keys(L).find(x=>key(x)===key(nm));
     if(mine&&(!L[mine].mk||L[mine].mk===1))continue; // already its own, or a known land
-    L[nm]={how:'told',mk:2,src:speaker.name,at:Math.round(S.gameMin),day:day(),x:e.x,y:e.y,zone:e.zone};n++}
+    L[nm]={how:'told',mk:2,src:speaker.name,at:Math.round(S.gameMin),day:day(),x:e.x,y:e.y,zone:e.zone,...(e.map?{map:e.map}:{})};n++}
   return n}

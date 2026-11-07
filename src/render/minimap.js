@@ -92,5 +92,7 @@ export function createMinimap(canvas,cam,onCenter){
     const x1=Math.min(canvas.width,(cam.camX+cam.vw/2)/T*k),y1=Math.min(canvas.height,(cam.camY+cam.vh/2)/T*k);
     ctx.strokeStyle='rgba(255,255,255,.9)';ctx.lineWidth=lw;ctx.strokeRect(Math.round(x0)+lw/2,Math.round(y0)+lw/2,Math.max(lw,Math.round(x1-x0)-lw),Math.max(lw,Math.round(y1-y0)-lw))}
 
-  return {draw,resize};
+  // another map (#1013): another size, another picture
+  function reset(){base=shade=shadeFor=null;resize()}
+  return {draw,resize,reset};
 }

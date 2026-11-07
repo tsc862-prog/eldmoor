@@ -125,6 +125,24 @@ const pick = L.pickPrey(A, {kind: 'hunt', n: 1});
 ok(pick === meek, `hunt without prey passes over the ${MOBS[upKey].name} it was warned of and picks ${pick && MOBS[pick.type].name}`);
 ok(L.pickPrey(A, {kind: 'hunt', n: 1, prey: upKey}) === near, 'hunt with that prey takes it on all the same (the hero\'s choice)');
 near.x = meek.x = A.x + 40; rebuild();
+// "Hunt where you stand" (#822): a creature seen across the water is not prey, nor is one over a region's edge unless the agent names it. It used to be:
+// a level 3 hunter on the bank walked round by the bridge to the Hoarfell creature it saw and died there, and such hunts ended the nightly's Fellowship on day 2.
+{
+  const {clearLine} = await import('../src/sim/path.js'), {W, H} = await import('../src/world/tiles.js'), {solidAt} = await import('../src/world/passable.js');
+  const pair = want => {for (let y = 1; y < H - 1; y++) for (let x = 1; x < W - 1; x++) {const p = {x: x + .5, y: y + .5}; if (zoneAt(p.x, p.y) !== home || solidAt(p.x, p.y)) continue;
+    for (let dy = -6; dy <= 6; dy++) for (let dx = -6; dx <= 6; dx++) {const q = {x: p.x + dx, y: p.y + dy}; if (q.x < 1 || q.y < 1 || q.x >= W - 1 || q.y >= H - 1 || solidAt(q.x, q.y) || zoneAt(q.x, q.y) === home || dist(p, q) > 6) continue;
+      if (clearLine(p, q) === want) return {p, q}}} return null};
+  const stranger = S.mobs.find(m => m.alive && !m.gone && !m.elite && MOBS[m.type] && MOBS[m.type].z !== home && m !== near) || spawnOne(upKey), was = {x: A.x, y: A.y}, sw = {x: stranger.x, y: stranger.y, t: stranger.target};
+  const stand = ({p, q}) => {A.x = p.x; A.y = p.y; A.target = null; stranger.x = q.x; stranger.y = q.y; stranger.target = null; for (const m of S.mobs) if (m !== stranger && dist(m, A) < 16) m.x += 200; rebuild(); delete A.lore.c[L.keyOf(stranger)]};
+  const water = pair(false), edge = pair(true);
+  ok(water, 'the map has a bank with another region across water');
+  stand(water); ok(!L.pickPrey(A, {kind: 'hunt', n: 1}), 'hunt without prey leaves a creature across the water alone');
+  ok(!L.pickPrey(A, {kind: 'hunt', n: 1, prey: L.keyOf(stranger)}), 'even one the agent names: no clear line, no prey (#794)');
+  stranger.target = A; rebuild(); ok(L.pickPrey(A, {kind: 'hunt', n: 1}) === stranger, 'what has come for the hero always counts');
+  if (edge) {stand(edge); ok(!L.pickPrey(A, {kind: 'hunt', n: 1}), `hunt without prey stays in ${ZONES[home]}: a creature over the edge in ${ZONES[zoneAt(stranger.x, stranger.y)]} is left alone`);
+    delete A.lore.c[L.keyOf(stranger)]; ok(L.pickPrey(A, {kind: 'hunt', n: 1, prey: L.keyOf(stranger)}) === stranger, 'named, with a clear line, it is the hero\'s choice')}
+  delete A.lore.c[L.keyOf(stranger)]; Object.assign(stranger, {x: sw.x, y: sw.y, target: sw.t}); A.x = was.x; A.y = was.y; A.target = null; for (const m of S.mobs) if (m.x >= W) m.x -= 200; rebuild();
+}
 // the town criers
 r = act(A, 'read_chronicle', {n: 20});
 ok(r.ok, `read_chronicle (${r.news.length} lines)`);
@@ -336,5 +354,7 @@ console.log('roads knowledge (#539)');
     H.x = keep.x; H.y = keep.y; rebuild() }
   S.gameMin = t0 }
 
+// Other lands (#1013): on a world with a road off it a far name is heard like any place; on this world there is nothing to hear.
+{const {spawnSync} = await import('node:child_process'), r = spawnSync(process.execPath, ['scripts/crossingcheck.mjs', '--hear'], {env: {...process.env, ELDMOOR_WORLD: 'testlinka'}, encoding: 'utf8'}); process.stdout.write(r.stdout || ''); ok(r.status === 0, 'a place on another land is learned by ear' + (r.status ? ': ' + (r.stderr || '').slice(-400) : ''))}
 console.log(fail ? `\nlorecheck: ${fail} FAILED\n` : '\nlorecheck: all ok\n');
 process.exit(fail ? 1 : 0);

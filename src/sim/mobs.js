@@ -4,10 +4,10 @@
 // roads; named rare elites (ELITES) spawn, stalk their zone and drop epics.
 import {rnd,ri,pickA} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
-import {tiles,zone,I,ZONES,zonePoint,zoneAt,dist,tileAt} from '../world/map.js';
+import {tiles,zone,I,ZONES,LVL_CAP,zonePoint,zoneAt,dist,tileAt} from '../world/map.js';
 import {standAt,solidAt} from '../world/passable.js';
-import {clearLine,noWay} from './path.js'; // paths (#794): a mob walks round what is solid, and gives up what it cannot reach
-import {MOBS,COUNTS,ELITES,ECO} from '../data/mobs.js';
+import {clearLine,outOfReach} from './path.js'; // paths (#794): a mob walks round what is solid, and gives up what it cannot reach
+import {MOBS,COUNTS,ELITES,ECO,eliteOf} from '../data/mobs.js';
 import {blockOf,ABILITIES,ELITE_TEMPLATE,ELITE_EXTRA,NAMED_KITS,tagMul,heroTag} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
 import {S} from './state.js';
@@ -24,12 +24,16 @@ import {nearHeroes,nearMobs,LOD,heroCellsNear} from './spatial.js';
 import {held} from './scenes.js'; // the engaged of a live-clock Table scene (#518)
 import {trick as loreTrick} from './lore.js'; // a creature's tricks, learned by the agent hero it is used on (#188)
 import {inSlots} from './company.js'; // the slotted company (#588)
+import {onWorld} from './kept.js';
 
 // Per-zone target population (today's COUNTS total), a COUNTS-weighted species list for extra
 // spawns, and the road tiles mobs may drift toward.
-const NZ=ZONES.length,ZTARGET=ZONES.map(()=>0),ZTYPES=ZONES.map(()=>[]),ZROADS=ZONES.map(()=>[]);
-for(const t in COUNTS){ZTARGET[MOBS[t].z]+=COUNTS[t];for(let i=0;i<COUNTS[t];i++)ZTYPES[MOBS[t].z].push(t)}
-for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(tiles[I(x,y)]!==ROAD)continue;const z=zone[I(x,y)];if(x>=(ECO.roadMinX[z]||0))ZROADS[z].push({x:x+.5,y:y+.5})}
+let NZ,ZTARGET,ZTYPES,ZROADS;
+function zoneTables(){NZ=ZONES.length;ZTARGET=ZONES.map(()=>0);ZTYPES=ZONES.map(()=>[]);ZROADS=ZONES.map(()=>[]);
+  for(const t in COUNTS){ZTARGET[MOBS[t].z]+=COUNTS[t];for(let i=0;i<COUNTS[t];i++)ZTYPES[MOBS[t].z].push(t)}
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(tiles[I(x,y)]!==ROAD)continue;const z=zone[I(x,y)];if(x>=(ECO.roadMinX[z]||0))ZROADS[z].push({x:x+.5,y:y+.5})}}
+zoneTables();
+onWorld(zoneTables,()=>({mobZones:NZ,mobTargets:ZTARGET,mobTypes:ZTYPES,mobRoads:ZROADS})); // another map (#1013)
 const zoneOf=m=>MOBS[m.type].z;
 const zonePop=z=>{let n=0;for(const m of S.mobs)if(!m.gone&&!m.elite&&!m.add&&zoneOf(m)===z)n++;return n};
 
@@ -42,8 +46,10 @@ export const blk=m=>{const c=m._blk;if(c!==undefined&&c.type===m.type&&c.v===m.v
 // template adds its one extra ability). opt: lvl, variant (a VARIANTS key), name, title, abilities (replaces
 // the block's), role-free multipliers hpMul / hitMul, add (a summoned lesser kin: no respawn, no loot),
 // special (a custom foe), res / weak (replace the block's), xpMul.
-export function spawnMob(type,E,opt={}){const M=MOBS[type],p=zonePoint(M.z),B=blockOf(type,opt.variant,opt.role);
-  const lvl=E?E.lvl:opt.lvl!=null?opt.lvl:ri(M.lv[0],M.lv[1]);
+// M.pack (data/fauna.js, a thin map): the species keeps to small groups. Each spawn after a group's first stands by the last of its kind; read from the living mobs, so it is saved with them.
+const packMate=(type,n)=>{const L=S.mobs.filter(o=>o.type===type&&!o.gone&&!o.elite);return L.length%n?L[L.length-1].spawn:null};
+export function spawnMob(type,E,opt={}){const M=MOBS[type],mate=M.pack&&!E?packMate(type,M.pack):null,p=mate?zonePoint(M.z,mate):zonePoint(M.z),B=blockOf(type,opt.variant,opt.role);
+  const lvl=Math.min(LVL_CAP,E?E.lvl:opt.lvl!=null?opt.lvl:ri(M.lv[0],M.lv[1]));
   const m={id:++S.uid,kind:'mob',type,lvl,x:p.x,y:p.y,home:{...p},spawn:{...p},
     maxhp:Math.round((25+lvl*16)*B.hp*(E?E.scale:1)*(opt.hpMul||1)),hit:B.hit*(E?E.hit:1)*(opt.hitMul||1),acd:B.cd,
     alive:true,respawn:0,target:null,cd:0,face:1,wait:rnd()*3,dest:null,scan:rnd()};
@@ -51,14 +57,15 @@ export function spawnMob(type,E,opt={}){const M=MOBS[type],p=zonePoint(M.z),B=bl
   const ab=opt.abilities||B.abilities.slice();
   if(E){m.elite=true;m.name=E.name;m.title=E.title;const x=ELITE_EXTRA[E.name];if(x&&!ab.includes(x))ab.push(x)}
   if(opt.name)m.name=opt.name;if(opt.title)m.title=opt.title;
-  m.ab=ab;m.abcd={};if(opt.res)m.res=opt.res;if(opt.weak)m.weak=opt.weak;if(opt.xpMul!=null)m.xpMul=opt.xpMul;
+  m.ab=ab;m.abcd={};if(E&&E.ready)for(const id of E.ready)m.abcd[id]=0; // a map's elite may open with a trick ready (data/fauna.js)
+  if(opt.res)m.res=opt.res;if(opt.weak)m.weak=opt.weak;if(opt.xpMul!=null)m.xpMul=opt.xpMul;
   if(opt.add){m.add=true;m.parent=opt.parent;m.xpMul=.25}if(opt.special)m.special=true;
   m.hp=m.maxhp;m.hpl=m.hp;S.mobs.push(m);return m}
 export function spawnAll(){for(const t in COUNTS)for(let i=0;i<COUNTS[t];i++)spawnMob(t);
   S.zoneLastHero=ZONES.map(()=>S.gameMin);
   S.eco={t:ECO.tick,eliteT:60,empty:ZONES.map(()=>false),eliteNext:ZONES.map(()=>0),stats:{extra:0,culled:0,eliteSpawns:0,eliteKills:0,eliteDeaths:0}}}
 
-function spawnElite(z){const E=ELITES[z];if(!E)return; // no row for this zone (#308): skip, never throw
+function spawnElite(z){const E=eliteOf(z);if(!E)return; // no row for this zone (#308): skip, never throw
   const m=spawnMob(E.base,E);S.eco.stats.eliteSpawns++;
   log('Rumours spread of ',{t:m.name,c:'gd'},', ',E.title,', stalking ',ZONES[z],'.');timeline('elite',{t:m.name,c:'gd'},', '+E.title+', began stalking '+ZONES[z]+'.')}
 
@@ -97,6 +104,11 @@ export function mobBlow(m,t,mul=1){const h=t.hp,v=.8+rnd()*.4,cr=rnd()<blk(m).cr
 const alliesHurt=m=>nearMobs(m.x,m.y,6,o=>o!==m&&o.alive&&!o.gone&&o.hp<o.maxhp*.5)[0]||null;
 const packNear=m=>nearMobs(m.x,m.y,5,o=>o!==m&&o.alive&&!o.gone&&o.type===m.type&&(o.target||m.target)).length>0;
 const liveAdds=m=>S.mobs.reduce((n,o)=>n+(o.add&&o.parent===m.id&&o.alive&&!o.gone?1:0),0);
+export const trickUnit=(m,t)=>unitOf(m)/(t&&inSlots(t)?hitRamp(m):1); // a trick's unit of damage on t, the Fellowship's cut in it (poison at the Table, which does not go through hurt)
+export function trickHurt(m,t,units){const h=t.hp;hurt(t,m,units*unitOf(m));return Math.max(0,Math.round(h-Math.max(0,t.hp)))}
+// A Table round's ready test (#1056): the real-time one, except that an elite howls with no kin near: it is the pack.
+export const trickReady=(m,A,id)=>A.when==='pack'&&m.elite?(m.abcd[id]||0)<=0:ready(m,A,id);
+export const mendAlly=(m,A)=>{const o=alliesHurt(m);if(o){o.hp=Math.min(o.maxhp,o.hp+o.maxhp*A.amount);o.hpl=o.hp}return o};
 function ready(m,A,id){if((m.abcd[id]||0)>0)return false;
   switch(A.when){case 'hurt':return m.hp<m.maxhp*(A.hp||.5)&&(A.fx!=='summon'||liveAdds(m)<A.max);case 'pack':return packNear(m);case 'ally':return !!alliesHurt(m);default:return true}}
 // Fire one ability at t. Returns true when it used the mob's attack turn.
@@ -108,12 +120,14 @@ function useAbility(m,t){for(const id of m.ab||[]){const A=ABILITIES[id];if(!A||
     case 'slow':case 'root':case 'fear':t.cd+=A.lose;hurt(t,m,A.dmg*u);pop(t.x,t.y-.9,A.fx==='slow'?'SLOWED':A.fx==='root'?'ROOTED':'FEAR','#9ad0ff');break;
     case 'knockback':{hurt(t,m,A.dmg*u);if(t.hp>0){const dx=t.x-m.x,dy=t.y-m.y,d=Math.hypot(dx,dy)||1,nx=t.x+dx/d*A.push,ny=t.y+dy/d*A.push;
       if(WALKABLE.includes(tileAt(nx,ny))&&!solidAt(nx,ny)&&zoneAt(nx,ny)===zoneAt(t.x,t.y)){t.x=nx;t.y=ny}t.cd+=A.lose;pop(t.x,t.y-.9,'KNOCKED BACK','#ffd080')}break}
-    case 'summon':{for(let k=0;k<A.n&&liveAdds(m)<A.max;k++){const a=spawnMob(m.type,null,{variant:m.v,lvl:Math.max(1,m.lvl-3),hpMul:.4,hitMul:.6,abilities:[],add:true,parent:m.id});
-      Object.assign(a,standAt(m.x+(rnd()-.5)*1.4,m.y+(rnd()-.5)*1.4));a.home={x:a.x,y:a.y};a.spawn={x:a.x,y:a.y};a.target=t;a.pack=true}pop(m.x,m.y-.8,'KIN','#c0e090');break}
+    case 'summon':bringKin(m,t,A);break;
     case 'heal':{const o=alliesHurt(m);if(!o)break;o.hp=Math.min(o.maxhp,o.hp+o.maxhp*A.amount);o.hpl=o.hp;pop(o.x,o.y-.6,'+'+Math.round(o.maxhp*A.amount),'#7dce5a');break}
     case 'breath':{S.fx.push({type:'ring',x:m.x,y:m.y-.5,life:.5});for(const h of nearHeroes(m.x,m.y,A.radius,h=>h===t||h.target===m))hurt(h,m,A.dmg*u);break}
   }
   m.cd=m.acd*(m.frenzy>0?.8:1);return true}return false}
+// Summon: lesser kin at its side, each set on t. Returns them (a Table round seats them in the fight).
+export function bringKin(m,t,A){const out=[];for(let k=0;k<A.n&&liveAdds(m)<A.max;k++){const a=spawnMob(m.type,null,{variant:m.v,lvl:Math.max(1,m.lvl-3),hpMul:.4,hitMul:.6,abilities:[],add:true,parent:m.id});
+    Object.assign(a,standAt(m.x+(rnd()-.5)*1.4,m.y+(rnd()-.5)*1.4));a.home={x:a.x,y:a.y};a.spawn={x:a.x,y:a.y};a.target=t;a.pack=true;out.push(a)}pop(m.x,m.y-.8,'KIN','#c0e090');return out}
 function tickDots(m,dt){const L=m.dots;for(let i=L.length-1;i>=0;i--){const d=L[i],h=d.h;
   if(!h||h.state==='dead'||h.state==='ghost'||h.state==='town'||h.hp<=0){L.splice(i,1);continue}
   d.acc=(d.acc||0)+d.dps*Math.min(dt,d.rem);d.rem-=dt;
@@ -144,7 +158,7 @@ export function updMob(m,dt){
     if(t.state==='ghost'||t.state==='dead'||!engaged||dist(m,t)>10||held(t)){m.target=null;m.pack=false;m.dest={...m.home};m.hpl=m.hp;return} // a hero held in a scene (#518) is let be
     if(t.state!=='fight'&&t.state!=='downed'){t.state='fight';t.target=m;t.dest=null}
     const d=dist(m,t);m.face=t.x>m.x?1:-1;
-    if(d>B.reach){moveTo(m,t.x,t.y,dt,2.1);if(noWay(m)){m.target=null;m.pack=false;m.dest={...m.home};if(t.target===m&&t.state==='fight'){t.target=null;t.state='hunt'}}m.hpl=m.hp;return}m.moving=false; // no way to it: back home, and it is free of the mob
+    if(d>B.reach){moveTo(m,t.x,t.y,dt,2.1);if(outOfReach(m,t)){m.target=null;m.pack=false;m.dest={...m.home};if(t.target===m&&t.state==='fight'){t.target=null;t.state='hunt'}}m.hpl=m.hp;return}m.moving=false; // no way to it (or only to its own bank, #1060): back home, and it is free of the mob
     for(const id of m.ab||[])if(m.abcd[id]==null)m.abcd[id]=ABILITIES[id].cd*(.4+rnd()*.4); // first use a little way into the fight
     if(B.beh.flee&&!m.fledOnce&&!m.elite&&m.hp<m.maxhp*B.beh.flee){m.fledOnce=true;m.fled=2.5;pop(m.x,m.y-.8,'FLEES','#ffb060');m.hpl=m.hp;return}
     if(m.cd<=0&&(t.state==='downed'||!useAbility(m,t))){m.cd=m.acd*(m.frenzy>0?.8:1);const v=.8+rnd()*.4,cr=rnd()<B.crit;hurt(t,m,unitOf(m)*(m.frenzy>0?1.35:1)*v*(cr?1.6:1),cr)} // the downed get a plain blow, not an ability

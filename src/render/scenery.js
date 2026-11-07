@@ -1,7 +1,8 @@
 // Scenery (epic #940 slice E): what turns a map of tiles into a country. A world opts in with `scenery` in its spec, data only:
 //   wash     region id -> ground tone (meadow, heath, woods, ash): large soft patches, so a region reads at a glance
 //   fields   [x, y, w, h, wheat|cabbage|plough]: farmland round the towns, laid only on open grass
-//   dress    landmark name -> weir, barrow, vaults, kiln, lair: the ground a dungeon mouth or lair stands in
+//   dress    landmark name -> weir, barrow, vaults, quarry, kiln, lair: the ground a dungeon mouth or lair stands in
+//   (also, in a world with scenery: a town's `delve` gets a ruin of the wall kit, and each closed exit (to.map null) a last milestone)
 //   bridges  'x,y' of a bridge tile -> stone, timber, char (default: char in ash country, else timber)
 //   head     {x, y}: where the river rises
 //   clear    [x, y, r]: trees that would hide a place stand as stumps (a ford clears itself the same way)
@@ -14,15 +15,16 @@
 import {hash,vnoise} from '../core/rng.js';
 import {U,ART,TILE} from './tile.js';
 import {W,H,G,TREE,ROCK,LAVA,ROAD,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE,MUD,SWAMP,PEAK} from '../world/tiles.js';
-import {tiles,zone,I,CITY,LANDMARKS,REGIONS,OUTPOSTS,solid} from '../world/map.js';
-import {ACTIVE_SPEC} from '../world/spec.js';
+import {tiles,zone,I,CITY,LANDMARKS,REGIONS,OUTPOSTS,solid,MAP_ID} from '../world/map.js';
+import {ACTIVE_SPEC,MAPS} from '../world/spec.js';
+import {onWorld} from '../sim/kept.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {outsideTown} from '../world/gen.js';
 import {ATLAS} from './sceneryatlas.js';
 
 export const ASSET_SCENERY={'prop:scenery':TREE}; // hook table (artcheck): the sheet of pieces; no piece, no procedural stand-in
-const NOTE=ACTIVE_SPEC.scenery||null;
-export const sceneryOn=!!NOTE;
+let NOTE=ACTIVE_SPEC.scenery||null;
+export let sceneryOn=!!NOTE;
 const SHEET='prop:scenery';
 
 // ---- colours ----
@@ -34,7 +36,7 @@ function mix(a,b,k){const q=(k*32)|0;let m=mixC.get(b+q);if(!m){m=new Map();mixC
   const A=rgbOf(a),B=rgbOf(b),t=q/32;r='#'+hx(A[0]+(B[0]-A[0])*t)+hx(A[1]+(B[1]-A[1])*t)+hx(A[2]+(B[2]-A[2])*t);m.set(a,r);return r}
 
 // ---- fields over the map, four samples a tile ----
-const R=4,FW=W*R,FH=H*R;
+const R=4;let FW=W*R,FH=H*R;
 function field(test,rad,passes=2){let a=new Float32Array(FW*FH),b=new Float32Array(FW*FH);
   for(let j=0;j<FH;j++)for(let i=0;i<FW;i++)a[j*FW+i]=test(i/R|0,j/R|0)?1:0;
   const n=rad*2+1;for(let p=0;p<passes;p++){
@@ -126,6 +128,8 @@ const gC=new Map();
 export function sceneGround(t,tx,ty){if(!NOTE)return t;if(t===FLOWER)return G;
   if(t===RIVER||t===BRIDGE||(t===ROAD&&data().open[ty*W+tx])){const k=ty*W+tx;let g=gC.get(k);if(g===undefined){g=dryGround(tx,ty);gC.set(k,g)}return g}
   return t}
+// The region's tone at tile (tx,ty): 0 none, 1 meadow, 2 heath, 3 woods, 4 ash (WASH); terrain.js gives a wood its own kinds of tree.
+export const sceneWash=(tx,ty)=>NOTE?data().wash[ty*W+tx]:0;
 export const treeFelled=(tx,ty)=>!!NOTE&&!!data().felled[ty*W+tx];
 // The ground a water tile's dry edge is drawn with: the nearest plain ground round it.
 const GROUNDS=new Set([G,FLOWER,SGRASS,MUD,SWAMP,ROCK,SNOW,ICE]);
@@ -149,7 +153,10 @@ export const soilRim={m:1,other:-1};
 export function soilAt(tx,ty,ax,ay){if(!NOTE)return -1;const d=data(),L=d.soft[ty*W+tx];if(!L)return -1;
   const x0=tx+(ax+.5)/TILE,y0=ty+(ay+.5)/TILE,x=x0+WARP(x0,y0,267),y=y0+WARP(x0,y0,269),n=(vnoise(x*2.3,y*2.3,261)-.5)*.14;let b=-1,bv=-9,o=-1,ov=-9;
   for(let i=0;i<L.length;i++){const v=at(d.mask.get(L[i]),x,y)+(i&1?n:-n);if(v>bv){o=b;ov=bv;b=L[i];bv=v}else if(v>ov){o=L[i];ov=v}}
+  if(o>=0&&bv-ov<SOFT_M&&SOFT.has(b)&&SOFT.has(o)&&(b===MUD||o===MUD)&&hash((tx*TILE+ax)>>1,(ty*TILE+ay)>>1,263)<.5*(1-(bv-ov)/SOFT_M)){const q=b;b=o;o=q} // a stippled margin, two art pixels a grain: mud and grass give way to each other
   soilRim.m=bv-ov;soilRim.other=o;return b}
+// Grounds whose border is a soft stipple instead of a line (mud against grass or fen grass), and how wide in mask units.
+const SOFT=new Set([MUD,SGRASS,G]),SOFT_M=.1;
 // The border's own line: a lit lip and a shadow, by what meets what. c: the plain colour of kind k there.
 export function soilEdge(c,k,tx,ty,ax,ay){const m=soilRim.m,o=soilRim.other,X=tx*TILE+ax,Y=ty*TILE+ay,h=hash(X,Y,265);if(m>.14)return c;
   if(k===ICE)return m<.05?mix(c,'#e4f2f8',.7):m<.1?mix(c,'#b4d8e6',.42):c; // the pool's frozen margin
@@ -158,6 +165,7 @@ export function soilEdge(c,k,tx,ty,ax,ay){const m=soilRim.m,o=soilRim.other,X=tx
   if(o===LAVA)return m<.07?mix(c,'#17100f',.86):m<.13?mix(c,'#2a1c18',.56):c;
   if(k===SWAMP)return m<.05?mix(c,'#141c14',.6):c;
   if(o===SWAMP)return m<.06?mix(c,'#26301e',.5):c;
+  if(k===MUD||o===MUD)return c; // mud's border is the stipple of soilAt, no line
   if(m<.035&&h>.4)return mix(c,'#000000',.14);
   return c}
 
@@ -194,6 +202,9 @@ const snap=v=>Math.round(v*ART)/ART;
 function pc(c,n,x,y,rows){const a=ATLAS[n],im=sheetImg();if(!a||!im)return;const h=rows||a[3];c.drawImage(im,a[0],a[1],a[2],h,snap(x),snap(y),a[2]/ART,h/ART)}
 // Piece n standing with its foot at world (x,y), centred.
 const foot=(c,n,x,y)=>{const a=ATLAS[n];if(a)pc(c,n,x-a[2]/ART/2,y-a[3]/ART)};
+// For others that dress the land (harbour.js): piece n at world (x,y), false when the sheet is not loaded; and a piece's size in world units.
+export const scenePiece=(c,n,x,y)=>{if(!sheetImg())return false;pc(c,n,x,y);return true};
+export const scenePieceSize=n=>{const a=ATLAS[n];return a?[a[2]/ART,a[3]/ART]:null};
 const rect=(c,x,y,w,h,k)=>{c.fillStyle=k;c.fillRect(x,y,w,h)};
 
 const FLOWERS=[['#f2c94a','#c8922a'],['#f4f4ea','#c8ccd0'],['#e8604a','#b03a30'],['#7a9ce8','#4a68c0']];
@@ -206,20 +217,38 @@ function fissure(c,x,y,s){let dx=hash(x|0,y|0,s)>.5?1:-1;const n=7+(hash(x|0,y|0
     x+=1;if(hash(i,x|0,s+2)>.6)y+=dx*.5;if(hash(i,y|0,s+3)>.85)dx=-dx}}
 // What lies on open ground, by the region's tone. h values are the tile's own hashes.
 function scatter(c,tx,ty,t,w,d){const X=tx*U,Y=ty*U,h=hash(tx,ty,801),o=hash(tx,ty,802),ox=hash(tx,ty,803)*10-2,oy=hash(tx,ty,804)*10-2;
+  if(w===3&&t===TREE){if(((tx+ty)&1)&&asset('prop:canopy-meadow-1')){if(h<.45)bush(c,X+4+ox*.5,Y+12,tx,ty);else if(h<.6)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.72)fallen(c,X+ox-4,Y+9+o*3,o<.5);else if(h<.8)pc(c,'stump',X+ox,Y+oy+4)}return} // undergrowth between the whole trees of a wood
   if(w===1||w===2||w===3){if(t!==G&&t!==FLOWER)return;
     const f=vnoise(tx/4.5,ty/4.5,805);
     if(t===FLOWER||(w!==3&&f>.6&&o<.62)){const pick=vnoise(tx/9,ty/9,807)*1.6+o*.5;bloom(c,X+8,Y+8,FLOWERS[w===2?(pick>.9?3:0):Math.min(3,pick*2.2|0)],tx,ty,3+(h*4|0));if(t===FLOWER)return}
     if(w===1){if(h<.13)pc(c,'tuftGS',X+ox,Y+oy);else if(h<.18)pc(c,'tuftLS',X+ox,Y+oy);else if(h<.195)pc(c,'tuftG',X+ox-4,Y+oy-4);else if(h<.21)pc(c,'pebTanS',X+ox-2,Y+oy);else if(h<.235)pc(c,'blades',X+ox-6,Y+oy-6)}
     else if(w===2){if(h<.11)pc(c,'tuftBS',X+ox,Y+oy);else if(h<.2)pc(c,'tuftLS',X+ox,Y+oy);else if(h<.215)pc(c,'tuftB',X+ox-4,Y+oy-4);else if(h<.27)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.29)pc(c,'blades',X+ox-6,Y+oy-6)}
-    else{if(h<.1)pc(c,'tuftDS',X+ox,Y+oy);else if(h<.125)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.15)pc(c,'stump',X+ox,Y+oy+4);else if(h<.18)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.22)pc(c,'blades',X+ox-6,Y+oy-6)}
+    else{if(h<.1)pc(c,'tuftDS',X+ox,Y+oy);else if(h<.125)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.15)pc(c,'stump',X+ox,Y+oy+4);else if(h<.18)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.22)pc(c,'blades',X+ox-6,Y+oy-6);else if(h<.27)bush(c,X+4+ox*.5,Y+10+oy*.3,tx,ty);else if(h<.3)fallen(c,X+ox-4,Y+8+oy*.4,o<.5)}
     return}
   if(w===4&&t===ROCK){
     if(h<.08)pc(c,'pebDarkS',X+ox-2,Y+oy);else if(h<.1)pc(c,'pebDark',X+ox-4,Y+oy-4);else if(h<.2)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.27)pc(c,'pebTanS',X+ox-2,Y+oy);
     else if(h<.335)fissure(c,X+ox,Y+oy+2,811);else if(h<.36)pc(c,'stumpChar',X+ox,Y+oy+4);else if(h<.385)pc(c,'tuftBS',X+ox,Y+oy);
     else if(h<.397)pc(c,'tarPool',X+ox-4,Y+oy-4);else if(h<.406)pc(c,'skull',X+ox+2,Y+oy+4);else if(h<.42)pc(c,'femur',X+ox,Y+oy+6);else if(h<.426)foot(c,'cairn',X+8,Y+15);return}
+  if(t===SWAMP){const edge=tt(tx-1,ty)!==SWAMP||tt(tx+1,ty)!==SWAMP||tt(tx,ty-1)!==SWAMP||tt(tx,ty+1)!==SWAMP; // fen water: reeds along its margins, pads and a sheen on the open water
+    if(edge){if(h<.7)reeds(c,X+ox+2,Y+oy+6,tx,ty);if(o<.35)reeds(c,X+12-ox,Y+14-oy*.5,ty,tx)}
+    else if(h<.2)pc(c,'lily',X+ox,Y+oy+2);else if(h<.3){rect(c,snap(X+ox),snap(Y+oy+4),4,.5,'#48705e');rect(c,snap(X+ox+2),snap(Y+oy+5),3,.5,'#3a5e50')}else if(h<.36)reeds(c,X+ox+3,Y+oy+6,tx,ty,4);
+    return}
   if(t===SGRASS||t===MUD){if(h<.12)pc(c,'tuftDS',X+ox,Y+oy);else if(h<.16)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.19&&t===MUD)pc(c,'pebTanS',X+ox-2,Y+oy);return}
   if(t===SNOW){if(h<.05)pc(c,'pebWhiteS',X+ox-2,Y+oy);else if(h<.07)pc(c,'pebGreyS',X+ox-2,Y+oy)}}
 
+// A clump of reeds standing with its foot at world (x,y): n stalks of half a unit, some with a cattail head, on a dark root.
+const REED=['#4e6a2c','#6a8038','#8a9a4a','#5a6a30'];
+function reeds(c,x,y,a,b,n=7){rect(c,snap(x-1.5),snap(y),4,.5,'#1e2618');for(let i=0;i<n;i++){const h=hash(a,b,861+i),px=snap(x-1.5+i*.5+(h-.5)),tall=4+hash(a,b,871+i)*5,lean=hash(a,b,881+i)>.7?.5:0;
+    rect(c,px,snap(y-tall),.5,tall,REED[i&3]);if(lean)rect(c,px+lean,snap(y-tall-.5),.5,1,REED[2]);if(h<.3)rect(c,px,snap(y-tall+.5),.5,1.5,'#4a2e1c')}}
+// A low bush standing with its foot at world (x,y): three or four leafy domes, lit from the top left, on a shadow.
+const BUSH=[['#1c3a1e','#2e5a2a','#4a7a34','#6a9a40'],['#22381c','#3a5a26','#5a7a30','#7e9a3e'],['#1e3424','#2c5034','#466e40','#62904a']];
+function bush(c,x,y,a,b){const P=BUSH[(hash(a,b,891)*3)|0],n=3+(hash(a,b,892)>.5?1:0);rect(c,snap(x-5),snap(y-1),11,1.5,'#14101c40');
+  for(let i=0;i<n;i++){const cx=x-3.5+i*(7/(n-1))+(hash(a,b,893+i)-.5),r=2.2+hash(a,b,897+i)*1.4,cy=y-r-.5-(i===1||i===2?1:0);
+    for(let j=-r;j<=r;j+=.5)for(let k=-r;k<=r;k+=.5){const d=Math.hypot(k,j)/r;if(d>1)continue;const lit=-(k+j)/r;rect(c,snap(cx+k),snap(cy+j),.5,.5,d>.86?P[0]:lit>.55?P[3]:lit>-.1?P[2]:P[1])}}}
+// A fallen log lying along x from world (x,y), its cut end toward the viewer's left or right.
+function fallen(c,x,y,left){const L=10;rect(c,snap(x+.5),snap(y+2.5),L,1,'#14101c40');rect(c,snap(x),snap(y-.5),L,3.5,'#1a1210');rect(c,snap(x),snap(y),L,2.5,'#5a3e28');rect(c,snap(x),snap(y),L,.5,'#7a5a3a');rect(c,snap(x),snap(y+2),L,.5,'#3a281a');
+  for(let i=1.5;i<L-1;i+=2.5)rect(c,snap(x+i),snap(y+.5),.5,1.5,'#3a281a');rect(c,snap(x+3),snap(y-.5),2,.5,'#4a7a34');
+  const ex=left?x-.5:x+L-2;rect(c,snap(ex),snap(y-.5),2.5,3.5,'#1a1210');rect(c,snap(ex+.5),snap(y),1.5,2.5,'#b08a5a');rect(c,snap(ex+1),snap(y+1),.5,.5,'#7a5a3a')}
 // The water's own furniture and the fringe of its banks.
 function riverside(c,tx,ty,t,d){const X=tx*U,Y=ty*U,h=hash(tx,ty,821),o=hash(tx,ty,822),z=REGIONS[zone[I(tx,ty)]],b=z&&z.biome,ox=o*8;
   if(t===RIVER){const cen=at(d.water,tx+.5,ty+.5);if(cen<.6||!solid[I(tx,ty)])return;
@@ -257,7 +286,7 @@ function mound(w,h,mat,tint,key){const k=key;let cv=moundC.get(k);if(cv)return c
   x.putImageData(img,0,0);moundC.set(k,cv);return cv}
 onAssets(()=>moundC.clear());
 const hit=(a,b,c2,d2,x0,y0,x1,y1)=>a<x1&&c2>x0&&b<y1&&d2>y0;
-const MAT={weir:['tile:ash-rock',['#3e6c56',.42]],barrow:['tile:grass',null],vaults:['tile:mud',['#3a2a1e',.3]],kiln:['tile:ash-rock',['#2a2120',.56]]};
+const MAT={weir:['tile:ash-rock',['#3e6c56',.42]],barrow:['tile:grass',null],vaults:['tile:mud',['#3a2a1e',.3]],kiln:['tile:ash-rock',['#2a2120',.56]],quarry:['tile:ash-rock',['#b8b2a2',.2]]};
 function dressMouth(c,L,kind){const m=L.mouth,bx=m.x0*U,by=m.y0*U,bw=(m.x1-m.x0+1)*U,base=(m.y1+1)*U,cx=bx+bw/2,M=MAT[kind];if(!M)return;
   const mw=(bw+3.2*U)*ART|0,mh=(base-by+1.6*U)*ART|0,cv=mound(mw,mh,M[0],M[1],L.name);
   if(cv)c.drawImage(cv,snap(cx-mw/ART/2),snap(base-mh/ART+1),mw/ART,mh/ART);
@@ -266,6 +295,8 @@ function dressMouth(c,L,kind){const m=L.mouth,bx=m.x0*U,by=m.y0*U,bw=(m.x1-m.x0+
   if(kind==='weir'){pc(c,'pool',l-1.4*U,base-4);pc(c,'pool',r-.6*U,base-4);foot(c,'torch',l,base+4);foot(c,'torch',r,base+4);pc(c,'tuftDS',l-1*U,base-U*.4);pc(c,'tuftDS',r+.5*U,base-U*.4);pc(c,'pebGreyS',cx-8,base+T);foot(c,'stone3',l-.9*U,base+.8*U)}
   if(kind==='barrow'){foot(c,'stone2',cx-1.6*U,by-.2*U);foot(c,'stone1',cx+.2*U,by-.7*U);foot(c,'stone2',cx+1.8*U,by-.1*U);foot(c,'stone3',l-.7*U,base-.6*U);foot(c,'stone1',r+.7*U,base-.5*U);foot(c,'stone3',l-.3*U,base+.9*U);foot(c,'stone1',r+.3*U,base+1*U);pc(c,'tuftL',l-1.2*U,by);pc(c,'tuftL',r,by+.3*U);pc(c,'flGold',bx-.2*U,base+T);foot(c,'cairn',r+1.6*U,base+.5*U)}
   if(kind==='vaults'){foot(c,'barrel',l-.5*U,base+.3*U);foot(c,'barrel',l+.4*U,base+.9*U);foot(c,'crate',r+.2*U,base+.2*U);foot(c,'crate',r+.8*U,base+.9*U);pc(c,'tarPool',r+.8*U,base-U*1.4);pc(c,'stumpChar',l-1.5*U,base-U*.8);pc(c,'pebDarkS',cx-8,base+T+2);pc(c,'hay',l-1.8*U,base+.9*U)}
+  if(kind==='quarry'){foot(c,'stone3',l-.4*U,base+.2*U);foot(c,'stone3',r+.5*U,base+.1*U);foot(c,'stone2',l-1.5*U,base-.1*U);foot(c,'crate',r+.2*U,base+1*U);foot(c,'barrel',l+.3*U,base+1*U);foot(c,'cairn',r+1.7*U,base-.3*U);foot(c,'cairn',l-2.1*U,base+1*U);
+    pc(c,'pebWhite',l-1.1*U,base+1.2*U);pc(c,'pebWhiteS',r+.6*U,base+1.8*U);pc(c,'pebGreyS',cx-8,base+T+2);pc(c,'pebWhiteS',l-2.4*U,base-.5*U);pc(c,'pebGrey',r+1.2*U,base+.8*U);pc(c,'tuftDS',r+2.4*U,base+.2*U);pc(c,'tuftLS',l-2.8*U,base+.3*U)}
   if(kind==='kiln'){for(const [x,y] of [[l-1.2*U,base-1.1*U],[r-.1*U,base-1.1*U]])pc(c,'brick',x,y);foot(c,'torch',l-.3*U,base+.6*U);foot(c,'torch',r+.3*U,base+.6*U);pc(c,'pebDark',l-1.7*U,base-2);pc(c,'pebDark',r+1.3*U,base-U);fissure(c,cx-14,base+T+3,851);fissure(c,cx+2,base+T+9,853)}}
 // The burnt floor inside the lava ring, so the nest and the ring are one place; the way in stays open.
 const floorC=new Map();
@@ -294,6 +325,8 @@ function bridges(c,x0,y0,x1,y1,d){for(const b of d.bridges||(d.bridges=findBridg
     for(let y=-len/2,left=len;left>0;y+=U,left-=U){pc(c,S[1],-11,y,Math.min(TILE,left*ART)|0);pc(c,S[1],8,y,Math.min(TILE,left*ART)|0)}
     const a=ATLAS[S[2]];if(a)for(const y of [-len/2-2,0-a[3]/ART/2,len/2-a[3]/ART+1]){pc(c,S[2],-11-(a[2]/ART-3)/2,y);pc(c,S[2],8-(a[2]/ART-3)/2,y)}
     c.restore()}}
+// Each bridge's deck, in tiles [x, y, w, h], rails in: a bridge's tiles are wider than its art, and the water shows either side (sheen.js).
+export function bridgeDecks(){if(!NOTE)return [];const d=data();return (d.bridges||(d.bridges=findBridges())).map(b=>{const along=b.h>=b.w,cx=b.x+b.w/2,cy=b.y+b.h/2,hw=12/U,hl=((along?b.h:b.w)+1.3)/2;return along?[cx-hw,cy-hl,2*hw,2*hl]:[cx-hl,cy-hw,2*hl,2*hw]})}
 function findBridges(){const seen=new Uint8Array(W*H),out=[];for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(tt(x,y)!==BRIDGE||seen[I(x,y)])continue;let a=x,b=y,e=x,f=y;const st=[[x,y]];seen[I(x,y)]=1;
     while(st.length){const [u,v]=st.pop();a=Math.min(a,u);b=Math.min(b,v);e=Math.max(e,u);f=Math.max(f,v);for(const [p,q] of [[u+1,v],[u-1,v],[u,v+1],[u,v-1]])if(tt(p,q)===BRIDGE&&!seen[I(p,q)]){seen[I(p,q)]=1;st.push([p,q])}}
     out.push({x:a,y:b,w:e-a+1,h:f-b+1})}return out}
@@ -309,6 +342,61 @@ function head(c,x0,y0,x1,y1){const hd=NOTE.head;if(!hd||hd.x<x0-4||hd.x>x1+4||hd
 function outposts(c,x0,y0,x1,y1){for(const o of OUTPOSTS){if(!hit(o.x-3,o.y-3,o.x+3,o.y+3,x0,y0,x1,y1))continue;const X=Math.floor(o.x-1)*U,Y=Math.floor(o.y-.5)*U;
     pc(c,'pebTanS',X+U*.2,Y+U*.7);pc(c,'pebTanS',X+U*1.5,Y+U*.2);foot(c,'cairn',X-U*.5,Y+U*.8);foot(c,'cairn',X+U*3.5,Y+U*1.2);foot(c,'torch',X+U*.3,Y+1);foot(c,'torch',X+U*2.7,Y+1);foot(c,'barrel',X+U*3.2,Y+U*.1);foot(c,'crate',X-U*.2,Y+U*.1)}}
 
+
+// ---- the Tithe Grange: a ruin laid up from the town wall kit (LPC castle walls, #830), cut low and ragged ----
+// Any town whose spec stands a first delve at a road's end (`delve`) gets its ruin there: a broken back wall, two stubs of side wall, a tower stump,
+// rubble and the cellar stair in the floor. Walls are the same cut pieces the town draws, drawn in strips of ragged height from the ground up; the
+// sheet's stones, tufts and pebbles dress the rest. With the wall set absent the stair and rubble still stand. Nothing here is solid: the sim is
+// not told, and the walls stay behind the stair so nobody walks behind art.
+const WS=4; // strip width in art pixels
+const mixHex=(h,k)=>mix(h,'#0a0807',1-Math.max(0,Math.min(1,k)));
+function ragged(c,id,sx,sy,sw,sh,dx,dy,key,low,hi){const im=asset(id);if(!im)return false;
+  for(let i=0;i<sw;i+=WS){const w=Math.min(WS,sw-i),k=hash(key+(i>>2),sx+sy,891),h=Math.round(sh*(low+(hi-low)*k)),cut=sh-h;if(h<=0)continue;
+    c.drawImage(im,sx+i,sy+cut,w,h,snap(dx+i/ART),snap(dy+cut/ART),w/ART,h/ART);
+    rect(c,snap(dx+i/ART),snap(dy+cut/ART),w/ART,.5,'#c8c4b830');if(cut>2)rect(c,snap(dx+i/ART),snap(dy+cut/ART)-.5,w/ART,.5,'#1a161260')}
+  return true}
+function grange(c,x0,y0,x1,y1){for(const T of CITY){const D=T.delve;if(!D||!hit(D.x-8,D.y-8,D.x+8,D.y+8,x0,y0,x1,y1))continue;
+    const mx=Math.floor(D.x),my=Math.floor(D.y),X=mx*U,Y=my*U,k0=mx*31+my;
+    // the floor: a few flags left in the old hall behind the stair
+    for(let j=-3;j<=0;j++)for(let i=-3;i<=4;i++)if(hash(mx+i,my+j,893)<.3&&!(j>-1&&i>-2&&i<3)){const fx=X+i*U+(hash(mx+i,my+j,897)-.5)*5,fy=Y+j*U+(hash(mx+i,my+j,899)-.5)*5;pc(c,'flag',fx,fy,32);rect(c,fx,fy,U,U,'#3a5a2848')}
+    // the stair: treads going down into the dark between two stub piers
+    {const sx=X-.2*U,sw=1.8*U,sy=Y-.7*U;rect(c,sx-.5,sy-.5,sw+1,1.6*U+.5,'#14110e');
+     for(let n=0;n<5;n++){const y=sy+n*4.4,k=1-n*.16;rect(c,sx,y,sw,1.5,n?mixHex('#a09c90',k):'#c4c0b2');rect(c,sx,y+1.5,sw,2.9,mixHex('#4a463e',k*.8+.1))}
+     rect(c,sx,sy+5*4.4,sw,.3*U,'#0a0807');rect(c,sx-.5,sy-.5,.5,1.6*U,'#d8d4c8');rect(c,sx+sw,sy-.5,.5,1.6*U,'#3a3630')}
+    ragged(c,'building:lpc-stone-pier',0,0,32,32,X-1.2*U,Y-1.4*U,k0+31,.55,.8);ragged(c,'building:lpc-stone-pier',0,0,32,32,X+1.7*U,Y-1.4*U,k0+37,.35,.6);
+    // back wall: the south face of the kit, two courses where it still stands high, with gaps; its shadow falls to the lower right
+    const bk=[[-3,.75,1],[-1,.25,.6],[1,.6,1],[3,.2,.5]];
+    for(const [i,lo,hi] of bk){const x=X+i*U-U*.5,key=k0+i;rect(c,x+3,Y-3.5*U,2*U,3.5,'#00000026');ragged(c,'tile:lpc-stone-wall-s',0,0,64,32,x,Y-4*U,key,lo,hi);if(hash(key,3,895)<.6)ragged(c,'tile:lpc-stone-wall-s',0,0,64,32,x,Y-5*U,key+9,.1,.7)}
+    // side walls: west and east, the east one lower; each a tile wide and two tall
+    ragged(c,'tile:lpc-stone-wall-w',0,0,32,64,X-4*U,Y-4*U,k0+11,.35,1);ragged(c,'tile:lpc-stone-wall-e',0,0,32,64,X+5*U,Y-4*U,k0+17,.15,.6);
+    // tower stump, north-west corner, and a lower one north-east
+    ragged(c,'building:lpc-stone-tower',0,0,32,64,X-4*U,Y-6*U,k0+23,.5,.8);ragged(c,'building:lpc-stone-tower',0,0,32,64,X+5*U,Y-6*U,k0+29,.3,.5);
+    // rubble, stones, creeper
+    for(const [dx,dy,n] of [[-2.6,-.8,'stone3'],[3.1,-1,'stone1'],[-4,.3,'stone2'],[2.3,-3,'stone3'],[-.5,-3,'cairn'],[4.5,.1,'stone2']])foot(c,n,X+dx*U,Y+dy*U);
+    for(const [dx,dy,n] of [[-1.5,-2.2,'pebGrey'],[1.1,-2.4,'pebGreyS'],[3,.6,'pebTanS'],[-3.2,-1.8,'pebGreyS'],[.4,1.9,'tuftDS'],[-2.2,1.4,'tuftG'],[3.6,-1.8,'tuftL'],[-4.6,-1.2,'tuftD'],[1.9,-4,'tuftLS']])pc(c,n,X+dx*U,Y+dy*U)}}
+
+// ---- the last milestone: one beside each closed road end ----
+// A spec's `exits` with no map to go to (to.map null) are roads that stop at the map's edge. The road's last tiles are found from the tiles (never a
+// stored position), and a squat stone stands a few tiles in, on the open side of the road, with a worn chevron pointing on and a cap of moss.
+const MS={o:'#201c18',a:'#c4c0b2',b:'#a09c90',c:'#7c786e',d:'#58554c',m:'#5a8a40',n:'#78a850'};
+function milestone(c,X,Y,dir){ // X,Y world foot point; dir 0..3 N E S W: the way the road runs on
+  const K=1.5,q=(ax,ay,w,h,k)=>rect(c,X+Math.round(ax*K)/ART,Y+Math.round(ay*K)/ART,Math.max(1,Math.round(w*K))/ART,Math.max(1,Math.round(h*K))/ART,k);
+  q(-6,-2,18,5,'#00000030');q(-6,-5,12,6,MS.o);q(-5,-4,10,4,MS.c);q(-5,-4,10,1,MS.b);q(-5,-1,10,1,MS.d); // plinth
+  q(-5,-19,10,15,MS.o);q(-4,-20,8,1,MS.o);q(-3,-21,6,1,MS.o);                                              // outline
+  q(-4,-19,8,15,MS.b);q(-3,-20,6,1,MS.a);q(-4,-19,2,15,MS.a);q(2,-19,2,15,MS.c);q(-4,-5,8,1,MS.d);q(3,-18,1,13,MS.d); // body: light from the left
+  q(-3,-21,3,1,MS.a);q(-2,-20,4,1,MS.a);
+  const cx=0,cy=-12; // a chevron cut in the face, pointing the way the road runs on
+  if(dir===0||dir===2){const s=dir===0?1:-1;q(cx-2,cy-s,1,1,MS.d);q(cx-1,cy,1,1,MS.d);q(cx,cy+s,1,1,MS.d);q(cx+1,cy,1,1,MS.d);q(cx+2,cy-s,1,1,MS.d)}
+  else{const s=dir===1?1:-1;q(cx-s,cy-2,1,1,MS.d);q(cx,cy-1,1,1,MS.d);q(cx+s,cy,1,1,MS.d);q(cx,cy+1,1,1,MS.d);q(cx-s,cy+2,1,1,MS.d)}
+  q(-3,-16,6,1,MS.d);q(-3,-8,5,1,MS.d);                                                                   // two worn rules
+  q(-4,-4,3,1,MS.m);q(-3,-5,2,1,MS.n);q(2,-3,3,1,MS.m)}                                                    // moss at the foot
+function milestones(c,x0,y0,x1,y1){for(const e of ACTIVE_SPEC.exits||[]){if(!e.edge||(e.to&&e.to.map))continue;const {side,from,to}=e.edge,vert=side==='N'||side==='S',far=side==='S'||side==='E';
+    let best=null;for(let a=from;a<=to&&!best;a++)for(let d=0;d<10&&!best;d++){const x=vert?a:far?W-1-d:d,y=vert?(far?H-1-d:d):a;if(tt(x,y)===ROAD)best={x,y,d,a}}
+    if(!best)continue;const dir=side==='N'?0:side==='E'?1:side==='S'?2:3;
+    for(const off of [2,-2,3,-3,4,-4]){const x=vert?best.a+off:far?W-1-best.d-2:best.d+2,y=vert?(far?H-1-best.d-2:best.d+2):best.a+off,t=tt(x,y);
+      if(t<0||t===TREE||t===PEAK||t===RIVER||t===ROAD||t===BRIDGE)continue;if(!hit(x-2,y-2,x+3,y+3,x0,y0,x1,y1))break;
+      milestone(c,x*U+U*.5,y*U+U*.9,dir);break}}}
+
 // Paint chunk tiles x0..x1 by y0..y1 on context c, already in world units, under the trees and the towns.
 export function paintScenery(c,x0,y0,x1,y1){if(!NOTE||!sheetImg())return;const d=data();c.imageSmoothingEnabled=false;
   fields(c,x0,y0,x1,y1,d);
@@ -316,7 +404,10 @@ export function paintScenery(c,x0,y0,x1,y1){if(!NOTE||!sheetImg())return;const d
     if(d.near[k])riverside(c,tx,ty,t,d);
     if(d.felled[k]){const h=hash(tx,ty,885),ox=hash(tx,ty,886)*6-3,oy=hash(tx,ty,887)*5;if(h<.45)pc(c,'stump',tx*U-2+ox,ty*U+3+oy);else if(h<.8)pc(c,'tuftG',tx*U-8+ox,ty*U-8+oy);else pc(c,'pebGrey',tx*U-8+ox,ty*U-6+oy);continue}
     if(!isW(t)&&t!==ROAD&&!(d.near[k]&&at(d.water,tx+.5,ty+.5)>.3))scatter(c,tx,ty,t,d.wash[k],d)}
-  bridges(c,x0,y0,x1,y1,d);ford(c,x0,y0,x1,y1,d);head(c,x0,y0,x1,y1);outposts(c,x0,y0,x1,y1);
+  bridges(c,x0,y0,x1,y1,d);ford(c,x0,y0,x1,y1,d);head(c,x0,y0,x1,y1);outposts(c,x0,y0,x1,y1);grange(c,x0,y0,x1,y1);milestones(c,x0,y0,x1,y1);
   const dr=NOTE.dress||{};for(const L of LANDMARKS){const kind=dr[L.name];if(!kind)continue;
     if(kind==='lair'){const r=(L.r||5)+7;if(hit(L.x-r,L.y-r,L.x+r,L.y+r,x0,y0,x1,y1))dressLair(c,L,x0,y0,x1,y1)}
     else if(L.mouth&&hit(L.mouth.x0-5,L.mouth.y0-5,L.mouth.x1+6,L.mouth.y1+6,x0,y0,x1,y1))dressMouth(c,L,kind)}}
+// Another map (#1013): its own note, its own fields. data() works them out again on first use, which roadfade.js does in the dark.
+onWorld(()=>{NOTE=MAPS[MAP_ID].scenery||null;sceneryOn=!!NOTE;FW=W*R;FH=H*R;D=null;gC.clear();floorC.clear()},()=>({sceneryOn,sceneryField:[FW,FH]}));
+export const warmScenery=()=>{if(NOTE)data()};

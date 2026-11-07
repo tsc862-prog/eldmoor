@@ -16,6 +16,7 @@
 //     and a seeded room with and without the rules
 //   - without a Fellowship the abstract roll runs and a seeded background world repeats exactly
 //     (CRAWL_BASELINE_HASH=<hash from main> also asserts it equals main's)
+//   - a clear keeps what it paid on the dungeon's row (#976), through a save; an older save has none and reads fine
 // Usage: npm run crawlcheck   (CRAWLCHECK_SEED to vary)
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
@@ -32,7 +33,7 @@ const {init, step, S, snapshot, restore, maxHp} = SIM;
 const F_ = await import('../src/sim/company.js');
 const T = await import('../src/sim/table.js');
 const D = await import('../src/sim/dungeon.js');
-const {CRYPT} = await import('../src/world/map.js');
+const {CRYPT, LVL_CAP} = await import('../src/world/map.js');
 const {species} = await import('../src/sim/crawl.js');
 const run = s => {for (let i = 0; i < s * 60; i++) step(1 / 60)};
 
@@ -332,10 +333,12 @@ if (argv[0] === '--world-child') {
     sok(!CRYPT.group && !S.table && R.some(a => a.state !== 'dead') && R.filter(a => a.state !== 'dead').every(a => a.state === 'return'), 'survivors go home, group and table are free');
   }
   {
-    const W = descend(14); const saved = CRYPT.rooms[0], orig = JSON.stringify(saved);
-    CRYPT.rooms[0] = {...saved, foes: [{type: 'tombskit', n: 14}], hit: 4};
+    let W = descend(Math.min(14, LVL_CAP)); const saved = CRYPT.rooms[0], orig = JSON.stringify(saved); // foes stop at a chapter map's top band, so its party does too
+    CRYPT.rooms[0] = {...saved, foes: [{type: 'tombskit', n: 14, hits: 4}], hit: 4, rounds: 8};
     try {
       crawl(W, {act: () => 'strike', maxS: 300});
+      // Survivors can fall back and withdraw instead of dying (a dice outcome, as for the clear above): allow up to 3 fresh descents for a full wipe.
+      for (let t = 1; t < 3 && !W.every(a => a.state === 'dead'); t++) {W = descend(Math.min(14, LVL_CAP)); crawl(W, {act: () => 'strike', maxS: 300})}
       sok(W.every(a => a.state === 'dead') && W.every(a => /felled by/.test(a.cause || '')), 'a wipe: everyone falls and each death names the foe');
       sok(!CRYPT.group && !(S.table && S.table.kind === 'crawl'), 'after the wipe the group and the crawl scene are cleared'); // a recruit's own trouble in the world may open a scene by now
     } finally {CRYPT.rooms[0] = JSON.parse(orig)}
@@ -374,6 +377,14 @@ if (argv[0] === '--cairn') {
     let cleared = null; for (let i = 0; i < 12 && !cleared; i++) {const M = down(CAIRN, 12); M.forEach(a => {a.gear = 6}); playOn(CAIRN, 900); if (S.dunRec[CAIRN.name].clears) cleared = M}
     sok(cleared, 'the Fellowship can clear the Cairn');
     if (cleared) sok(S.timeline.some(e => e.kind === 'crypt' && txt(e.parts).includes(CAIRN.name)), 'a first clear of the Cairn goes on the timeline');
+    if (cleared) { // what the clear paid (#976): on the dungeon's row, through a save; an older save has none and still loads
+      const row = S.dunRec[CAIRN.name], P = row.paid, want = JSON.stringify(P), n = cleared.length;
+      sok(P && P.gold >= 25 * n - 45 && P.goods['Grave Dust'] > 0 && P.goods['Marrowmend Tonic'] > 0 && P.by && Array.isArray(P.items) && P.run <= row.runs, 'the clear keeps what it paid: ' + want);
+      const snap = JSON.stringify(snapshot()); restore(JSON.parse(snap)); T.TABLE.speed = 1;
+      sok(JSON.stringify(S.dunRec[CAIRN.name].paid) === want, 'the record comes back from a save unchanged');
+      const old = JSON.parse(snap); delete old.dunRec[CAIRN.name].paid; restore(old); T.TABLE.speed = 1;
+      sok(S.dunRec[CAIRN.name].clears >= 1 && !S.dunRec[CAIRN.name].paid, 'a save from before the record loads with its clears and no payout');
+      restore(JSON.parse(snap)); T.TABLE.speed = 1}
   }
   { // side by side: the Fellowship below the Cairn, a background group in the Crypt
     const M = down(CAIRN), bg = S.agents.filter(a => a.kind === 'hero' && a.state !== 'dead' && !SLT.companyOf(a) && a.fac === M[0].fac).slice(0, 4);
@@ -453,7 +464,7 @@ console.log('a retreat, most fall back');
 console.log('a wipe at the table');
 {
   const M = descend(); const saved = CRYPT.rooms[0], orig = JSON.stringify(saved);
-  CRYPT.rooms[0] = {...saved, foes: [{type: 'tombskit', n: 14}], hit: 4};
+  CRYPT.rooms[0] = {...saved, foes: [{type: 'tombskit', n: 14, hits: 4}], hit: 4, rounds: 8};
   try {
     const seen = crawl(M, {act: () => 'strike', maxS: 300});
     ok(M.every(a => a.state === 'dead'), `everyone fell to the dice (${seen.length} rounds)`);

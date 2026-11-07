@@ -1,3 +1,4 @@
+- [Hunt ground #934](hunt_ground_934.md) — hunts hold a ground and a clear line, reflex reads known rank, standsTo keeps the agent's say, mobs left alone
 - [First delve Stepping #932](first_delve_stepping.md) — mouth in gate region + clear line, FAR 30, stepping child, crawl lore, browser check
 - [First delve #922](first_delve.md) — prologue.js flow, default in one line, stored only when it differs, hook seams kept off crawl.js/table.js, tuning
 - [Party rules](party_rules.md) — why followers have their own state, duelers stay, regroup exists, zone = weakest member, 50% outnumbered flee
@@ -99,9 +100,17 @@
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
 - [Invitations #872/#864](invitations.md) — invite.js: one rare header line, computed at read, marks on playFresh; why not events
 - [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
+- [Attempt reach #864](attempt_reach.md) — voices hold no Claude slot; real-time wait, 12 s pickup, wound parse, one retry, narrator invitation
 - [New blood grace #660](new_blood_grace.md) — Fellowship replacements skip chance duels 480 min; recruit() stamps newBlood, pvp.js skips
 - [DM day one #910](dm_day_one.md) — ensure() in postHook/withdrawHook; held-world prep turn must not crash; dmcheck --dayone
 - [Seeded import dice #888](seeded_import_dice.md) — GOODS stock rolled at import, before seedRng; seeded checks import scripts/seed-first.mjs first
 - [Save drift #324](save_drift.md) — v7/v6 flake = solo id reuse in the fixture; boss, dice, timers now saved (kept.js); play-on check
+- [Map rebind #1013](map_rebind.md) — onWorld hooks, worded() tables, WORDS.world stays, atlas tables, mapKey, capture lint, no-lair gap
 - [Several dungeons #891](multi_dungeon.md) — CRYPTS, crypts.js one reader, first dungeon writes nothing, cryptFor, entry, a room's blows must fit its rounds
 - [Guild choice #954](guild_choice.md) — hasLinks gate in guilds open(); guild_join/guild_found tools
+- [Sides as lore #1025](sides_lore.md) — loreSides gates: sameSide, ownTown, foeOf, mayFight, sidesOff, raidSide; fac stays, others stays separate
+- [Opening job fit #1016](opening_job_fit.md) — jobbar.js level bar; opening names a fitting job; job proposals refused up front; hosted-only
+- [Map pack #1013](map_pack.md) — mappack.js, save v8, who freezes, split keys, away is not gone, IndexedDB mirror, what slice 3 owes
+- [Crossing #1013](crossing.md) — crossing.js: road is the leader's words only, atlas leaf, tick at head of step, parked whens, fixture traps
+- [No lair #1013](no_lair.md) — readers crypts.js/lair.js, rule 12, dormant boss, boot words, TESTBARE fixtures, errors hidden as sentences
+- [Company party keeps #1048](company_party_keeps.md) — keeps(p) with a host: no end on a town walk, comeIn, formUp anywhere, lead_to any company, C.road.walk

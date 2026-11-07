@@ -9,11 +9,14 @@ import {hash,vnoise} from '../core/rng.js';
 import {TILE,U,ART} from './tile.js';
 import {W,H,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
 import {tiles,zone,I} from '../world/map.js';
-import {biomeOfZone} from './palette.js';
+import {biomeOfZone,PEAT} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
-import {sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery,soilAt,soilEdge} from './scenery.js';
+import {drawQuay} from './harbour.js';
+import {deriveTree,woodKind} from './woods.js';
+import {sceneWash,sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery,soilAt,soilEdge} from './scenery.js';
 import {ASSET_PEAKS,peakArt,peakPixel} from './peaks.js';
+import {onWorld} from '../sim/kept.js';
 
 // Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
 // procedural texel. A tile asset repeats every w x h art pixels (a TILE x TILE patch per tile at its tier); a missing
@@ -177,10 +180,13 @@ export function texel(t,tx,ty,px,py,noBg=false){
 let fk2=-1,fv2=0;const flipOf=(tx,ty)=>{const k=ty*W+tx;if(k!==fk2){fk2=k;fv2=Math.floor(hash(tx,ty,737)*4)}return fv2};
 // The asset colour of tile type t at art pixel (ax,ay) of tile (tx,ty) (0..TILE-1), or null: the base tile patches, the
 // road patch (turned for a north-south road) and the water patch (away from the banks, which keep the procedural foam).
+// Mud in a fen (palette.js PEAT): the LPC mud is a rust red that read as raw sores in the green; in a fen it is dark peat. Only the tile's own colours move.
+const peatAt=(t,tx,ty)=>t===MUD&&biomeOfZone(zone[I(tx,ty)])==='fen';
+const peat=c=>PEAT[c]||c;
 function assetTexel(t,tx,ty,ax,ay){
   const x=tx*TILE+ax,y=ty*TILE+ay;
   if(TILE_ASSET[t]){const id=TILE_ASSET[t],A=assetPixels(id);if(!A)return null;
-    if(A.w===TILE&&A.h===TILE&&SCATTER.has(id)){const k=flipOf(tx,ty);let u=ax&(TILE-1),v=ay&(TILE-1);if(k&1)u=TILE-1-u;if(k&2)v=TILE-1-v;return A.hex[v*TILE+u]}
+    if(A.w===TILE&&A.h===TILE&&SCATTER.has(id)){const k=flipOf(tx,ty);let u=ax&(TILE-1),v=ay&(TILE-1);if(k&1)u=TILE-1-u;if(k&2)v=TILE-1-v;const c=A.hex[v*TILE+u];return c&&peatAt(t,tx,ty)?peat(c):c}
     return A.hex[(y%A.h)*A.w+x%A.w]}
   if(t===ROAD){const A=assetPixels('tile:road');if(!A)return null;const v=roadVerticalAt(tx,ty),u=v?y:x,w=v?x:y;return A.hex[(w%A.h)*A.w+u%A.w]}
   if(t===RIVER){const A=assetPixels('tile:water');if(!A)return null;const px=Math.floor(ax/ART),py=Math.floor(ay/ART);
@@ -212,7 +218,7 @@ function groundOf(bio,x,y,h){return bio==='tundra'?snowBase(x,y,h):bio==='ash'?p
 // never blend. The neighbour's colour comes from its own texel at the same world pixel, so
 // ruts, drifts and noise run on across the seam.
 const BLEND=new Uint8Array(16);for(const t of [G,FLOWER,SGRASS,MUD,SNOW,ICE,ROCK,ROAD,LAVA,SWAMP])BLEND[t]=1;
-if(sceneryOn)BLEND[ROAD]=0; // country roads are a shape of their own there (render/scenery.js)
+BLEND[ROAD]=sceneryOn?0:1; // country roads are a shape of their own there (render/scenery.js)
 const fam=t=>t===FLOWER?G:t;
 const EDGE=[.42,.6,.78]; // noise threshold by distance to the edge: nearer edges bleed more
 const tileOr=(tx,ty)=>tx<0||ty<0||tx>=W||ty>=H?-1:tiles[I(tx,ty)];
@@ -348,8 +354,9 @@ function canopyImg(b,h){const n=Math.floor(h*VARIANTS)%VARIANTS;let got=null;
   return got}
 const treeSpots=new Map(); // tile key -> anchor {tree, x, y (the base, in tiles), ax, ay, w, h (world units), im} or false
 function anchorAt(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return null;const k=ty*W+tx;let a=treeSpots.get(k);if(a!==undefined)return a||null;
-  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0&&!(sceneryOn&&treeFelled(tx,ty))){const v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
-    if(v){const w=v.im.naturalWidth/ART,h=v.im.naturalHeight/ART;
+  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0&&!(sceneryOn&&treeFelled(tx,ty))){let v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
+    if(v&&sceneryOn&&sceneWash(tx,ty)===3){const k=woodKind(tx,ty),bid=k&&v.id.replace(/-\d$/,'-'+(1+(hash(tx,ty,619)*2|0))),base=bid&&asset(bid),im=base&&deriveTree(k,bid,base);if(im)v={id:'wood:'+k+':'+bid,im}} // a wood's own kinds (render/woods.js)
+    if(v){const w=(v.im.naturalWidth||v.im.width)/ART,h=(v.im.naturalHeight||v.im.height)/ART;
       a={tree:true,id:v.id,im:v.im,x:tx+.5,y:ty+1,ax:(tx+.5)*U+(hash(tx,ty,613)-.5)*5-w/2,ay:(ty+1)*U-CANOPY_ROOT/ART+(hash(tx,ty,615)-.5)*3-1,w,h}}}
   treeSpots.set(k,a);return a||null}
 // Paint the trees that reach chunk tiles x0..x1 by y0..y1 (crowns overhang: a tree rooted up to two rows below or a column aside counts).
@@ -410,7 +417,7 @@ export function shade(t,tx,ty,px,py){
 // so a world 30x this size costs nothing until the camera reaches it. A chunk is about 1024 art pixels square at any
 // tier (32 tiles at 32 px, 16 at 64), so a tier change keeps the canvases the same size.
 export const CH=Math.max(8,Math.round(1024/TILE));
-export const CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
+export let CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
 const chunks=new Map(),jobs=new Map(); // jobs: chunks half made in idle moments (getChunk)
 // Bumped whenever cached chunks are thrown away, so a renderer holding a copy of them (draw.js's still-camera terrain
 // cache, #716) knows to redraw it.
@@ -424,6 +431,8 @@ export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPi
 // A cut town piece has no hook table of its own (townart.js asks for them by name), nor is the scenery sheet in the tables above, so they count by name: fields, bridges and walls and towers that arrived after the last
 // listed asset used to stay missing until something else repainted.
 const repaint=()=>{chunks.clear();jobs.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;gArt=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))};
+// Another map (#1013): none of what was painted is any use, and the grid is its size. fk and fk2 key a tile's layout by its index, and an index is another tile now.
+onWorld(()=>{CHUNKS_X=Math.ceil(W/CH);CHUNKS_Y=Math.ceil(H/CH);BLEND[ROAD]=sceneryOn?0:1;fk=fk2=-1;repaint()},()=>({chunkGrid:[CHUNKS_X,CHUNKS_Y],roadBlends:BLEND[ROAD]}));
 let cutWait=null; // the cut pieces come in a burst: one repaint for the lot
 onAssets(id=>{if(id!=null&&/^(building|tile):lpc-|^prop:scenery$/.test(id)&&!terrainIds().includes(id)){if(cutWait===null)cutWait=setTimeout(()=>{cutWait=null;repaint()},150);return}
   if(id!=null&&!terrainIds().includes(id))return;repaint()});
@@ -460,16 +469,24 @@ function finishChunk(J){const {art,k,tx0,ty0,cw,ch,cv,c}=J;
 // of the nearest. WARM.SLICE caps a slice, so it fits the gap a frame leaves; a chunk's last step (its scenery, canopy and places) is one
 // short piece of its own. Nothing is scheduled once every chunk is done, or after a repaint until the next frame asks.
 export const WARM={SLICE:7,WAIT:300};
-let warmX=0,warmY=0,warmDue=false;
+let warmX=0,warmY=0,warmDue=false,warmAfter=0;
+// A row of tiles is a slice's smallest step and can take 20 ms: fine on the road, a dropped frame in a fade. The idle painter sits out the next `ms`; draw.js's next ask after that starts it again.
+export const warmRest=ms=>{warmAfter=performance.now()+ms};
 function nextChunk(){let best=-1,bd=Infinity;for(let cy=0;cy<CHUNKS_Y;cy++)for(let cx=0;cx<CHUNKS_X;cx++){const k=cy*CHUNKS_X+cx;if(chunks.has(k))continue;
     const dx=(cx+.5)*CH-warmX,dy=(cy+.5)*CH-warmY,d=dx*dx+dy*dy-(jobs.has(k)?CH*CH:0);if(d<bd){bd=d;best=k}}return best}
-function warmSlice(dl){warmDue=false;const k=nextChunk();if(k<0)return;let J=jobs.get(k);if(!J){J=startChunk(k%CHUNKS_X,Math.floor(k/CHUNKS_X));jobs.set(k,J)}
-  const room=dl&&dl.timeRemaining?Math.min(WARM.SLICE,dl.timeRemaining()):WARM.SLICE;
-  if(J.row>=J.ch){chunks.set(k,finishChunk(J));jobs.delete(k)}else paintRows(J,performance.now()+Math.max(1,room));
+function warmStep(room){const k=nextChunk();if(k<0)return;let J=jobs.get(k);if(!J){J=startChunk(k%CHUNKS_X,Math.floor(k/CHUNKS_X));jobs.set(k,J)}
+  if(J.row>=J.ch){chunks.set(k,finishChunk(J));jobs.delete(k)}else paintRows(J,performance.now()+Math.max(1,room))}
+function warmSlice(dl){warmDue=false;if(performance.now()<warmAfter)return;warmStep(dl&&dl.timeRemaining?Math.min(WARM.SLICE,dl.timeRemaining()):WARM.SLICE);
   if(chunks.size<CHUNKS_X*CHUNKS_Y)askIdle()}
-function askIdle(){if(warmDue)return;warmDue=true;if(typeof requestIdleCallback==='function')requestIdleCallback(warmSlice,{timeout:WARM.WAIT});else setTimeout(warmSlice,16)}
+function askIdle(){if(warmDue||performance.now()<warmAfter)return;warmDue=true;if(typeof requestIdleCallback==='function')requestIdleCallback(warmSlice,{timeout:WARM.WAIT});else setTimeout(warmSlice,16)}
 // tx,ty: the camera's centre in tiles. One comparison a frame once the map is done.
 export function warmChunks(tx,ty){warmX=tx;warmY=ty;if(chunks.size<CHUNKS_X*CHUNKS_Y)askIdle()}
+// The same work without waiting for idle moments, for `ms` of this frame: behind the dark of a crossing there is nothing to keep smooth (render/roadfade.js).
+export function warmNow(ms,tx,ty){warmX=tx;warmY=ty;const end=performance.now()+ms;while(chunks.size<CHUNKS_X*CHUNKS_Y){const left=end-performance.now();if(left<=0)return;warmStep(left)}}
+// A chunk only if it is done (a crossing's first frames never stop to paint one), and whether every chunk over tiles x0..x1, y0..y1 is.
+export const peekChunk=(cx,cy)=>chunks.get(cy*CHUNKS_X+cx)||null;
+export function chunksDone(x0,y0,x1,y1){const i0=Math.max(0,Math.floor(x0/CH)),i1=Math.min(CHUNKS_X-1,Math.floor(x1/CH)),j0=Math.max(0,Math.floor(y0/CH)),j1=Math.min(CHUNKS_Y-1,Math.floor(y1/CH));
+  for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++)if(!chunks.has(j*CHUNKS_X+i))return false;return true}
 
 // Paint every chunk into one W*U by H*U canvas (world units). Compatibility helper for tools and
 // previews; the renderer never calls it.
@@ -486,4 +503,4 @@ function scenePixel(t,tx,ty,ax,ay){const w=peakArt()&&peakPixel(tx,ty,ax,ay)?nul
 
 // Towns and landmarks (walls, gate, buildings, banners, graves, crypt mouths, the lair): render/townart.js draws them in
 // world units onto the chunk context, from their generated assets or procedurally (#177 slice 3).
-function decorate(tctx,x0,y0,x1,y1){drawPlaces(tctx,x0,y0,x1,y1)}
+function decorate(tctx,x0,y0,x1,y1){drawPlaces(tctx,x0,y0,x1,y1);drawQuay(tctx,x0,y0,x1,y1)}

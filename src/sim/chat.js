@@ -13,6 +13,7 @@ import {S,clockStr,dayNo} from './state.js';
 import {nearHeroes} from './spatial.js';
 import {brainLine} from './brain.js';
 import {inSlots,slotted} from './company.js'; // the slotted company (#588)
+import {homeOf} from '../data/races.js';
 
 export const COOL=20,URGENT=3,HEAR=7,CAP=20,BUBBLE=3,BANTER=60;
 const URGENT_TRIGGERS={mourn:1,epic:1,duel:1,kill:1};
@@ -29,7 +30,7 @@ const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80
 keep('chat',()=>seed,v=>{seed=v}); // saved with the world
 
 // Fill placeholders, then fix the article before a vowel ("a Ash Drake" -> "an Ash Drake").
-const fill=(s,a,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?a.name:ctx[k]!=null?String(ctx[k]):k).replace(/\b([Aa]) (?=[AEIOUaeiou])/g,'$1n ');
+const fill=(s,a,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?a.name:k==='home'&&ctx[k]==null?homeOf(a).name:ctx[k]!=null?String(ctx[k]):k).replace(/\b([Aa]) (?=[AEIOUaeiou])/g,'$1n ');
 
 export function say(a,trigger,ctx={}){
   if(!a||a.state==='dead'||a.state==='ghost')return;

@@ -57,10 +57,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import {warmUp, claudeWarmAdapter} from './warmup.mjs'; // the start gate (issue #222)
 import {anthropicAdapter} from './providers/anthropic.mjs';
 import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
-import {withSituationOrders, ORDERS_FULL} from './orders.mjs';
+import {withSituationOrders, ORDERS_FULL, ordersFor} from './orders.mjs';
 export {withSituationOrders};
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
+import {noteTurn, recapNote, recapOn} from './session-recap.mjs'; // the last hours of talk across a roll (issue #808)
+import {lazyOn, toolOptions, withLazyEnv, markLazy, lazyLine, searchCount, lazyRec} from './lazy-tools.mjs'; // AGENT_LAZY_TOOLS (issue #808)
+import {PLAYER_TOOLS, toolsFor} from '../src/data/player-tools.js';
 import {paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, memoryNote, earshotNote, claudeBrief, refreshPersona, tableHooks, takeClaudeSlot, localModelNote, preferLoaded, watchWorld, newWorldLine, NEW_WORLD_EXIT} from './pacing.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -76,7 +79,7 @@ const flag = k => argv.includes('--' + k);
 export function systemPrompt(st) {
   const traits = (st.traits || []).join('; ');
   return [
-    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls} of the ${st.faction}, from ${st.home}. You live in the land of Eldmoor (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
+    `You are ${st.name}, a level ${st.level} ${st.people} ${st.cls}${st.sides === 'lore' ? '' : ' of the ' + st.faction}, from ${st.home}. You live in the land of ${st.world || 'Eldmoor'} (the whole world, not one place to walk to), a small 8-bit fantasy world that keeps running whether you act or not: other heroes quest, trade, feud and die around you.`,
     st.origin ? `Your past: ${st.origin}` : '',
     st.oath ? `Your oath: ${String(st.oath).replace(/[.!?]+$/, '')}.` : '',
     st.thread ? `A thread in your past, not an oath: ${st.thread} You have sworn nothing; what you swear, if anything, is yours to choose.` : '',
@@ -89,7 +92,7 @@ export function systemPrompt(st) {
     '- Trust the fresh header: each turn starts with one from the game (state, HP, place, foe, roads, news), so do not call status or look again for what it already says.',
     '- You act only through the tools. You know only what they tell you: what you can see nearby, what you hear, and the news.',
     '- Everyone you deal with is in the game, and so are your words: you speak with say (heard within about 7 tiles) and party_say in a party (a shout heard within about 12 tiles), and hear others, townsfolk and the narrator in events and chat_read. Nobody reaches you any other way. Distance cuts you off: beyond shouting range your companions neither hear you nor your proposals and votes, so before you part agree where and when to meet again and remember it; only a paid courier from a town gate (send_courier) carries word farther, slowly.',
-    '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) to let it play out. Never spam actions; the world needs time to answer. When wait returns, act on its events if they need you, otherwise end your turn; its events are your news, so do not look again unless they say the world changed. Trust the fresh header rather than reading status again.',
+    '- Each turn: orient (status or look), decide, give ONE command (move_to, hunt, fight, rest, take_adventure, ...), then call wait (30-120 game minutes) once to let it play out (a second wait with nothing new only spends calls; a turn has about ten). Never spam actions; the world needs time to answer. When wait returns, act on its events if they need you, otherwise end your turn; its events are your news, so do not look again unless they say the world changed. Trust the fresh header rather than reading status again.',
     '- Grow stronger: hunt what you judge you can beat, sell loot and buy gear at home, take adventures from the gate (list_jobs, take_adventure) once level 4+ (the main road), and if you like take and hand in the gate captain’s bounties (turn_in), answer scene choices with choose. You may hold several quests: quests lists them, take_quest keeps a job for later, focus_quest picks the one you pursue now (the others wait), abandon_quest gives one up; an oath is what you swear yourself (swear_oath) and is yours until kept.',
     '- Keep a journal: after anything notable (a level, a near death, an adventure, a new friend or enemy), write 1-3 sentences with journal_write in your own voice.',
     MEMORY_ORDERS,
@@ -99,7 +102,7 @@ export function systemPrompt(st) {
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
-    ORDERS_FULL,
+    ordersFor(ORDERS_FULL, st.sides, st.land),
   ].filter(s => s !== null).join('\n');
 }
 
@@ -201,7 +204,7 @@ async function runLocal({base, heroId, st, sess, rs, maxTurns, toolTurns, ollama
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`); else if (k === 'mode') console.log(`  [${rs.model} has no tool support in Ollama: switching to JSON actions]`)};
     try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a reflection moment (issue #179)
       if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); // a Fellowship member's own scene (issue #163)
-      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: ol.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + briefText(b0), model: rs.model, toolTurns,
+      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: ol.chat, tools: toolsFor(st.sides), call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + briefText(b0), model: rs.model, toolTurns,
       on})), {pacer, base, heroId, sess, ask: chatAsk(ol.chat, rs.model), on}); delete sess.rolled}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
@@ -232,7 +235,7 @@ async function runOpenAI({base, heroId, st, sess, rs, maxTurns, toolTurns, relea
     const on = (k, a, b) => {if (k === 'text') {console.log(`  ${st.name}: ${a}`); narrate(base, heroId, a)} else if (k === 'tool') console.log(`  > ${a}(${b && Object.keys(b).length ? short(b, 120) : ''})`); else if (k === 'result') console.log(`    < ${short(a, 220)}`)};
     try {r = await reflectLocal({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a reflection moment (issue #179)
       if (!r) r = await forcedScene({b0, w, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); // a Fellowship member's own scene (issue #163)
-      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: adapter.chat, call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + briefText(b0), model: rs.model, toolTurns, on})), {pacer, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); delete sess.rolled}
+      if (r && r.mode !== 'reflect' && !r.tools || !r) r = await afterJump(sumTurns(r, await localTurn({chat: adapter.chat, tools: toolsFor(st.sides), call: (tool, args) => play(base, heroId, tool, args), sess, prompt: turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + briefText(b0), model: rs.model, toolTurns, on})), {pacer, base, heroId, sess, ask: chatAsk(adapter.chat, rs.model, {strict: true}), strict: true, on}); delete sess.rolled}
     catch (e) {err = String(e && e.message || e).split(/\r?\n/)[0].slice(0, 300); console.error(`[agent] turn failed: ${err}`)}
     pacer.turnDone(); sess.turns++;
     reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model: rs.model, turn: sess.turns, wake: w, brief: b0, ...localRec(r), ...(err ? {error: err} : {})});
@@ -282,13 +285,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (note) console.log('[agent] ' + note);
   if (inheritRunner(sess, pick.hero && pick.hero.succeeds)) console.log(`[agent] plays with the runner settings of the hero whose place it took (#${pick.hero.succeeds}): ${sess.runner.provider} ${sess.runner.model || ''}`); // #452
   sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
-  sess.system = withSituationOrders(sess.system, false); // situations (#531); the local variant is set once the runner's provider is known
+  sess.system = withSituationOrders(sess.system, false, st.sides, st.land); // situations (#531); the local variant is set once the runner's provider is known
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
   if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama, openai, huggingface or google.`); await release(); process.exit(1)}
-  sess.system = withSituationOrders(sess.system, rs.provider === 'ollama'); // the short variant for a local model (#531)
+  sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides, st.land); // the short variant for a local model (#531)
   if (rs.provider === 'ollama') {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
@@ -312,7 +315,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   console.log(`[agent] ${st.name} #${heroId}, level ${st.level} ${st.cls} of the ${st.faction} | model ${model} (effort ${effort}) | ${sess.sessionId ? 'resuming session ' + sess.sessionId : 'new session'} | ${capText(maxTurns)}, budget ${money(budget)} | ${paceText(pace)}`);
 
   const rollAt = rollPoint('hero', model, env); // the roll and the compaction net (#787)
-  const childEnv = withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'}, rollAt, env);
+  const lazy = lazyOn(env), childEnv = withLazyEnv(withCompactWindow({...process.env, ANTHROPIC_API_KEY: env.ANTHROPIC_API_KEY, CLAUDE_AGENT_SDK_CLIENT_APP: 'eldmoor-agent-player/1.0'}, rollAt, env), lazy);
+  if (lazy) console.log('[agent] ' + lazyLine(PLAYER_TOOLS.length));
   delete childEnv.CLAUDECODE; delete childEnv.CLAUDE_CODE_ENTRYPOINT;
   mkdirSync(join(ROOT, 'logs'), {recursive: true}); // the agent's working directory (it has no file tools)
   await warmUp({base, seat: {hero: heroId}, runner, model, adapter: await claudeWarmAdapter(env.ANTHROPIC_API_KEY), log: s => console.log('[agent] ' + s)}); // ready = answered (#222)
@@ -326,9 +330,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (await refreshPersona(pacer, sess, b0)) {console.log('  [persona: standing orders refreshed]'); saveSess()} // who the hero is now, in its standing orders (#409)
     const refl = reflectNow(b0, w) ? b0.reflect : null; // a reflection moment (issue #179): the same prompt, with tool use
     // between turns only, and never with a scene open or due, on a reflection, or carrying on after a cut (#787)
-    const rd = rollDue(sess, rollAt, {busy: !!(refl || again || (b0 && (b0.scene || b0.table)))});
+    const rd = rollDue(sess, rollAt, {lazy, busy: !!(refl || again || (b0 && (b0.scene || b0.table)))});
     if (rd) {rollSession(sess, setAside); saveSess(); console.log('  ' + rd.line)}
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
+    const recap = !refl && sess.rolled && recapOn(env) ? recapNote(sess, b0) : ''; if (recap) console.log(`  [session recap: ${recap.length} chars]`); // the first prompt of a fresh session (#808)
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + turnPrompt(sess.turns, w) + resumeNote(turn === 1 || sess.rolled, sess.turns) + recap + claudeBrief(b0); // the header carries who hears you now (#395, earshotNote via talkText)
     if (refl) console.log(`  [reflection: ${refl.why}]`);
     const t0 = Date.now(); let tools = 0, result = null, failed = false;
     const freeSlot = await takeClaudeSlot(base, s => console.log(s), {stopped: () => stopReq, member: st.name, tools: () => tools, onLost: () => {if (turnAbort) turnAbort.abort()}, // under the app supervisor: one of the Claude slots for this turn
@@ -342,7 +347,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     if (!refl && b0 && sceneDue(b0.scene, sess)) {let first = null;
       try {first = await forcedScene({b0, w, base, heroId, sess, ask: adapterAsk(anthropicAdapter({client: new Anthropic({apiKey: env.ANTHROPIC_API_KEY})}), model, 'low'), keep: false, on: sceneOn})}
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}
-      if (first && first.tools) {freeSlot(); pacer.turnDone(); sess.turns++; spent += first.cost; sess.costUsd += first.cost;
+      if (first && first.tools) {freeSlot(); pacer.turnDone(); sess.turns++; spent += first.cost; sess.costUsd += first.cost; noteTurn(sess, b0, first.narration);
         console.log(`[turn ${sess.turns}] scene answer first | ${model} | tokens in ${first.in} / out ${first.out} | ${money(first.cost)} | run ${money(spent)}`);
         reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: first.calls, narration: first.narration || '', seconds: +(first.ms / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['forced-scene', 'scene-first']});
         saveSess(); fails.ok(true); continue}}
@@ -350,19 +355,20 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // its own scene due for SCENE_GRAB_MS with no scene_act: the model call in flight is cut (the session resumes), the scene is answered, the next turn carries on
     const grab = sceneGrab({due: async () => {const h = await (await fetch(base + '/play/health', {signal: AbortSignal.timeout(3000)})).json(); const me = (h.heroes || []).find(x => x.id === heroId); return !!(me && me.due)}, abort: () => turnAbort.abort(),
       onGrab: () => console.log(`  [scene: due for ${SCENE_GRAB_MS / 1000} s mid-turn; ending the model call to answer it]`)});
+    const opened = !sess.sessionId, to = toolOptions(lazy, `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}${st.sides === 'lore' ? '&sides=lore' : ''}`);
     const q = query({prompt, options: {
       abortController: turnAbort,
       model, effort, systemPrompt: sess.system, resume: sess.sessionId || undefined,
       // the hero rides on every MCP request (header, and the query for clients that drop headers)
-      mcpServers: {eldmoor: {type: 'http', url: `${base}/mcp?hero=${heroId}&runner=${encodeURIComponent(runner)}`, headers: {'X-Eldmoor-Hero': String(heroId), 'X-Eldmoor-Runner': runner}, timeout: 90000}},
-      tools: [], allowedTools: ['mcp__eldmoor'], permissionMode: 'dontAsk', settingSources: [],
+      mcpServers: {eldmoor: {type: 'http', url: to.url, headers: {'X-Eldmoor-Hero': String(heroId), 'X-Eldmoor-Runner': runner}, timeout: 90000}},
+      tools: to.tools, allowedTools: to.allowedTools, permissionMode: 'dontAsk', settingSources: [],
       settings: {autoCompactEnabled: true}, maxTurns: refl ? Math.min(4, toolTurns) : toolTurns, maxBudgetUsd: Math.max(.01, budget - spent),
       cwd: join(ROOT, 'logs'), env: childEnv, hooks: tableHooks({idle: on => freeSlot.idle(on), onOver: () => {rested = true; console.log('  [table: nothing to wait for here; the turn ends and pacing wakes it]')}}), // #868
     }});
     const gs = grabSpend(); // #747: what an aborted query reports before the cut
     try {for await (const m of q) {
       if (m.type === 'assistant') gs.add(m);
-      if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; if (!refl) delete sess.rolled; saveSess(); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => console.log('  ' + s))}}
+      if (m.type === 'system' && m.subtype === 'init') {sess.sessionId = m.session_id; if (opened) markLazy(sess, lazy); if (!refl) delete sess.rolled; saveSess(); if (!netSaid) {netSaid = true; reportThreshold(q, Number(childEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW), s => console.log('  ' + s))}}
       else if (m.type === 'system' && m.subtype === 'compact_boundary') {sess.compacts = (sess.compacts || 0) + 1; console.log(`  [compacted: ${m.compact_metadata.pre_tokens} -> ${m.compact_metadata.post_tokens ?? '?'} tokens]`)}
       else if (m.type === 'assistant' && !m.parent_tool_use_id) {
         sess.ctx = ctxOf(m.message.usage) ?? sess.ctx; // the last call's prompt: what the price line is measured on (#787)
@@ -390,7 +396,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       const ud = usageDelta(sess, result); tin = ud.tokensIn; tout = ud.tokensOut; cread = ud.cacheRead; cwrite = ud.cacheWrite; // before the cost baseline moves (#282)
       const tot = result.total_cost_usd || 0, cost = tot >= sess.lastTotal ? tot - sess.lastTotal : tot; sess.lastTotal = tot;
       spent += cost; sess.costUsd += cost; turnCost = cost;
-      console.log(`[turn ${sess.turns}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(sess.ctx)} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
+      console.log(`[turn ${sess.turns}] ${tools} tool calls, ${((Date.now() - t0) / 1000).toFixed(1)} s, ${result.num_turns} model calls | session tokens this turn: in ${tin ?? '?'} / cache read ${cread ?? '?'} / cache write ${cwrite ?? '?'} / out ${tout ?? '?'} | ${ctxText(sess.ctx)}${lazy ? ` | tool search ${searchCount(tc.tools)}` : ''} | turn ${money(cost)} | run ${money(spent)} | session ${money(sess.costUsd)}${result.subtype !== 'success' ? ' | ' + result.subtype : ''}`);
     }
     // Claude keeps tool use at the table; a scene turn that ended without scene_act gets one structured answer (issue #163)
     let forced = null;
@@ -401,9 +407,10 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
         if (forced) {spent += forced.cost; sess.costUsd += forced.cost; turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; for (const c of forced.calls) tc.tools.push(c); if (forced.sceneS) sceneS.push(...forced.sceneS);
           console.log(`[scene answer] ${model} | ${forced.tools ? 'scene_act sent' : forced.misses + ' answers missed'} | tokens in ${forced.in} / out ${forced.out} | ${money(forced.cost)} | run ${money(spent)}`)}}
       catch (e) {console.error('[agent] scene answer failed: ' + String(e && e.message || e).split(/\r?\n/)[0].slice(0, 200))}}
+    noteTurn(sess, b0, forced && forced.narration || tc.narration);
     if (refl) {const wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; await closeReflection(base, heroId, RUNNER, refl.id, wrote); console.log(`  [reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
-    reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}),
-      flags: [...(rd ? ['session-rolled'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+    reportTurn(base, {hero: heroId, runner: RUNNER, provider: rs.provider, model, turn: sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(sess.ctx != null ? {ctx: sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}), ...lazyRec(lazy, tc.tools),
+      flags: [...(lazy ? ['lazy-tools'] : []), ...(rd ? ['session-rolled'] : []), ...(recap ? ['session-recap'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(forced ? ['forced-scene'] : []), ...(refl ? ['reflection'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     saveSess(); if (grab.grabbed() && !failed && !stopReq) resume = true;
     if (fails.ok(!failed && (tools > 0 || !!refl)) && !ended) ended = fails.why();
   }

@@ -11,6 +11,10 @@
 //   detail for a chamber or a foe (roomDetail: name, type, state, foes, what happened there), the History panel
 //   (historyOf: who entered, which chambers fell to them, who fell where; kept for the session on this side, as the sim
 //   keeps only totals), and the minimap's mark (dungeonSite).
+// What a chamber held and what was taken (#976): the detail shows each foe's strike DC as the crawl rolls it and one line on what
+//   a clear pays; a run's history says what it took, from the record the sim keeps of a clear (paidOf: the dungeon's row, a site's
+//   s.paid; a save from before it reads "not recorded"); st.looted marks the chambers once a run has cleared them (a withdrawal
+//   takes nothing, so it marks none, and a run in progress shows no mark). The record survives a reload, the session runs do not.
 // Read-only on the sim: reads each dungeon's group and its crawl (sim/crawl.js), S.table and slotted().crawl.
 // Raid slice (#85): a lair landmark (kind 'lair') opens the raid arena in the same frame (render/raidview.js): the boss with
 //   its HP, phase and breath, the raiders where they stand, adds, who broke off or fell, a raider list on the bar, hover and
@@ -22,11 +26,13 @@
 //   gathering at its mouth, and the room kinds in the detail. Every dungeon is tracked by its key (keyOf: the Crypt's name,
 //   'site:<id>' for a site); a site is looked up fresh from S.sites each frame, so a restored save shows the live one.
 import {CRYPT,CRYPTS,LANDMARKS} from '../world/map.js';
-import {cryptNamed,cryptOfCtx} from '../sim/crypts.js';
+import {cryptNamed,cryptOfCtx,cryptRow} from '../sim/crypts.js';
 import {buildInterior} from '../world/interior.js';
 import {S} from '../sim/state.js';
 import {companyById,slotted,members} from '../sim/company.js';
-import {siteById} from '../sim/crawl.js';
+import {siteById,CRAWL} from '../sim/crawl.js';
+import {CLEAR_PAY} from '../sim/dungeon.js';
+import {sitePurse} from '../sim/sites.js';
 import {siteInterior,roomKind} from './siteview.js';
 import {drawInterior} from './interior.js';
 import {foeKind,foeAt as foeAtRow} from './dgfoes.js';
@@ -35,6 +41,7 @@ import {sceneFor} from '../sim/table.js';
 import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {classColor} from '../core/colors.js';
 import {isArena,arenaOf,raidState,raidDetail,raidRows,raidHistory,drawArena,arenaHit} from './raidview.js';
+import {onWorld} from '../sim/kept.js';
 
 let root=null,cv=null,ctx=null,nameEl=null,statEl=null,listEl=null,tipEl=null,pinEl=null,histEl=null,histBtn=null,site=null,open=false,inited=false,sig='';
 let fit=null,hov={room:-1,foe:null,key:null,x:0,y:0},pin=-1,histOpen=false,tipSig='',topPx=-1,barPx=-1; // fit: where the last frame put the interior (for pointer maths)
@@ -59,16 +66,27 @@ const lastRun={},watches=new Map(),curs=new Map(); // per dungeon key: the crawl
 const coOf=cr=>cr&&cr.co!=null?companyById(cr.co):null;
 const crewOf=(g,cr)=>{const C=coOf(cr);return C&&C.ids?g.mem.filter(a=>C.ids.includes(a.id)):g.mem};
 const tallyNow=co=>{const H=co||slotted(),C=H&&H.crawl;return KINDS.map(k=>C?C[k]||0:0)};
-// Every crawl this page has seen, newest last (session memory): {site (the dungeon's key), who, day, party:[{name,cls}],
-// rooms:{i:{rounds, result}}, falls:[{name,cls,room}], reached, end}. Filled from the live crawl each frame, so a page opened
-// mid-crawl has the rest.
+// The sim's record of a dungeon's last clear (#976), or null: none yet, or a save from before the record.
+const paidOf=s=>s?(isSite(s)?s.paid:cryptRow(s).paid)||null:null;
+const dunByKey=key=>{const m=/^site:(\d+)$/.exec(key);return m?siteById(+m[1]):cryptNamed(key)};
+// How many clears the world remembers, whether or not it recorded what they paid.
+function clearsOf(s){if(isSite(s))return s.state==='cleared'?1:s.kills||0;const n=cryptRow(s).clears,C0=slotted()&&slotted().crawl,C=C0&&C0.by?C0.by[s.name]:C0;return Math.max(n,C&&cryptNamed(s.name)?C.clears||0:0)}
+// Did the last run on the record end in a clear? (The session's last run stands in only when the record has nothing.)
+function endedClear(s){const L=lastRun[keyOf(s)];if(isSite(s))return s.state==='cleared'||!!(L&&L.end==='clear');
+  const r=cryptRow(s);return r.paid?r.paid.run===r.runs:!!(L&&L.end==='clear')}
+// "182 gold, Grave Dust x15, Marrowmend Tonic x5, Cryptbound Greaves (Fena)"
+const paidWords=P=>[...(P.gold?[P.gold+' gold']:[]),...Object.entries(P.goods||{}).map(([k,n])=>k+' x'+n),...(P.items||[]).map(i=>i.name+(i.who?' ('+i.who+')':''))].join(', ')||'nothing';
+// Every crawl this page has seen, newest last (session memory): {site (the dungeon's key), who, day, t0, t1, lvl, party:[{name,cls}],
+// rooms:{i:{rounds, result}}, falls:[{name,cls,room}], reached, end, took (a clear's record, null when there is none)}. Filled from
+// the live crawl each frame, so a page opened mid-crawl has the rest.
 const runs=[];
 const noteRun=(cur,g,cr)=>{
   if(cr.i>cur.reached){for(let j=cur.reached;j<cr.i;j++){const q=cur.rooms[j]||(cur.rooms[j]={rounds:0,result:''});q.result='cleared'}cur.reached=cr.i}
   const rec=cur.rooms[cr.i]||(cur.rooms[cr.i]={rounds:0,result:''});if(cr.foes&&cr.rd+1>rec.rounds)rec.rounds=cr.rd+1;
   if(cr.end==='clear')rec.result='cleared';else if(cr.end==='retreat')rec.result=cr.driven?'driven':'fell back';else if(cr.end==='wiped')rec.result='lost';
   for(const a of g.mem)if(a.state==='dead'&&!cur.fell[a.id]){cur.fell[a.id]=1;cur.falls.push({name:a.name,cls:a.cls,room:cr.i});if(!rec.result)rec.result=''}};
-function closeRun(key,n,end){const cur=curs.get(key);if(!cur)return;cur.end=end||'ended';
+function closeRun(key,n,end){const cur=curs.get(key);if(!cur)return;cur.end=end||'ended';cur.t1=S.gameMin;
+  if(end==='clear'){const P=paidOf(dunByKey(key));cur.took=P&&P.at>=cur.t0?P:null}
   if(end==='clear')for(let j=0;j<n;j++)(cur.rooms[j]||(cur.rooms[j]={rounds:0,result:''})).result='cleared';
   else for(let j=0;j<cur.reached;j++){const q=cur.rooms[j]||(cur.rooms[j]={rounds:0,result:''});if(!q.result)q.result='cleared'}
   runs.push(cur);if(runs.length>24)runs.shift();curs.delete(key)}
@@ -76,7 +94,7 @@ function closeRun(key,n,end){const cur=curs.get(key);if(!cur)return;cur.end=end|
 function track1(key,g,n){const cr=g&&g.crawl;let w=watches.get(key);
   if(cr){if(!w){w={name:key,i:0,end:null,driven:false,co:null,tally:tallyNow(coOf(cr)),who:who(g),day:Math.floor(S.gameMin/1440)+1};watches.set(key,w)}
     w.i=cr.i;w.end=cr.end;w.driven=!!cr.driven;w.co=coOf(cr);w.n=n;
-    let cur=curs.get(key);if(!cur){cur={site:key,who:w.who,day:w.day,party:crewOf(g,cr).map(a=>({name:a.name,cls:a.cls})),rooms:{},falls:[],fell:{},reached:0,end:null};curs.set(key,cur)}
+    let cur=curs.get(key);if(!cur){cur={site:key,who:w.who,day:w.day,t0:Math.floor(S.gameMin),lvl:cr.lvl,party:crewOf(g,cr).map(a=>({name:a.name,cls:a.cls})),rooms:{},falls:[],fell:{},reached:0,end:null};curs.set(key,cur)}
     noteRun(cur,g,cr);return}
   if(!w)return;const now=tallyNow(w.co),k=KINDS.find((_,j)=>now[j]>w.tally[j]);
   const end=k?END[k]:w.end==='clear'?'clear':w.end==='wiped'?'wiped':w.end==='retreat'?(w.driven?'driven':'withdrawn'):null;
@@ -125,7 +143,7 @@ export function stateOf(s0=site||CRYPT){const s=fresh(s0),rooms=roomsOf(s),n=roo
       else if(cr.gap>0&&!cr.foes)st.status='The way on is open: '+who(g)+' head for '+room.name+'.';
       else{const left=cr.foes?cr.foes.filter(f=>f.hp>0).length:0,R=room.rounds||2;
         st.round='ROUND '+Math.min(R,cr.rd+1)+'/'+R;st.status='Room '+(cr.i+1)+' of '+n+': '+room.name+' · round '+Math.min(R,cr.rd+1)+'/'+R+(cr.foes?' · '+left+(left===1?' foe stands':' foes stand'):'')}}}
-  else{const L=lastRun[keyOf(s)],C0=slotted()&&slotted().crawl,C=C0&&C0.by?C0.by[s.name]:C0;
+  else{const P=!isSite(s)&&endedClear(s)&&paidOf(s),L=P?{end:'clear',i:n,who:P.by||'A group',day:dayOf(P.at)}:lastRun[keyOf(s)],C0=slotted()&&slotted().crawl,C=C0&&C0.by?C0.by[s.name]:C0; // the record also knows a background group's clear, which this page never tracks
     if(isSite(s)&&(s.state==='cleared'||s.state==='collapsed'||!L))siteQuiet(s,st,L);
     else if(L){const at=rooms[Math.min(L.i,n-1)];for(let i=0;i<Math.min(L.i,n);i++)st.cleared[i]=true;
       st.status='Quiet. Last run (day '+L.day+'): '+L.who+(L.end==='clear'?' cleared every chamber.':L.end==='wiped'?' were lost in '+(at?at.name:'the dark')+'.':(L.end==='driven'?' were driven back from ':' withdrew from ')+(at?at.name:'the dark')+'.');st.last=L}
@@ -134,38 +152,53 @@ export function stateOf(s0=site||CRYPT){const s=fresh(s0),rooms=roomsOf(s),n=roo
   if(cr&&cr.foes&&!cr.end&&g.tSite&&cr.foes.length){st.foes=cr.foes;st.foeRoom=cr.i;st.foeText=foeSummary(cr.foes)}
   if(cr&&g.tSite){st.crawl=cr;st.dkey=keyOf(s);st.roomSpec=rooms[cr.i]||null;st.scene=crawlScene(s,cr)} // for render/crawlview.js (#742)
   if(isSite(s)&&!cr&&s.grow>0&&s.state!=='cleared'&&s.state!=='collapsed')st.status+=' It has grown more dangerous for being left (+'+s.grow+(s.grow===1?' level).':' levels).');
+  if((!g||g.phase==='gather')&&endedClear(s))st.looted=rooms.map(()=>true); // after the clear; a group inside (the next run) clears the marks
   const run=cur||runsOf(s).pop();
   if(run&&run.falls.length){const per={};st.falls=run.falls.map(f=>({room:f.room,name:f.name,k:per[f.room]=(per[f.room]||-1)+1}))}
-  st.rooms=rooms.map((r,i)=>({name:r.name,boss:!!r.boss,state:st.cleared[i]?'cleared':i===st.cur?'current':st.fog>=0&&i>st.fog?'unexplored':st.last&&i===st.last.i&&st.last.end!=='clear'?'lost':'room'}));
+  st.rooms=rooms.map((r,i)=>({name:r.name,boss:!!r.boss,state:st.cleared[i]?'cleared':i===st.cur?'current':st.fog>=0&&i>st.fog?'unexplored':st.last&&i===st.last.i&&st.last.end!=='clear'?'lost':'room',looted:!!(st.looted&&st.looted[i])}));
   return st}
 
 // ---- what the watcher may read: a chamber's detail and the history (DOM-free) ----
 const STATE_WORD={cleared:'Cleared',current:'Fight in progress',unexplored:'Not reached yet',lost:'Turned back here',room:'Quiet'};
 const RESULT_WORD={cleared:'cleared',driven:'the party was driven back',lost:'the party was lost','fell back':'the party fell back'};
-const foeLine=(f,live)=>{const k=foeKind(f.type),nm=f.name||k.name;
-  return nm+' · '+k.role+(k.family?', '+k.family:'')+(live&&f.lvl?' · L'+f.lvl:'')+(live?' · HP '+Math.max(0,f.hp)+'/'+(f.hits||f.hp):'')};
-// roomDetail(i): {i, title, kind, state, stateText, frame, foes:[text], notes:[text]} for chamber i of the site
+// A strike's DC as the crawl rolls it (sim/crawl.js): CRAWL.DC + half the foe's level, which a Crypt chamber only sets once a party is down.
+const dcOf=lvl=>lvl>0?'DC '+(CRAWL.DC+Math.floor(lvl/2)):'DC '+CRAWL.DC+' + level/2';
+const foeLine=(f,live,lvl)=>{const k=foeKind(f.type),nm=f.name||k.name;
+  return nm+' · '+k.role+(k.family?', '+k.family:'')+(live&&f.lvl?' · L'+f.lvl:'')+(live?' · HP '+Math.max(0,f.hp)+'/'+(f.hits||f.hp):'')+' · '+dcOf(live?f.lvl:lvl)};
+// The foes' level in a chamber nobody is fighting in: a site's rooms name it, a Crypt's follows the party (the live one, else the last seen).
+function roomLvl(s,r){if(r.alvl!=null)return Math.max(1,r.alvl+(s.grow||0));const g=groupOf(s),cr=g&&g.crawl,base=cr&&cr.lvl||(runsOf(s).filter(q=>q.lvl).pop()||{}).lvl;return base?Math.max(1,base+(r.lvl||0)):0}
+// One line for the dungeon: its last clear, or what a clear pays until there has been one.
+function payLine(s){const P=paidOf(s);if(P)return 'Last clear, day '+dayOf(P.at)+(P.by?' ('+P.by+')':'')+': '+paidWords(P);if(clearsOf(s))return 'Last clear: not recorded';
+  if(isSite(s)){const L=s.loot||{},G=[...new Set(L.goods||[])];return 'A clear pays '+(L.gold!=null?Math.round(sitePurse(s))+' gold to share':'its hoard')+(G.length?', '+G.join(', '):'')+', a piece of gear'+(s.epic?', '+s.epic:'')}
+  const K=CLEAR_PAY;return 'A clear pays each member '+K.gold+'-'+(K.gold+K.up)+' gold, '+K.good+' x'+K.goods+', '+K.use+' x'+K.uses+'; 1 in '+Math.round(1/K.epic)+' an epic'}
+// roomDetail(i): {i, title, kind, state, stateText, frame, foes:[text], foesHead, pay, notes:[text]} for chamber i of the site
 const KIND_WORD={guard:'Guarded chamber',trap:'Trap chamber',puzzle:'Puzzle chamber',shrine:'Shrine',treasure:'Treasure chamber',boss:'Boss chamber'};
 export function roomDetail(i,s0=site||CRYPT,st=stateOf(s0)){const s=fresh(s0),r=roomsOf(s)[i];if(!r)return null;
   const rs=st.rooms[i],fog=rs.state==='unexplored'&&!r.boss,sk=isSite(s);
   const kind=sk?KIND_WORD[roomKind(s,i)]+(r.alvl!=null?' · foes L'+(r.alvl+(s.grow||0)):''):r.boss?'Boss chamber':'Chamber';
-  const d={i,title:fog?'Unexplored chamber':r.name,kind,state:rs.state,stateText:STATE_WORD[rs.state]||'',frame:fog?'':r.frame||'',foes:[],notes:[]};
+  const d={i,title:fog?'Unexplored chamber':r.name,kind,state:rs.state,stateText:rs.looted?(rs.state==='cleared'?'Cleared · looted':'Looted'):STATE_WORD[rs.state]||'',frame:fog?'':r.frame||'',foes:[],foesHead:'Foes · DC to strike',pay:payLine(s),notes:[]};
   if(rs.state==='current'&&st.round)d.stateText+=' · '+st.round.toLowerCase();
   if(rs.state==='current'&&!st.foes)d.stateText='The party is heading here';
   if(st.foeRoom===i&&st.foes){for(const f of st.foes)if(f.hp>0)d.foes.push(foeLine(f,true));const down=st.foes.filter(f=>f.hp<=0).length;if(down)d.foes.push(down+(down===1?' foe':' foes')+' already down')}
-  else if(!fog)for(const f of r.foes||[])d.foes.push((f.n>1?f.n+'x ':'')+foeLine(f,false));
+  else if(!fog){const lv=roomLvl(s,r);for(const f of r.foes||[])d.foes.push((f.n>1?f.n+'x ':'')+foeLine(f,false,lv))}
   const cur=curOf(s),list=runsOf(s).concat(cur?[cur]:[]).reverse();
   for(const run of list){const rec=run.rooms[i],falls=run.falls.filter(f=>f.room===i);if(!rec&&!falls.length)continue;
     if(rec&&(rec.result||rec.rounds))d.notes.push('Day '+run.day+', '+run.who+': '+(RESULT_WORD[rec.result]||(run===cur?'fight under way':'fought here'))+(rec.rounds?' ('+rec.rounds+(rec.rounds===1?' round)':' rounds)'):''));
     for(const f of falls)d.notes.push(f.name+' fell here.');if(d.notes.length>=5)break}
   return d}
-// historyOf(s): the crawls seen this session, newest first: {title, outcome, lines:[text]}
+// What a run took, as a History line: nothing for a run still going (it has taken nothing yet, and may yet leave with nothing).
+const tookLine=run=>!run.end?[]:[run.end==='clear'||run.end==='ended'?'Took: '+(run.took?paidWords(run.took):'not recorded'):'Nothing taken'];
+// historyOf(s): the crawls seen this session, and the record's last clear when the page did not see it (a background group's, or
+// one from before a reload), newest first: {title, outcome, lines:[text]}
 export function historyOf(s0=site||CRYPT){const s=fresh(s0),rooms=roomsOf(s),nm=i=>(rooms[i]||{}).name||'the dark',cur=curOf(s);
-  return runsOf(s).concat(cur?[cur]:[]).reverse().map(run=>{
+  const seen=runsOf(s).concat(cur?[cur]:[]),P=paidOf(s),H=seen.map(run=>{
     const n=Object.keys(run.rooms).filter(j=>run.rooms[j].result==='cleared').map(Number).sort((a,b)=>a-b);
     const out=!run.end?'In progress':run.end==='clear'?'Cleared every chamber':run.end==='wiped'?'Lost in '+nm(run.reached):run.end==='driven'?'Driven back from '+nm(run.reached):run.end==='withdrawn'?'Withdrew from '+nm(run.reached):'Ended';
-    return {title:'Day '+run.day+' · '+run.who,outcome:out,lines:['Entered: '+(run.party.map(p=>p.name).join(', ')||'-'),'Chambers cleared: '+(n.length?n.map(nm).join(', '):'none'),
-      'Fell: '+(run.falls.length?run.falls.map(f=>f.name+' in '+nm(f.room)).join('; '):'no one')]}})}
+    return {at:run.end?run.t1:Infinity,title:'Day '+run.day+' · '+run.who,outcome:out,lines:['Entered: '+(run.party.map(p=>p.name).join(', ')||'-'),'Chambers cleared: '+(n.length?n.map(nm).join(', '):'none'),
+      'Fell: '+(run.falls.length?run.falls.map(f=>f.name+' in '+nm(f.room)).join('; '):'no one'),...tookLine(run)]}});
+  if(P&&!seen.some(r=>r.took===P))H.push({at:P.at,title:'Day '+dayOf(P.at)+' · '+(P.by||'A group'),outcome:'Cleared every chamber',lines:['Took: '+paidWords(P)]});
+  else if(!P){const old=clearsOf(s)-seen.filter(r=>r.end==='clear').length;if(old>0)H.push({at:-1,title:'Before this record',outcome:'Cleared '+old+(old===1?' time':' times'),lines:['Took: not recorded']})} // an older save's clears
+  return H.reverse().sort((a,b)=>b.at-a.at)} // (reversed first: runs ended at one moment stay newest first)
 
 // ---- the overlay ----
 const mk=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -201,6 +234,7 @@ function placeArenaTip(){if(!tipEl)return;const st=arenaSt;if(hov.key==null||hov
 function fillDetail(el,d,st,brief){el.textContent='';const t=mk('div','dgdt',d.title);const k=mk('div','dgdk',d.kind+' · '+d.stateText);el.append(t,k);
   if(d.frame&&!brief)el.append(mk('div','dgdf',d.frame));
   if(d.foes.length){el.append(mk('div','dgdh',d.foesHead||'Foes'));for(const f of d.foes)el.append(mk('div','dgdl',f))}
+  if(d.pay&&!brief){el.append(mk('div','dgdh','Clear payout'));el.append(mk('div','dgdl',d.pay))}
   if(d.notes.length&&!brief){el.append(mk('div','dgdh',d.notesHead||'What happened'));for(const n of d.notes)el.append(mk('div','dgdl',n))}
   if(!d.foes.length&&!(d.notes.length&&!brief))el.append(mk('div','dgdl',d.state==='unexplored'?'Nothing is known of it yet.':'Nothing is stirring here.'))}
 function placeTip(st){if(!tipEl)return;if(hov.room<0||hov.room===pin&&!hov.foe){tipEl.hidden=true;return}
@@ -223,6 +257,7 @@ export function openDungeon(s){if(!root&&!build())return false;site=s||CRYPT;ope
   const ar=isArena(site);root.classList.toggle('raid',ar);root.setAttribute('aria-label',ar?'Raid view':'Dungeon view');cv.setAttribute('aria-label',ar?'Map of the lair and the raid':"Map of the dungeon's chambers");listEl.setAttribute('aria-label',ar?'Raiders':'Chambers');
   const scr=document.getElementById('screen');if(scr)scr.classList.add('dgopen');refreshDungeon();return true}
 export function closeDungeon(){open=false;hov.room=-1;hov.foe=null;hov.key=null;pin=-1;if(tipEl)tipEl.hidden=true;if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr)scr.classList.remove('dgopen')}
+onWorld(()=>{if(open)closeDungeon();site=null;arenaSt=null;sumFor=null;sumN=-1;watches.clear();curs.clear()}); // another map (#1013): what it showed is on the land left behind
 export const dungeonOpen=()=>open;
 export const dungeonSite=()=>open?site:null;
 // The crypt whose mouth (its 3x3 rock patch, plus a little slack) is under tile (x, y).
@@ -248,18 +283,18 @@ function refreshArena(){const st=raidState(site);arenaSt=st;const rows=raidRows(
   return st}
 
 // The bar and the room list: patched only when the words change.
-export function refreshDungeon(){if(!root||!open)return null;if(isArena(site))return refreshArena();const D=fresh(site),st=stateOf(D),cur=curOf(D);
-  const s=st.company+'|'+st.status+'|'+st.rooms.map(r=>r.state).join(',')+'|'+pin+'|'+histOpen+'|'+(st.foes?st.foes.map(f=>f.hp).join():'')+'|'+runs.length+(cur?cur.reached+':'+cur.falls.length:'');if(s===sig)return st;sig=s;
+export function refreshDungeon(){if(!root||!open)return null;if(isArena(site))return refreshArena();const D=fresh(site),st=stateOf(D),cur=curOf(D),P=paidOf(D);
+  const s=st.company+'|'+st.status+'|'+st.rooms.map(r=>r.state).join(',')+'|'+(st.looted?'L':'')+(P?P.at:'')+'|'+pin+'|'+histOpen+'|'+(st.foes?st.foes.map(f=>f.hp).join():'')+'|'+runs.length+(cur?cur.reached+':'+cur.falls.length:'');if(s===sig)return st;sig=s;
   nameEl.textContent=String(D.name||'Dungeon').toUpperCase()+(isSite(D)?' · '+String(D.label||D.theme).toUpperCase()+' L'+D.band[0]+'-'+D.band[1]:'')+(st.company?' · '+st.company.toUpperCase():'');statEl.textContent=st.status;
   while(listEl.children.length>st.rooms.length)listEl.removeChild(listEl.children[listEl.children.length-1]);
   st.rooms.forEach((r,i)=>{let li=listEl.children[i];if(!li){li=mk('li');listEl.append(li)}
     const label=(st.fog>=0&&i>st.fog?'?':r.name.replace(/^the /i,''))+(r.boss?' ☠':''),word={cleared:'cleared',current:'in progress',unexplored:'not reached yet',lost:'turned back here',room:''}[r.state];
     li.className='dgroom '+r.state+(r.boss?' boss':'')+(pin===i?' pinned':'');if(!li.onclick){li.tabIndex=0;li.setAttribute('role','button');li.onclick=e=>{e.stopPropagation();const k=Number(li.dataset.k);setPin(pin===k?-1:k)};li.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();li.click()}}}
-    li.dataset.k=String(i);li.textContent=(i+1)+'. '+label;li.title=r.name+(word?' · '+word:'')+(r.boss?' · boss chamber':'');
-    li.setAttribute('aria-label',r.name+(word?', '+word:'')+(r.boss?', boss chamber':''))});
-  histBtn.textContent='History ('+(runsOf(D).length+(cur?1:0))+')';histBtn.setAttribute('aria-expanded',String(histOpen));
+    li.dataset.k=String(i);li.textContent=(i+1)+'. '+label;li.title=r.name+(word?' · '+word:'')+(r.looted?' · looted':'')+(r.boss?' · boss chamber':'');
+    li.setAttribute('aria-label',r.name+(word?', '+word:'')+(r.looted?', looted':'')+(r.boss?', boss chamber':''))});
+  const H=historyOf(D);histBtn.textContent='History ('+H.length+')';histBtn.setAttribute('aria-expanded',String(histOpen));
   if(pin>=0){fillDetail(pinEl,roomDetail(pin,D,st),st);const x=mk('button','dgx','x');x.type='button';x.setAttribute('aria-label','Close the chamber detail');x.onclick=e=>{e.stopPropagation();setPin(-1)};pinEl.prepend(x);pinEl.hidden=false}else pinEl.hidden=true;
-  if(histOpen){histEl.textContent='';histEl.append(mk('div','dgdt','History'));const H=historyOf(D);
+  if(histOpen){histEl.textContent='';histEl.append(mk('div','dgdt','History'));
     if(!H.length)histEl.append(mk('div','dgdl','No one has gone down while this page was watching.'));
     for(const h of H){histEl.append(mk('div','dgdh',h.title+' · '+h.outcome));for(const l of h.lines)histEl.append(mk('div','dgdl',l))}histEl.hidden=false}else histEl.hidden=true;
   return st}

@@ -15,7 +15,7 @@ import {readFileSync, writeFileSync, existsSync, readdirSync, statSync} from 'no
 import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {behaviorRoot, FILES, ROTATE, scrub, legacyTokens} from './behavior-log.mjs';
-import {mindSection, ctxSection, pctile} from './mind-compare.mjs';
+import {mindSection, ctxSection, toolLoadSection, pctile} from './mind-compare.mjs';
 import {costSection, worldVoices} from './cost-report.mjs';
 
 const SEV = {bad: 3, warn: 2, info: 1};
@@ -152,10 +152,11 @@ export function buildReport(dir, {world = null, sinceMs = 0} = {}) {
   const sa = sceneAnswers(T, A); L.push(...sa.lines);
 
   // ---- minds per member (issue #280) ----
-  const mc = mindSection(T, D, W, table, A); L.push(...mc.lines); L.push(...ctxSection(T, table)); // A: aim anomalies per mind (#727)
+  const mc = mindSection(T, D, W, table, A); L.push(...mc.lines); L.push(...ctxSection(T, table)); L.push(...toolLoadSection(T, table)); // A: aim anomalies per mind (#727)
 
 
   // ---- DM agent share (issue #541) ----
+  L.push(...dmStageSection(W, T, table));
   L.push(...dmShareSection(W, T, A, table));
 
   // ---- world ----
@@ -257,6 +258,20 @@ export function spokeForLine(A = []) {
   const n = [...by.values()].reduce((t, v) => t + v, 0);
   return `Lines cut because the DM spoke for a member (\`dm-spoke-for\`): ${n}${n ? ' (' + [...by.entries()].map(([k, v]) => k + ' ' + v).join(', ') + ')' : ''}.`;
 }
+// Is the DM on stage (#1017)? Per game day, from the hourly digests and the DM's turn lines: its turns, the lines the company heard from
+// it (chat channel dm), how many of those came from the narrator's voice between scenes, the scenes framed by the DM against the
+// scripted frame, lever refusals and what the seat spent. Digests from before #1017 have no frame counts: "-".
+export function dmStageSection(W, T, table) {
+  const L = ['## DM on stage', ''], days = new Map(), row = d => days.get(d) || days.set(d, {turns: 0, spent: 0, lines: 0, moments: 0, frames: 0, scripted: 0, seen: false, scenes: 0, pulled: 0, refused: 0}).get(d), dn = m => Math.floor(Math.max(0, (m || 1) - 1) / 1440) + 1;
+  for (const w of W) {const r = row(dn(w.gameMin)), s = w.dmStage; r.lines += (w.chat && w.chat.dm) || 0; r.scenes += (w.table && w.table.opened) || 0; r.pulled += (w.levers && w.levers.pulled) || 0; r.refused += (w.levers && w.levers.refused) || 0;
+    if (s) {r.seen = true; r.moments += s.moments || 0; r.frames += s.frames || 0; r.scripted += s.scripted || 0}}
+  for (const t of T) if (t.seat === 'dm') {const r = row(dn(t.gameMin)); r.turns++; r.spent += t.cost || 0}
+  if (!days.size) return [...L, '_No digest or DM turn on record._', ''];
+  const R = [...days.entries()].sort((x, y) => x[0] - y[0]), tot = k => R.reduce((n, [, v]) => n + v[k], 0);
+  L.push(`Over ${R.length} game day${R.length === 1 ? '' : 's'}: ${tot('lines')} DM lines heard (${tot('moments')} from the narrator's voice), ${tot('frames')} scene frames by the DM against ${tot('scripted')} scripted, ${tot('turns')} DM turns, ${tot('refused')} of ${tot('pulled') + tot('refused')} lever pulls refused.`, '');
+  L.push(table(['day', 'DM turns', 'lines heard', 'of them voice', 'scenes', 'frames DM / scripted', 'levers pulled / refused', 'DM turn spend'], R.map(([d, v]) => [d, v.turns, v.lines, v.seen ? v.moments : '-', v.scenes, v.seen ? `${v.frames} / ${v.scripted}` : '-', `${v.pulled} / ${v.refused}`, '$' + v.spent.toFixed(4)])), '');
+  return L;
+}
 function dmShareSection(W, T, A, table) {
   const L = ['## DM agent share', ''], D = W.filter(w => w.dmShare && w.dmShare.kinds);
   if (!D.length) {
@@ -330,6 +345,12 @@ export function wishSection(rows, turns, table) {
   }
   L.push('### Tools tried that do not exist', '');
   L.push(d.unknown.length ? table(['name tried', 'times', 'seats'], d.unknown.slice(0, 15).map(u => [u.tool, u.n, u.seats.slice(0, 6).join(', ')])) : 'None in the turn lines.', '');
+  { // free actions per seat per game day, and who ruled (#864): the DM's model or its scripted reflex
+    const w = rows.filter(r => r.type === 'attempt'), seats = new Map();
+    for (const r of w) {const k = r.name || r.seat || '?'; let x = seats.get(k); if (!x) seats.set(k, x = {n: 0, dm: 0}); x.n++; if (r.by === 'dm-agent') x.dm++}
+    const span = new Set(w.map(r => r.day).filter(x => x != null)), nd = Math.max(1, span.size ? Math.max(...span) - Math.min(...span) + 1 : 1);
+    L.push('### Free actions per seat per game day', '', seats.size ? table(['seat', 'attempts', 'ruled by the DM\'s model', 'scripted', 'per game day'], [...seats].sort((p, q) => q[1].n - p[1].n).map(([k, x]) => [k, x.n, x.dm, x.n - x.dm, (x.n / nd).toFixed(2)])) : 'No seat has tried a free action yet.', '');
+  }
   L.push('### Free actions the DM ruled on most', '');
   if (!d.attempts) L.push('No attempts ruled on.', '');
   else {

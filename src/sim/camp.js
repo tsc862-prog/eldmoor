@@ -39,15 +39,16 @@
 //             No dice are added on any path.
 // State is plain data on C.camp (ids only), saved with the world.
 import {rnd,ri,hash} from '../core/rng.js';
-import {CITY,LAIR,CRYPTS,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
+import {CITY,CRYPTS,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
+import {nearLair} from './lair.js';
 import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
-import {solidAt,standAt} from '../world/passable.js';
+import {solidAt,standAt,landAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {USES} from '../data/items.js';
 import {campMeal,campLight} from './inv.js'; // rations and torches (sim/inv.js)
 import {homeOf} from '../data/races.js';
 import {CAMP_LINES,TOPICS,QUARREL_REPLY,NTH} from '../data/camp.js';
-import {S} from './state.js';
+import {S,foeOf} from './state.js';
 import {log} from './chronicle.js';
 import {dmlog} from './dmlog.js';
 import {maxHp,moveTo} from './heroes.js';
@@ -113,7 +114,7 @@ const open=(x,y)=>{const t=tileAt(x,y);return WALKABLE.includes(t)&&t!==ROCK&&t!
 function safe(x,y){if(!open(x,y))return false;
   for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]])if(!open(x+dx,y+dy))return false;
   for(const c of CITY)if(x>=c.x0-CAMP.TOWN_MIN&&x<=c.x1+CAMP.TOWN_MIN&&y>=c.y0-CAMP.TOWN_MIN&&y<=c.y1+CAMP.TOWN_MIN)return false;
-  if(dist({x,y},LAIR)<CAMP.LAIR_MIN||CRYPTS.some(D=>dist({x,y},D)<CAMP.LAIR_MIN))return false;
+  if(nearLair({x,y},CAMP.LAIR_MIN)||CRYPTS.some(D=>dist({x,y},D)<CAMP.LAIR_MIN))return false;
   return true}
 // Nearest safe open ground to (x,y), by rings; null if none within 10 tiles.
 export function campSpot(x,y){for(let r=0;r<=10;r++)for(let k=0;k<Math.max(1,r*6);k++){const ang=k/Math.max(1,r*6)*Math.PI*2,px=Math.floor(x+Math.cos(ang)*r)+.5,py=Math.floor(y+Math.sin(ang)*r)+.5;if(safe(px,py))return {x:px,y:py}}return null}
@@ -193,18 +194,18 @@ function breakCamp(F,why){const g=F.camp;if(!g||!g.phase)return;const L=members(
   emit('break',g,{why})
   g.ids=[]}
 
-// ---- visitors: an ambush on the watch ----
-function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zone&&MOBS[t].lv&&!MOBS[t].boss);if(!all.length)return null;
+// ---- visitors: an ambush on the watch ---- (ambushMob is exported for pathcheck, #1060)
+export function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zone&&MOBS[t].lv&&!MOBS[t].boss);if(!all.length)return null;
   let types=all.filter(t=>MOBS[t].lv[0]<=lvl+2); // never a foe far above the company: the weakest of the region if none fits
   if(!types.length)types=[all.reduce((b,t)=>MOBS[t].lv[0]<MOBS[b].lv[0]?t:b)];
   const t=types[ri(0,types.length-1)],M=MOBS[t];
-  let p=null;for(let k=0;k<8&&!p;k++){const ang=rnd()*Math.PI*2,x=g.x+Math.cos(ang)*7,y=g.y+Math.sin(ang)*7;if(open(x,y))p={x,y}}
+  let p=null;for(let k=0;k<8&&!p;k++){const ang=rnd()*Math.PI*2,x=g.x+Math.cos(ang)*7,y=g.y+Math.sin(ang)*7;if(open(x,y)&&landAt(x,y)===landAt(g.x,g.y))p={x,y}} // on land joined to the camp's (#1060): a creature over a river with no crossing never reaches the fire
   if(!p)return null;
   const m=spawnMob(t,null,{lvl:Math.max(M.lv[0]-2,Math.min(M.lv[1]+1,lvl)),add:true});m.xpMul=.6;Object.assign(m,standAt(p.x,p.y));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};return m}
 function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors++;
   const avg=Math.round(L.reduce((s,a)=>s+a.lvl,0)/L.length),spot=check(w,'perception',CAMP.SPOT_DC-(g.lit?USES['Pitch Torch'].watch:0)),victim=L[ri(0,L.length-1)];
   const pass=spot.pass&&!soloSleeps(g); // a solo asleep is caught unroused whatever its roll (the same roll is still made: no dice added)
-  const foeHero=nearHeroes(g.x,g.y,16,b=>b.fac!==w.fac&&b.state!=='dead'&&!b.hidden&&(b.state==='hunt'||b.state==='travel')&&Math.abs(b.lvl-w.lvl)<=3)[0];
+  const foeHero=nearHeroes(g.x,g.y,16,b=>foeOf(w,b)&&b.state!=='dead'&&!b.hidden&&(b.state==='hunt'||b.state==='travel')&&Math.abs(b.lvl-w.lvl)<=3)[0];
   const useHero=foeHero&&rnd()<.4;let m=null;
   if(!useHero){m=ambushMob(g,avg);if(!m)return}
   const foeName=useHero?foeHero.name:MOBS[m.type].name;

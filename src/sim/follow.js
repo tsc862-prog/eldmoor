@@ -13,7 +13,7 @@
 //                faction; (another faction) walks out of the town they shared.
 //   standing     autopilot (sim/player.js) keeps a standing follow order (a.playOrder {kind:'follow'}): when a reflex took the
 //                command away (fled home, camp) and the hero is in sight again, it falls in behind them once more.
-import {S} from './state.js';
+import {S,sameSide,ownTown} from './state.js';
 import {CITY,dist,zoneAt} from '../world/map.js';
 import {sightFor} from './weather.js';
 import {moveTo,maxHp} from './heroes.js';
@@ -36,7 +36,7 @@ export function followRefusal(a,b){
   if(!b||b===a)return 'Follow whom? Name a hero you can see.';
   if(!alive(b))return b.name+' has fallen.';
   if(!seesHero(a,b))return b.name+' is not in sight. You can only fall in behind someone you can see.';
-  if(b.fac!==a.fac&&!(cityOf(a)&&cityOf(a)===cityOf(b)))return b.name+' is of the other side: out here you will not walk at an enemy\'s side.';
+  if(!sameSide(a,b)&&!(cityOf(a)&&cityOf(a)===cityOf(b)))return b.name+' is of the other side: out here you will not walk at an enemy\'s side.';
   if(a.party&&a.party.leader===a&&a.party.mem.length>1)return 'You lead your company: lead_to takes them with you, or leave_party first.';
   const fb=followCmd(b);if(fb&&fb.id===a.id)return b.name+' already follows you.';
   return null}
@@ -53,11 +53,11 @@ function stop(a,cmd,text,urgent){if(a.pq&&a.pq[0]===cmd)a.pq.shift();a.moving=fa
 export function followStep(a,dt,cmd){a.cd-=dt;const b=hero(cmd.id),mh=maxHp(a);
   if(cmd.until!=null&&S.gameMin>=cmd.until){stop(a,cmd,'You stop following '+cmd.name+': the '+cmd.h+' hour'+(cmd.h>1?'s':'')+' you gave are up.',true);return true}
   if(b&&b.state==='dead'&&!b.hidden&&dist(a,b)<=sight(a)){stop(a,cmd,cmd.name+' has fallen before your eyes. You stop following.',2);return true}
-  const here=cityOf(a);a.state=here&&here.fac===a.fac?'town':'travel';
+  const here=cityOf(a);a.state=here&&ownTown(here,a)?'town':'travel';
   a.hp=Math.min(mh,a.hp+mh*(a.state==='town'?.3:.015)*dt);
   if(seesHero(a,b)){const c=cityOf(b);
-    if(c&&c.fac!=null&&c.fac!==a.fac){stop(a,cmd,cmd.name+' goes into '+c.name+', where you cannot follow.',true);return true}
-    if(b.fac!==a.fac&&!(here&&here===c)){stop(a,cmd,cmd.name+' walks out of town; you will not walk at an enemy\'s side out here.',true);return true}
+    if(c&&c.fac!=null&&!ownTown(c,a)){stop(a,cmd,cmd.name+' goes into '+c.name+', where you cannot follow.',true);return true}
+    if(!sameSide(a,b)&&!(here&&here===c)){stop(a,cmd,cmd.name+' walks out of town; you will not walk at an enemy\'s side out here.',true);return true}
     cmd.last=lastOf(b);if(cmd.seek){delete cmd.seek}
     const d=dist(a,b);if(d<=FOLLOW.NEAR){a.moving=false;return true}
     const k=FOLLOW.GAP/d,x=b.x+(a.x-b.x)*k,y=b.y+(a.y-b.y)*k; // beside them, on the side the follower walks

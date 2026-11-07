@@ -9,3 +9,4 @@
 - [Hero trades #14](project_hero_trades.md) — order book S.listings, fee/lapse, scripted buy/sell, auction_* tools
 - [Crafted at AH #719](project_ah_crafted.md) — listing kind use, price covers USES, volume low by design
 - [Vale fauna #945](project_vale_fauna.md) — per-region species, art lookup gap, home-town lows, unreachable small delves
+- [Hollin tune](project_hollin_tune.md) — #1013: Quarry Cellars numbers, chapter XP plateau, Crookjaw result

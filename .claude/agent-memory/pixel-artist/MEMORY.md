@@ -41,3 +41,5 @@
 - [Vale stack](valestack.md) — #980 ten PRs as one branch: merge order, shadow-pass trap, stacked PRs after landing
 - [Vale at scale](valescale.md) — #979 great kit, notch outlines, ground shapes, wyrm sheet, the onAssets repaint race
 - [GPU frames](gpuframes.md) — #979 final: real-GPU numbers, chunk stalls were the problem, staging a setup world for a probe
+- [Second polish](polish2.md) — #979 dusk water, gatehouse deco pair, harbour from spec pier, cast shadow in the light map, traps
+- [Map switch](mapswitch.md) — #1013 slice 4: onWorld hooks, roadfade beats, staging a crossing, chunk crc proof, traps

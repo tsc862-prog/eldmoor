@@ -32,7 +32,7 @@ import {baseId,ELITE_TEMPLATE} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
 import {SITE_THEMES,SITE_THEME_IDS,SITE_WORDS,SITE_BANNED} from '../data/sites.js';
-import {S} from './state.js';
+import {S,loreSides,sameSide} from './state.js';
 import {log} from './chronicle.js';
 import {record,timeline} from './history.js';
 import {notify} from './notify.js';
@@ -42,6 +42,7 @@ import {gainXp,getEpic,goHome,fall,maxHp} from './heroes.js';
 import {addGood,addGear} from './inv.js';
 import {makeItem} from './gear.js';
 import {clearXp} from './dungeon.js';
+import {paidNew,paidGood} from './crypts.js';
 import {companyOf,members,isSolo,campaign as clog} from './company.js';
 import {propose,setSiteHook} from './council.js';
 import {startCrawl,crawlFits,crawlTick,crawlLost,setSiteEnd,siteById} from './crawl.js';
@@ -205,7 +206,7 @@ export function enterSiteTool(a,args){const no=e=>({ok:false,error:e});const C=c
     enterSite(C,s);return {ok:true,site:s.name,entered:true,note:'You go down into '+s.name+' alone. Every chamber is a scene at the table.'+greenOf(L,s)}}
   const P=propose(a,'site','go down into '+s.name+' together, all of us',{site:s.id});
   if(typeof P==='string')return no(P);
-  const short=s.raid&&!raidSized(L)?' It is a raid and you are '+L.length+': at the mouth you go down with another company that voted for it, or with heroes of your side called from nearby to make five.':'';
+  const short=s.raid&&!raidSized(L)?' It is a raid and you are '+L.length+': at the mouth you go down with another company that voted for it, or with heroes'+(loreSides()?'':' of your side')+' called from nearby to make five.':'';
   return {ok:true,site:s.name,proposal:P.id,status:P.status,note:'Put to the party: everyone votes. If it passes, walk to '+s.name+' together; you go down once all of you stand at its mouth.'+short+greenOf(L,s)}}
 
 // ---- the vote (council.js setSiteHook) ----
@@ -240,17 +241,19 @@ function siteEnd(g,end){const s=siteById(g.site);if(!s)return;const who=gd(g.nam
   log(who,end==='driven'?' were driven back from ':' withdrew from ',siteTag(s),'.');
   for(const a of L){record(a,end==='driven'?'Driven back from ':'Withdrew from ',siteTag(s),'.');goHome(a)}}
 // share: of the clear XP paid at the end (the crawl already paid most of it room by room).
-function clearSite(s,g,L,share){S.sites.stats.clears++;const who=gd(g.name||'The company'),pay=s.raid?SITE.RAID_PAY:1;
+export const sitePurse=s=>s.loot.gold*(s.raid?SITE.RAID_PAY:1)*(1+.2*s.grow); // the gold a clear pays the party, before it is shared
+function clearSite(s,g,L,share){S.sites.stats.clears++;const who=gd(g.name||'The company'),pay=s.raid?SITE.RAID_PAY:1,P=paidNew(g.name); // P: what this clear paid (#976), kept as s.paid
   if(s.raid){S.sites.stats.raidKills++;s.kills=(s.kills||0)+1}
   const rest=!s.raid||s.kills>=SITE.RAID_KILLS; // an ordinary site is cleared for good; a raid site only after RAID_KILLS kills
   if(rest){s.state='cleared';s.cleared={at:Math.round(S.gameMin),by:g.name||null}}
   else{s.state='locked';s.lockUntil=Math.round(S.gameMin+SITE.LOCK_DAYS*DAY);s.lastKill={at:Math.round(S.gameMin),by:g.name||null}}
-  const each=L.length?Math.round(s.loot.gold*pay*(1+.2*s.grow)/L.length):0,heir=L.slice().sort((x,y)=>((x.epics||[]).length-(y.epics||[]).length)||(x.id-y.id))[0];
-  L.forEach((a,i)=>{gainXp(a,Math.round(clearXp(a)*share*pay*(1+.1*s.grow)*(s.xp||1)));a.gold+=each;a.kills+=s.rooms.length*2;
-    for(let k=i;k<s.loot.goods.length;k+=L.length)addGood(a,s.loot.goods[k],1);record(a,s.raid?'Raided ':'Cleared ',siteTag(s),s.raid?' and slew ':' and destroyed ',gd(s.boss),'.')});
+  const each=L.length?Math.round(sitePurse(s)/L.length):0,heir=L.slice().sort((x,y)=>((x.epics||[]).length-(y.epics||[]).length)||(x.id-y.id))[0];
+  L.forEach((a,i)=>{gainXp(a,Math.round(clearXp(a)*share*pay*(1+.1*s.grow)*(s.xp||1)));a.gold+=each;P.gold+=each;a.kills+=s.rooms.length*2;
+    for(let k=i;k<s.loot.goods.length;k+=L.length)paidGood(P,s.loot.goods[k],addGood(a,s.loot.goods[k],1));record(a,s.raid?'Raided ':'Cleared ',siteTag(s),s.raid?' and slew ':' and destroyed ',gd(s.boss),'.')});
   const gearTo=L.slice().sort((x,y)=>(x.gear-y.gear)||(x.id-y.id))[0],slots=['head','chest','hands','feet','main','trinket'];
-  if(gearTo&&CLS[gearTo.cls])addGear(gearTo,makeItem(gearTo.cls,slots[s.id%slots.length],s.loot.ilvl,Math.min(s.region,3),{quality:s.loot.quality||'rare',src:s.boss}));
-  if(heir&&s.epic)getEpic(heir,s.epic,{t:s.boss,c:'gd'}); // the boss's guaranteed epic (a first delve has none, #922)
+  if(gearTo&&CLS[gearTo.cls]){const it=makeItem(gearTo.cls,slots[s.id%slots.length],s.loot.ilvl,Math.min(s.region,3),{quality:s.loot.quality||'rare',src:s.boss});addGear(gearTo,it);P.items.push({name:it.name,who:gearTo.name})}
+  if(heir&&s.epic){getEpic(heir,s.epic,{t:s.boss,c:'gd'});P.items.push({name:s.epic,who:heir.name})} // the boss's guaranteed epic (a first delve has none, #922)
+  s.paid=P;
   if(s.raid&&!rest){const T=SITE_THEMES[s.theme],E=T&&T.relic==='crypt'?DG_EPICS:(EPICS[s.region]||EPICS[s.region%EPICS.length]);if(E&&E.length)s.epic=E[(E.indexOf(s.epic)+1)%E.length]} // the next keeper carries another
   if(s.raid){log(who,' slew ',gd(s.boss),' in ',siteTag(s),'!'+(rest?' The place is laid to rest.':' The place lies quiet; its keeper will rise again.'));
     siteLine('site',s,who,' slew ',gd(s.boss),' in the raid of ',gd(s.name),', '+ZONES[s.region]+(rest?'; laid to rest after '+s.kills+' kills.':'.'))}
@@ -289,14 +292,14 @@ function releaseFills(C){for(const a of S.agents)if(a.siteFill===C.id)release(a)
 // fill-ins it called. Not enough yet: it calls heroes of its side from within CALL once per wait (they walk to the mouth) and
 // returns null; enough: the others (never the company itself).
 function raidCrew(C,s,L,w){let crew=L.slice();
-  for(const O of S.companies||[]){if(O===C||O.fac!==C.fac||!O.siteGo||O.siteGo.site!==s.id)continue;const M=members(O);if(M.length&&M.every(a=>atMouth(a,s)))crew=crew.concat(M)}
+  for(const O of S.companies||[]){if(O===C||!sameSide(O,C)||!O.siteGo||O.siteGo.site!==s.id)continue;const M=members(O);if(M.length&&M.every(a=>atMouth(a,s)))crew=crew.concat(M)}
   const fills=S.agents.filter(a=>a.siteFill===C.id&&a.state==='dungeon'&&a.state!=='dead'),here=fills.filter(a=>dist(a,s)<=SITE.MOUTH+.5);
   crew=crew.concat(here).slice(0,SITE.RAID_MAX);
   if(raidSized(crew))return crew.slice(L.length);
   if(!w.called){w.called=1;const want=Math.max(0,5-crew.length-(fills.length-here.length));
     const pool=S.agents.filter(a=>bgFree(a)&&a.fac===C.fac&&dist(a,s)<=SITE.CALL&&a.lvl>=s.band[0]-2).sort((x,y)=>dist(x,s)-dist(y,s)||x.id-y.id).slice(0,want);
     pool.forEach((a,i)=>{a.state='dungeon';a.siteAt={x:s.x,y:s.y};a.siteIn=s.id;a.siteFill=C.id;a.dgIdx=L.length+i;a.target=null;a.dest=null;record(a,'Answered the call of ',gd(C.name||'a company'),' to raid ',siteTag(s),'.')});
-    const msg=pool.length?pool.length+' of your side answer the call and walk to the mouth of '+s.name+': '+pool.map(a=>a.name).join(', ')+'. You go down when they stand with you.':'Nobody of your side is near enough to answer the call. Wait for another company to vote for '+s.name+', or give it up.';
+    const yours=loreSides()?'':' of your side',msg=pool.length?pool.length+(yours||' heroes')+' answer the call and walk to the mouth of '+s.name+': '+pool.map(a=>a.name).join(', ')+'. You go down when they stand with you.':'Nobody'+yours+' is near enough to answer the call. Wait for another company to vote for '+s.name+', or give it up.';
     for(const b of L)notify(b,s.name+' is a raid and you are '+L.length+'. '+msg,true);
     if(pool.length)clog(C,'council',gd(C.name||'The company'),' call '+pool.length+' of their side to the raid of ',gd(s.name),'.')}
   return null}

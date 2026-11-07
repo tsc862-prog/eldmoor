@@ -16,6 +16,7 @@
 //     module (rulingTick is a no-op without S.rulings).
 import {S,clockStr,dayNo} from './state.js';
 import {ZONES,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {cryptTitle} from './crypts.js';
 import {solidAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {SKILLS,SKILL_IDS,check,skillMod,trained} from './abilities.js';
@@ -48,7 +49,8 @@ export const ATTEMPT={
   HOW_MAX:200,AT_MAX:80,
   POLL_MS:6000,      // real ms: a ruling_call poll this recent counts as the DM listening
   BUDGET_MIN:4,BUDGET_MAX:30, // seconds a ruling voice may ask for (ruling_call {budget_s}); default TABLE.dmMs
-  WAIT_GM:60,        // game minutes a ruling may wait at most, whatever the clock
+  WAIT_GM:60,        // game minutes a ruled scene attempt keeps (x4). A wait is bounded in real time only (#864): 60 game minutes are 1.25 s at 8x, less than a model call
+  PICKUP_MS:12000,   // real ms a call may wait for a ruling voice that polled lately before its own budget starts (#864): one voice rules one call at a time, and a stalled page holds its poll
   MOVE_MAX:6,        // tiles a move effect may carry the hero
   WOUND_MAX:15,FLOOR:.1, // a wound: at most 15% of max HP, never below 10% HP
   EFFECTS_MAX:3,     // effects per side (success, failure)
@@ -92,9 +94,10 @@ const goneNow=()=>{if(epoch!==goneEpoch()){epoch=goneEpoch();polledAt=0;pollMs=0
 const polled=()=>polledAt>0&&Date.now()-polledAt<ATTEMPT.POLL_MS;
 const listening=()=>{goneNow();return !!(S.dmAgent&&S.dmAgent.seat)&&(polled()||dmAlive())};
 const budget=()=>pollMs||TABLE.dmMs;
+const voiceNear=()=>polledAt>0&&Date.now()-polledAt<ATTEMPT.BUDGET_MAX*1000; // a voice runs, even if a model call keeps it from polling right now
 // When a waiting ruling is due (#680): its budget from the moment the DM first read it (ruling_call: seen), never past
-// budget + PICKUP_MS from the attempt.
-const due=r=>callDeadline(r.real,r.ms,r.seen);
+// budget + PICKUP_MS from the attempt (ATTEMPT.PICKUP_MS with a voice running: a late pickup still gets the whole budget, #864).
+const due=r=>callDeadline(r.real,r.ms,r.seen,r.pick||undefined);
 
 // ---- the hero's side ----
 function rate(a){const L=a.attempts||(a.attempts=[]);while(L.length&&(L[0]>S.gameMin||L[0]<=S.gameMin-60))L.shift();return L}
@@ -126,7 +129,7 @@ export function attempt(a,args={}){const what=clean(args.what,1e4),how=clean(arg
 function open(a,what,how,at,sc){const R=rulingState(),d=today();R.stats.asked++;d.asked++;
   const r={id:++R.seq,hero:a.id,name:a.name,what,how:how||'',at:at||'',gm:Math.round(S.gameMin),day:dayNo(),t:clockStr(),scene:sc?sc.id:null,state:'wait',ms:0,real:0};
   R.cur.push(r);
-  if(listening()){r.ms=budget();r.real=Date.now();return r}
+  if(listening()){r.ms=budget();r.real=Date.now();if(voiceNear())r.pick=ATTEMPT.PICKUP_MS;return r}
   rule(r,scriptedRuling(a,r),'scripted','gone');if(!sc)resolve(r);return r}
 // The DM's (or the scripted) ruling decided: kept on r until applied (a scene applies it on the member's turn).
 function rule(r,ru,by,why){r.ru=ru;r.by=by;if(why)r.why=why;r.state='ruled';const R=rulingState(),d=today();
@@ -137,7 +140,7 @@ function fill(r,why){if(r.state!=='wait')return;const a=hero(r.hero);if(!alive(a
 export function rulingTick(){const R=S.rulings;if(!R||!R.cur.length)return;
   const gone=goneNow()||!(S.dmAgent&&S.dmAgent.seat);
   for(const r of R.cur.slice()){
-    if(r.state==='wait'&&(gone||Date.now()>=due(r)||S.gameMin-r.gm>=ATTEMPT.WAIT_GM))fill(r,gone?'gone':'slow');
+    if(r.state==='wait'&&(gone||Date.now()>=due(r)))fill(r,gone?'gone':'slow');
     if(r.state==='ruled'&&r.scene==null)resolve(r);
     else if(r.state==='ruled'&&r.scene!=null&&S.gameMin-r.gm>=ATTEMPT.WAIT_GM*4)close(r,'lapsed')}} // a scene that ended first
 
@@ -175,7 +178,7 @@ export function scriptedRuling(a,r){const skill=keywordSkill(r.what+' '+(r.how||
 export function parseEffect(x){let k,t='',v='';
   if(x&&typeof x==='object'){k=lc(x.kind);t=clean(x.target,ATTEMPT.FACT_MAX);v=clean(x.value,ATTEMPT.FACT_MAX)}
   else{const s=clean(x,ATTEMPT.FACT_MAX+60);const i=s.indexOf(':');k=lc(i<0?s:s.slice(0,i));const rest=i<0?'':s.slice(i+1);
-    if(k==='reveal'||k==='item'||k==='attitude'||k==='condition'){const j=rest.indexOf(':');t=(j<0?rest:rest.slice(0,j)).trim();v=(j<0?'':rest.slice(j+1)).trim()}else t=rest.trim()}
+    if(k!=='move'){const j=rest.indexOf(':');t=(j<0?rest:rest.slice(0,j)).trim();v=(j<0?'':rest.slice(j+1)).trim()}else t=rest.trim()} // every form may carry a value: the voice's schema asks for one (#864)
   k=k.replace(/\s+/g,'_');if(k==='talk')k='open_talk';if(k==='scene')k='open_scene';if(k==='give'||k==='take'){v=t;t=k;k='item'}
   return {k,t,v}}
 const DIRS={north:[0,-1],south:[0,1],east:[1,0],west:[-1,0],northeast:[.71,-.71],northwest:[-.71,-.71],southeast:[.71,.71],southwest:[-.71,.71],
@@ -187,8 +190,10 @@ function moveSpot(a,to){const s=lc(to),m=/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d
   const D=Math.hypot(x-a.x,y-a.y);if(D>ATTEMPT.MOVE_MAX+.01)return {err:'move: at most '+ATTEMPT.MOVE_MAX+' tiles (that is '+Math.round(D)+')'};
   for(let f=1;f>0.05;f-=.1){const px=a.x+(x-a.x)*f,py=a.y+(y-a.y)*f;if(open_(px,py))return {x:px,y:py}}
   return {err:'move: no open ground that way'}}
-const placeNames=()=>[...ZONES,...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name,...(S.places||[]).filter(p=>p&&p.name&&!(p.until<S.gameMin)).map(p=>p.name)].filter(Boolean);
+const placeNames=()=>[...ZONES,...LANDMARKS.map(l=>l.name),cryptTitle(),...(S.places||[]).filter(p=>p&&p.name&&!(p.until<S.gameMin)).map(p=>p.name)].filter(Boolean);
 const creatureName=v=>{const s=lc(v);for(const k in MOBS){const M=MOBS[k];if(lc(M.name)===s||M.pl&&lc(M.pl)===s)return M.name}return null};
+// The number in a wound's target or value: 10, "10%", "10 percent"; the model may put the hero's name in target and the number in value (#864).
+const pctOf=s=>{const m=/\d+(?:\.\d+)?/.exec(String(s==null?'':s));return m?Number(m[0]):null};
 // Check one effect for hero a (sc: in a Table scene). Returns {k,t,v} normalised, or {err}.
 export function checkEffect(a,x,sc){const e=parseEffect(x),{k}=e;
   if(!EFFECT_KINDS.includes(k)){const bad=FORBID.test(k+' '+e.t+' '+e.v);return {err:'"'+clean(typeof x==='string'?x:k,40)+'" is not in the bounded set ('+EFFECT_KINDS.join(', ')+')'+(bad?'; nothing touches level, XP, gold or life, and HP only as a small wound':''),forbidden:bad}}
@@ -207,7 +212,7 @@ export function checkEffect(a,x,sc){const e=parseEffect(x),{k}=e;
   case 'open_scene':{const t=lc(e.t);return SCENE_KINDS.includes(t)?{...e,t}:{err:'open_scene: kind is one of '+SCENE_KINDS.join(', ')}}
   case 'item':{const t=lc(e.t);if(t!=='give'&&t!=='take')return {err:'item: give or take (item:give:<item>)'};if(!e.v)return {err:'item: name the item (item:'+t+':<item>)'};
     if(FORBID.test(e.v))return {err:'item: gold and the like are not handed out by a ruling',forbidden:true};return {...e,t}}
-  case 'wound':{const n=Math.round(Number(e.t||e.v));if(!Number.isFinite(n)||n<1)return {err:'wound: a percentage of max HP, 1..'+ATTEMPT.WOUND_MAX+' (wound:10)'};
+  case 'wound':{const n=Math.round(pctOf(e.t)??pctOf(e.v)??NaN);if(!Number.isFinite(n)||n<1)return {err:'wound: a percentage of max HP, 1..'+ATTEMPT.WOUND_MAX+' (wound:10)'};
     if(n>ATTEMPT.WOUND_MAX)return {err:'wound: at most '+ATTEMPT.WOUND_MAX+'% of max HP (a ruling never kills or maims)',forbidden:true};return {...e,n}}
   case 'condition':{const t=lc(e.t);if(!CONDS[t])return {err:'condition: one of '+Object.keys(CONDS).join(', ')+' (condition:<id>:<minutes>)'};
     const m=Math.round(Number(e.v)||60);return {...e,t,m:Math.max(ATTEMPT.COND_GM[0],Math.min(ATTEMPT.COND_GM[1],m))}}

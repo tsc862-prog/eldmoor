@@ -17,19 +17,22 @@
 //   rec   {seq, id (the when), gm, t, day, trigger (label), who, tool, ok, why?, status:'fired'|'refused'|'expired'|'lapsed'}
 //   hit   {id (hit seq), watch, gm, t, day, what, note}
 import {S,clockStr,dayNo} from './state.js';
-import {ZONES,CITY,LANDMARKS,zoneAt,dist} from '../world/map.js';
+import {ZONES,CITY,LANDMARKS,MAP_ID,zoneAt,dist} from '../world/map.js';
+import {manyMaps,mapName,mapNamed,farHint} from './atlas.js';
 import {DM_TOOLS,TRIGGER_NAMES as TRIGGER_ROWS} from '../data/dm-tools.js';
 import {leverNames,leverAlias} from './levers.js';
 import {dmlog} from './dmlog.js';
 import {companies,companyById,slotted} from './company.js';
 import {ensureNpcs} from './npcs.js';
 import {maxHp} from './heroes.js';
+import {markNamed} from './dmnames.js'; // a place the DM marked, with or without "the" (#1017)
+import {onWorld} from './kept.js';
 
-export const WHEN={MAX:6,PER_DAY:12,HOURS:24,MIN_H:1,MAX_H:72,EVERY:2,KEEP:12,SEEN_H:24,R:4,R_MIN:1,R_MAX:15};
+export const WHEN={MAX:6,PER_DAY:12,HOURS:24,MIN_H:1,MAX_H:72,MAP_H:240,EVERY:2,KEEP:12,SEEN_H:24,R:4,R_MIN:1,R_MAX:15}; // MAP_H: enter_map waits longer, a land's road is days of play
 export const WATCH={MAX:6,PER_DAY:12};
 const DAY=1440,NIGHT_HH=20,DAWN_HH=6;
 // The actions a when may carry: the DM's voice and its world tools (only those that exist in DM_TOOLS; create_site joins when it lands).
-const DEFER0=['narrate','npc_say','whisper','dream','stage_scene','post_hook','place_person','mark_place','give_item','take_item','create_site','summon_hero','pull_lever'];
+const DEFER0=['narrate','npc_say','whisper','dream','stage_scene','post_hook','place_person','mark_place','give_item','take_item','create_site','summon_hero','call_to','pull_lever'];
 export const deferTools=()=>DEFER0.filter(n=>DM_TOOLS.some(t=>t.name===n));
 const WHO_RE=/\{who\}|\$who\b/gi,WHO_TEST=/\{who\}|\$who\b/i;
 // The trigger table (append-only): args (? = optional), what it means, and whether it names a hero ({who}).
@@ -49,6 +52,7 @@ export const TRIGGERS={
   after_hours:{args:'h (1-72)',who:false,desc:'h game hours pass from now'},
   hero_levels:{args:'company? | hero?, level? (the level reached)',who:true,desc:'a hero gains a level (or reaches level)'},
   oath_kept:{args:'company? | hero?',who:true,desc:'a hero keeps an oath'},
+  enter_map:{args:'map (a land by name, as dm_status campaign shows it), company? | hero?',who:true,desc:'a hero comes to that land by its road (#1013)'},
 };
 export const TRIGGER_NAMES=Object.keys(TRIGGERS);
 if(TRIGGER_NAMES.join()!==TRIGGER_ROWS.join())throw new Error('dmwhen TRIGGERS and dm-tools TRIGGER_NAMES differ');
@@ -76,7 +80,7 @@ function companyOfArg(v){const s=clean(v,40),lo=s.toLowerCase();if(!s)return nul
   return companies().find(C=>String(C.id)===s||String(C.name||'').toLowerCase()===lo)||null}
 function placeArg(v){const s=clean(v,60),lo=s.toLowerCase();if(!s)return null;
   const m=/^\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?$/.exec(s);if(m)return {x:Number(m[1]),y:Number(m[2]),name:m[1]+','+m[2]};
-  const pl=(S.places||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo);if(pl)return {x:pl.x,y:pl.y,name:pl.name,pid:pl.id};
+  const pl=markNamed(s);if(pl)return {x:pl.x,y:pl.y,name:pl.name,pid:pl.id};
   const mk=(S.marks||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo);if(mk)return {x:mk.x,y:mk.y,name:mk.name||'the marked spot'};
   const lm=LANDMARKS.find(l=>{const n=l.name.toLowerCase();return n===lo||n.replace(/^the /,'')===lo.replace(/^the /,'')});if(lm)return {x:lm.x,y:lm.y,name:lm.name};
   const c=townOf(s);if(c)return {x:c.gate.x,y:c.gate.y,name:c.name};
@@ -92,15 +96,17 @@ function subjects(on){if(on.hero!=null){const a=byId(on.hero);return a&&alive(a)
 const subjText=on=>on.hero!=null?(byId(on.hero)||{name:'#'+on.hero}).name:on.cid!=null?(companyById(on.cid)||{name:'a company'}).name||'a company':'any agent hero';
 
 // Resolve a trigger's arguments when it is set: {on, label} or {error}.
-function resolve(trigger,o){const T=TRIGGERS[trigger];if(!T)return {error:'trigger must be one of: '+TRIGGER_NAMES.join(', ')};
+function trig(k){return Object.hasOwn(TRIGGERS,k)?TRIGGERS[k]:undefined} // own keys only: a trigger named 'constructor' is none
+function resolve(trigger,o){const T=trig(trigger);if(!T)return {error:'trigger must be one of: '+TRIGGER_NAMES.join(', ')};
   const on={},need=k=>'"'+trigger+'" needs '+k+' ('+T.args+')';
   if(o.hero!=null&&o.hero!==''){const h=heroOf(o.hero);if(!h)return {error:'hero: no living hero called "'+clean(o.hero,40)+'"'};on.hero=h.id}
   else if(o.company!=null&&o.company!==''){const C=companyOfArg(o.company);if(!C)return {error:'company: no company called "'+clean(o.company,40)+'" (an id or name from companies_view, or "fellowship")'};on.cid=C.id}
   const r=o.radius==null||o.radius===''?WHEN.R:Math.round(Number(o.radius));
   switch(trigger){
-    case 'enter_region':{const z=regionIdx(o.region);if(z==null)return {error:need('region')+'; regions: '+ZONES.join(', ')};on.z=z;on.what='enters '+ZONES[z];break}
-    case 'enter_town':{const c=townOf(o.town);if(!c)return {error:need('town')+'; towns: '+CITY.map(c=>c.name).join(', ')};on.town=c.name;on.what='reaches '+c.name;break}
-    case 'near_place':{const p=placeArg(o.place);if(!p)return {error:need('place')+': no place, marker, landmark or town called "'+clean(o.place,40)+'"'};
+    case 'enter_map':{if(!manyMaps())return {error:'this world has one land: no road leads to another'};const id=mapNamed(o.map);if(!id)return {error:need('map')+': no land called "'+clean(o.map,40)+'" along these roads (dm_status campaign names them)'};on.map=id;on.what='comes to '+mapName(id);break}
+    case 'enter_region':{const z=regionIdx(o.region);if(z==null)return {error:need('region')+'; regions: '+ZONES.join(', ')+'.'+farHint(o.region)};on.z=z;on.what='enters '+ZONES[z];break}
+    case 'enter_town':{const c=townOf(o.town);if(!c)return {error:need('town')+'; towns: '+CITY.map(c=>c.name).join(', ')+'.'+farHint(o.town)};on.town=c.name;on.what='reaches '+c.name;break}
+    case 'near_place':{const p=placeArg(o.place);if(!p)return {error:need('place')+': no place, marker, landmark or town called "'+clean(o.place,40)+'".'+farHint(o.place)};
       if(!(r>=WHEN.R_MIN&&r<=WHEN.R_MAX))return {error:'radius is '+WHEN.R_MIN+'-'+WHEN.R_MAX};on.x=p.x;on.y=p.y;on.r=r;on.pname=p.name;if(p.pid!=null)on.pid=p.pid;on.what='comes within '+r+' tiles of '+p.name;break}
     case 'near_person':case 'talks_to':{const p=personOf(o.npc);if(!p)return {error:need('npc')+': nobody called "'+clean(o.npc,40)+'" (see npcs)'};on.npc=p.id;on.pname=pname(p);
       if(trigger==='near_person'){if(!(r>=WHEN.R_MIN&&r<=WHEN.R_MAX))return {error:'radius is '+WHEN.R_MIN+'-'+WHEN.R_MAX};on.r=r;on.what='comes within '+r+' tiles of '+on.pname}else on.what='talks to '+on.pname;break}
@@ -122,7 +128,7 @@ const foes=q=>(S.mobs||[]).filter(m=>m.hp>0&&m.name&&(m.name.toLowerCase()===q||
 // The edge state when set: what is already true does not fire.
 function baseline(e){const on=e.on,st={};
   switch(e.trigger){
-    case 'enter_region':case 'enter_town':case 'near_place':case 'near_person':case 'member_hp_below':case 'camp_made':st.on=subjects(on).filter(a=>holds(e,a)).map(a=>a.id);break;
+    case 'enter_map':case 'enter_region':case 'enter_town':case 'near_place':case 'near_person':case 'member_hp_below':case 'camp_made':st.on=subjects(on).filter(a=>holds(e,a)).map(a=>a.id);break;
     case 'talks_to':{const T=S.talks;st.base=T?T.seq||0:0;break}
     case 'foe_dies':st.ids=foes(on.foe).map(m=>m.id);break;
     case 'night_falls':case 'day_breaks':case 'at_time':st.at=nextHour(on.hh,S.gameMin);break;
@@ -133,6 +139,7 @@ function baseline(e){const on=e.on,st={};
 // Only an oath kept counts (#800); a.oathKept outlives the goal, which moves on the moment it is kept.
 const goalKey=a=>{const g=a.goal;return g&&g.done?clean(g.text,80)+'|1':a.oathKept?'kept '+a.oathKept.at+'|1':g&&!g.offered?clean(g.text,80)+'|0':''};
 function holds(e,a){const on=e.on;switch(e.trigger){
+  case 'enter_map':return MAP_ID===on.map;
   case 'enter_region':return a.state!=='dungeon'&&zoneAt(a.x,a.y)===on.z;
   case 'enter_town':return a.state==='town'&&a.town===on.town;
   case 'near_place':{let p=on;if(on.pid!=null){const q=(S.places||[]).find(x=>x.id===on.pid);if(q)p=q}return a.state!=='dungeon'&&dist(a,p)<=on.r}
@@ -142,7 +149,7 @@ function holds(e,a){const on=e.on;switch(e.trigger){
 // One check of an entry: {who?, what} when it trips, 'lapse' when it can never trip, else null. Updates the edge state.
 function check(e){const on=e.on,st=e.st;
   switch(e.trigger){
-    case 'enter_region':case 'enter_town':case 'near_place':case 'near_person':case 'member_hp_below':case 'camp_made':{
+    case 'enter_map':case 'enter_region':case 'enter_town':case 'near_place':case 'near_person':case 'member_hp_below':case 'camp_made':{
       if(e.trigger==='near_person'&&!people().some(n=>n.id===on.npc))return 'lapse';
       const cur=subjects(on).filter(a=>holds(e,a)),was=new Set(st.on||[]);st.on=cur.map(a=>a.id);const a=cur.find(x=>!was.has(x.id));return a?{who:a,what:a.name+' '+on.what}:null}
     case 'talks_to':{const T=S.talks;if(!T)return null;const ids=new Set(subjects(on).map(a=>a.id)),cs=[...(T.cur||[]),...(T.past||[])].filter(c=>c.id>(st.base||0));
@@ -163,11 +170,14 @@ function check(e){const on=e.on,st=e.st;
 // ---- setting, listing, cancelling ----
 const yes=v=>v===true||/^(yes|true|1|on)$/i.test(String(v==null?'':v).trim());
 const objArg=v=>{if(typeof v==='string'){try{v=v.trim()?JSON.parse(v):{}}catch(e){return null}}return v==null?{}:typeof v==='object'&&!Array.isArray(v)?{...v}:null};
-const hoursOf=v=>v==null||v===''?WHEN.HOURS:Number(v);
+const hoursOf=(v,t)=>v==null||v===''?t==='enter_map'?WHEN.MAP_H:WHEN.HOURS:Number(v);
+const maxH=t=>t==='enter_map'?WHEN.MAP_H:WHEN.MAX_H;
 const usesWho=x=>WHO_TEST.test(typeof x==='string'?x:JSON.stringify(x||{}));
-export const WHEN_USAGE='when takes: trigger ('+TRIGGER_NAMES.join('|')+'), on (an object of the trigger\'s arguments, e.g. {"region":"'+ZONES[ZONES.length-1]+'","company":"fellowship"}), action (a tool: '+deferTools().join('|')+', or a lever name such as set_condition), args (an object of that tool\'s arguments, as you would call it; "{who}" in a text is the hero who tripped it), hours? (1-72 until it lapses, default 24), once? (yes|no, default yes; a repeating one fires at most once a game day), reason';
+const whenUsage=()=>'when takes: trigger ('+TRIGGER_NAMES.join('|')+'), on (an object of the trigger\'s arguments, e.g. {"region":"'+ZONES[ZONES.length-1]+'","company":"fellowship"}), action (a tool: '+deferTools().join('|')+', or a lever name such as set_condition), args (an object of that tool\'s arguments, as you would call it; "{who}" in a text is the hero who tripped it), hours? (1-72 until it lapses, default 24), once? (yes|no, default yes; a repeating one fires at most once a game day), reason';
+export let WHEN_USAGE=whenUsage();
+onWorld(()=>{WHEN_USAGE=whenUsage()},()=>({whenUsage:WHEN_USAGE})); // its example names a region of the live map (#1013)
 export const WATCH_USAGE='watch takes: trigger ('+TRIGGER_NAMES.join('|')+'), on (the trigger\'s arguments, as for when), note? (what to remember when it wakes you), hours? (1-72, default 24), once? (yes|no, default yes)';
-const triggersList=()=>Object.entries(TRIGGERS).map(([k,t])=>k+' {'+t.args+'}: '+t.desc);
+const triggersList=()=>Object.entries(TRIGGERS).filter(([k])=>k!=='enter_map'||manyMaps()).map(([k,t])=>k+' {'+t.args+'}: '+t.desc);
 // Split loose top-level keys between the trigger (on) and the action (args).
 function sortArgs(a,toolRow){const on=objArg(a.on);if(on==null)return {error:'on must be an object of the trigger\'s arguments, such as {"region":"'+ZONES[0]+'"}'};
   const args=toolRow===undefined?{}:objArg(a.args);if(args==null)return {error:'args must be an object of the action\'s arguments, as you would call the tool'};
@@ -177,7 +187,7 @@ function sortArgs(a,toolRow){const on=objArg(a.on);if(on==null)return {error:'on
 
 export function setWhen(a){const w=W();if(!w)return {ok:false,error:'The DM seat has no state yet.'};a=a&&typeof a==='object'?a:{};
   const trigger=clean(a.trigger,30).toLowerCase(),reason=clean(a.reason,160),usage=WHEN_USAGE;
-  if(!TRIGGERS[trigger])return {ok:false,error:'Refused: trigger must be one of: '+TRIGGER_NAMES.join(', ')+'. '+usage,triggers:triggersList()};
+  if(!trig(trigger))return {ok:false,error:'Refused: trigger must be one of: '+TRIGGER_NAMES.join(', ')+'. '+usage,triggers:triggersList()};
   if(!reason)return {ok:false,error:'Refused: a reason is required (one sentence for the DM log). '+usage};
   if(w.list.filter(e=>e.kind==='when').length>=WHEN.MAX)return {ok:false,error:'Refused: '+WHEN.MAX+' whens are pending already; cancel one with unwhen {id} (whens lists them).'};
   if(w.day.when>=WHEN.PER_DAY)return {ok:false,error:'Refused: '+WHEN.PER_DAY+' whens set today already.'};
@@ -197,22 +207,23 @@ export function setWhen(a){const w=W();if(!w)return {ok:false,error:'The DM seat
   if(row&&row.args)for(const [k,s] of Object.entries(row.args)){const v=args[k];
     if(!s.optional&&(v==null||v===''))return {ok:false,error:'Refused: the action '+tool+' needs '+k+' ('+s.desc+'). '+usage};
     if(v!=null&&v!==''&&s.enum&&!s.enum.includes(String(v))&&!usesWho(v))return {ok:false,error:'Refused: '+tool+' '+k+' must be one of '+s.enum.join(', ')+'.'}}
-  let preview=null;if(HOOK.check){const c=HOOK.check(tool,args,{who:usesWho(args)});if(c&&c.error)return {ok:false,error:'Refused: '+c.error,...(c.usage?{usage:c.usage}:{})};if(c&&c.preview)preview=c.preview}
-  const h=hoursOf(a.hours);if(!(h>=WHEN.MIN_H&&h<=WHEN.MAX_H))return {ok:false,error:'Refused: hours is '+WHEN.MIN_H+'-'+WHEN.MAX_H+' (how long it waits before it lapses).'};
+  const there=trigger==='enter_map'&&R.on.map!==MAP_ID; // its places are of that land: read when it fires, there, like every refusal
+  let preview=null;if(HOOK.check&&!there){const c=HOOK.check(tool,args,{who:usesWho(args)});if(c&&c.error)return {ok:false,error:'Refused: '+c.error,...(c.usage?{usage:c.usage}:{})};if(c&&c.preview)preview=c.preview}
+  const h=hoursOf(a.hours,trigger);if(!(h>=WHEN.MIN_H&&h<=maxH(trigger)))return {ok:false,error:'Refused: hours is '+WHEN.MIN_H+'-'+maxH(trigger)+' (how long it waits before it lapses).'};
   const e={id:++w.seq,kind:'when',trigger,on:R.on,label:R.label,tool,args,reason,once:a.once==null||a.once===''?true:yes(a.once),set:Math.round(S.gameMin),until:Math.round(S.gameMin+h*60),n:0,lastDay:-1};
   e.st=baseline(e);w.list.push(e);w.day.when++;
   dmlog('agent',null,['When #'+e.id+' set: when '+e.label+', '+actLine(e)+' - '+reason+'.'],{by:'dm-agent',when:e.id,trigger,on:R.label,tool,reason,hours:h,once:e.once});
   return {ok:true,when:e.id,trigger:R.label,action:actLine(e),hours:h,once:e.once,...(preview?{preview}:{}),pending:w.list.filter(x=>x.kind==='when').length+'/'+WHEN.MAX,
-    note:'It fires through '+tool+' as if you called it then: its limits and refusals apply at that moment. whens lists it, unwhen {id} cancels it.'}}
+    note:'It fires through '+tool+' as if you called it then: its limits and refusals apply at that moment.'+(there?' Its places are read then, on '+mapName(R.on.map)+'.':'')+' whens lists it, unwhen {id} cancels it.'}}
 
 export function setWatch(a){const w=W();if(!w)return {ok:false,error:'The DM seat has no state yet.'};a=a&&typeof a==='object'?a:{};
   const trigger=clean(a.trigger,30).toLowerCase(),usage=WATCH_USAGE;
-  if(!TRIGGERS[trigger])return {ok:false,error:'Refused: trigger must be one of: '+TRIGGER_NAMES.join(', ')+'. '+usage,triggers:triggersList()};
+  if(!trig(trigger))return {ok:false,error:'Refused: trigger must be one of: '+TRIGGER_NAMES.join(', ')+'. '+usage,triggers:triggersList()};
   if(w.list.filter(e=>e.kind==='watch').length>=WATCH.MAX)return {ok:false,error:'Refused: '+WATCH.MAX+' watches are set already; drop one with unwatch {id}.'};
   if(w.day.watch>=WATCH.PER_DAY)return {ok:false,error:'Refused: '+WATCH.PER_DAY+' watches set today already.'};
   const sa=sortArgs(a,undefined);if(sa.error)return {ok:false,error:'Refused: '+sa.error+'. '+usage};
   const R=resolve(trigger,sa.on);if(R.error)return {ok:false,error:'Refused: '+R.error+'. '+usage,triggers:triggersList()};
-  const h=hoursOf(a.hours);if(!(h>=WHEN.MIN_H&&h<=WHEN.MAX_H))return {ok:false,error:'Refused: hours is '+WHEN.MIN_H+'-'+WHEN.MAX_H+'.'};
+  const h=hoursOf(a.hours,trigger);if(!(h>=WHEN.MIN_H&&h<=maxH(trigger)))return {ok:false,error:'Refused: hours is '+WHEN.MIN_H+'-'+maxH(trigger)+'.'};
   const e={id:++w.seq,kind:'watch',trigger,on:R.on,label:R.label,note:clean(a.note,200),once:a.once==null||a.once===''?true:yes(a.once),set:Math.round(S.gameMin),until:Math.round(S.gameMin+h*60),n:0,lastDay:-1};
   e.st=baseline(e);w.list.push(e);w.day.watch++;
   dmlog('agent',null,['Watch #'+e.id+' set: wake the DM when '+e.label+'.'],{by:'dm-agent',watch:e.id,trigger,on:R.label,hours:h,once:e.once});
@@ -255,6 +266,20 @@ function wake(w,e,hit){const x={id:++w.hseq,watch:e.id,gm:Math.round(S.gameMin),
 function drop(w,e,status,why){const i=w.list.indexOf(e);if(i>=0)w.list.splice(i,1);
   if(e.kind==='when'){keep(w.fired,{seq:w.fseq=(w.fseq||0)+1,id:e.id,gm:Math.round(S.gameMin),t:clockStr(),day:dayNo(),trigger:e.label,who:null,tool:e.tool==='pull_lever'?(e.args||{}).lever:e.tool,ok:false,status,why});
     dmlog('agent',null,['When #'+e.id+' '+status+' ('+e.label+'): '+why+'.'],{by:'dm-agent',when:e.id,result:status})}}
+// A crossing (#1013): what is bound to a place of the map being left waits with it, and comes back when the company does, its hours
+// stopped for the time away. Edges start over: what is already true on return does not fire. Time and hero triggers go with the DM.
+// A when whose action names a place or a person of this land is bound to it too, whatever trips it: fired on the next map it would only be refused.
+// enter_map stays out: it is the one trigger that belongs to the road, and its places are of the land it names.
+const PLACE_BOUND=new Set(['enter_region','enter_town','near_place','near_person','talks_to','foe_dies','quest_scene']);
+const PLACE_ARGS=['near','town','region','place','at','npc','as','by'];
+const ofThisLand=(k,v)=>{if(v&&typeof v==='object')return v.x!=null;if(k==='region'&&/^\d+$/.test(String(v)))return true;if(typeof v!=='string'||WHO_TEST.test(v))return false;return !!placeArg(v)||regionIdx(v)!=null&&!/^\d+$/.test(v.trim())||!!personOf(v)};
+function actsHere(e){if(e.trigger==='enter_map'||e.kind!=='when')return false;const a=e.args||{};return [a,a.params&&typeof a.params==='object'?a.params:{}].some(o=>PLACE_ARGS.some(k=>o[k]!=null&&o[k]!==''&&ofThisLand(k,o[k])))}
+const boundHere=e=>PLACE_BOUND.has(e.trigger)||actsHere(e);
+export function parkWhens(map){const w=S.dmAgent&&S.dmAgent.when;if(!w)return 0;const L=w.list.filter(boundHere);if(!L.length)return 0;
+  w.list=w.list.filter(e=>!L.includes(e));(w.parked||(w.parked={}))[map]={at:Math.round(S.gameMin),list:L};
+  dmlog('agent',null,[L.length+' of your whens and watches wait with the land the company left: they come back when it does.'],{by:'scripted',parked:L.map(e=>e.id),map});return L.length}
+export function unparkWhens(map){const w=S.dmAgent&&S.dmAgent.when,p=w&&w.parked&&w.parked[map];if(!p)return 0;const dt=S.gameMin-p.at;
+  for(const e of p.list){e.until+=dt;e.st=baseline(e);w.list.push(e)}delete w.parked[map];if(!Object.keys(w.parked).length)delete w.parked;return p.list.length}
 // Called from the step (dreamTick): nothing set, nothing done.
 export function whenTick(){const D=S.dmAgent,w=D&&D.when;if(!w||!w.list.length)return;
   if(w.at!=null&&S.gameMin>=w.at&&S.gameMin-w.at<WHEN.EVERY)return;w.at=S.gameMin;

@@ -60,11 +60,11 @@
 import {tendBy} from './tend.js'; // a heal landing on a wound takes a day off it (#656)
 import {keep} from './kept.js';
 import {CRYPTS,ZONES,zoneAt,dist} from '../world/map.js';
-import {cryptOfCtx,cryptCtx} from './crypts.js';
+import {cryptOfCtx,cryptCtx,cryptGroupOf} from './crypts.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
 import {tm} from '../data/traits.js';
-import {S} from './state.js';
+import {S,foeOf as sideFoe} from './state.js';
 import {log} from './chronicle.js';
 import {strike,maxHp,goHome} from './heroes.js';
 import {speak,agentLine} from './chat.js';
@@ -136,6 +136,10 @@ const staged=sc=>!!(STG&&sc&&sc.ctx&&sc.ctx.staged!=null);
 // The DM's at-the-table calls of a scene: a kind that brings its own (setSceneKind(k, {..., dm:{onFrame, onAll, live, fill,
 // done}}): the arrival and the opening, sim/arrival.js, #452/#437), else the staged scene's (sim/staged.js), else none.
 const dmOf=sc=>sc&&EXTRA[sc.kind]&&EXTRA[sc.kind].dm?EXTRA[sc.kind].dm:staged(sc)?STG:null;
+// Every other scene (#1017, sim/sceneframe.js): one DM frame as it opens while the table voice listens (sc.gf). Registered, not imported.
+let FRM=null;export function setFrameHook(h){FRM=h}
+export const callKey=(sc,c)=>sc.company+':'+sc.id+':'+c.id; // call ids start over in every scene: this one does not (#1017)
+export const sceneFoeNames=sc=>foesOf(sc).map(foeName);
 // A kind may bring more (#571, the fireside): next(sc) -> true to play another round (acts cleared, the same order); liveMs, the
 // real wait for a live agent instead of TABLE.liveMs (a member that ran it out once is not waited for again in that scene);
 // lineMax, the length of a member's line; view(sc, a), more fields for tableView; everyBeat, its DM's onBeat call in every
@@ -195,7 +199,7 @@ const scMem=sc=>memOf(sceneCompany(sc));
 const atTable=C=>!!C&&(C===slotted()||agentsDecide(memOf(C)));
 export const companyAtTable=atTable; // sim/sites.js (#69): a site's crawl runs at the table only for a company with the say
 // Who is down in the dungeon a crawl scene belongs to: a DM-made site's group (ctx.site, #69) or a spec dungeon's (ctx.dun, #891).
-const dunMem=ctx=>{const id=ctx&&ctx.site;if(id!=null){const D=((S.sites&&S.sites.list)||[]).find(x=>x.id===id);return D&&D.group?D.group.mem:[]}const G=cryptOfCtx(ctx).group;return G?G.mem:[]};
+const dunMem=ctx=>{const id=ctx&&ctx.site;if(id!=null){const D=((S.sites&&S.sites.list)||[]).find(x=>x.id===id);return D&&D.group?D.group.mem:[]}const G=cryptGroupOf(ctx);return G?G.mem:[]};
 // Why a company may not put something to a vote at the table: a solo has no one to ask. null = it may.
 export function voteRefusal(C){return C&&!C.slots&&isSolo(C)?SOLO_VOTE:null}
 setSpeedSource(()=>TABLE.speed);
@@ -238,14 +242,17 @@ function foeOf(sc){const c=sc.ctx||{};if(sc.kind==='boss')return S.boss&&S.boss.
   if(c.mobs){for(const id of c.mobs){const m=S.mobs.find(x=>x.id===id);if(m&&m.alive&&!m.gone)return m}return null} // a staged pack: the first still standing
   if(c.mob!=null){const m=S.mobs.find(x=>x.id===c.mob);return m&&m.alive&&!m.gone?m:null}
   if(c.foe!=null){const b=byId(c.foe);return living(b)?b:null}return null}
+// The plain heal against a true elite on the map (sc.fe, #1056): real time gives a healer a breath between casts; a round has one too, TR.HEAL_GAP rounds, unless someone
+// lies down. In every other scene it is ready every round, as before.
+const healReady=(sc,a,lo)=>!sc.fe||isDown(lo)||sc.hl==null||sc.hl[a.id]==null||sc.rd-sc.hl[a.id]>=TR.HEAL_GAP;
 const lowest=sc=>{let lo=null;for(const b of scMem(sc))if(!b.hidden||inScene(b))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
 // Combat rounds (#276): a combat scene plays up to TR.ROUNDS rounds; the foe acts at its place in the order (sc.foeAt).
 // A scene saved before rounds (no sc.rd) plays its one pass as it did. The fight is over when the foe falls, runs or
 // yields (sc.end), or no member is left in it (fallen, fallen back, or out of reach).
 const rounds=sc=>!!(sc&&COMBAT[sc.kind]&&sc.rd!=null);
-function foesOf(sc){const c=sc.ctx||{};if(c.mobs)return c.mobs.map(id=>S.mobs.find(x=>x.id===id)).filter(m=>m&&m.alive&&!m.gone);const f=foeOf(sc);return f?[f]:[]}
+function foesOf(sc){const c=sc.ctx||{};if(c.mobs)return c.mobs.map(id=>S.mobs.find(x=>x.id===id)).filter(m=>m&&m.alive&&!m.gone);const f=foeOf(sc);return f?[f,...(c.adds||[]).map(id=>S.mobs.find(x=>x.id===id)).filter(m=>m&&m.alive&&!m.gone)]:[]} // c.adds: kin that came into a one-foe fight (#1056); they go on in the world when the foe falls
 // Every foe the scene named, standing or not (the outcome clears their conditions, #296).
-function sceneFoes(sc){const c=sc.ctx||{},L=[];if(sc.kind==='boss'&&S.boss)L.push(S.boss);for(const id of c.mobs||(c.mob!=null?[c.mob]:[])){const m=S.mobs.find(x=>x.id===id);if(m)L.push(m)}
+function sceneFoes(sc){const c=sc.ctx||{},L=[];if(sc.kind==='boss'&&S.boss)L.push(S.boss);for(const id of [...(c.mobs||(c.mob!=null?[c.mob]:[])),...(c.adds||[])]){const m=S.mobs.find(x=>x.id===id);if(m)L.push(m)}
   if(c.foe!=null){const b=byId(c.foe);if(b)L.push(b)}return L}
 function inFight(sc,a){const f=foeOf(sc);return !!f&&living(a)&&!a.hidden&&!(sc.out||[]).includes(a.id)&&(sc.fp?!!sc.fp.pos[a.id]:dist(a,f)<=TR.REACH)&&(f.kind!=='boss'||a.state==='raid')} // on a patch, a tile is being in the fight (#746)
 const fighters=sc=>sc.ids.map(byId).filter(a=>inFight(sc,a));
@@ -261,7 +268,7 @@ const fightOver=sc=>(!!sc.end||!foeOf(sc)||!fighters(sc).length)&&!bleeding(sc);
 // Combat plays until it is decided (#875). The hard cap and the stall rule only guard against loops: TR.ROUNDS_MAX rounds
 // (Kragmaw TR.BOSS_ROUNDS_MAX), and TR.STALL rounds in a row with no HP change on either side. Past the fight's end a bleeding
 // member keeps the table open TABLE.DOWN_ROUNDS more rounds (#654), counted from the round the fight ended (sc.eb).
-const roundCap=sc=>sc.kind==='boss'?TR.BOSS_ROUNDS_MAX:TR.ROUNDS_MAX;
+const roundCap=sc=>sc.kind==='boss'?TR.BOSS_ROUNDS_MAX:sc.fe?TR.ELITE_ROUNDS_MAX:TR.ROUNDS_MAX;
 const looseOver=sc=>!!sc.end||!foeOf(sc)||!fighters(sc).length; // the fight itself is decided (a bleeding member may still hold the table)
 const hpSig=sc=>Math.round([...scMem(sc),...foesOf(sc)].reduce((t,e)=>t+(e.hp||0),0)*10);
 // Why the table must close now, or null (also counts the stall): 'cap' | 'stall' | 'bleed' (the extension ran out).
@@ -299,7 +306,7 @@ export function optionsFor(sc,a){if(isDown(a))return [];const o0=baseOptions(sc,
 function baseOptions(sc,a){if(!sc||!a)return [];const k=sc.kind;if(EXTRA[k])return EXTRA[k].options(sc,a);
   if(COMBAT[k]){const f=foeOf(sc),fn=f?(f.kind==='hero'?f.name:mobName(f)):'the foe',lo=lowest(sc),o=[{k:'strike',text:(sc.fp&&sc.fp.pos[a.id]&&strikeWords(sc,a))||'Strike '+fn}];
     if(f&&f.kind!=='boss')o.push({k:'guard',text:'Draw '+fn+' onto yourself'});
-    if(CLS[a.cls]&&CLS[a.cls].heal&&lo)o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+hpOf(lo)+')'});
+    if(CLS[a.cls]&&CLS[a.cls].heal&&lo&&healReady(sc,a,lo))o.push({k:'heal',text:'Heal '+(lo===a?'yourself':lo.name)+' ('+hpOf(lo)+')'});
     const pot=lo&&lo.hp<maxHp(lo)?bestUse(a,'potion'):null;if(pot)o.push({k:'potion',text:'Give a '+pot+' to '+(lo===a?'yourself':lo.name)+' ('+hpOf(lo)+')'});
     {const bt=bleedingOf(downIn(sc),a);if(bt)o.push({k:'stabilize',text:stabText(a,bt)})} // a companion lies bleeding (#654)
     for(const id of movesOf(a))if(ready(a,id,'round')){const M=MOVES[id];if(M.target==='foe'&&!f)continue;if(M.target==='ally'&&!lo)continue;
@@ -318,7 +325,7 @@ export function reflexFor(sc,a){if(EXTRA[sc.kind])return EXTRA[sc.kind].reflex(s
   if(COMBAT[k]){const f=foeOf(sc),talk=rounds(sc)&&canParley(f)&&!(sc.pl||[]).includes(a.id),rooted=rounds(sc)&&condOn(a,'root');
     const low=lo&&lo.hp<maxHp(lo)*.35,hm=healer&&low?tableHealMove(a,mem):null;if(hm)return hm;if(low&&bestUse(a,'potion')&&(!sc.fp||canTend(sc,a,lo)))return 'potion'; // badly hurt: a healer's class move first, then a potion, then the plain heal below (#387)
     if(!healer&&bleedingOf(downIn(sc),a)&&!upIn(sc).some(b=>b!==a&&healerCls(b)))return 'stabilize'; // a companion bleeds and no healer stands: bind them (#654)
-    if(hurt&&!(healer&&lo===a)&&!rooted)return 'retreat';if(hurt&&rooted&&talk)return 'parley';if(healer&&lo&&lo.hp<maxHp(lo)*.6)return tableHealMove(a,mem)||'heal'; // the class heal move when it is ready and fits (#347), else the plain heal
+    if(hurt&&!(healer&&lo===a)&&!rooted)return 'retreat';if(hurt&&rooted&&talk)return 'parley';if(healer&&lo&&lo.hp<maxHp(lo)*.6){const h=tableHealMove(a,mem)||(healReady(sc,a,lo)?'heal':null);if(h)return h} // the class heal move when it is ready and fits (#347), else the plain heal
     if(talk&&f.hp<(f.kind==='hero'?maxHp(f):f.maxhp)*.35&&trained(a,socialSkill(a)))return 'parley'; // a trained tongue offers a beaten foe its life (#296)
     if(f){const mv=pickMove(a,f,mem,true,'round');if(mv)return mv.id} // the scripted ability policy, in rounds (sim/moves.js)
     if(a.cls==='Warrior'&&f&&f.kind==='mob'&&f.target&&f.target!==a)return 'guard';return 'strike'}
@@ -354,7 +361,7 @@ function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||sce
   if(kind==='elite')scaleElite(F,L,ctx);
   if(COMBAT[kind]){sc.rd=1;sc.fd=0;sc.foeAt=foeSlot(sc.ids.map(byId),foeOf(sc)); // the foe joins the initiative order (#276)
     const f=foeOf(sc);if(f&&patchFits(agentsDecide(L))){const M=sc.ids.map(byId).filter(a=>dist(a,f)<=TR.REACH&&(f.kind!=='boss'||a.state==='raid')); // the ground round them, frozen (#746)
-      openPatch(sc,M,foesOf(sc),f.kind==='boss'?f:byId(ctx.anchor!=null?ctx.anchor:ctx.hero)||M[0],foeName)}}
+      if(openPatch(sc,M,foesOf(sc),f.kind==='boss'?f:byId(ctx.anchor!=null?ctx.anchor:ctx.hero)||M[0],foeName)&&f.elite)sc.fe=1}} // sc.fe: a true elite on the map, the one gate of #1056's rules
   if(sc.pause)requestDrop(sc.title);
   place(sc);F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
   if(!sc.pause){for(const a of L)if(a.player)tableNote(sc,a,plain(frame));finishAll(sc);return sc}
@@ -441,14 +448,14 @@ function applyAct(sc,a,act,f,mod){const k=act.k;
     if((!sc.fp||!sc.fp.pos[a.id])&&dist(a,f)>TR.REACH)return 'closing in';if(rounds(sc))return memberStrike(sc,a,f,mod); // the attack roll against Defense (#276)
     {const h=f.hp;strike(a,f);return 'hit for '+Math.max(0,Math.round(h-f.hp))}
   case 'guard':if(!f)return 'nothing to guard against';if(f.kind==='mob'){f.target=a;if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}return 'drew it on'}
-    if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&a.fac!==f.fac){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
-  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
+    if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&sideFoe(a,f)){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
+  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';if(!healReady(sc,a,lo))return 'your heal is not ready';if(sc.fe)(sc.hl||(sc.hl={}))[a.id]=sc.rd;const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
   case 'stabilize':{const t=bleedingOf(downIn(sc),a);if(!t)return 'nobody is bleeding';return stabilizeAt(a,t).text} // #654
   case 'potion':{const lo=lowest(sc),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});useNote(sc,a,id,lo,r);return r.ok?'+'+r.healed+' to '+lo.name+' ('+id+')':r.error}
   case 'parley':if(!rounds(sc)||!canParley(f))return 'no one there will listen';return parley(sc,a,foesOf(sc),fighters(sc)); // a say-check against the foe's temper (#296)
   case 'retreat':if(rounds(sc)&&condOn(a,'root'))return 'rooted: cannot fall back';if(rounds(sc))(sc.out||(sc.out=[])).push(a.id);if(a.raid){a.raid=false}if(f&&f.target===a)f.target=null;if(a.state==='duel'&&f&&f.target===a&&f.kind==='hero'){f.state='hunt';f.target=null}
     if(a.state!=='dungeon'){goHome(a);if(a.player)a.pq=[]}return 'fell back';
-  case 'hold':case 'ward':case 'scout':case 'read':case 'press':case 'careful':{const g=cryptOfCtx(sc.ctx).group;if(!g)return null;g.bonus=Math.round(((g.bonus||0)+SITE_BONUS[k])*100)/100;
+  case 'hold':case 'ward':case 'scout':case 'read':case 'press':case 'careful':{const g=cryptGroupOf(sc.ctx);if(!g)return null;g.bonus=Math.round(((g.bonus||0)+SITE_BONUS[k])*100)/100;
     if(k==='ward')for(const b of g.mem)b.hp=Math.min(maxHp(b),b.hp+maxHp(b)*.1);return '+'+SITE_BONUS[k]}
   case 'aid':{const lo=lowest(sc);if(!lo)return null;const h=Math.round(maxHp(lo)*.15);lo.hp=Math.min(maxHp(lo),lo.hp+h);return '+'+h+' to '+lo.name}
   default:if(MOVES[k]){const M=MOVES[k],t=M.target==='foe'?f:M.target==='ally'?lowest(sc):null;
@@ -521,7 +528,7 @@ function runAll(sc,dt,instant){
   return !!(sc.calls&&callWait(sc,dt,instant))}
 // A staged scene's DM calls, oldest first: the DM agent's answer, or a wait of up to TABLE.dmMs at 1x, or
 // the scripted DM's fill (at once at 3x/8x, when the seat is empty or the DM keeps missing). True = waiting.
-function callWait(sc,dt,instant){const H=dmOf(sc);if(!H)return false;
+function callWait(sc,dt,instant){const H=sc.gf&&FRM?FRM:dmOf(sc);if(!H)return false;
   for(const c of sc.calls){if(c.done)continue;
     if(!instant&&sc.pause&&(H.live(sc)||callPicked(c))){c.t+=dt;if(c.t<callEnd(c))return true;sc.dmMiss=(sc.dmMiss||0)+1}
     H.fill(sc,c);dt=0}
@@ -535,7 +542,9 @@ export const callLeft=c=>Math.max(0,Math.round((callEnd(c)-(c.t||0))*10)/10);
 // runner is busy answering (not polling), unless the runner went away since (dmreflex gone()).
 export function callSeen(c){if(c&&c.seen==null){c.seen=c.t||0;c.ep=goneEpoch()}}
 const callPicked=c=>c.seen!=null&&c.ep===goneEpoch();
-const frameCalls=sc=>{const H=dmOf(sc);if(H&&H.onFrame&&!sc.framed){sc.framed=true;H.onFrame(sc);for(const c of sc.calls||[])c.op=1}}; // op: the opening calls the members wait for (#682)
+const frameCalls=sc=>{if(sc.framed)return;const H=dmOf(sc);if(H&&H.onFrame){sc.framed=true;H.onFrame(sc)}
+  if(FRM&&!(sc.calls&&sc.calls.length)&&FRM.want(sc)){const L=sc.ids.map(byId).filter(living);if(L.some(a=>a.player)){sc.framed=true;sc.gf=1;FRM.onFrame(sc,L[0],L.map(a=>a.name),COMBAT[sc.kind]?FRM.foes(sc):[])}} // the DM's frame of any other scene (#1017)
+  for(const c of sc.calls||[])c.op=1}; // op: the opening calls the members wait for (#682)
 
 // ---- the outcome ----
 function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.filter(b=>b.k===k).map(b=>b.name);let tail='';
@@ -547,7 +556,7 @@ function outcome(sc){const L=sc.beats,F=sceneCompany(sc),mem=memOf(F),by=k=>L.fi
   else if(COMBAT[sc.kind]){if(rounds(sc)){fightStats(F,sc);flushRolls(sc)}const f=foeOf(sc),fl=by('retreat'),fell=(sc.fell||[]).map(byId).filter(Boolean).map(b=>b.name);
     tail=(sc.end==='yield'&&f?foeName(f)+' yields and breaks off'+(sc.talk?' at '+sc.talk+'\'s words':''):sc.end==='fled'&&f?foeName(f)+' breaks away and runs'+(sc.talk?' at '+sc.talk+'\'s words':''):f?mobName(f.kind==='hero'?{elite:1,name:f.name}:f)+' '+(f.kind==='boss'||f.kind==='mob'?hurtWord(f.hp/(f.maxhp||maxHp(f))):'still stands'):sc.ctx&&sc.ctx.down&&sc.ctx.mob==null?'No foe stands over them':'The foe is down')+'.'+(fl.length?' '+fl.join(' and ')+' fell back.':'')+
       (fell.length?' '+fell.join(' and ')+' fell.':'')+downTail(sc)+(sc.capped?' The fight grinds on, out in the world.':'')+(sc.rd>1?' ('+sc.rd+' rounds.)':'')}
-  else if(sc.kind==='site'||sc.kind==='room'){const g=cryptOfCtx(sc.ctx).group;tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
+  else if(sc.kind==='site'||sc.kind==='room'){const g=cryptGroupOf(sc.ctx);tail=g?'They go on with the odds a little better for it (+'+(g.bonus||0)+').':''}
   else if(sc.kind==='check')tail='The road goes on.';
   else if(EXTRA[sc.kind])tail=EXTRA[sc.kind].outcome(sc)||'';
   const foeB=L.filter(b=>b.by==='foe'&&b.k==='attack'),mine=L.filter(b=>b.by!=='foe'&&b.by!=='cond');
@@ -576,7 +585,8 @@ export const sceneFrame=sc=>sc?framedText(sc):''; // the frame as the members he
 // Who was brought back and who still lies down when a scene ends (#654).
 function downTail(sc){const ups=[...new Set(sc.up||[])].map(byId).filter(b=>living(b)&&!isDown(b)).map(b=>b.name),dn=downIn(sc);
   return (ups.length?' '+ups.join(' and ')+(ups.length>1?' are':' is')+' back on their feet.':'')+(dn.length?' '+dn.map(b=>b.name+(b.down.stable?' lies stable':' still bleeds')).join('; ')+'.':'')}
-function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);closeScene(sc)}
+function finishAll(sc){if(sc.phase==='outcome'){closeScene(sc);return} // already settled, only its outcome showing: settling it again would write the log, tell the members and run the ending twice
+  frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);closeScene(sc)}
 
 // ---- once per step: the paused scene (sim/index.js calls this first; true = skip the world) ----
 // Every company's open scene steps here (#518); the world stops while one that stopsWorld holds. A live-clock scene (#458)
@@ -629,7 +639,7 @@ function due(C,L){
   if(S.boss&&S.boss.alive)for(const a of L)if(a.state==='raid'&&dist(a,S.boss)<6){if(seen(C,'boss',COOL.boss))break;
     return {kind:'boss',title:'Kragmaw the Cinder Wyrm',frame:['The lair shakes. ',gd('Kragmaw the Cinder Wyrm'),' rears over the raid, the heat of it on every face.'],ctx:{},key:'boss'}}
   // ambush: an enemy hero duels a member
-  for(const a of L){const f=a.target;if(a.state!=='duel'||!f||f.kind!=='hero'||f.fac===a.fac)continue;if(seen(C,'duel:'+f.id,COOL.ambush))continue;
+  for(const a of L){const f=a.target;if(a.state!=='duel'||!f||f.kind!=='hero'||!sideFoe(a,f))continue;if(seen(C,'duel:'+f.id,COOL.ambush))continue;
     return {kind:'ambush',title:'Ambush: '+f.name,frame:[f,' of the enemy falls on ',a,' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+'.'],ctx:{foe:f.id},key:'duel:'+f.id}}
   // elite or named foe
   for(const a of L){const m=a.target;if(a.state!=='fight'||!m||m.kind!=='mob'||!(m.elite||m.named)||!m.alive)continue;if(seen(C,'elite:'+m.id,COOL.elite))continue;
@@ -651,7 +661,7 @@ function stale(C,q){if(S.gameMin-q.at>TABLE.queueMin)return true;const c=q.ctx||
   if(c.mob!=null){const m=S.mobs.find(x=>x.id===c.mob);if(!m||!m.alive||m.gone)return true}
   if(c.foe!=null&&!living(byId(c.foe)))return true;
   if(q.kind==='boss'&&!(S.boss&&S.boss.alive))return true;
-  if(q.kind==='site'||q.kind==='room'){const g=cryptOfCtx(c).group;if(!(g&&g.phase==='inside'))return true}
+  if(q.kind==='site'||q.kind==='room'){const g=cryptGroupOf(c);if(!(g&&g.phase==='inside'))return true}
   return false}
 // Once per step (after the council). Companies in id order: a queued moment first when the table is free, then each
 // company's due moment; only one scene opens a step, a later company's moment waits in its queue for a later step.

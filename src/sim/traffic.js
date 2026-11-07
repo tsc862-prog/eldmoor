@@ -24,7 +24,8 @@
 //   beset  {mob?, foe, since, until, chk, staged?}
 // DOM-free. Owned by ai-designer; the road net it reads is world-builder's.
 import {S,dayNo} from './state.js';
-import {tiles,I,CITY,LANDMARKS,OUTPOSTS,ZONES,zoneAt,dist} from '../world/map.js';
+import {onWorld} from './kept.js';
+import {tiles,I,CITY,LANDMARKS,OUTPOSTS,EXITS,ZONES,zoneAt,dist} from '../world/map.js';
 import {W,H,ROAD,BRIDGE} from '../world/tiles.js';
 import {solidAt} from '../world/passable.js';
 import {CARGO,TRAVELLERS,ROAD_WORDS} from '../data/traffic.js';
@@ -100,11 +101,13 @@ const beatThrough=(s,depth)=>{const B=flood(flood(s,depth).far,depth*2);return u
 const middleOf=l=>l.mouth?{x:l.mouth.x0+(l.mouth.w||0)/2,y:l.mouth.y0+(l.mouth.h||0)/2}:{x:l.x,y:l.y};
 
 let NET=null;
+onWorld(()=>{NET=null},()=>{const n=net();return {roadStops:n.stops,roadPosts:[...n.posts.keys()]}}); // another map (#1013): its own road net
 function net(){if(NET)return NET;const stops=[];
   const add=(name,kind,p,r)=>{const tile=roadNear(p.x,p.y,r);if(tile>=0)stops.push({name,kind,tile})};
   for(const c of CITY)add(c.name,'town',c.gate,4);
   for(const o of OUTPOSTS||[])add(o.name,'outpost',o,6);
   for(const l of LANDMARKS)if(l.kind!=='lair')add(l.name,'landmark',middleOf(l),Math.ceil((l.r||0)+4)); // nobody walks to a wyrm's lair for choice
+  for(const e of EXITS)add(e.name,'road-end',e,3); // a road off the map (#1013): people walk out to the last milestone and turn back
   const byName=new Map(stops.map(s=>[s.name,s])),trees=new Map(),routes=new Map();
   const tree=s=>{if(!trees.has(s.name))trees.set(s.name,flood(s.tile).prev);return trees.get(s.name)};
   // the tiles from stop a to stop b, or null

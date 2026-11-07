@@ -4,11 +4,13 @@
 // Every hero name in the panels is a <span class="hn f0|f1" data-hid="id">; one
 // delegated click handler (initPanels) looks the hero up in S.agents and hands it
 // to the picker, which controls.js wires to select + follow.
+import {loreSides} from '../sim/state.js'; // sides as lore (#1025)
+import {worldFill} from '../world/words.js';
 import {outpostCounts} from '../sim/outposts.js';
 import {clamp} from '../core/rng.js';
 import {chatVisible,worldChatter,setWorldChatter} from '../core/chatview.js';
 import {CITY,CRYPT,LAIR,ZONES,OUTPOSTS,zoneFor} from '../world/map.js';
-import {cryptOfHero} from '../sim/crypts.js';
+import {cryptOfHero,heroCryptName} from '../sim/crypts.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {TRAITS} from '../data/traits.js';
@@ -77,7 +79,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
   switch(a.state){
     case 'town':return a.townStep===0?`Selling loot at the ${c} auction house`:a.townStep===1?`Checking in with the ${c} quest giver`:`Leaving ${c} for ${ZONES[a.party?a.party.zone:zoneFor(a.lvl,homeOf(a).gate)]}`;
     case 'travel':return `Traveling to ${zn}`;
-    case 'hunt':return a.quest?`Hunting ${MOBS[a.quest.type].pl} in ${zn}`:`Hunting in ${zn}`;
+    case 'hunt':return a.quest&&MOBS[a.quest.type]?`Hunting ${MOBS[a.quest.type].pl} in ${zn}`:`Hunting in ${zn}`; // a quest may name a creature of a map left behind (#1013): MOBS is this map's
     case 'fight':return a.target?`Fighting a level ${a.target.lvl} ${MOBS[a.target.type].name}`:'Fighting';
     case 'return':return `Heading back to ${c}`;
     case 'mend':return `Mending from wounds in ${c}`;
@@ -91,6 +93,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
     case 'regroup':return 'Pulling back after a skirmish';
     case 'dungeon':{const D=cryptOfHero(a)||CRYPT,s=a.siteIn!=null?siteById(a.siteIn):null; // a DM-made site names itself, never the Crypt (#917)
       if(a.siteIn!=null){const n=s?s.name:'a hidden place',t=s&&s.boss?(s.bossTitle?s.boss+', '+s.bossTitle:s.boss):'';if(s&&s.raid)return a.hidden?`Raiding ${n}${t?', fighting toward '+t:''}`:`Gathering a raid at ${n}`;return a.hidden?`Inside ${n}${t?', fighting toward '+t:''}`:`Gathering a group at ${n}`}
+      if(!D)return 'Gathering a group';
       return a.hidden?`Inside ${D.name}, fighting toward ${D.boss}`:`Gathering a group at ${D.name}`}}return ''}
 
 // ---- hero dossier ----
@@ -134,7 +137,7 @@ function identity(b,a){sec(b,'Identity');const kv=el('div','kv');
   const row=(k,v)=>{kv.append(el('span','k',k));const s=el('span','v');if(typeof v==='string')s.textContent=v;else s.append(v);kv.append(s)};
   row('Level',String(a.lvl));row('Class',a.cls);
   if(a.race){const s=el('span','gd',raceOf(a).name);s.title=raceOf(a).culture;const w=el('span');w.append(s,' of '+homeOf(a).name);row('People',w)}
-  row('Faction',FAC[a.fac].name);row('Guild',a.guild?`<${a.guild.tag}> ${a.guild.name}`:'Unguilded');b.append(kv);
+  if(!loreSides())row('Faction',FAC[a.fac].name);row('Guild',a.guild?`<${a.guild.tag}> ${a.guild.name}`:'Unguilded');b.append(kv);
   const need=xpNeed(a.lvl),xp=el('div','xprow');
   if(a.lvl>=20)xp.append(el('span','dm','Max level'));
   else{xp.append(meter('xp xpb',Math.max(0,a.xp)/need),el('span','dm',`${Math.round(a.xp)} / ${need} xp to level ${a.lvl+1}`))}
@@ -159,7 +162,7 @@ function skillsGrid(b,a){if(!a.abil)return;sec(b,'Skills');const g=el('div','skg
   b.append(g,el('div','dm skey','* trained'))}
 
 function record_(b,a){sec(b,'Record');const kv=el('div','kv');
-  const rows=[['Gold',a.gold+'g'],['Honor',a.honor],['Kills',a.kills],['Elite kills',a.eliteKills||0]];if(a.avenged!=null)rows.push(['Avenged',a.avenged]);
+  const rows=[['Gold',a.gold+'g'],...(loreSides()?[]:[['Honor',a.honor]]),['Kills',a.kills],['Elite kills',a.eliteKills||0]];if(a.avenged!=null)rows.push(['Avenged',a.avenged]);
   for(const [k,v] of rows)kv.append(el('span','k',k),el('span','v',String(v)));b.append(kv)}
 
 function story(b,a){sec(b,'Story');
@@ -171,7 +174,7 @@ function story(b,a){sec(b,'Story');
   {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
   const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
-  const q=a.quest?`${MOBS[a.quest.type].q}: ${a.quest.have}/${a.quest.need} ${MOBS[a.quest.type].pl}`:'No quest';
+  const qm=a.quest&&MOBS[a.quest.type],q=qm?`${qm.q}: ${a.quest.have}/${a.quest.need} ${qm.pl}`:a.quest?`A hunt from another land: ${a.quest.have}/${a.quest.need}`:'No quest';
   b.append(el('div','meta','Quest: '+q));
   {const ad=advLine(a);if(ad){const d=el('div','meta adv');d.dataset.adv=a.adv;d.title='Open this adventure in the Dungeon Master log';parts(d,ad);b.append(d)}} // the DM's adventure and scene (sim/dm.js)
   b.append(el('div','meta',`Weather: ${weatherName(a.zone)} in ${ZONES[a.zone]}`))}
@@ -215,7 +218,7 @@ function itemCard(it,cls){const d=el('div',cls||'itip');
   for(const f of it.affixes||[])d.append(el('div','ia',f));
   const z=zoneIdx(it.zone);if(z>=0)d.append(el('div','dm','Found in '+ZONES[z]));
   if(it.src)d.append(el('div','dm',it.src));
-  if(it.epic&&EPIC_ITEMS[it.name])d.append(el('div','if',EPIC_ITEMS[it.name].flavour));
+  if(it.epic&&EPIC_ITEMS[it.name])d.append(el('div','if',worldFill(EPIC_ITEMS[it.name].flavour)));
   if(it.over){const o=it.over,ds=itemDelta(it,o);
     d.append(el('div','dm','Replaced '+o.name+' (ilvl '+o.ilvl+')'+(ds.length?': '+ds.join(', '):'')))}
   return d}
@@ -223,10 +226,10 @@ function itemCard(it,cls){const d=el('div',cls||'itip');
 const invEntry=(a,i)=>a&&a.inv?a.inv.list[i]||null:null;
 function supplyCard(e,cls){const d=el('div',cls||'itip');
   if(e.kind==='use'&&USES[e.id]){const U=USES[e.id];d.append(el('div','in qf',e.id),el('div','dm',U.kind.charAt(0).toUpperCase()+U.kind.slice(1)+' · x'+e.n));
-    for(const [c,t] of useLines(e.id))d.append(el('div','is s-'+c,t));d.append(el('div','dm','Costs '+U.price+'g in town'),el('div','if',U.flavour))}
+    for(const [c,t] of useLines(e.id))d.append(el('div','is s-'+c,t));d.append(el('div','dm','Costs '+U.price+'g in town'),el('div','if',worldFill(U.flavour||'')))}
   else if(e.kind==='good'){d.append(el('div','in qp',e.id),el('div','dm',(MATERIALS[e.id]?'Material · ':'Trade good · ')+'x'+e.n));if(GOODS[e.id]||MATERIALS[e.id])d.append(el('div','is s-bn','Sells for about '+price(e.id)+'g each'))}
   else{const Q=QUEST_ITEMS[e.id];d.append(el('div','in gd',e.id),el('div','dm','Quest item'));
-    d.append(el('div','if',Q?Q.flavour:'Carried for a job; it is handed in when the job ends.'),el('div','dm','Cannot be sold, dropped or given.'))}
+    d.append(el('div','if',Q?worldFill(Q.flavour):'Carried for a job; it is handed in when the job ends.'),el('div','dm','Cannot be sold, dropped or given.'))}
   return d}
 const cardOf=(it,cls)=>isGear(it)?itemCard(it,cls):supplyCard(it,cls);
 const hoverItem=()=>{const a=cam.sel;if(!hov||!a||a.id!==hov.id)return null;return hov.inv!=null?invEntry(a,hov.inv):a.slots?a.slots[hov.slot]:null};
@@ -414,8 +417,8 @@ export function renderHero(){const root=$('hero'),a=cam.sel;
   const mh=maxHp(a),short=briefCard(a);
   // header and body are patched in place (#145): scroll, focus and open rows survive the 0.3 s tick
   patch(k.hd,h=>{h.append(heroName(a));
-    h.append(el('div','meta',`Level ${a.lvl} ${a.cls} of the ${FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
-    const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=a.siteIn!=null?'site:'+a.siteIn:(cryptOfHero(a)||CRYPT).name;b.title='Open the dungeon view';dg.append(' ',b)}if(LAIR&&(a.state==='raid'&&a.raid||a.state==='downed'&&Math.hypot(a.x-LAIR.x,a.y-LAIR.y)<=(LAIR.r||5)+1)){const b=el('button','dglink','View the raid ▸');b.type='button';b.dataset.dungeon=LAIR.name;b.title='Open the raid arena';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
+    h.append(el('div','meta',`Level ${a.lvl} ${a.cls}${loreSides()?'':' of the '+FAC[a.fac].name} · ${a.guild?'<'+a.guild.tag+'> '+a.guild.name:'Unguilded'}`));
+    const dg=el('div','doing'),pu=el('div','purp');setPurpose(pu,a,'d');pu.tabIndex=0;pu.setAttribute('role','button');pu.setAttribute('aria-expanded',String(isOpen('d'+a.id)));dg.append(pu);if(a.state==='dungeon'&&a.hidden){const b=el('button','dglink','View inside ▸');b.type='button';b.dataset.dungeon=a.siteIn!=null?'site:'+a.siteIn:heroCryptName(a);b.title='Open the dungeon view';dg.append(' ',b)}if(LAIR&&(a.state==='raid'&&a.raid||a.state==='downed'&&Math.hypot(a.x-LAIR.x,a.y-LAIR.y)<=(LAIR.r||5)+1)){const b=el('button','dglink','View the raid ▸');b.type='button';b.dataset.dungeon=LAIR.name;b.title='Open the raid arena';dg.append(' ',b)}h.append(dg); // the dungeon view (#85, render/dungeonview.js)
     h.append(el('div','dm','HP'),meter('hp',a.hp/mh));{const dr=downRow(a);if(dr)h.append(dr)} // DOWNED, the tally and the timer (#659)
     h.append(el('div','dm','XP'),meter('xp',a.lvl>=20?1:a.xp/xpNeed(a.lvl)));
     if(short){const b=el('button','mini fullsheet','Full sheet ▸');b.type='button';b.dataset.fullsheet=a.id;b.title='Open '+a.name+'’s full sheet: stats, gear, story and mind';h.append(b)}});
@@ -441,7 +444,8 @@ export function renderTops(){patch($('tops'),ul=>ranked().slice(0,8).forEach((a,
   nm.append(el('span','dm',a.cls));const lv=el('span','lv','Lv '+a.lvl);
   b.append(n,nm,lv);b.onclick=()=>pick(a);li.append(b);ul.append(li)}),{anchor:false})}
 
-export function renderFacs(){const rows=[['',...FAC.map((f,i)=>el('span','h f'+i,f.name.toUpperCase()))]];
+// Sides as lore (#1025): the table is hidden, and honour is still counted.
+export function renderFacs(){const sec=$('facs')&&$('facs').closest&&$('facs').closest('section');if(sec)sec.hidden=loreSides();if(loreSides())return;const rows=[['',...FAC.map((f,i)=>el('span','h f'+i,f.name.toUpperCase()))]];
   const s=f=>living().filter(a=>a.fac===f);
   rows.push(['Avg level',...[0,1].map(f=>(s(f).reduce((t,a)=>t+a.lvl,0)/Math.max(1,s(f).length)).toFixed(1))]);
   rows.push(['Fallen',...[0,1].map(f=>S.facStats[f].fallen)]);

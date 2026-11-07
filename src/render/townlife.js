@@ -24,10 +24,13 @@ import {MARK,TOWN} from './palette.js';
 import {hash} from '../core/rng.js';
 import {F,frame,inTiles,skyAt,WET,WIND,ramp,lamps} from './life.js';
 import {critterEnts,drawRoostBirds} from './critters.js';
-import {pieceSpot,buildingArt} from './townart.js';
+import {pieceSpot,buildingArt,gateArt,gatePosts} from './townart.js';
+import {lookOf} from './townlook.js';
 import {townStyle} from '../data/townart.js';
+import {harbourEnts,harbourLight} from './harbour.js';
 import {onAssets,assetPixels} from './assets.js';
 import {trackSteps,drawFootprints} from './footprints.js';
+import {onWorld} from '../sim/kept.js';
 
 const OPPOSITE={E:'W',W:'E',N:'S',S:'N'},U_ART=1/ART;
 const KEEPERS=['peddler','drover','quartermaster','innkeeper']; // townsfolk roles whose look a stallkeeper borrows
@@ -35,6 +38,7 @@ const GOODS=[['#c8402a','#e8b038','#7a9a3a'],['#4a7ab0','#e8e0c8','#a04a8a'],['#
 
 // ---- the plan of a town, built once (the tiles do not change) ----
 const LAY=new Map();
+onWorld(()=>LAY.clear()); // another map (#1013)
 // Chimneys and the hall's flag, where the town's art has them: an image cut from the LPC kits says so (#833), and it may arrive
 // after the plan was made, so these alone are looked up again when the assets change.
 function roofSpots(L){const c=L.c;L.chim.length=0;L.flag=null;
@@ -108,15 +112,15 @@ function paintGuard(ctx,px,py,blink,e){const G=sheetFrame(e.kp,e.dir,e.col||0);
   const s=guardSprite(e.town.c.fac,e.fr||0),o=worldSprite(s),sh=s.height*PROC_SCALE,ow=1/ART;
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,s.width*PROC_SCALE*.4,1.5,0,0,7);ctx.fill();
   ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-ow,py-sh-ow,o.width/ART,o.height/ART);ctx.restore()}
-// A stall: posts, a striped awning in the faction colour, a table with goods; closed it is a covered table.
-function paintStall(ctx,px,py,blink,e){const f=FAC[e.town.c.fac],o=e.open,R=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(px+x,py+y,w,h)};
+// A stall: posts, a striped awning in the faction colour (or the town's look), a table with goods; closed it is a covered table.
+function paintStall(ctx,px,py,blink,e){const f=FAC[e.town.c.fac],aw=(lookOf(e.town.c)||{}).awning,ac=aw?aw[0]:f.color,ad=aw?aw[1]:f.dark,o=e.open,R=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(px+x,py+y,w,h)};
   if(o>0){ // keeper behind the table, drawn first so the table and awning cover his lower body
     person(ctx,px,py-7,e.kp,Math.floor(F.now*1.4+e.sx)&1,1,1)}
   R(-12,-9,24,9,'#6a4a2a');R(-12,-9,24,2,'#8a6a44');R(-12,-1,24,1,'#3a2a1c'); // the table, front
   if(o>0){
     for(let i=0;i<6;i++){R(-11+i*4,-10,3,1,e.goods[i%3])} // goods along its top
     R(-12,-30,2,22,'#4a3420');R(10,-30,2,22,'#4a3420'); // posts
-    for(let i=0;i<8;i++){R(-12+i*3,-34,3,6,i&1?'#ece4cc':f.color);R(-12+i*3,-28,3,1,i&1?'#b8b09c':f.dark)} // the striped awning
+    for(let i=0;i<8;i++){R(-12+i*3,-34,3,6,i&1?'#ece4cc':ac);R(-12+i*3,-28,3,1,i&1?'#b8b09c':ad)} // the striped awning, in the town's own cloth where it has one (townlook.js)
     R(-12,-35,24,1,f.dark);for(let i=0;i<8;i++)if(i&1)R(-12+i*3,-27,3,1,'#0003')}
   else{R(-13,-14,26,6,'#8a7a5a');R(-13,-14,26,1,'#a8987a');R(-13,-9,26,1,'#4a3e2a');R(-6,-14,1,6,'#5a4e36');R(5,-14,1,6,'#5a4e36')}} // closed: a tarp over the table
 
@@ -131,10 +135,11 @@ export function lifeGround(ctx){drawFootprints(ctx)}
 export function lifeEnts(ents){
   critterEnts(ents);
   if(F.tpx<9)return;
+  harbourEnts(ents);
   for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci),h=F.hour;
     const shut=!!WET[skyAt(c.x0,c.y0)],mk=shut?0:ramp(h,7,8,17,18);
     for(const s of L.stalls){s.open=mk;ents.push(s)}
-    for(const g of L.guards)ents.push(g);
+    const gh=gateArt(c),at=gh&&(gh.posts||(gh.posts=gatePosts(c)));for(let i=0;i<L.guards.length;i++){const g=L.guards[i];if(g.hx===undefined){g.hx=g.x;g.hy=g.y}g.x=at?at[i][0]:g.hx;g.y=at?at[i][1]:g.hy;ents.push(g)}
     if(!L.noWalk){placeWalker(L,F.now);ents.push(L.walker)}}}
 // Air pass, over the entities and under the night: smoke, flags, door lamps, birds off the trees.
 export function lifeAir(ctx,blink){drawRoostBirds(ctx);if(F.tpx<9)return;
@@ -154,8 +159,10 @@ function flag(ctx,x,y,f,wind){const px=Math.round(x),py=Math.round(y),amp=.8+win
   ctx.fillStyle='#3a2a1a';ctx.fillRect(px,py-16,1,16);ctx.fillStyle='#f2c14e';ctx.fillRect(px,py-17,1,1);
   for(let i=0;i<11;i++){const w=Math.sin(F.now*(3+wind*3)-i*.8)*amp*(i/10),taper=i>7?(i-7):0;
     ctx.fillStyle=f.color;ctx.fillRect(px+1+i,Math.round(py-16+w),1,6-taper);ctx.fillStyle=f.dark;ctx.fillRect(px+1+i,Math.round(py-16+w+4-taper),1,1)}}
+const lampFlick=(s,now)=>.88+.12*Math.sin(now*2.3+s);
 // Night pass (additive light): lit doors, the forge's glow while it works, guards' torches.
 export function lifeLight(ctx,glow,dk,LIGHT){if(F.tpx<9)return;
+  harbourLight(glow,dk,LIGHT.torch,lampFlick);
   for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci),lp=lamps(F.hour);
     for(const d of L.doors){if(lp>0&&inTiles(d.x/T,d.y/T,1))glow(d.x,d.y-6,d.w>1?20:15,LIGHT.torch,dk*.55*lp);
       if(d.forge){const w=ramp(F.hour,5.5,6.5,19,21);if(w>0)glow(d.x,d.y-6,22,[255,120,40],dk*.6*w*(.85+.15*Math.sin(F.now*9)))}}
