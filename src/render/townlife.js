@@ -25,6 +25,7 @@ import {hash} from '../core/rng.js';
 import {F,frame,inTiles,skyAt,WET,WIND,ramp,lamps} from './life.js';
 import {critterEnts,drawRoostBirds} from './critters.js';
 import {pieceSpot,buildingArt,gateArt,gatePosts} from './townart.js';
+import {lookOf} from './townlook.js';
 import {townStyle} from '../data/townart.js';
 import {harbourEnts,harbourLight} from './harbour.js';
 import {onAssets,assetPixels} from './assets.js';
@@ -111,15 +112,15 @@ function paintGuard(ctx,px,py,blink,e){const G=sheetFrame(e.kp,e.dir,e.col||0);
   const s=guardSprite(e.town.c.fac,e.fr||0),o=worldSprite(s),sh=s.height*PROC_SCALE,ow=1/ART;
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,s.width*PROC_SCALE*.4,1.5,0,0,7);ctx.fill();
   ctx.save();ctx.translate(px,0);if(e.face<0)ctx.scale(-1,1);ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-ow,py-sh-ow,o.width/ART,o.height/ART);ctx.restore()}
-// A stall: posts, a striped awning in the faction colour, a table with goods; closed it is a covered table.
-function paintStall(ctx,px,py,blink,e){const f=FAC[e.town.c.fac],o=e.open,R=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(px+x,py+y,w,h)};
+// A stall: posts, a striped awning in the faction colour (or the town's look), a table with goods; closed it is a covered table.
+function paintStall(ctx,px,py,blink,e){const f=FAC[e.town.c.fac],aw=(lookOf(e.town.c)||{}).awning,ac=aw?aw[0]:f.color,ad=aw?aw[1]:f.dark,o=e.open,R=(x,y,w,h,c)=>{ctx.fillStyle=c;ctx.fillRect(px+x,py+y,w,h)};
   if(o>0){ // keeper behind the table, drawn first so the table and awning cover his lower body
     person(ctx,px,py-7,e.kp,Math.floor(F.now*1.4+e.sx)&1,1,1)}
   R(-12,-9,24,9,'#6a4a2a');R(-12,-9,24,2,'#8a6a44');R(-12,-1,24,1,'#3a2a1c'); // the table, front
   if(o>0){
     for(let i=0;i<6;i++){R(-11+i*4,-10,3,1,e.goods[i%3])} // goods along its top
     R(-12,-30,2,22,'#4a3420');R(10,-30,2,22,'#4a3420'); // posts
-    for(let i=0;i<8;i++){R(-12+i*3,-34,3,6,i&1?'#ece4cc':f.color);R(-12+i*3,-28,3,1,i&1?'#b8b09c':f.dark)} // the striped awning
+    for(let i=0;i<8;i++){R(-12+i*3,-34,3,6,i&1?'#ece4cc':ac);R(-12+i*3,-28,3,1,i&1?'#b8b09c':ad)} // the striped awning, in the town's own cloth where it has one (townlook.js)
     R(-12,-35,24,1,f.dark);for(let i=0;i<8;i++)if(i&1)R(-12+i*3,-27,3,1,'#0003')}
   else{R(-13,-14,26,6,'#8a7a5a');R(-13,-14,26,1,'#a8987a');R(-13,-9,26,1,'#4a3e2a');R(-6,-14,1,6,'#5a4e36');R(5,-14,1,6,'#5a4e36')}} // closed: a tarp over the table
 

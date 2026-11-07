@@ -4,7 +4,7 @@
 import {wounded} from './wounds.js'; // a wounded background hero stays out of the Crypt (#656)
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {CRYPT,CRYPTS,dist} from '../world/map.js';
-import {CRYPT_LVL,entryOf,needOf,cryptFor,cryptOfGroup,cryptRun,cryptName} from './crypts.js';
+import {CRYPT_LVL,entryOf,needOf,cryptFor,cryptOfGroup,cryptRun,cryptPaid,paidNew,paidGood,cryptName} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
@@ -44,10 +44,12 @@ export function yieldCrypt(F,D=CRYPT){const g=D.group;if(!g||g.phase!=='gather'|
   D.group=null;return true}
 // What a cleared Crypt pays each member (the abstract roll and the Fellowship's crawl alike).
 export const clearXp=a=>250+a.lvl*20;
-export function payClear(g,perRoom){const D=cryptOfGroup(g);
+export const CLEAR_PAY={gold:25,up:20,good:'Grave Dust',goods:3,use:'Marrowmend Tonic',uses:1,epic:.25}; // each member's share (the dungeon view reads it too, #976)
+export function payClear(g,perRoom){const D=cryptOfGroup(g),K=CLEAR_PAY,co=g.mem.map(companyOf).find(Boolean),P=paidNew(g.name||(co&&co.name)||tagOf(g.guild,g.fac).t); // P: what this clear paid, on the dungeon's row
   for(const a of g.mem)record(a,'Cleared ',{t:D.name,c:'gd'},' and destroyed ',{t:D.boss,c:'gd'},'.');
-  for(const a of g.mem){gainXp(a,Math.round(clearXp(a)*(perRoom||1)*(D.xp!=null?D.xp:1)));a.gold+=25+ri(0,20);a.kills+=ri(8,14);addGood(a,'Grave Dust',3);addUse(a,'Marrowmend Tonic',1);
-    if(rnd()<.25)getEpic(a,pickA(DG_EPICS),D.boss);goalEvent(a,'crypt',D.name);goHome(a)}}
+  for(const a of g.mem){gainXp(a,Math.round(clearXp(a)*(perRoom||1)*(D.xp!=null?D.xp:1)));const coin=K.gold+ri(0,K.up);a.gold+=coin;P.gold+=coin;a.kills+=ri(8,14);paidGood(P,K.good,addGood(a,K.good,K.goods));paidGood(P,K.use,addUse(a,K.use,K.uses));
+    if(rnd()<K.epic){const name=pickA(DG_EPICS);getEpic(a,name,D.boss);P.items.push({name,who:a.name})}goalEvent(a,'crypt',D.name);goHome(a)}
+  cryptPaid(D,P)}
 // One die, like pickA: with every weight 1 it returns exactly pickA's choice.
 function pickW(list,w){let tot=0;for(const x of list)tot+=w(x);let r=rnd()*tot;for(const x of list){r-=w(x);if(r<0)return x}return list[list.length-1]}
 // Each dungeon keeps its own group and cooldown (#891). A hero answers only the dungeon that fits it (crypts.js cryptFor), one sworn to
