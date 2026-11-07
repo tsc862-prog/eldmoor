@@ -47,7 +47,7 @@ import {parseArgs,fetchRaw,saveRaw,processRaw,writeIndex,providerOf,PROVIDERS,ro
 import {spaceOf,spaceDuration,ensureAwake,gpuWindow,windowEnd} from './space.mjs';
 
 const VALUED=['max','max-calls','manifest','dir','log','date','timeout','budget','tier','retry-hours','state','provider'];
-const ALT_REJ_MAX=12;
+const ALT_REJ_MAX=36;
 const pad=n=>String(n).padStart(2,'0');
 const today=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const stamp=(d,date=today(d))=>`${date} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -147,8 +147,8 @@ export async function main(argv=process.argv.slice(2),env=process.env,ctx={}){
       {const st=q.stats[e.kind]=q.stats[e.kind]||{made:0,flat:0,failed:0};st[err.kind==='flat'?'flat':'failed']++}
       if(err.kind==='flat')rej++;console.log(`[art] ${job.key} ${err.kind==='flat'?'rejected':'failed'}: ${err.message.slice(0,200)}${err.notes?' (grid '+err.notes.grid+', native '+err.notes.native+')':''}${err.kind==='flat'?'; raw kept for npm run art:reprocess':''}`);
       if(res.last){stop='rate headers: allowance used';kind='provider';i++;break}
-      // an alternate is optional (#1051): a rejected one is set aside after 2 tries and does not stop the run; the run goes on to the next piece (at most ALT_REJ_MAX rejections a run)
-      if(job.alt&&err.kind==='flat'){if(q.failed[job.key].tries>=2){q.failed[job.key].tries=3;saveQueue(dir,q)}if(++altRej<ALT_REJ_MAX)continue;stop=`${altRej} alternates rejected this run (last: ${err.message.slice(0,100)})`;kind='error';break}
+      // an alternate is optional (#1051): a rejected one is set aside after one try and does not stop the run; the run goes on to the next piece (at most ALT_REJ_MAX rejections a run)
+      if(job.alt&&err.kind==='flat'){q.failed[job.key].tries=3;saveQueue(dir,q);if(++altRej<ALT_REJ_MAX)continue;stop=`${altRej} alternates rejected this run (last: ${err.message.slice(0,100)})`;kind='error';break}
       if(++inRow>=3){stop=`3 failures in a row (${err.message.slice(0,120)})`;kind='error';break}continue}
     inRow=0;
     if(space){if(!q.spaceTried[k]||!q.spaceTried[k].ok){q.spaceTried[k]={ok:true,at:now.toISOString()};saveQueue(dir,q)}}
