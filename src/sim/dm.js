@@ -43,6 +43,7 @@ import {homeOf} from '../data/races.js';
 import {tm} from '../data/traits.js';
 import * as D from '../data/adventures.js';
 import {S,loreSides,ownTown} from './state.js';
+import {oathZone} from './atlas.js';
 import {log,gold} from './chronicle.js';
 import {pop} from './effects.js';
 import {maxHp,gainXp,moveTo,goHome,huntZone,xpNeed,getEpic} from './heroes.js';
@@ -325,7 +326,7 @@ function oathTpl(a){const g=a.goal;if(!g||g.done)return null;
     return E?{tpl:'hunt',zone:MOBS[E.type].z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl}}:null}
   case 'heirloom':case 'heirloomCrypt':return {tpl:'relic',thing:'a clue to the '+g.target,data:{heirloom:g.target}};
   case 'pilgrimCrypt':return hasCrypt()&&g.minLvl!=null&&a.lvl>=g.minLvl?{tpl:'deliver',zone:cryptZone(),thing:'a candle for the drowned dead',data:{dest:cryptMouth(1.2),place:cryptTitle()}}:null;
-  case 'pilgrimFar':{if(g.minLvl==null||a.lvl<g.minLvl||g.zone==null)return null;const p=nearestPt(ZPTS[g.zone],homeOf(a).gate);
+  case 'pilgrimFar':{if(g.minLvl==null||a.lvl<g.minLvl||oathZone(g)==null)return null;const p=nearestPt(ZPTS[g.zone],homeOf(a).gate);
     return p?{tpl:'deliver',zone:g.zone,thing:'a pilgrim’s token',data:{dest:p,place:'the edge of '+ZONES[g.zone]}}:null}
   case 'hoard':return {tpl:'escort'};
   default:return null}}

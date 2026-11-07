@@ -11,7 +11,7 @@
 //   g.sworn     {at, by, heard:[ids], words}: sworn in play. words: true when g.text is the hero's own.
 // Hero-sworn goals that the game cannot match to a type have type 'own' and g.kind/g.about, as a vow's (sim/vows.js).
 import {S} from './state.js';
-import {ZONES} from '../world/map.js';
+import {oathZoneName} from './atlas.js';
 import {FAC} from '../data/factions.js';
 import {THREAD_TEXT} from '../data/origins.js';
 
@@ -28,7 +28,7 @@ export const threadOf=a=>{const g=a&&a.goal;return g&&!g.done&&g.offered&&!g.asi
 export const askOpen=a=>{const g=threadOf(a);return !!(g&&!g.quiet&&S.gameMin-(g.offeredAt||0)<OATH.ASK_MIN)};
 // The thread in words, as the past. '' when there is none.
 export function threadText(a,g=threadOf(a)){if(!g)return '';const t=THREAD_TEXT[g.type];if(!t)return '';
-  return fill(t,{name:a.name,target:g.target,victim:g.victim,zone:typeof g.zone==='number'?ZONES[g.zone]:g.zone,fac:g.targetFac!=null&&FAC[g.targetFac]?FAC[g.targetFac].name:null})}
+  return fill(t,{name:a.name,target:g.target,victim:g.victim,zone:typeof g.zone==='number'?oathZoneName(g):g.zone,fac:g.targetFac!=null&&FAC[g.targetFac]?FAC[g.targetFac].name:null})}
 // A sworn oath in the narrator's mouth: the hero's own words as they said them, else the plain oath.
 export function oathSaid(a,g=swornOf(a)){if(!g)return '';const t=String(g.text).replace(/[.!?]+$/,'');
   return g.sworn&&g.sworn.words?a.name+' has sworn: "'+t+'"':a.name+' has sworn to '+low(t)}

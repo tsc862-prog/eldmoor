@@ -32,7 +32,7 @@ import {ELITES} from '../data/mobs.js';
 import {EPICS,DG_EPICS,BOSS_EPICS} from '../data/items.js';
 import {HAMLETS,TRADES,RAIDERS,PILGRIM_ZONE,KIN,CHILD,ORIGINS,GOAL_TEXT,GOAL_DONE} from '../data/origins.js';
 import {S,foeOf} from './state.js';
-import {isAway} from './atlas.js';
+import {isAway,oathZone,oathZoneName} from './atlas.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {moment} from './reflect.js';
@@ -115,7 +115,7 @@ function rollGoal(a,tier,bias){
 function next(a,tier){const g=rollGoal(a,tier,null);bump(stats().rolled,g.type);a.goal=g;if(a.player){g.offered=true;g.aside=true}return g}
 
 // The completion line: {zone} is a region name, never the goal's region index (#1011).
-export const doneLine=g=>fill(GOAL_DONE[g.type],typeof g.zone==='number'?{...g,zone:ZONES[g.zone]}:g);
+export const doneLine=g=>fill(GOAL_DONE[g.type],typeof g.zone==='number'?{...g,zone:oathZoneName(g)}:g);
 function complete(a){const g=a.goal;g.done=true;const up=Math.min(TIERS.length-1,g.tier+1);
   if(g.offered){next(a,up);return} // a thread that came true unsworn: no oath was kept, so none is spoken of (#800)
   oathDone(a,g,'done');bump(stats().done,g.type);moment(a,'oath',g.text); // reflection moment (#179): agent heroes only
@@ -157,10 +157,10 @@ export const raidPull=a=>a.goal&&!a.goal.done&&(a.goal.type==='legend'||a.goal.t
 // hero crossing a higher zone neither stops to hunt there nor picks its monsters. On arrival
 // the oath is kept and, if the zone is above their band, they turn for home.
 function goalPoint(a,g){if(g.type==='pilgrimCrypt')return cryptMouth(1);
-  const gate=homeOf(a).gate;let best=null,bd=1e9;for(const p of ZPTS[g.zone]||[]){const d=dist(p,gate);if(d<bd){bd=d;best=p}}return best} // a region of another map may have no such index here (#1013)
+  const gate=homeOf(a).gate;let best=null,bd=1e9;for(const p of ZPTS[oathZone(g)]||[]){const d=dist(p,gate);if(d<bd){bd=d;best=p}}return best} // a region of another map may have no such index here (#1013)
 function pilgrimStep(a,g){
-  const arrived=g.type==='pilgrimCrypt'?nearCrypt(a,2.6):zoneAt(a.x,a.y)===g.zone,thread=g.offered&&hasLinks(); // in real play a thread walks nobody anywhere (#800); a world with no host keeps its dice
-  if(arrived&&a.state!=='ghost'){complete(a);if(!thread&&huntZone(a)!==g.zone&&(a.state==='hunt'||a.state==='travel'))goHome(a);return}
+  const arrived=g.type==='pilgrimCrypt'?nearCrypt(a,2.6):zoneAt(a.x,a.y)===oathZone(g),thread=g.offered&&hasLinks(); // in real play a thread walks nobody anywhere (#800); a world with no host keeps its dice
+  if(arrived&&a.state!=='ghost'){complete(a);if(!thread&&huntZone(a)!==oathZone(g)&&(a.state==='hunt'||a.state==='travel'))goHome(a);return}
   if(thread)return;
   if(a.lvl<g.minLvl||a.party||(a.state!=='travel'&&a.state!=='hunt'))return;
   if(!a.dest||!a.dest.pil){const p=goalPoint(a,g);if(!p)return;stats().pilgrimSteers++;a.dest={x:p.x,y:p.y,pil:true}}}
