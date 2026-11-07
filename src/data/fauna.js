@@ -54,7 +54,7 @@ export const FAUNA={
     {n:4,sp:'wolf',pack:2,name:'Fold Wolf',pl:'Fold Wolves',lv:[6,7],loot:'Fold Pelt',q:'Wolves at the Folds'},
     {n:4,sp:'boar',pack:2,name:'Furze Boar',pl:'Furze Boars',lv:[7,8],loot:'Furze Tusk',q:'Tusks from the Furze'},
     {n:3,sp:'spider',pack:3,name:'Cairn Spinner',pl:'Cairn Spinners',lv:[7,8],loot:'Cairn Silk',q:'Spinners at the Cairn'}]},
-  hawkrise:  {tier:1,count:4,roadMinX:999,goods:[['Wold Pelt',21],['Tor Tusk',24],['Ridge Sinew',27]],elite:{name:'Greymane',title:'the Pack-Father of the Hawkwold',base:'wolf',fixLvl:11},species:[
+  hawkrise:  {tier:1,count:4,roadMinX:999,goods:[['Wold Pelt',21],['Tor Tusk',24],['Ridge Sinew',27]],elite:{name:'Greymane',title:'the Pack-Father of the Hawkwold',base:'wolf',fixLvl:11,scale:10,hit:2.35,ready:['howl']},species:[
     {n:5,sp:'wolf',pack:2,name:'Wold Stalker',pl:'Wold Stalkers',lv:[8,9],loot:'Wold Pelt',q:'Stalkers on the Wold'},
     {n:3,sp:'boar',pack:3,name:'Tor Boar',pl:'Tor Boars',lv:[8,9],loot:'Tor Tusk',q:'Tusks from the Tors'},
     {n:2,sp:'rimehound',pack:2,name:'Ridgehound',pl:'Ridgehounds',lv:[9,10],loot:'Ridge Sinew',q:'Ridgehounds on the Wold'}]},

@@ -707,11 +707,23 @@ export const WENDMOUTH={
 // The Herders' Cairn's chambers: a small barrow on a ridge above the sheepwalks. Shepherd Wick and his dogs, as the Vale's first delve told them, pitched like the Vale's small delves at a level 6 company.
 const HERDERS_CAIRN_ROOMS=[
   {id:'dogs',name:'The Dog Run',frame:'Bones of the herd-dogs rattle up from the straw of the cairn passage and come at you low.',
-    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.225,rounds:2},
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.315,rounds:2},
   {id:'fold',name:'The Fold Chamber',frame:'Two old herdsmen rise from their niches, still holding their crooks, and put themselves between you and the lower fold.',
-    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.28,rounds:2},
+    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.39,rounds:2},
   {id:'last',name:'The Last Fold',frame:'One bell still rings here. The thing that wears it turns slowly, counting a flock that is not there.',
-    foes:[{type:'shambler',n:1,name:'Shepherd Wick',hits:4,atk:1.5},{type:'tombskit',n:1,hits:1}],lvl:1,hit:.36,rounds:2,boss:true},
+    foes:[{type:'shambler',n:1,name:'Shepherd Wick',hits:4,atk:1.5},{type:'tombskit',n:1,hits:1}],lvl:1,hit:.5,rounds:2,boss:true},
+];
+
+// The Kestrel Barrow's chambers on this map: the Vale's, with the boss room a round shorter and every blow harder (#1054 balance review).
+const HAWK_BARROW_ROOMS=[
+  {id:'door',name:'The Low Door',frame:'A low door in a grassed mound, its lintel cut with kestrels. Cold air comes out of it, and the rattle of small claws.',
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.37,rounds:2},
+  {id:'niches',name:'The Kestrel Niches',frame:'Every niche holds a stone bird and a heap of bone. One of the heaps gets up, still holding the lure-glove.',
+    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.46,rounds:2},
+  {id:'ossuary',name:'The Hawk Ossuary',frame:'Skulls of hawks and the falconers who loved them are stacked to the roof in rows. Bowstrings creak somewhere among them, and a long-dead hand hauls itself upright.',
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:1,hit:.48,rounds:2},
+  {id:'mews',name:"The Falconer's Mews",frame:'The last chamber is a mews with the perches still in it. The lord who bred the birds sits among them and does not intend to be disturbed.',
+    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:4,atk:1.5},{type:'boneshot',n:1,hits:1}],lvl:2,hit:.61,rounds:3,boss:true},
 ];
 
 // ---- The Hawkwold: the third chapter (#1013 slice 7c, levels 6-11) ----
@@ -762,7 +774,7 @@ export const HAWKWOLD={
     // The first dungeon up the road: a grassed herders' cairn on a ridge, at the end of its own spur off the Fell Road. entry: the level a background group first goes down.
     {kind:'crypt',name:"The Herders' Cairn",boss:'Shepherd Wick',x:30.5,y:6.1,mouth:{x0:29,y0:4,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:HERDERS_CAIRN_ROOMS,entry:6},
     // The falconer-lord's barrow, in the hills east of Hawkstead.
-    {kind:'crypt',name:'The Kestrel Barrow',boss:'Lord Merrin Hawkwright',x:122.5,y:13.1,mouth:{x0:121,y0:11,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:VALE_KESTREL_ROOMS,entry:7},
+    {kind:'crypt',name:'The Kestrel Barrow',boss:'Lord Merrin Hawkwright',x:133.5,y:12.1,mouth:{x0:132,y0:10,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:HAWK_BARROW_ROOMS,entry:7},
   ],
   points:{
     foldCross:[38,22],             // where the Fell Road parts: north to the cairn, east to Hawkstead
@@ -771,7 +783,7 @@ export const HAWKWOLD={
     townSouth:[62,25],             // the Hawkstead road passes south of its wall to the east gate
     fordN:[100,27],fordS:[100,37],   // the Wend Bridge: the one way over the stream on this map
     barrowFoot:[114,17],           // where the Hawk Road passes the Barrow's turning
-    barrowEnd:[122,16],            // the turning's end, under the Barrow's door
+    barrowEnd:[133,16],            // the turning's end, under the Barrow's door
   },
   exits:[
     {id:'west',name:'the Fell Road',to:{map:'hollin',exit:'east'},edge:{side:'W',from:20,to:23}},
@@ -787,7 +799,7 @@ export const HAWKWOLD={
     {from:'fordN',to:'fordS'},{from:'Hornridge',to:'fordS'},
   ],
   roadClear:[1,3],
-  glades:[[30.5,8,4.5],[122.5,15,4.5],[5,21.5,6],[100,27,3.5],[100,37,3.5]], // the two mouths, the road's end where a company comes in from the Hollin Reach, and the bridge's banks
+  glades:[[30.5,8,4.5],[133.5,15,4.5],[5,21.5,6],[100,27,3.5],[100,37,3.5]], // the two mouths, the road's end where a company comes in from the Hollin Reach, and the bridge's banks
   lights:{townTorches:[[10.5,3.4]]},
   spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of a wall
   nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{foldlands:{herb:6,ore:1,hide:5,fish:3},hawkrise:{herb:3,ore:6,hide:4,fish:2},hornmoor:{herb:3,ore:6,hide:4,fish:1}}},
