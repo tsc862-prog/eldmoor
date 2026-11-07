@@ -4,7 +4,7 @@
 import {wounded} from './wounds.js'; // a wounded background hero stays out of the Crypt (#656)
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {CRYPT,CRYPTS,dist} from '../world/map.js';
-import {CRYPT_LVL,entryOf,needOf,cryptFor,cryptOfGroup,cryptRun} from './crypts.js';
+import {CRYPT_LVL,entryOf,needOf,cryptFor,cryptOfGroup,cryptRun,cryptName} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
@@ -52,7 +52,7 @@ export function payClear(g,perRoom){const D=cryptOfGroup(g);
 function pickW(list,w){let tot=0;for(const x of list)tot+=w(x);let r=rnd()*tot;for(const x of list){r-=w(x);if(r<0)return x}return list[list.length-1]}
 // Each dungeon keeps its own group and cooldown (#891). A hero answers only the dungeon that fits it (crypts.js cryptFor), one sworn to
 // clear a dungeon that dungeon; a company answers as its leader, so it is never split between two calls. No dice; with one dungeon, always yes.
-const calledTo=(a,D)=>{if(CRYPTS.length<2)return true;const g=a.goal;if(g&&g.type==='delve'&&!g.done)return (g.dun||CRYPT.name)===D.name;return cryptFor(leaderFor(a)||a)===D};
+const calledTo=(a,D)=>{if(CRYPTS.length<2)return true;const g=a.goal;if(g&&g.type==='delve'&&!g.done)return (g.dun||cryptName())===D.name;return cryptFor(leaderFor(a)||a)===D};
 export function dungeonCheck(dt){for(const D of CRYPTS)checkCrypt(D,dt)}
 function checkCrypt(D,dt){const agents=S.agents;
   const g=D.group;

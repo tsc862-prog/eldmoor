@@ -90,6 +90,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     restore(snap);
     console.log(`[play] resumed ${worldFile} at day ${Math.floor(S.gameMin / 1440) + 1}`);
   } else {
+    if (opt('sides', null)) process.env.ELDMOOR_SIDES = opt('sides', null); // --sides lore (#1025): read by init() as ELDMOOR_SIDES
     const fs = flag('fellowship') || opt('fellowship', null); const others = opt('others', null), none = (others || process.env.ELDMOOR_OTHERS) === 'none', pro = opt('prologue', null), po = pro ? {prologue: pro} : {}; init(fs || none ? {fac: Number(opt('fac', 0)) === 1 ? 1 : 0, ...(others ? {others} : {}), ...po} : {fellowship: false, ...po}); // --others none (#780): the company alone, whoever the DM brings
     const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
   }

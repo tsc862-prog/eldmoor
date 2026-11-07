@@ -1,9 +1,9 @@
 // Campfire talk for the Fellowship's camps (issue #64). Pure table, no logic.
 // Placeholders: {other} a companion, {zone} the region the camp is in, {town} the speaker's home town.
 // One short line each (max ~100 characters); sim/camp.js picks by topic and a hash of the game clock.
-import {WORDS} from '../world/words.js';
+import {WORDS,worded} from '../world/words.js';
 export const TOPICS=['story','song','worry','hope','memory','quarrel'];
-export const CAMP_LINES={
+export const CAMP_LINES=worded(()=>({
   story:[
     'My grandmother swore the {zone} fires were lit by the dead. I never lit one alone.',
     'Back in {town}, they say a lantern left lit all night keeps the hungry things honest.',
@@ -40,7 +40,7 @@ export const CAMP_LINES={
     'Who ate the last of the road bread? Do not all speak at once.',
     'I said left at the fork. I said left. Everyone heard me say left.',
     'Your plan got us here, {other}. Forgive me if I do not sing about it.',
-    'Keep your boots out of my side of the fire.']};
+    'Keep your boots out of my side of the fire.']}));
 export const QUARREL_REPLY=['Fine. Fine. Go to sleep.','Say that again in daylight.','Enough. We are all tired.','Aye, aye. I heard you the first time.'];
 export const NTH=['first','second','third','fourth','fifth'];
 // A scripted companion of an agent company (issue #764): what a camp line needs to have happened today, by 'topic:row'

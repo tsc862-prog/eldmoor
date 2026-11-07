@@ -9,7 +9,7 @@
 // reach.js), so the answer always matches who actually hears. Only what the hero perceives (in-game channels, #123):
 // names, class or role and distance of those near; a companion out of range is a name, never a place, HP or mind.
 // Reads only, no dice: the scripted world is unchanged.
-import {S} from './state.js';
+import {S,loreSides} from './state.js';
 import {CITY,dist,zoneAt} from '../world/map.js';
 import {HEAR,sayHearers} from './chat.js';
 import {shoutHearers} from './council.js';
@@ -45,7 +45,7 @@ export function earshot(a){
   if(!a||a.state==='dead')return {ok:false,error:'The dead hear nothing.'};
   if(a.state==='ghost')return {ok:true,ghost:true,text:'You are a ghost: nobody hears you.'};
   const sayH=sayHearers(a).sort(byDist(a)),sayF=folkWithin(a,HEAR,false),talk=folkWithin(a,EAR.TALK,true);
-  const say=[...sayH.map(b=>({name:b.name,who:b.cls+(inSlots(b)&&inSlots(a)?', companion':b.fac!==a.fac?', of the other side':''),tiles:tiles(dist(a,b))})),
+  const say=[...sayH.map(b=>({name:b.name,who:b.cls+(inSlots(b)&&inSlots(a)?', companion':!loreSides()&&b.fac!==a.fac?', of the other side':''),tiles:tiles(dist(a,b))})),
     ...sayF.map(p=>({name:full(p),who:p.role||'townsperson',tiles:tiles(dist(a,p))}))];
   const range=shoutRange(a),why=shoutWhy(a,range),{mates,near,far}=shoutHearers(a);
   const shout=mates.length?{range,usual:REACH.SHOUT,...(why?{shorter:why}:{}),
