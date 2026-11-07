@@ -25,10 +25,9 @@
 //                     and once the runner reported: turn (its number), model, provider, cost, seconds, tokensIn, tokensOut}
 //   The turn record is the DM's own data for the watcher's DM tab: no hero tool, prompt or snapshot reads it (issue #123).
 import {S,clockStr,dayNo,noOthers,loreSides} from './state.js';
-import {closedRoads} from './roads.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // what a hero swore aloud, and the thread only offered (#800)
-import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,MAP_ID,WORLD_ID,zoneAt,dist} from '../world/map.js';
-import {campaignMaps,crossingView} from './atlas.js';
+import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,EXITS,MAP_ID,WORLD_ID,zoneAt,dist} from '../world/map.js';
+import {campaignMaps,crossingView,landHead,farHint,exitOpen,mapName} from './atlas.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
@@ -384,7 +383,7 @@ const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({
 function readScope(tool,town,region){const t=clean(town,40),g=clean(region,40);if(!t&&!g)return {};
   if(t){const c=townOf(t);if(c)return {towns:[c.name],c,label:c.name}}
   const v=g||t,z=regionIdx(v);
-  if(z==null)return {err:'No '+(g?'region':'town or region')+' called "'+v+'". '+tool+' takes town ('+CITY.map(c=>c.name).join(', ')+') or region ('+ZONES.join(', ')+').'};
+  if(z==null)return {err:'No '+(g?'region':'town or region')+' called "'+v+'". '+tool+' takes town ('+CITY.map(c=>c.name).join(', ')+') or region ('+ZONES.join(', ')+').'+farHint(v)};
   return {z,towns:CITY.filter(c=>zoneAt(c.gate.x,c.gate.y)===z).map(c=>c.name),label:ZONES[z],...(!g?{note:'"'+t+'" is a region, not a town: read as the region '+ZONES[z]+'.'}:{})}}
 const scopeHead=Q=>Q.label?{scope:Q.z!=null?{region:Q.label,towns:Q.towns}:{town:Q.label},...(Q.note?{note:Q.note}:{})}:{};
 function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)return {ok:false,error:Q.err};const c=Q.c,inT=n=>!Q.label||Q.towns.includes(n.town);
@@ -394,16 +393,17 @@ function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)re
     ...(attOf(w).length?{attitudes:attOf(w)}:{}),...(recordView(w)?{fellowship:recordView(w)}:{}),placed_by_lever:w.lever||null}));
   return {ok:true,...scopeHead(Q),townsfolk:folk.slice(0,60),wanderers:wand}}
 
+const roadOut=e=>({name:e.name,at:Math.round(e.x)+','+Math.round(e.y),...(exitOpen(e)?{to:mapName(e.to.map),open:true}:{toward:e.to.heard,open:false})}); // a road off the map (#1013)
 function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Array(ZONES.length).fill(0);
   for(const m of S.mobs)if(m.alive&&!m.gone){const z=zoneAt(m.x,m.y);if(z>=0)mobs[z]++}
   for(const a of S.agents)if(alive(a)&&a.state!=='town'&&!a.hidden){const z=zoneAt(a.x,a.y);if(z>=0)heroes[z]++}
-  return {ok:true,regions:ZONES.map((name,z)=>{const cond=(S.conditions||[]).filter(c=>c.z===z),marks=(S.marks||[]).filter(m=>m.z===z),pl=(S.places||[]).filter(p=>p.z===z);
+  return {ok:true,...landHead(),regions:ZONES.map((name,z)=>{const cond=(S.conditions||[]).filter(c=>c.z===z),marks=(S.marks||[]).filter(m=>m.z===z),pl=(S.places||[]).filter(p=>p.z===z);
     return {index:z,name,levels:band(z),monsters:mobs[z],heroes_out:heroes[z],creatures:Object.keys(MOBS).filter(k=>MOBS[k].z===z).slice(0,8),
       ...(cond.length?{condition:cond.map(c=>c.kind+' '+c.str+' ('+Math.max(0,Math.round((c.until-S.gameMin)/60))+'h left)')}:{}),
       ...(marks.length?{areas:marks.map(m=>m.kind+' at '+Math.round(m.x)+','+Math.round(m.y)+' r'+m.r)}:{}),
       ...(pl.length?{places:pl.map(p=>({id:p.id,kind:p.kind,name:p.name,at:Math.round(p.x)+','+Math.round(p.y)}))}:{})}}),
     towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]})),
-    ...(closedRoads().length?{roads_out:closedRoads().map(e=>({name:e.name,at:Math.round(e.x)+','+Math.round(e.y),toward:e.to.heard,open:false}))}:{})}}
+    ...(EXITS.length?{roads_out:EXITS.map(roadOut)}:{})}}
 
 function hooksRead(town,region){const Q=readScope('hooks',town,region);if(Q.err)return {ok:false,error:Q.err};
   const A=(S.adventures||[]).filter(v=>!Q.label||Q.towns.includes(v.town)||(Q.z!=null&&v.zone===Q.z)),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};
@@ -808,7 +808,8 @@ function surveyRead(near,radius){const s=clean(near,60),lo=s.toLowerCase();if(!s
   if(!p){const lm=LANDMARKS.find(l=>l.name.toLowerCase()===lo||l.name.toLowerCase().replace(/^the /,'')===lo.replace(/^the /,''));if(lm)p={x:lm.x,y:lm.y,label:'around '+lm.name}}
   if(!p){const pl=markNamed(s);if(pl)p={x:pl.x,y:pl.y,label:'around '+pl.name}}
   if(!p)return {ok:false,error:'Unknown place "'+s+'".'+nameHint(s)+' '+nearTakes()};
-  return surveyAt(p,radius)}
+  const r=surveyAt(p,radius);if(r&&r.ok&&EXITS.length){const near=EXITS.filter(e=>dist(p,e)<=r.radius+e.r);if(near.length)r.roads_out=near.map(roadOut)}
+  return r&&r.ok?{...landHead(),...r}:r}
 // A place tool that was refused for the ground names survey as the fix (#558).
 const GROUND_ERR=/open ground|walkable|tiles of|inside|too close|off the map|unknown place|not a road|on the |outside /i;
 export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();
