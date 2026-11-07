@@ -9,7 +9,9 @@ import {U as T,ART} from './tile.js';
 import {treeAnchor,chunkGen} from './terrain.js';
 import {F,skyAt,WIND} from './life.js';
 import {biomeOfZone} from './palette.js';
-import {ACTIVE_SPEC} from '../world/spec.js';
+import {MAPS} from '../world/spec.js';
+import {MAP_ID} from '../world/map.js';
+import {onWorld} from '../sim/kept.js';
 import {asset} from './assets.js';
 import {farmAt} from './scenery.js';
 
@@ -32,7 +34,9 @@ export function drawSway(ctx,tf){if(F.tpx<30)return;if(!rows||gen!==chunkGen)bui
 export function swayTree(ctx,tf,a){if(F.tpx<30)return;crown(ctx,tf,a,F.now);ctx.setTransform(tf)}
 // Wheat: stalks over a field's own art that only show on a gust's crest, so the ripple walks across it. From the spec's scenery note; a world with no fields has none.
 let wheat=null;
-function buildWheat(){wheat=Array.from({length:H},()=>[]);const S=ACTIVE_SPEC.scenery;for(const [fx,fy,fw,fh,kind] of (S&&S.fields)||[]){if(kind!=='wheat')continue;
+onWorld(()=>{rows=blades=wheat=null;gen=-1}); // another map (#1013)
+export const warmSway=()=>{if(!rows||gen!==chunkGen)buildTrees();if(!blades)buildBlades();if(!wheat)buildWheat()};
+function buildWheat(){wheat=Array.from({length:H},()=>[]);const S=MAPS[MAP_ID].scenery;for(const [fx,fy,fw,fh,kind] of (S&&S.fields)||[]){if(kind!=='wheat')continue;
   for(let y=fy;y<fy+fh&&y<H;y++)for(let x=fx;x<fx+fw&&x<W;x++){if(!farmAt(x,y))continue;for(let k=0;k<16;k++)wheat[y].push((x+hash(x,y*16+k,831))*T,(y+hash(x,y*16+k,833))*T)}}}
 export function drawWheat(ctx){if(F.tpx<30||!asset('prop:scenery'))return;if(!wheat)buildWheat();const t=F.now,y0=Math.max(0,F.y0|0),y1=Math.min(H-1,Math.ceil(F.y1)),X0=F.x0*T,X1=F.x1*T;
   for(let p=0;p<2;p++){ctx.fillStyle=p?'#f6e08a':'#d8b84e';for(let y=y0;y<=y1;y++){const B=wheat[y];for(let i=0;i<B.length;i+=2){const x=B[i];if(x<X0||x>X1)continue;const g=gust(x/T,B[i+1]/T,t*1.4);

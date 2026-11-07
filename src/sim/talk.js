@@ -30,7 +30,7 @@ import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,zoneFor,dist} from '../world/map.
 import {cryptIf,cryptTitle} from './crypts.js';
 import {FAC} from '../data/factions.js';
 import {USES,SLOTS} from '../data/items.js';
-import {ELITES} from '../data/mobs.js';
+import {eliteOf} from '../data/mobs.js';
 import {ADVENTURES} from '../data/adventures.js';
 import {homeOf} from '../data/races.js';
 import {ROLE_TALK,DEFAULT_TALK,ROLE_JOB,ROLE_STOCK,DEFAULT_STOCK,TALK_LINES} from '../data/talk-lines.js';
@@ -46,6 +46,7 @@ import {ensureNpcs} from './npcs.js';
 import {stageScene} from './staged.js';
 import {heard,since,dmAlive,goneEpoch,callDeadline,lateWhy} from './dmreflex.js'; // the DM's reflexes (#561)
 import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
+import {farAnswer} from './farlands.js'; // the roads out and what lies past them (#1013)
 import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
 import {inSlots,slotHeroes,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
@@ -345,7 +346,7 @@ function knows(p,a){const out=[],z=Number.isFinite(p.x)?zoneAt(p.x,p.y):null;
   for(const cnd of S.conditions||[])out.push({text:cnd.kind+' over '+ZONES[cnd.z]+'.',where:ZONES[cnd.z]});
   for(const q of S.places||[])out.push({text:'There is '+q.name+' out in '+ZONES[q.z]+', at '+Math.round(q.x)+','+Math.round(q.y)+'.',where:ZONES[q.z]});
   if(a){const w=npcWarning(a);if(w)out.push({text:w,warn:true})}
-  if(a){const hz=huntZone(a),E=ELITES[hz];if(E&&E.name)out.push({text:'They say '+E.name+' prowls '+ZONES[hz]+'. Few who meet it come home whole.',where:ZONES[hz]})}
+  if(a){const hz=huntZone(a),E=eliteOf(hz);if(E&&E.name)out.push({text:'They say '+E.name+' prowls '+ZONES[hz]+'. Few who meet it come home whole.',where:ZONES[hz]})}
   if(z!=null&&z>=0)out.sort((x,y)=>(y.where===ZONES[z])-(x.where===ZONES[z]));
   out.sort((x,y)=>(y.warn?1:0)-(x.warn?1:0)); // a warning to a green blade comes first (#188)
   return out.slice(0,5)}
@@ -377,13 +378,14 @@ function townAnswer(p,a,text){const raw=String(text||''),t=raw.toLowerCase();if(
   for(const m of S.places||[])if(m.name&&nmRe(m.name).test(t))pl.push({name:m.name,at:m,z:m.z});
   for(const g of pl.slice(0,1)){learnPlace(a,g.name,'told');
     parts.push(g.name+' lies '+(g.at?wayTo(p,g.at):'a way off')+(g.z!=null&&ZONES[g.z]&&g.name!==ZONES[g.z]?', in '+ZONES[g.z]:'')+(g.z!=null&&g.name===ZONES[g.z]?'; '+jobRumour(a,g.z):'')+'.')}
+  const far=farAnswer(a,t);if(far)parts.push(far);
   if(CRYPTQ.test(t)||cryptIf(n=>nmRe(n.replace(/^the /i,'')).test(t))){fit=true;const D=CRYPT;
     const cw=p.role==='captain'?captainWarning(a):null;
     parts.push(cw||((D?D.name:'The Crypt')+' lies '+(D?wayTo(p,D):'far off')+'. Tried blades go down together, or not at all.'));
     if(D)learnPlace(a,D.name,'told')}
   // a name nobody here knows: a capitalised run in the middle of the line
   const known=new Set([a.name,p.name,...people().flatMap(q=>[q.name,String(q.name||'').split(' ')[0]]),...(S.agents||[]).map(b=>b.name),...ZONES,...CITY.map(c=>c.name),...LANDMARKS.map(l=>l.name),cryptTitle()].filter(Boolean).flatMap(x=>String(x).split(' ')).map(x=>x.toLowerCase()));
-  if(!hit.length&&!pl.length&&!(CRYPTQ.test(t))){const runs=[];let cur=[];
+  if(!hit.length&&!pl.length&&!far&&!(CRYPTQ.test(t))){const runs=[];let cur=[];
     for(const m of raw.matchAll(/[A-Za-z][A-Za-z'-]*/g)){const w=m[0],i=m.index,before=raw.slice(0,i).trimEnd(),start=!before||/[.!?]$/.test(before),lw=w.toLowerCase();
       const cap=/^[A-Z]/.test(w)&&!known.has(lw)&&!STOP.has(lw)&&(!start||cur.length);
       if(cap)cur.push(w);else{if(cur.length)runs.push(cur.join(' '));cur=[]}}

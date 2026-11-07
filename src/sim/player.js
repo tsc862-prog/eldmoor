@@ -27,9 +27,12 @@
 // Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
 import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
+import {closedRoad,roadEndAt,roadWords} from './roads.js';
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
-import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,CRYPTS,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
+import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,CRYPTS,ZPTS,EXITS,MAP_ID,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
+import {exitNamed,exitOpen,roadWord,manyMaps,mapName,spotHere} from './atlas.js'; // the roads off the map (#1013)
+import {farWay,roadsSeen,gateRoads,roadsKnown} from './farlands.js'; // what a hero knows of other maps (#1013)
 import {cryptOfHero,cryptOfCtx,cryptCtx,cryptByWord,cryptInWords,cryptNearest,heroCryptName,cryptTitle,cryptIf,hasCrypt,NO_CRYPT} from './crypts.js';
 import {hasLair,NO_LAIR} from './lair.js';
 import {homeOf,raceOf} from '../data/races.js';
@@ -370,6 +373,7 @@ function orderOf(a,c,target){if(!c||c.auto)return null;
 function goalOrder(a,goal){const g=String(goal||'').toLowerCase();if(waitish(g))return {kind:'wait'};
   const f=/\bfollow(?:ing)?\s+([a-z' -]+)/.exec(g);if(f){const w=f[1].trim().split(/\s+/)[0];const b=S.agents.find(x=>x!==a&&x.kind==='hero'&&x.state!=='dead'&&x.name.toLowerCase().split(' ')[0]===w&&!x.hidden&&dist(a,x)<=sightOf(a));
     if(b&&!followRefusal(a,b)){a.playOrder={kind:'follow',id:b.id};return {kind:'follow',id:b.id,name:b.name}}}
+  {const e=exitNamed(g,n=>knowsPlace(a,n));if(e&&exitOpen(e))return {kind:'move',label:e.name,target:e.name,to:{x:e.x,y:e.y},last:'hunt'}} // an aim that names a road off the map, or a place it knows past one, walks there (#1013)
   const hit=knownNames(a).filter(n=>n&&new RegExp('(^|[^a-z])'+reEsc(n.toLowerCase())+'($|[^a-z])').test(g)).sort((x,y)=>y.length-x.length)[0];
   const huntish=/\b(hunt|hunting|kill|slay|grind|level|xp)\b/.test(g);
   if(hit){if(huntish&&ZONES.includes(hit))return {kind:'hunt',n:TP.HUNT,k0:a.kills,ground:hit};
@@ -620,8 +624,15 @@ const enemyNear=(a,p,r=12)=>!loreSides()&&CITY.some(c=>c.fac!==a.fac&&(dist(p,c.
 // Only places this hero knows are ever named back to it (#188).
 function plan(a,target){const raw=clean(target,60),t0=raw.toLowerCase().trim();
   if(!t0)return {error:'Say where to go.'};
-  for(const v of placeVariants(a,t0)){const r=planOne(a,v.t,v.town);if(r){if(v.note&&!r.error)r.note=v.note;return r}}
-  return placeFallback(a,t0,raw)||{error:unknownPlace(a,t0,raw)}}
+  {const e=closedRoad(t0);if(e)return {error:roadWords(e)}} // a road with no far side yet (sim/roads.js, #1013)
+  for(const v of placeVariants(a,t0)){const r=planOne(a,v.t,v.town);if(r){if(v.note&&!r.error)r.note=v.note;return roadEnd(r)}}
+  return exitPlan(a,t0)||placeFallback(a,t0,raw)||{error:unknownPlace(a,t0,raw)}}
+// A walk that ends where a closed road leaves the map is walked; the hero is told there is nothing past it.
+function roadEnd(r){const L=r.legs&&r.legs[r.legs.length-1],e=L&&!r.error?roadEndAt(L):null;if(e)r.note=(r.note?r.note+' ':'')+roadWords(e);return r}
+// An open road off this map (#1013): its name, or a place the hero has heard of on a land it leads to, one road on or several (sim/farlands.js).
+// It walks to the road; the leader's arrival puts it to the company.
+function exitPlan(a,t){const w=farWay(a,t);if(!w)return null;if(w.error)return {error:w.error};
+  const r=toFieldOf(a,{x:w.e.x,y:w.e.y},w.e.name);r.note=w.note;if(w.bound)r.bound=w.bound;return r}
 const SPOT_WORDS={blacksmith:'smith',smithy:'smith',forge:'smith',armorer:'smith',armourer:'smith',tanner:'smith',tavern:'inn',innkeeper:'inn',temple:'chapel',church:'chapel',shrine:'chapel',plaza:'square',gates:'gate','town gate':'gate','main gate':'gate','city gate':'gate',auctioneer:'auction house'};
 const TOWN_SPOTS=['gate','inn','smith','chapel','square','auction house','quest giver'];
 const spotWord=x=>{x=x.trim().replace(/^the\s+/,'');return SPOT_WORDS[x]||(/^(?:town|market|main|village|city)?\s*square$/.test(x)?'square':x)};
@@ -778,7 +789,7 @@ function knownPlaces(a,from){const L=a.lore&&a.lore.p?a.lore.p:null,c=homeOf(a),
     if(z>=0){const pts=ZPTS[z]||[];let best=null,bd=Infinity;const st=Math.max(1,Math.floor(pts.length/60));
       for(let i=0;i<pts.length;i+=st){const d=Math.hypot(pts[i].x-from.x,pts[i].y-from.y);if(d<bd){bd=d;best=pts[i]}}
       if(zoneAt(from.x,from.y)===z)best={x:from.x,y:from.y};if(!best)continue;at(name,'region',best,how);continue}
-    if(p&&p.mk&&p.x!=null){at(name,'mark',p,markHow(p));continue} // yours, or told by a companion (#632)
+    if(p&&p.mk&&p.x!=null){if(spotHere(p))at(name,'mark',p,markHow(p));continue} // yours, or told by a companion (#632); one on another land has no way from here
     const lm=LANDMARKS.find(l=>l.name===name)||cryptIf(n=>n===name);
     if(lm){at(lm.kind==='lair'?name+"'s lair":name,'landmark',lm,how,name);continue}
     const mk=p&&p.dm!=null?(S.places||[]).find(x=>x.id===p.dm):null;if(mk)at(name,'place',mk,how)} // a DM place it learned (#423)
@@ -801,15 +812,16 @@ function placesList(a,{about,kind,near}={}){const L=loreOf(a);
     if(x.kind==='landmark'&&LANDMARKS.some(l=>l.kind==='lair'&&l.name===x.go))x.learned=(x.learned?x.learned+'; ':'')+'the lair of Kragmaw the Cinder Wyrm: few who go there come back'}
   const k=clean(kind,20).toLowerCase().trim().replace(/s$/,'');
   if(k){const kk=k==='city'||k==='home'?'town':k==='dungeon'||k==='crypt'||k==='lair'?'landmark':k==='marker'||k==='spot'?'place':k;
-    if(!['town','region','landmark','place','mark'].includes(kk))return {ok:false,error:'kind is one of town, region, landmark, place (a marked spot in sight) or mark (yours and told).'};list=list.filter(x=>x.kind===kk)}
+    if(!['town','region','landmark','place','mark',...(EXITS.length?['road']:[])].includes(kk))return {ok:false,error:'kind is one of town, region, landmark, place (a marked spot in sight) or mark (yours and told).'};list=list.filter(x=>x.kind===kk)}
   const q=clean(about,60).toLowerCase().trim();
   if(q)list=list.filter(x=>x.name.toLowerCase().includes(q)||x.kind===q||(x.learned||'').toLowerCase().includes(q)||(x.creatures||[]).some(s=>s.toLowerCase().includes(q)));
   list.sort((x,y)=>x.tiles-y.tiles||(x.name<y.name?-1:1));const total=list.length;list=list.slice(0,PL.MAX);
   const r={ok:true,from:fromLabel,places:list.map(x=>{const o={name:x.name,kind:x.kind,known:x.how,way:x.dir==='here'?'here':x.dir+', '+x.tiles+' tiles ('+x.travel+')'};
     if(x.word)o.word=x.word;if(x.creatures)o.creatures=x.creatures;if(x.learned)o.learned=x.learned;if(x.go!==x.name)o.go=x.go;return o})};
   if(total>list.length)r.more=total-list.length+' more (filter with kind, about or near)';
-  if(!list.length)r.note=q||k?'No place you know fits that. places with no arguments lists all you know.':'You know no places yet.';
-  r.use='move_to or hunt {where} takes any name here (or its go); a direction ("north") or "x,y" reaches places you have never heard of.';
+  {const rs=roadsKnown(a,from).filter(x=>!q||JSON.stringify(x).toLowerCase().includes(q));if(rs.length&&(!k||k==='road'))r.roads_out=rs} // the roads off this land the hero knows, and what lies past them (#1013)
+  if(!list.length&&!r.roads_out)r.note=q||k?'No place you know fits that. places with no arguments lists all you know.':'You know no places yet.';
+  r.use='move_to or hunt {where} takes any name here (or its go); a direction ("north") or "x,y" reaches places you have never heard of.'+(r.roads_out&&manyMaps()?' move_to or lead_to a road, or a place past one, walks to that road.':'');
   return r}
 
 // ---- the tools ----
@@ -965,11 +977,12 @@ const T={
     const ch=choiceInfo(a);if(ch)r.choice=ch;const tv=tableView(a);if(tv)r.table=tv;
     const near=LANDMARKS.filter(l=>dist(a,l)<20).map(l=>l.name+' ('+r1(dist(a,l))+' tiles)');if(near.length)r.landmarks=near;
     {const road=roadLook(a);if(road.length)r.on_the_road=road} // carts, travellers and guards in sight, in words (#796)
+    if(manyMaps())r.land=mapName(MAP_ID);{const ro=roadsSeen(a,!!here);if(ro.length)r.roads_out=ro} // the roads off this land, and what is said of them (#1013)
     {const f=followLine(a);if(f)r.following=f;const by=followersOf(a);if(by.length)r.walks_with_you=by.map(b=>b.name+' walks with you')} // follow (#445)
     lookInvites(a,r); // the trainer, what sells, gathering spots, whether you can attempt (#872, #864)
     lookSnap(a);return r},
   status(a){const mh=maxHp(a),q=a.quest,adv=advOf(a),c=homeOf(a);
-    const r={ok:true,name:a.name,...(titleOf(a)?{known_as:styled(a)}:{}),people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,...(loreSides()?{sides:'lore'}:{}),home:c.name,world:WORDS.world,level:a.lvl,
+    const r={ok:true,name:a.name,...(titleOf(a)?{known_as:styled(a)}:{}),people:raceOf(a).name,cls:a.cls,faction:FAC[a.fac].name,...(loreSides()?{sides:'lore'}:{}),home:c.name,world:WORDS.world,...(manyMaps()?{land:mapName(MAP_ID)}:{}),level:a.lvl,
       xp:a.lvl>=20?'max':Math.round(a.xp)+'/'+xpNeed(a.lvl),hp:Math.round(a.hp)+'/'+mh,attack:Math.round(atkOf(a)),gear_score:r1(gearScore(a)),gold:a.gold,
       state:a.state,doing:a.playDoing||null,queue:(a.pq||[]).map(cmdText),
       traits:(a.traits||[]).map(t=>t+(TRAITS[t]?' ('+TRAITS[t].desc+')':'')),origin:a.origin||null,
@@ -1129,8 +1142,8 @@ const T={
     for(const j of supplyJobs())if(j.phase==='open'&&j.town===c.name&&supplyMay(a,j))out.push({id:j.id,job:supplyText(j),goods:true,giver:j.giver?j.giver.name:'the gate captain',where:c.name,wants:supplyWant(j),pays:supplyReward(j),you_carry:supplyHave(a,j.want),for_you:j.for!=null?j.for===a.id:undefined,expires_in_min:Math.max(0,Math.round(j.until-S.gameMin))}); // a goods job (#720): take_quest {id} to hold it, turn_in to hand the goods in
     const bounties=bountiesAt(c).filter(b=>MOBS[b.type]).map(b=>({bounty:MOBS[b.type].q,kill:b.need+' '+MOBS[b.type].pl,where:ZONES[b.z],giver:b.giver,yours:a.quest&&a.quest.bounty===b.id||undefined,expires_in_min:Math.max(0,Math.round(b.until-S.gameMin))}));
     const sg=sightingLines(a,c.name),nt=noticesAt(a,c.name);for(const x of sg)if(x.bound)learnPlace(a,x.bound,'told');
-    const gw=gateWord(a,c.name),gwd=guildWord(a); // the gate's word: what the town is saying (#637)
-    return {ok:true,jobs:out,...(gw.length?{word_at_the_gate:gw}:{}),...(gwd?{guilds:gwd}:{}),bounties:bounties.length?bounties:undefined,sightings:sg.length?sg.map(x=>x.text):undefined,notices:nt.length?nt.map(({poster,...r})=>r):undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
+    const gw=gateWord(a,c.name),gwd=guildWord(a),ro=gateRoads(a); // the gate's word: what the town is saying (#637), the guilds (hint), and where the roads out go (#1013)
+    return {ok:true,jobs:out,...(gw.length?{word_at_the_gate:gw}:{}),...(gwd?{guilds:gwd}:{}),...(ro.length?{roads_out:ro}:{}),bounties:bounties.length?bounties:undefined,sightings:sg.length?sg.map(x=>x.text):undefined,notices:nt.length?nt.map(({poster,...r})=>r):undefined,note:(out.length?'':'No adventure posted right now; jobs refill every few game hours. ')+(bounties.length?'Bounties are background work (turn_in takes one): adventures are the road to renown.':'')||undefined}},
   take_adventure(a,{job_id}){need(inTown(a),'Take jobs at your town gate. Go home first.');const id=Number(job_id),c=homeOf(a),mem=[a,...partyMates(a)];
     need(!(a.party&&a.party.leader!==a),'In the Fellowship the party decides: propose {kind:"job", job_id:'+(Number.isFinite(id)?id:'N')+'} (vote; the leader settles it).');
     const mine=advOf(a);
@@ -1245,6 +1258,7 @@ const T={
       need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first, or hunt with no where once it is over.');
       const gl=()=>{const L=huntGrounds(a).slice(0,3);return L.length?' Hunting grounds you know: '+L.join(', ')+'.':''};
       const p0=plan(a,w);if(p0.error)throw new Rule('Cannot hunt at "'+clean(w,60)+'": '+p0.error+gl());
+      if(p0.bound)throw new Rule(p0.bound+' is not in this land: there is no hunting it from here. move_to it to walk to '+p0.label+'.'+gl());
       if(p0.last==='town')throw new Rule(p0.label+' is inside the town walls: hunt out in the world.'+gl()+' Or a direction ("north") or "x,y".');
       const g=guardWalk(a,p0,force);if(g.refuse)throw new Rule(g.refuse);if(g.stopped){a.pq=[{kind:'move',legs:g.p.legs,last:'hunt',label:g.p.label}];if(a.state==='follow'||a.state==='return')a.state=inTown(a)?'town':'hunt';a.dest=null;
         return {ok:true,going:g.p.label,stops_short:true,warning:g.p.warn,hunting:'not yet: you stop at the edge first',apart:apartNote(a,g.p)||undefined}}
@@ -1581,6 +1595,7 @@ export function playerAct(id,tool,args={}){const a=hero(Number(id));
   if(r&&r.ok===false){const w=sinceLook(a,args);if(w){r.error=r.error+' '+w;r.changed=w}} // a refused order says what moved on since the agent looked (#240)
   if(r&&!r.pending){r.as_of=day();const L=a.playLook,m=L?Math.round(S.gameMin-L.gm):null;if(m!=null&&m>PK.STALE)r.since_look=m+' game min since your last look'}
   if(r&&r.ok!==false)errandTool(a,tool); // running a town errand is progress toward the aim (#727)
+  if(r&&r.ok!==false&&EXITS.length){const C=companyOf(a);roadWord(a,C,C?leaderFor(a):null,tool,args,r,n=>knowsPlace(a,n))} // the leader's words are what open a crossing (#1013)
   if(meta.act&&r&&r.ok!==false&&r.act!==false){holdAnswered(a);a.playActAt=S.gameMin;a.playIdle=false;a.playAuto=null;if(tool==='hunt'){const h=(a.pq||[]).find(c=>c.kind==='hunt');if(h)a.playOrder={kind:'hunt',n:h.n,flee:h.flee,prey:h.prey}}
     if((tool==='move_to'||tool==='hunt'||tool==='follow'||tool==='rest')&&a.intent&&!a.intent.done&&!a.intent.order){const c=a.pq&&a.pq[0];attachOrder(a,orderOf(a,c&&c.kind==='move'&&a.pq[1]&&a.pq[1].kind==='hunt'?a.pq[1]:c,tool==='move_to'?args&&args.target:null))} // a command under an aim with none becomes its order (#535)
     if(tool==='follow'){const f=a.pq[0];a.playOrder={kind:'follow',id:f.id,until:f.until,h:f.h}}else if(a.playOrder&&a.playOrder.kind==='follow'&&(a.pq&&a.pq[0])!==q0)a.playOrder=null} // a new order ends a standing follow (#445) // the agent's last action that went through (autopilot, #126)

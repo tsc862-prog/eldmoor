@@ -16,7 +16,7 @@ import {gatheringFor} from './crypts.js';
 import {solidAt,standAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
 import {RACES,racesOf,raceName} from '../data/races.js';
-import {ELITES} from '../data/mobs.js';
+import {eliteOf} from '../data/mobs.js';
 import {NPC_ROLES,npcRole} from '../data/npcs.js';
 import {S,clockStr,dayNo} from './state.js';
 import {pop} from './effects.js';
@@ -136,7 +136,7 @@ function greet(p,work){
 function newsTick(){const n=S.npcNews,st=S.eco&&S.eco.stats;
   if(st&&st.eliteKills!==n.eliteKills){n.eliteKills=st.eliteKills;
     for(const a of S.agents){const k=a.eliteKills||0;if(k<=(n.heroElite[a.id]||0))continue;n.heroElite[a.id]=k;
-      const E=ELITES[a.zone];n.items.push({kind:'elite',t:S.gameMin,hero:a.name,fac:a.fac,elite:E?E.name:'the beast',zone:ZONES[a.zone]||'the wilds',sung:{}})}}
+      const E=eliteOf(a.zone);n.items.push({kind:'elite',t:S.gameMin,hero:a.name,fac:a.fac,elite:E?E.name:'the beast',zone:ZONES[a.zone]||'the wilds',sung:{}})}}
   for(let f=0;f<S.facStats.length;f++){if(S.facStats[f].bosses===n.bosses[f])continue;n.bosses[f]=S.facStats[f].bosses;
     const lead=S.agents.filter(a=>a.fac===f&&a.state!=='dead'&&dist(a,S.boss)<9).sort((x,y)=>y.lvl-x.lvl)[0];
     n.items.push({kind:'boss',t:S.gameMin,hero:lead?lead.name:FAC[f].name+' raiders',fac:f,elite:S.boss.name,zone:ZONES[ZONES.length-1],sung:{}})}

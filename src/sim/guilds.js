@@ -27,6 +27,7 @@ import {log} from './chronicle.js';
 import {record} from './history.js';
 import {bond,FRIEND,CLOSE} from './bonds.js';
 import {hasLinks} from './runlink.js';
+import {awayIn} from './atlas.js';
 
 export const CAP=12,MAX_FOUND=6,NEAR_FOUND=20,JOIN_LVL=3,SPLIT_DAYS=6,DISBAND_DAYS=7,TICK=5,JOIN_P=.2;
 const DAY=1440;
@@ -127,7 +128,7 @@ export function guildsTick(dt){
   const sizes=new Map();
   for(const a of S.agents)if(alive(a)&&a.guild){sizes.set(a.guild,(sizes.get(a.guild)||0)+1)}
   join(sizes);
-  for(const g of livingGuilds()){const mem=membersOf(g);lead(g,mem);split(g,mem);dwindle(g,mem)}}
+  for(const g of livingGuilds()){if(awayIn(g))continue;const mem=membersOf(g);lead(g,mem);split(g,mem);dwindle(g,mem)}} // a guild with people on a frozen map holds still (#1013)
 
 // Test hook for scripts: a random living guild of faction f, or null.
 export const randomGuild=f=>{const l=livingGuilds().filter(g=>g.fac===f);return l.length?pickA(l):null};

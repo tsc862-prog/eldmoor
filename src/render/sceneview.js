@@ -61,6 +61,7 @@ import {liveProps} from '../sim/props.js';
 import {patchGrid} from '../sim/patch.js';
 import {spokenOf,unrole} from '../core/spoken.js';
 import {inSlots} from '../sim/company.js'; // the slotted company (#588)
+import {onWorld} from '../sim/kept.js';
 
 const KEY='eldmoor.sceneMaps';
 const DUNGEON_KINDS=new Set(['site','room','crawl']),INDOOR_KINDS=new Set(['meeting','social','interrogation','talk']); // interrogation (#431 slice 3): the cell in a town
@@ -126,6 +127,8 @@ export function openSceneView(sc=S.table){const sp=sceneSpec(sc);if(!sp)return f
   open=true;openId=sc.id;spec=sp;sig='';root.hidden=false;root.classList.toggle('scout',sp.mode==='outdoor');root.dataset.mode=sp.mode;
   const scr=document.getElementById('screen');if(scr){scr.classList.add('scopen');scr.classList.toggle('scin',sp.mode==='indoor')}
   speaker=null;lastBeats=Math.max(0,sc.beats.length-1);lastNarr=null;track(sc);playReset();refreshScene();return true}
+// Another map (#1013): a view left open is of the land left behind. The far side's own scene opens on the next tick of the view.
+onWorld(()=>{if(open)closeSceneView();autoDg=dgShut=false;dgAt=null;seenId=null});
 export function closeSceneView(byUser){if(byUser&&openId!=null)dismissed=openId;open=false;openId=null;spec=null;playReset();
   if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr){scr.classList.remove('scopen');scr.classList.remove('scin')}}
 

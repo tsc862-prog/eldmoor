@@ -17,6 +17,7 @@ import {sprite,worldSprite,idFrame} from './sprites.js';
 import {U as T,PROC_SCALE,ART} from './tile.js';
 import {F,inTiles,lrand,skyAt,WET,day} from './life.js';
 import {MARK} from './palette.js';
+import {onWorld} from '../sim/kept.js';
 
 // ---- the kinds: pixel sprites facing right (stand, step), a palette per variant, speeds in tiles a second ----
 const K={
@@ -55,6 +56,8 @@ function mk(kind,x,y,town,v){const k=K[kind];
   const sid='sprite:critter-'+kind+'-'+v,e={kind:'deco',ck:kind,K:k,x,y,hx:x,hy:y,tx:x,ty:y,st:0,t:1+lrand()*3,face:1,dir:2,ph:lrand()*9,z:0,al:1,town,v,fx:0,fy:0,sid,fid:sid+'-fly',paint:paintCritter};
   POOL.push(e);return e}
 let ready=false,LAND=null;const TOWNOPEN=new Map();
+onWorld(()=>{ready=false;LAND=null;TOWNOPEN.clear();POOL.length=0;ROOST.length=0}); // another map (#1013): its own animals, laid by the next frame
+export const warmCritters=()=>{if(!ready)init()};
 // The open interior tiles of a town (inside the walls, not solid: building footprints and the wall are out).
 function townOpen(c){let o=TOWNOPEN.get(c);if(o)return o;const w=c.x1-c.x0+1,h=c.y1-c.y0+1,a=new Uint8Array(w*h);
   for(let y=c.y0+1;y<c.y1;y++)for(let x=c.x0+1;x<c.x1;x++)if(!solidAt(x,y))a[(y-c.y0)*w+(x-c.x0)]=1;

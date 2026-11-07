@@ -34,7 +34,7 @@ import {trafficEnts,isTraffic,trafficShadow,drawTrafficEnt} from './traffic.js';
 import {farMarks,gatherFar,drawMarks,homeLane} from './lod.js'; // the whole map's marks (#729)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
-import {getChunk,warmChunks,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terrain.js';
+import {getChunk,peekChunk,warmChunks,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {drawWholeMap} from './wholemap.js'; // company rings and name tags in the whole-map view (#844)
 import {syncSpells,drawSpells} from './spellfx.js';
@@ -57,9 +57,12 @@ import {drawMotes} from './motes.js';
 import {drawSheen} from './sheen.js';
 import {FX} from './quality.js';
 import {skyAt} from './life.js';
+import {onWorld} from '../sim/kept.js';
+import {followed,members,leaderOf} from '../sim/company.js';
+import {beginFade,fading,fadeBeat,fadeFrame,paintFade} from './roadfade.js'; // a crossing to another map (#1013)
 const HIT_NUM=/^\d+!?$/; // a blow's number from the sim; a fight on a patch shows it as its beat lands instead (#746)
 const EPZ=[],EPY=[]; // per entity this frame: its pose on a patch (#746), its feet row
-const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
+let TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null,hover:null,icons:true}; // hover, icons: the hovered hero and the Intent icons switch in Settings (#534, render/purposefx.js)
@@ -75,7 +78,12 @@ const ENTS=[],ESPR=[],EG=[],EGF=[],ESW=[],ESH=[],EPX=[],byY=(a,b)=>a.y-b.y; // t
 // BOSS_PAL lives in palette.js (#85: the raid arena draws Kragmaw too)
 
 // ---- camera control (module level so the UI and tools can drive it) ----
-let cvRef=null;const listeners=[];
+let cvRef=null,toldSwitch=null;const listeners=[],arrivals=[];
+// Another map (#1013). The hooks of everything this file imports have run by now. The canvas still shows the land left behind: createRenderer's hook keeps it for the fade.
+onWorld(()=>{TOWNS=new Set(CITY.map(c=>c.name.toUpperCase()));cam.camX=W*T/2;cam.camY=H*T/2;cam.vw=W*T;cam.vh=H*T;cam.cut=false;if(toldSwitch)toldSwitch()},()=>({townLabels:[...TOWNS],camAt:[cam.camX,cam.camY]}));
+// The UI's half of a map switch: fn('aim') once the company stands on the new map, before the camera goes to it; fn('shown') as the picture comes back.
+export const onMapArrive=fn=>{arrivals.push(fn)};
+export const mapArrived=stage=>{for(const f of arrivals)f(stage)};
 export function onCamChange(fn){listeners.push(fn)}
 const changed=()=>{for(const f of listeners)f(cam)};
 // Whole art pixels where it costs under a quarter step, so the generated art stays sharp (art px per unit is ART).
@@ -114,6 +122,18 @@ export function createRenderer(cv,screenEl){
   function resize(){const r=screenEl.getBoundingClientRect();cam.dpr=window.devicePixelRatio||1;cv.width=Math.max(1,Math.round(r.width*cam.dpr));cv.height=Math.max(1,Math.round(r.height*cam.dpr));
     cam.fit=Math.min(cv.width/(W*T),cv.height/(H*T));if(mini)mini.resize()}
   new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();initSceneView();
+  // A map switch (#1013, render/roadfade.js). Everything sized to the map follows here; the rest of the handover is the fade's.
+  let soft=false; // until the first view's chunks are done nothing stops to paint one
+  toldSwitch=()=>{beginFade(cv);resize();if(mini)mini.reset();tKey=tPrev='';tReady=false;soft=true}; // the picture first: resize clears the canvas
+  // Where the view opens: on the company, wherever it was looking before. Far from the camera's last place, so no easing: the view is there when the dark lifts.
+  function aimCamera(){mapArrived('aim');
+    const C=followed(),L=C?members(C).filter(a=>a.state!=='dead'):[],ld=C&&leaderOf(C),on=cam.sel&&S.agents.includes(cam.sel)?cam.sel:null,e=(cam.view==='follow'?on:null)||(ld&&L.includes(ld)?ld:L[0])||on,fr=framed();if(cam.director)return e;
+    if(fr){cam.sc=frameScale(fr);cam.camX=fr.x*T;cam.camY=fr.y*T}else{cam.sc=following()?followScale():cam.fit*cam.zoom;if(e){cam.camX=e.x*T;cam.camY=e.y*T}}
+    clampCam();return e}
+  // The tiles the first frame will show.
+  function firstView(){const a=cv.width/Math.max(1,cv.height),cut=sceneCut(a);if(cut)return [cut.cx-cut.w/2,cut.cy-cut.h/2,cut.cx+cut.w/2,cut.cy+cut.h/2];
+    const hw=cv.width/cam.sc/T/2,hh=cv.height/cam.sc/T/2,x=cam.camX/T,y=cam.camY/T;return [x-hw,y-hh,x+hw,y+hh]}
+  const backOn=()=>{mapArrived('shown');return !!cam.director}; // the cinema view's director takes the last beat
 
   // The sky over the camera, eased so the light turns as weather comes on rather than jumping (#979).
   let cloud=0;const skyNow=()=>{const c=CLOUD[skyAt(cam.camX/T,cam.camY/T)]||0;cloud+=(c-cloud)*.02;return cloud};
@@ -143,17 +163,19 @@ export function createRenderer(cv,screenEl){
   let tKey='',tPrev='',tCache=null,tReady=false;
   function drawTerrain(sc){ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;
     const key=cv.width+'|'+cv.height+'|'+sc+'|'+cam.offX+'|'+cam.offY+'|'+chunkGen;
+    if(soft){paintChunks(ctx,sc);return} // a crossing's first frames: no copy of a picture with holes in it
     if(key===tKey&&tReady){ctx.drawImage(tCache,0,0);return}
     if(key!==tPrev){tPrev=key;tReady=false;paintChunks(ctx,sc);return} // the view moved: draw directly and see if it holds
     if(!tCache||tCache.width!==cv.width||tCache.height!==cv.height){tCache=document.createElement('canvas');tCache.width=cv.width;tCache.height=cv.height}
     const tc=tCache.getContext('2d');tc.setTransform(1,0,0,1,0,0);tc.clearRect(0,0,tCache.width,tCache.height);tc.imageSmoothingEnabled=false;
     paintChunks(tc,sc);tKey=key;tReady=true;ctx.drawImage(tCache,0,0)}
-  function paintChunks(ctx,sc){const cs=CH*T;
+  function paintChunks(ctx,sc){const cs=CH*T;let holes=false;
     const i0=Math.max(0,Math.floor(-cam.offX/sc/cs)),i1=Math.min(CHUNKS_X-1,Math.floor((cv.width-cam.offX)/sc/cs));
     const j0=Math.max(0,Math.floor(-cam.offY/sc/cs)),j1=Math.min(CHUNKS_Y-1,Math.floor((cv.height-cam.offY)/sc/cs));
-    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const c=getChunk(i,j);
+    for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++){const c=soft?peekChunk(i,j):getChunk(i,j);if(!c){holes=true;continue}
       const x0=Math.round(cam.offX+i*cs*sc),y0=Math.round(cam.offY+j*cs*sc),x1=Math.round(cam.offX+(i*cs+c.uw)*sc),y1=Math.round(cam.offY+(j*cs+c.uh)*sc); // c.uw/uh: the chunk in world units, whatever its resolution
-      ctx.drawImage(c,0,0,c.width,c.height,x0,y0,x1-x0,y1-y0)}}
+      ctx.drawImage(c,0,0,c.width,c.height,x0,y0,x1-x0,y1-y0)}
+    if(!holes&&!fading())soft=false}
 
   // Frame phases for scripts/perfprobe.mjs (#716): off (one null check a phase) unless the probe sets
   // globalThis.__drawPhases={on:true,ms:Float64Array(8),n:0}; then each phase's milliseconds add up in ms[i].
@@ -162,7 +184,8 @@ export function createRenderer(cv,screenEl){
   let PH=null;const ph=i=>{if(PH){const t=performance.now();PH.ms[i]+=t-PH.t;PH.t=t}};
   let blink=0,frameNo=1;
   function draw(){PH=globalThis.__drawPhases&&globalThis.__drawPhases.on?globalThis.__drawPhases:null;if(PH){PH.t=performance.now();PH.n++}
-    trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
+    trackCrawl();trackRaid();sceneTick(cam);if(fading()&&fadeFrame(ctx,cv,aimCamera,firstView,backOn)){if(mini&&!cam.director&&fadeBeat()!=='out')mini.draw(S);return} // a crossing: the road's end, the dark, then the far side
+    if(dungeonOpen()){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
     if(drawSceneView(performance.now()/1000)){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');return} // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
@@ -342,10 +365,10 @@ export function createRenderer(cv,screenEl){
     flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;ph(5);
     const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
     if(whole)drawWholeMap(ctx,cam,blink);
-    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null);
+    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null,!!cin);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)&&!(onPatch&&HIT_NUM.test(p.txt))){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
-    if(mini&&!cin)mini.draw(S);if(cin)cin.paint(ctx,cv.width,cv.height);ph(6);
+    if(mini&&!cin)mini.draw(S);if(cin)cin.paint(ctx,cv.width,cv.height);paintFade(ctx,cv);ph(6);
   }
 
   return {draw,resize,screenToWorld,setZoom,zoomAt,panBy,centerOn,stepZoom,currentZoom,onCamChange};

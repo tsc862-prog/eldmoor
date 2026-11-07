@@ -14,6 +14,7 @@ import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle} from '../data/townart.js'
 import {assetPixels,assetEntry,onAssets} from './assets.js';
 import {drawHouse,drawCryptMouth,sketchPiece,plainHouse} from './pieceart.js';
 import {FLAT,TOWN,TOWN_GROUND} from './palette.js';
+import {onWorld} from '../sim/kept.js';
 
 // Hook table (artcheck: every id here is in the manifest and every manifest entry hooked to this module is here). A piece
 // is 'building:<style>-<piece>', but the straight wall is a seamless patch generated like a ground tile ('tile:<style>-wall').
@@ -166,6 +167,7 @@ function cutBanners(ctx,c,x0,y0,x1,y1,R){if(gateArt(c))return;const f=FAC[c.fac]
 const SIDE_ROT={N:0,E:1,S:2,W:3};
 // The pieces of town c in drawing order: walls, gate, buildings (back to front). Each {id, box:[x,y,w,h] tiles, rot}.
 const planC=new Map();
+onWorld(()=>{gateC.clear();shadowC.clear();planC.clear()}); // another map (#1013): keyed by its town records
 export function townPlan(c){let P=planC.get(c);if(P)return P;P=[];const st=townStyle(c),id=p=>pieceId(st,p);
   const gate=new Set(c.gateTiles.map(([x,y])=>x+','+y));
   for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++){
@@ -229,7 +231,7 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
     const f=FAC[c.fac],ox=(c.x0-2)*T,dy=(c.y0-2)*T;
     if(!hits(c.x0-2,c.y0-2,c.x0+13,c.y0+9,x0,y0,x1,y1))continue; // layout spans tiles x0+2..x0+12, y0+1..y0+7
     const bld=(x,y,roof,wall,sign)=>drawHouse(R,x+ox,y,roof,wall,sign);
-    const plain=q=>!drawn(c,q)&&!(q&&q.kit); // a plan's own hall and auction house stand on their boxes, above
+    const plain=q=>!!q&&!drawn(c,q)&&!q.kit; // a plan's own hall and auction house stand on their boxes, above
     if(plain(building(c,'auction')))bld(4*T,3*T+dy,f.dark,'#c8b890','#f2c14e');
     if(plain(building(c,'hall')))bld(8*T,3*T+dy,'#6a4a3a','#b8a888');
     if(walls||(c.buildings||[]).some(b=>b.kit))cutBanners(ctx,c,x0,y0,x1,y1,R);else for(const gy of [5,8]){const gx=12*T+6+ox,gyy=gy*T+dy-12;R(gx,gyy,2,20,'#3a2a1a');R(gx+2,gyy,8,6,f.color);R(gx+2,gyy+6,3,3,f.color);R(gx+7,gyy+6,3,3,f.color);R(gx+2,gyy+1,8,1,f.dark);R(gx+5,gyy+2,2,2,f.dark)}

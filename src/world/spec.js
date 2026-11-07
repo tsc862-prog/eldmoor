@@ -12,12 +12,13 @@
 //               noise:{seed,scale,amp,slice}        (vnoise(..)-.5)*amp sampled at t/scale
 //   regions   ordered; later regions override earlier ones where masks overlap.
 //             {id, name, band:[minLvl,maxLvl], biome, mask}
-//             biome: 'meadow' | 'fen' | 'ash' | 'tundra' | 'highland' (painters live in gen.js)
+//             biome: 'meadow' | 'lea' | 'wood' | 'fen' | 'ash' | 'tundra' | 'highland' (painters live in gen.js)
 //             mask kinds: 'all' | 'rect'{x0,y0,x1,y1} | 'west-of-curve' |
 //               'east-of-curve' | 'north-of-curve' | 'south-of-curve' (curve: name) |
 //               'and'{masks} | 'or'{masks} | 'not'{mask}
-//   river     {curve, width, fords?} painted as RIVER along the curve; roads bridge it. fords: places along it (y on a north-south river) left walkable.
+//   river     {curve, width, fords?} painted as RIVER along the curve; roads bridge it. fords: places along it (y on a north-south river) left walkable. closed: true, the map's edge: nothing crosses it (worldcheck, pathcheck).
 //   towns     {name, fac, x0, y0, w, h, gate:'E'|'W'|'N'|'S', race, spots, npcs}
+//             delve: (optional) [x,y] where this town's first delve stands, a place a road leads to; absent, the game finds open ground near the gate (sim/prologue.js).
 //             WALL border, FLOOR inside, two gate tiles in the middle of the gate
 //             wall; gate point and graveyard are derived from the rect by gen.js.
 //             wall: (optional) the wall set drawn instead of the town style's own ('palisade'), art only;
@@ -41,6 +42,10 @@
 //             party's average), hit (share of a hero's max HP a foe's blow takes), rounds (rounds
 //             before the party is driven back)}. type is a bestiary key (data/bestiary.js).
 //   points    named waypoints that roads may reference.
+//   exits     where a road leaves the map (#1013): {id, name, to:{map, exit}, at|edge}. to:{map:null, heard} is a road whose far side is not built:
+//             it is painted and named, and a walk ordered to it is refused in words (sim/roads.js); the map may not be `final`.
+//   sides     'lore' (#1025): this map is always played with sides as lore, so its towns take in anyone.
+//   chapter   true: a part of the world, not the whole of it (#1013).
 //   roads     either a polyline [[x,y],...] painted as-is, or
 //             {from, to, via:[...]} where endpoints are town names (their gate),
 //             landmark names or point names, routed with A* over tile cost.
@@ -163,19 +168,20 @@ export const TESTWORLD={
 // title screen and every per-world check never list them; MAPS (below) is the table that holds them. Not canon (docs/LORE.md, "Test fixtures").
 // Exit format: {id, name, to:{map, exit}, at:{x,y,r} | edge:{side:'N'|'S'|'E'|'W', from, to}}; an edge exit paints its stretch of the
 // outer ring as road, an `at` exit stands on a road the spec routes there (roads may name an exit id as an endpoint).
-const linkMap=(name,town,exit,back)=>({
+const linkMap=(name,town,...exits)=>({
   name,size:{w:32,h:24},
   regions:[{id:'linkmead',name:name+' Mead',band:[1,5],biome:'meadow',mask:{kind:'all'}}],
   towns:[{name:town,fac:0,x0:3,y0:8,w:9,h:8,gate:'E',race:null}],
-  exits:[exit],
-  roads:[{from:town,to:exit.id}],
+  exits,
+  roads:exits.map(e=>({from:town,to:e.id})),
   nodes:{respawn:{herb:60,ore:120,hide:60,fish:30},regions:{linkmead:{herb:3,ore:2,hide:2,fish:2}}},
   lights:{townTorches:[[3,3]]},
   spawn:{townPad:[4,3]},
 });
 export const TESTLINK={
   testlinka:linkMap('Linka','Hearthlink',{id:'east',name:'the east road',edge:{side:'E',from:11,to:13},to:{map:'testlinkb',exit:'west'}}),
-  testlinkb:linkMap('Linkb','Mooring',{id:'west',name:'the west road',edge:{side:'W',from:11,to:13},to:{map:'testlinka',exit:'east'}}),
+  testlinkb:linkMap('Linkb','Mooring',{id:'west',name:'the west road',edge:{side:'W',from:11,to:13},to:{map:'testlinka',exit:'east'}},{id:'north',name:'the north road',edge:{side:'N',from:20,to:22},to:{map:'testlinkc',exit:'south'}}),
+  testlinkc:linkMap('Linkc','Farhold',{id:'south',name:'the south road',edge:{side:'S',from:20,to:22},to:{map:'testlinkb',exit:'north'}}), // a land two roads on, for the way across a land between (#1013 slice 5)
 };
 
 // A map with no lair and no dungeon (#1013): what a chapter of a campaign may be, a town each for the two peoples and the ground
@@ -221,7 +227,7 @@ const STEPPING_CRYPT_ROOMS=[
   {id:'bonehall',name:'The Salt-Bone Hall',frame:'Fen salt has crusted the old shelves white. The bones under it are not as still as they should be, and a dry bowstring creaks in the dark.',
     foes:[{type:'shambler',n:1},{type:'boneshot',n:1,hits:1}],lvl:0,hit:.27,rounds:2},
   {id:'mere',name:"The Mere-Warden's Seat",frame:'The last chamber is a round pool with a stone chair standing in it. The one who sits there has watched the fen rise for a very long time.',
-    foes:[{type:'graveward',n:1,name:'Mere-Warden Hask',hits:3,atk:1.5},{type:'tombskit',n:1}],lvl:1,hit:.36,rounds:2,boss:true},
+    foes:[{type:'graveward',n:1,name:'Mere-Warden Hask',hits:3,atk:1.5},{type:'tombskit',n:1}],lvl:1,hit:.31,rounds:2,boss:true},
 ];
 
 // The Hollow Cairn's chambers (#717): four, pitched for Cairnwold (levels 8-13; offsets from the party's average).
@@ -325,33 +331,39 @@ const VALE_WEIR_ROOMS=[
   {id:'weighing',name:'The Weighing Hall',frame:'Great scales hang from the roof, tipped by what lies in the pans. Dry bowstrings creak from the beams.',
     foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.29,rounds:2},
   {id:'granary',name:'The Flooded Granary',frame:'Black water lies knee-deep between the grain bins. Wardens stand in it, still guarding a harvest that rotted a century ago.',
-    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:3},
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:2},
   {id:'chair',name:"The Weir-Warden's Chair",frame:"The last chamber is a round pool with the weir-keeper's chair standing in it. The one who sits there has held the river back a very long time.",
-    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:4,boss:true},
+    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:3,boss:true},
 ];
 const VALE_KESTREL_ROOMS=[
   {id:'door',name:'The Low Door',frame:'A low door in a grassed mound, its lintel cut with kestrels. Cold air comes out of it, and the rattle of small claws.',
-    foes:[{type:'tombskit',n:2}],lvl:-1,hit:.22,rounds:2},
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.23,rounds:2},
   {id:'niches',name:'The Kestrel Niches',frame:'Every niche holds a stone bird and a heap of bone. One of the heaps gets up, still holding the lure-glove.',
-    foes:[{type:'shambler',n:1},{type:'tombskit',n:1}],lvl:0,hit:.27,rounds:2},
+    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.29,rounds:2},
+  {id:'ossuary',name:'The Hawk Ossuary',frame:'Skulls of hawks and the falconers who loved them are stacked to the roof in rows. Bowstrings creak somewhere among them, and a long-dead hand hauls itself upright.',
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:1,hit:.30,rounds:2},
   {id:'mews',name:"The Falconer's Mews",frame:'The last chamber is a mews with the perches still in it. The lord who bred the birds sits among them and does not intend to be disturbed.',
-    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:3,atk:1.4},{type:'boneshot',n:1,hits:1}],lvl:1,hit:.32,rounds:3,boss:true},
+    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:4,atk:1.5},{type:'boneshot',n:1,hits:1}],lvl:2,hit:.38,rounds:3,boss:true},
 ];
 const VALE_VAULT_ROOMS=[
   {id:'eel',name:'The Eel Cellar',frame:'Sunken cellars under a burnt kiln, the floor a foot deep in brown water. Fen-smugglers have made a guardroom of the first one.',
-    foes:[{type:'reedcutter',n:2,hits:2}],lvl:-1,hit:.24,rounds:3},
+    foes:[{type:'reedcutter',n:3,hits:2}],lvl:-1,hit:.25,rounds:3},
   {id:'tally',name:'The Salt Tally',frame:'Barrels of grey salt and a tally-board scratched in charcoal. Two big men get up from the table and reach for their cudgels.',
-    foes:[{type:'tollbreaker',n:2,hits:2}],lvl:0,hit:.29,rounds:3},
+    foes:[{type:'tollbreaker',n:2,hits:2},{type:'reedcutter',n:1,hits:2}],lvl:0,hit:.31,rounds:3},
+  {id:'count',name:'The Counting Room',frame:'A low room of ledgers and scales, where every cargo that passed the fen was weighed and taxed. A hedge-witch sits on the strongbox and the tollmen stand up around her.',
+    foes:[{type:'tollbreaker',n:2,hits:2},{type:'hedgecaller',n:1,hits:2}],lvl:1,hit:.34,rounds:3},
   {id:'cold',name:'The Cold Store',frame:'A vaulted cold-store, and the smuggler-captain who has made himself king of it. He counts you, and the count is not kind.',
-    foes:[{type:'captain',n:1,name:'Captain Dane Sallow',hits:4,atk:1.4},{type:'hedgecaller',n:1,hits:1}],lvl:1,hit:.34,rounds:4,boss:true},
+    foes:[{type:'captain',n:1,name:'Captain Dane Sallow',hits:5,atk:1.6},{type:'hedgecaller',n:1,hits:2}],lvl:2,hit:.40,rounds:4,boss:true},
 ];
 const VALE_KILN_ROOMS=[
   {id:'flue',name:'The Flue Gallery',frame:'Heat rolls up the great flue. Slag motes drift down it like sparks and gather on the stone.',
-    foes:[{type:'slagmote',n:3}],lvl:-1,hit:.24,rounds:2},
+    foes:[{type:'slagmote',n:4}],lvl:-1,hit:.25,rounds:2},
   {id:'ash',name:'The Ash Floor',frame:'A floor of drifted ash, cooling, and the crawlers who live in it come up out of the drifts all at once.',
-    foes:[{type:'cavecrawler',n:2,hits:1},{type:'golem',n:1,hits:2}],lvl:0,hit:.3,rounds:3},
+    foes:[{type:'cavecrawler',n:2,hits:1},{type:'golem',n:1,hits:2}],lvl:0,hit:.31,rounds:2},
+  {id:'quench',name:'The Quench Pool',frame:'A stone basin where the finished ware was drowned to set it. The water is long gone to steam, and the two clay giants standing in the dry basin turn their heads together.',
+    foes:[{type:'golem',n:2,hits:2}],lvl:1,hit:.38,rounds:2},
   {id:'heart',name:'The Kiln Heart',frame:'The last firing-chamber, still red at the heart. What tends it was built to, and has never been told it can stop.',
-    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.5},{type:'slagmote',n:1}],lvl:2,hit:.4,rounds:4,boss:true},
+    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.6},{type:'slagmote',n:2}],lvl:2,hit:.43,rounds:3,boss:true},
 ];
 // Town plans for the Vale (epic #940 slice C). The LPC building kit (scripts/art/packcut-buildings.mjs, PR #914) cuts one art piece per
 // style and piece, to the footprint and door the plans give it, so every Vale town keeps these shapes (TOWN_KIT: footprint in
@@ -510,11 +522,95 @@ export const VALE={
     ['ALDERMERE',19.5,16.6],['GULLSTRAND',59,31],['HAWKSTEAD',98.5,7],['BRANDHOLD',20.5,57],['STILTMERE',60.5,37],['HORNRIDGE',95.5,44]],
 };
 
+// The Quarry Cellars' chambers: the Hollin Reach's one real dungeon, for a company past the first delve and with no road open yet. Three rooms, pitched like the Vale's small delves
+// (levels 3-5; offsets from the party's average, never above the map's top band). Bestiary species only; the foreman is a Camp Captain under a name.
+const QUARRY_ROOMS=[
+  {id:'cut',name:'The Cut Stair',frame:'Steps hewn square into the quarry wall go down into a cold smell of wet stone. Pale things click along the drill-marks ahead of the light.',
+    foes:[{type:'cavecrawler',n:3}],lvl:0,hit:.28,rounds:2},
+  {id:'store',name:'The Wedge Store',frame:'Racks of iron wedges and a stack of lintels nobody ever came to fetch. Someone has been sleeping on them, and he is not pleased to be woken.',
+    foes:[{type:'tollbreaker',n:1},{type:'cavecrawler',n:1}],lvl:1,hit:.34,rounds:2},
+  {id:'tally',name:"The Foreman's Tally",frame:'The last cellar has a desk in it, cut from one block. The man behind it has a slate of names and has been waiting for this shift to report.',
+    foes:[{type:'captain',n:1,name:'Foreman Ruddock',hits:3,atk:1.4},{type:'cavecrawler',n:1,hits:1}],lvl:1,hit:.44,rounds:3,boss:true},
+];
+const QUARRY_SIGN='A slate hangs from the stair-rail, chalked in a square hand: "No one below without the foreman\'s word." The chalk is fresher than the slate.';
+const QUARRY_CAPTAIN='The quarry on Crowfell shut before my time, and the cellars under it did not shut with it. That is no first errand. Come back when you have walked home from a few things, and go together.';
+
+// ---- The Hollin Reach: the first chapter (#1013 slice 7a) ----
+// A map is part of the world, not the whole of it (owner, 2026-11-06). One hall town, starting-level ground round it, the first delve at the end of a
+// road, and two roads that run on to lands not yet seen. The tile size stays; the design number is density: it holds less, with real walking between.
+// The gate is about fifty tiles from the delve and sixty and more from either road's end, across fields, into a wood and round a river bend.
+// No faction gating (#1012): sides are lore here, so any company may rest in Oldstead, and no other side walks this map. No raid, no great dungeon, nothing above level 5; one small dungeon up on the fell for a company past its first delve.
+export const HOLLIN={
+  name:'The Hollin Reach',
+  blurb:'One small walled town, a long road through fields and a wood, an old quarry up on the fell, and a river nobody crosses. Where a company begins; the roads north and east run on past the last milestone, to lands not yet seen.',
+  size:{w:118,h:64},
+  seeds:{terrain:61,detail:83},
+  sides:'lore',
+  chapter:true, // part of the world: no great dungeon is asked of it (scripts/worldcheck.mjs)
+  ladder:{step:2},
+  curves:{
+    // The Withy: closes the south. One long bend, close under the town in the west and away to the map's foot past the wood.
+    river:{axis:'x',base:55,sin:[[19,5,3.14],[6.5,1.1,1]]},
+    wood:{axis:'y',base:64,noise:{seed:7,scale:6,amp:7,slice:2.3}},       // Withywood's west edge
+    woodN:{axis:'x',base:35,noise:{seed:11,scale:7,amp:6,slice:1.3}},     // the wood's north edge, and the fell's south edge
+    fell:{axis:'y',base:82,noise:{seed:15,scale:6,amp:8,slice:3.1}},      // Crowfell's west edge
+  },
+  regions:[
+    {id:'hollinlea',name:'Hollinlea',band:[1,3],biome:'lea',mask:{kind:'all'}},
+    {id:'withywood',name:'Withywood',band:[2,4],biome:'wood',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'wood'},{kind:'south-of-curve',curve:'woodN'}]}},
+    {id:'crowfell',name:'Crowfell',band:[3,5],biome:'highland',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'fell'},{kind:'north-of-curve',curve:'woodN'}]}},
+  ],
+  river:{curve:'river',width:3,closed:true}, // no bridge and no ford: the far bank is scenery
+  scenery:{
+    wash:{hollinlea:'meadow',withywood:'woods',crowfell:'heath'},
+    dress:{'The Quarry Cellars':'vaults'},
+    fields:[[46,13,9,4,'wheat'],[46,28,8,3,'plough'],[46,32,9,3,'wheat'],[56,28,7,4,'cabbage'],[20,34,9,3,'wheat'],[31,35,8,3,'plough'],[8,18,7,4,'cabbage'],[7,24,8,3,'wheat'],[55,10,5,3,'plough']],
+  },
+  towns:[
+    // Oldstead: one street from the east gate past the hall to the forge, the inn on a lane behind it, a well and a notice board on the green, the chapel by the south wall.
+    {name:'Oldstead',fac:0,x0:18,y0:17,w:25,h:15,gate:'E',gateAt:5,race:'hallowan',spots:{square:[12.5,8.1],quartermaster:[17.5,8.1]},grave:[23.5,8.6],
+      notch:[[22,0,3,3],[0,13,12,2]],clear:3,delve:[95.5,43.5],torches:[[23.5,4.5],[23.5,7.5],[10,7],[17,7],[15,13],[8,11]],
+      buildings:townPlan(18,17,[['house-tall',1,1],['smithy-great',5,1],['hall-great',10,1],['house-wide',18,1],['house-manor',1,7],['inn-great',6,7],['board',13,7],['fountain',14,9],['chapel-great',19,7]]),
+      ground:[[1,5,23,2],[1,11,11,1],[19,13,5,1]]},
+  ],
+  landmarks:[
+    // Up on Crowfell, a long walk from the gate by its own spur of the Fell Road. entry: the level a background group first goes down.
+    {kind:'crypt',name:'The Quarry Cellars',boss:'Foreman Ruddock',x:98.5,y:8.1,mouth:{x0:97,y0:6,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.35,rooms:QUARRY_ROOMS,entry:3,sign:QUARRY_SIGN,captain:QUARRY_CAPTAIN},
+  ],
+  points:{
+    crossways:[62,24],    // where the three roads part, in the open, a long walk east of the gate
+    delveRoad:[72,36],    // keeps the delve road off the fields and into the wood from its north edge
+    delveEnd:[95,46],     // the road's end, just below the delve's mouth (Oldstead's delve)
+    droveBend:[58,11],    // the Drovers' Road swings west of the straight line, round the copse
+    fellFoot:[79,19],     // the Fell Road's first rise
+    fellGap:[101,23],     // and the gap between the crags
+  },
+  exits:[
+    {id:'north',name:'the Drovers\' Road',to:{map:null,heard:'lands not yet seen'},edge:{side:'N',from:66,to:69}},
+    {id:'east',name:'the Fell Road',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:17,to:20}},
+  ],
+  roads:[
+    {from:'Oldstead',to:'crossways'},
+    {from:'crossways',via:['droveBend'],to:'north'},
+    {from:'crossways',via:['fellFoot','fellGap'],to:'east'},
+    {from:'crossways',via:['delveRoad'],to:'delveEnd'},
+    {from:'fellFoot',to:'The Quarry Cellars'},
+  ],
+  roadClear:[1,3],    // trees stand back from the roads, so the wood road can be seen from above
+  glades:[[95.5,44,5.5]], // the clearing round the delve's mouth
+  lights:{townTorches:[[10.5,3.4]]},
+  spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of the wall
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{hollinlea:{herb:6,ore:1,hide:4,fish:5},withywood:{herb:6,ore:1,hide:4,fish:3},crowfell:{herb:3,ore:6,hide:4,fish:0}}},
+  labels:[['HOLLINLEA',30,8],['WITHYWOOD',92,38],['CROWFELL',100,8],['OLDSTEAD',30.5,15.6]],
+};
+
 // ---- choosing the world ----
 // `?world=stepping` in the browser, ELDMOOR_WORLD=stepping in Node (or globalThis.ELDMOOR_WORLD
 // set before the first import, for tests); default eldmoor. Everything that needs the map size
 // or the spec goes through ACTIVE_SPEC / WORLD_ID so the choice is made exactly once.
-export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE};
+export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN};
 function pickWorld(){
   let id=null;
   try{if(typeof location!=='undefined'&&location.search)id=new URLSearchParams(location.search).get('world')}catch(e){}

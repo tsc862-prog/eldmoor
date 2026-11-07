@@ -183,7 +183,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
     if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama, openai, huggingface or google); skipped`); await release(h.id); return}
-    sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides); // the short variant for a local model (#531)
+    sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides, st.land); // the short variant for a local model (#531)
     if (rs.provider === 'ollama') {
       // a local member (issue #97 part 2): plays through scripts/local-agent.mjs, no key, cost 0
       if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
