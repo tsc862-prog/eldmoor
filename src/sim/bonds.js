@@ -16,7 +16,8 @@
 import {rnd} from '../core/rng.js';
 import {dist,ZONES,zoneAt} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
-import {S} from './state.js';
+import {S,foeOf,sidesOff} from './state.js';
+import {isAway} from './atlas.js';
 import {log} from './chronicle.js';
 import {record} from './history.js';
 import {say} from './chat.js';
@@ -33,7 +34,7 @@ export const friendsOf=(a,min=FRIEND)=>S.agents.filter(b=>b!==a&&alive(b)&&bond(
 const byId=id=>S.agents.find(x=>x.id==id); // loose: object keys are strings
 
 // Raise the bond both ways; crossing a threshold is worth a line in the Chronicle.
-function grow(a,b,n){if(a===b||!alive(a)||!alive(b)||a.fac!==b.fac)return;
+function grow(a,b,n){if(a===b||!alive(a)||!alive(b)||foeOf(a,b))return;
   const was=bond(a,b),now=Math.min(CAP,was+n);
   (a.bonds||(a.bonds={}))[b.id]=now;(b.bonds||(b.bonds={}))[a.id]=now;
   if(was<FRIEND&&now>=FRIEND){stats().friends++;record(a,'Became friends with ',b,'.');record(b,'Became friends with ',a,'.');
@@ -61,8 +62,8 @@ function mourn(a,killer){const fr=friendsOf(a);if(!fr.length)return;
 // A hero has been slain by a hero: close friends inherit the killer as nemesis, friends
 // half the time. Called from agentDie after the guildmates' grudge is set.
 export function inheritGrudge(a,killer){if(!killer||killer.kind!=='hero')return;
-  rivalKill(a,killer); // guild rivalry heat (sim/rivals.js, #6)
-  for(const x of friendsOf(a)){if(x.fac===killer.fac)continue;
+  if(!sidesOff(a,killer))rivalKill(a,killer); // guild rivalry heat (sim/rivals.js, #6)
+  for(const x of friendsOf(a)){if(x.fac===killer.fac||sidesOff(x,killer))continue;
     const close=bond(a,x)>=CLOSE;if(!close&&rnd()<.5)continue;
     if(!x.nemesis[killer.id])stats().inherited++;
     x.nemesis[killer.id]=a.name;(x.grudges||(x.grudges={}))[killer.id]=a.id}}
@@ -85,5 +86,5 @@ export function avenged(avenger,slain){const victim=avenger.nemesis[slain.id];if
 export function bondsTick(dt){S.bondT=(S.bondT||0)+dt*6;if(S.bondT<DAY)return;S.bondT-=DAY;
   for(const a of S.agents){if(!alive(a)||!a.bonds)continue;
     for(const id in a.bonds){const b=byId(id);
-      if(!alive(b)){delete a.bonds[id];continue}
+      if(!alive(b)){if(!isAway(id))delete a.bonds[id];continue} // someone on a frozen map is not gone, and a bond waits with them (#1013)
       if(dist(a,b)>NEAR&&--a.bonds[id]<=0)delete a.bonds[id]}}}

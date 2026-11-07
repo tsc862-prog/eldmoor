@@ -7,14 +7,17 @@
 // (solidAt) and never inside a building or on a wall; towns come from CITY, biomes from REGIONS (no names, no counts).
 // Day and night, weather: chickens, goats, dogs and birds are out by day; cats and the wild grazers stay; rain, squalls
 // and ash storms send chickens, cats and birds under cover.
+// Art: sheets cut from LPC-compatible sets (epic #830, scripts/art/lpc-critters.mjs): sprite:critter-<kind>-<variant>, a bird's flight
+// sprite:critter-<kind>-<variant>-fly, the variant being the index in K's pal. With no sheet the pixel sprites below draw, as before.
 import {tiles,I,CITY,REGIONS,zone,LANDMARKS} from '../world/map.js';
 import {W,H,G,TREE,MUD,SGRASS,FLOWER,SNOW,RIVER} from '../world/tiles.js';
 import {solidAt} from '../world/passable.js';
 import {hash} from '../core/rng.js';
-import {sprite,worldSprite} from './sprites.js';
+import {sprite,worldSprite,idFrame} from './sprites.js';
 import {U as T,PROC_SCALE,ART} from './tile.js';
 import {F,inTiles,lrand,skyAt,WET,day} from './life.js';
 import {MARK} from './palette.js';
+import {onWorld} from '../sim/kept.js';
 
 // ---- the kinds: pixel sprites facing right (stand, step), a palette per variant, speeds in tiles a second ----
 const K={
@@ -32,7 +35,7 @@ const K={
     walk:.5,run:2.6,flee:2.5,calm:6,roam:2,out:'day'},
   deer:{rows:[['........A.A.','.........AA.','........BBBB','........BBDN','.......BB...','TBBBBBBBB...','BBBBBBBBL...','BBBBBBBLL...','.B.B...B.B..','.B.B...B.B..','.D.D...D.D..'],['........A.A.','.........AA.','........BBBB','........BBDN','.......BB...','TBBBBBBBB...','BBBBBBBBL...','BBBBBBBLL...','..B.B..B.B..','..B..B.B..B.','..D..D.D..D.']],
     pal:[{A:'#c8b898',B:'#9a6a3e',L:'#c89a64',T:'#f0e4d0',D:'#2a1a10',N:'#2a1a10'}],
-    walk:.7,run:4.6,flee:6,calm:9,roam:3,out:'always'},
+    walk:.7,run:4.6,flee:6,calm:9,roam:3,out:'always',side:1}, // side: its sheet has no front or back view
   hare:{rows:[['....E.E','....BBB','.BBBBDN','TBBBBB.','.LL.LL.'],['....E.E','....BBB','.BBBBDN','TBBBBB.','..LL.L.']],
     pal:[{E:'#a07a50',B:'#a8825a',L:'#80603c',T:'#f0e8d8',D:'#1a1410',N:'#e8a0a0'},{E:'#d8dce4',B:'#eceef4',L:'#c0c6d2',T:'#ffffff',D:'#1a1a24',N:'#e8a0a0'}],
     walk:.8,run:5.2,flee:5,calm:7,roam:2.5,out:'always'},
@@ -50,9 +53,11 @@ const TOWN_SET=[['chicken',2],['dog',1],['cat',1],['goat',1]];
 // ---- the animals ----
 const POOL=[],ROOST=[];
 function mk(kind,x,y,town,v){const k=K[kind];
-  const e={kind:'deco',ck:kind,K:k,x,y,hx:x,hy:y,tx:x,ty:y,st:0,t:1+lrand()*3,face:1,ph:lrand()*9,z:0,al:1,town,v,fx:0,fy:0,paint:paintCritter};
+  const sid='sprite:critter-'+kind+'-'+v,e={kind:'deco',ck:kind,K:k,x,y,hx:x,hy:y,tx:x,ty:y,st:0,t:1+lrand()*3,face:1,dir:2,ph:lrand()*9,z:0,al:1,town,v,fx:0,fy:0,sid,fid:sid+'-fly',paint:paintCritter};
   POOL.push(e);return e}
 let ready=false,LAND=null;const TOWNOPEN=new Map();
+onWorld(()=>{ready=false;LAND=null;TOWNOPEN.clear();POOL.length=0;ROOST.length=0}); // another map (#1013): its own animals, laid by the next frame
+export const warmCritters=()=>{if(!ready)init()};
 // The open interior tiles of a town (inside the walls, not solid: building footprints and the wall are out).
 function townOpen(c){let o=TOWNOPEN.get(c);if(o)return o;const w=c.x1-c.x0+1,h=c.y1-c.y0+1,a=new Uint8Array(w*h);
   for(let y=c.y0+1;y<c.y1;y++)for(let x=c.x0+1;x<c.x1;x++)if(!solidAt(x,y))a[(y-c.y0)*w+(x-c.x0)]=1;
@@ -87,10 +92,12 @@ function fleeFrom(e,hx,hy,len){let best=-1,bx=0,by=0;
   for(let i=0;i<8;i++){const a=ANG[i]+lrand()*.5,x=e.x+Math.cos(a)*len,y=e.y+Math.sin(a)*len;if(!clearLine(e,e.x,e.y,x,y))continue;
     const d=(x-hx)*(x-hx)+(y-hy)*(y-hy);if(d>best){best=d;bx=x;by=y}}
   if(best<0)return false;e.tx=bx;e.ty=by;return true}
+// The sheet row (0 down, 1 left, 2 right, 3 up) of a walk along dx, dy.
+const dirTo=(dx,dy)=>Math.abs(dx)>=Math.abs(dy)?(dx<0?1:2):dy<0?3:0;
 // One step toward the target; true on arrival or when the next step would leave open ground.
 function stepTo(e,sp,dt){const dx=e.tx-e.x,dy=e.ty-e.y,d=Math.hypot(dx,dy);if(d<.08)return true;
   const s=Math.min(d,sp*dt),nx=e.x+dx/d*s,ny=e.y+dy/d*s;if(!okAt(e,nx,ny))return true;
-  e.x=nx;e.y=ny;if(Math.abs(dx)>.02)e.face=dx>0?1:-1;return d-s<.08}
+  e.x=nx;e.y=ny;if(Math.abs(dx)>.02)e.face=dx>0?1:-1;e.dir=e.K.side?(e.face<0?1:2):dirTo(dx,dy);return d-s<.08}
 function scaredBy(e){for(let i=0;i<F.n;i++){const dx=e.x-F.hx[i],dy=e.y-F.hy[i];if(dx*dx+dy*dy<4)return i}return -1}
 
 // Out of doors now? Day animals by the hour, wet ones not in a downpour.
@@ -108,7 +115,7 @@ function update(e,dt){
   else if(e.st===2){e.ph+=dt*9;if(stepTo(e,e.K.run,dt)){e.st=0;e.t=e.K.calm*(.7+lrand()*.6)}}
   return true}
 function updateBird(e,dt){
-  if(e.st<3){const h=scaredBy(e);if(h>=0){const dx=e.x-F.hx[h],dy=e.y-F.hy[h],d=Math.hypot(dx,dy)||1;e.fx=dx/d;e.fy=dy/d;e.st=3;e.t=0}}
+  if(e.st<3){const h=scaredBy(e);if(h>=0){const dx=e.x-F.hx[h],dy=e.y-F.hy[h],d=Math.hypot(dx,dy)||1;e.fx=dx/d;e.fy=dy/d;e.dir=dirTo(dx,dy);e.st=3;e.t=0}}
   if(e.st===0){e.t-=dt;if(e.t<=0){const ang=lrand()*6.283,d=.5+lrand()*e.K.roam,x=e.x+Math.cos(ang)*d,y=e.y+Math.sin(ang)*d;
       if(Math.hypot(x-e.hx,y-e.hy)<e.K.roam&&okAt(e,x,y)){e.tx=x;e.ty=y;e.st=1}else e.t=1+lrand()*3}}
   else if(e.st===1){e.ph+=dt*6;if(stepTo(e,e.K.walk,dt)){e.st=0;e.t=2+lrand()*5}}
@@ -122,9 +129,15 @@ function updateBird(e,dt){
 // A bird on the wing: a body and two wing strokes that flap.
 function wing(ctx,px,py,t,col){ctx.fillStyle=col;ctx.fillRect(px-1,py-1,3,2);
   if(Math.floor(t*14)&1){ctx.fillRect(px-4,py-3,3,1);ctx.fillRect(px+2,py-3,3,1)}else{ctx.fillRect(px-4,py,3,1);ctx.fillRect(px+2,py,3,1)}}
-function paintCritter(ctx,px,py,blink,e){const k=e.K;
+const STEP=[1,0,2,0],FLAP=[0,1,2,1]; // sheet columns of a walk and of a wingbeat
+// A critter's sheet frame at feet px, py, raised by z.
+function drawFrame(ctx,G,px,py,z){const w=G.fw/ART,h=G.fh/ART;ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-w/2,py-h-z,w,h)}
+function paintCritter(ctx,px,py,blink,e){const k=e.K,flying=e.st===3||e.st===5;
   if(e.al<1)ctx.globalAlpha=e.al;
-  if(e.st===3||e.st===5){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,4,1.2,0,0,7);ctx.fill();
+  const G=flying?idFrame(e.fid,e.dir,FLAP[Math.floor((F.now+e.ph)*12)&3]):idFrame(e.sid,e.dir,e.st===1||e.st===2?STEP[Math.floor(e.ph)&3]:0);
+  if(G){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,flying?4:Math.min(G.fw/ART*.36,10),1.4,0,0,7);ctx.fill();
+    drawFrame(ctx,G,px,py,flying?Math.round(e.z):e.st===2&&e.ck==='hare'?Math.abs(Math.sin(e.ph))*3:0);ctx.globalAlpha=1;return}
+  if(flying){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,4,1.2,0,0,7);ctx.fill();
     wing(ctx,px,py-Math.round(e.z)-4,F.now+e.ph,k.pal[0].G);ctx.globalAlpha=1;return}
   const moving=e.st===1||e.st===2,fr=moving?(Math.floor(e.ph)&1):0,s=sprite('cr_'+e.ck+e.v+fr,k.rows[fr],k.pal[e.v%k.pal.length]),o=worldSprite(s),sh=s.height*PROC_SCALE,ow=1/ART;
   ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(px,py,s.width*PROC_SCALE*.4,1.4,0,0,7);ctx.fill();
@@ -133,20 +146,24 @@ function paintCritter(ctx,px,py,blink,e){const k=e.K;
   ctx.drawImage(o,-Math.floor(s.width/2)*PROC_SCALE-ow,py-sh-ow-hop,o.width/ART,o.height/ART);ctx.restore();ctx.globalAlpha=1}
 
 // ---- the roosts: a few trees hold two birds that burst out when a hero walks by and settle again ----
-const AWAY=45,FLY=2.6,BIRD='#22222e';
+const AWAY=45,FLY=2.6,BIRD='#22222e',CROW='sprite:critter-crow-0',CROW_FLY=CROW+'-fly';
 export function drawRoostBirds(ctx){if(!ready)init();if(F.tpx<14)return;
   for(const r of ROOST){if(!inTiles(r.x,r.y))continue;
     if(r.t>-1e8&&F.now-r.t>AWAY+FLY)r.t=-1e9;
     if(r.t<-1e8){let h=-1;for(let i=0;i<F.n;i++){if(!F.hm[i])continue;const dx=r.x-F.hx[i],dy=r.y-F.hy[i];if(dx*dx+dy*dy<5){h=i;break}}
       if(h>=0){r.t=F.now;const dx=r.x-F.hx[h],dy=r.y-F.hy[h],d=Math.hypot(dx,dy)||1;r.dx=dx/d;r.dy=dy/d}}
     const a=r.t<-1e8?-1:F.now-r.t,px=Math.round(r.x*T),py=Math.round(r.y*T);
-    if(a<0){ctx.fillStyle=BIRD;ctx.fillRect(px-4,py-14,3,2);ctx.fillRect(px+3,py-12,3,2);ctx.fillStyle='#d8a030';ctx.fillRect(px-1,py-14,1,1);ctx.fillRect(px+6,py-12,1,1)}
+    if(a<0){let G=idFrame(CROW,1,0);if(G){drawFrame(ctx,G,px-4,py-10,0);G=idFrame(CROW,2,0);drawFrame(ctx,G,px+5,py-8,0);continue}
+      ctx.fillStyle=BIRD;ctx.fillRect(px-4,py-14,3,2);ctx.fillRect(px+3,py-12,3,2);ctx.fillStyle='#d8a030';ctx.fillRect(px-1,py-14,1,1);ctx.fillRect(px+6,py-12,1,1)}
     else if(a<FLY||a>AWAY){const out=a<FLY,f=out?a/FLY:1-(a-AWAY)/FLY,reach=out?95:60;
       for(let b=0;b<2;b++){const sg=b?1:-1,x=px+(r.dx*sg*.6+(b?.7:-.7)*r.dy)*f*reach,y=py-14-f*30-(out?Math.sin(f*3)*10:0);
-        ctx.globalAlpha=out?Math.min(1,(1-f)*2.2):Math.min(1,(1-f)*2.2);wing(ctx,Math.round(x),Math.round(y),F.now+b*.3,BIRD);ctx.globalAlpha=1}}}}
+        ctx.globalAlpha=Math.min(1,(1-f)*2.2);const G=idFrame(CROW_FLY,r.dx<0?1:2,FLAP[Math.floor((F.now+b*.3)*12)&3]);
+        if(G)drawFrame(ctx,G,Math.round(x),Math.round(y)+4,0);else wing(ctx,Math.round(x),Math.round(y),F.now+b*.3,BIRD);ctx.globalAlpha=1}}}}
 
 // ---- the frame's hook: push the critters in view, updated, onto the y-sorted entity list ----
 export function critterEnts(ents){if(!ready)init();if(F.tpx<9)return;
   for(const e of POOL){if(e.town<0&&F.tpx<20)continue;if(!inTiles(e.x,e.y,3)&&e.st<3)continue;
     if(!update(e,F.dt))continue;if(inTiles(e.x,e.y))ents.push(e)}}
 export const critterCount=()=>POOL.length;
+export const critterList=()=>POOL; // for staged shots
+export const CRITTER_KINDS=K; // for artcheck

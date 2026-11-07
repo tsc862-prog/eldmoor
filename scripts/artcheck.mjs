@@ -62,6 +62,7 @@ const PAL=await import('../src/render/palette.js');
 // Child mode for part 6: one world per process (the world modules pick ELDMOOR_WORLD when they load).
 if(process.argv[2]==='--autotile'){await autotileProbe();process.exit(fails?1:0)}
 if(process.argv[2]==='--towns'){await townProbe();process.exit(fails?1:0)}
+if(process.argv[2]==='--mapswitch'){await mapSwitchProbe(process.argv[3]);process.exit(0)}
 
 console.log('manifest and hooks');
 {const e=validateManifest(man,PAL,resolvePalette);ok(!e.length,'manifest valid'+(e.length?': '+e.join('; '):` (${man.assets.length} assets, models ${Object.keys(man.models).join(', ')})`));
@@ -72,8 +73,13 @@ console.log('manifest and hooks');
   ok(!bad.length,`every id has a file per tier, e.g. ${man.assets[0].id} -> assets/${fileOf(man.assets[0].id,32)} and assets/${fileOf(man.assets[0].id,64)}`+(bad.length?': '+bad.map(a=>a.id):''));
   bad=man.assets.filter(a=>!TIERS.every(t=>sizeOf(a,t))||sizeOf(a,64)[0]!==2*sizeOf(a,32)[0]||sizeOf(a,64)[1]!==2*sizeOf(a,32)[1]);
   ok(!bad.length,`every asset has a size per tier, the 64 tier twice the 32 (${TIERS.join(', ')})`+(bad.length?': '+bad.map(a=>a.id):''));
-  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&!/^prop:canopy-/.test(a.id)&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
-  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier (a whole canopy tree, #834, is the exception)`+(bad.length?': '+bad.map(a=>a.id):''));
+  bad=man.assets.filter(a=>(a.kind==='tile'||a.kind==='autotile'||a.kind==='prop')&&!/^prop:(canopy-|scenery$)/.test(a.id)&&(sizeOf(a,TILE)[0]!==TILE||sizeOf(a,TILE)[1]!==TILE));
+  ok(!bad.length,`terrain tiles, transitions and props are one tile (${TILE}x${TILE}) at the game's tier (a whole canopy tree, #834, and the scenery sheet are the exceptions)`+(bad.length?': '+bad.map(a=>a.id):''));
+  {const SC=await import('../src/render/scenery.js'),{ATLAS,SHEET_W,SHEET_H}=await import('../src/render/sceneryatlas.js'),{WORLDS,ACTIVE_SPEC}=await import('../src/world/spec.js'),e=man.assets.find(a=>a.id==='prop:scenery');
+    if(!ACTIVE_SPEC.scenery)ok(!SC.sceneryOn&&SC.riverPixel(0,0,0,0)===null&&SC.roadPixel(0,0,0,0)===null&&SC.tonePixel('#123456',0,0,0,0,0)==='#123456'&&SC.sceneGround(5,0,0)===5,'a world with no scenery note paints as before: every scenery entry answers at once');
+    ok(sizeOf(e,32)[0]===SHEET_W&&sizeOf(e,32)[1]===SHEET_H&&Object.values(ATLAS).every(([x,y,w,h])=>x+w<=SHEET_W&&y+h<=SHEET_H),`the scenery sheet holds every piece (${Object.keys(ATLAS).length}) inside its manifest size`);
+    const noted=Object.values(WORLDS).filter(w=>w.scenery),names=w=>(w.landmarks||[]).map(l=>l.name),inMap=(w,x,y,a=0,b=0)=>x>=0&&y>=0&&x+a<=w.size.w&&y+b<=w.size.h,ids=w=>(w.regions||[]).map(r=>r.id);
+    ok(noted.length>0&&noted.every(w=>Object.keys(w.scenery.dress||{}).every(n=>names(w).includes(n))&&Object.keys(w.scenery.wash||{}).every(r=>ids(w).includes(r))&&(w.scenery.fields||[]).every(([x,y,a,b,k])=>inMap(w,x,y,a,b)&&ATLAS[k])&&(w.scenery.clear||[]).every(([x,y])=>inMap(w,x,y))),'every scenery note names real landmarks and regions and stays on its map');}
   const {ASSET_SPRITES}=await import('../src/render/sprites.js'),sp=man.assets.filter(a=>a.kind==='sprite');
   ok(sp.length&&sp.every(a=>ASSET_SPRITES[a.id]&&a.frames.cols===3&&a.frames.rows===4),`sprite sheets: 3 frames by 4 directions (${sp.length})`);
   const hero=sp.filter(a=>/^sprite:hero-/.test(a.id));ok(hero.length&&hero.every(a=>sizeOf(a,32)[0]/3===32&&sizeOf(a,32)[1]/4===48&&sizeOf(a,64)[0]/3===64&&sizeOf(a,64)[1]/4===96),`hero frames 32x48 at the 32 tier, 64x96 at 64 (${hero.length} classes)`);
@@ -388,7 +394,23 @@ try{
       const SPR=await import('../src/render/sprites.js'),AS=await import('../src/render/assets.js'),px=AS.pixelsOf(96,192,new Uint8Array(96*192*4));
       AS.setAssetPixels('sprite:hero-warrior',px);AS.setAssetPixels('sprite:hero-warrior-ashfolk',px);
       ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior-ashfolk'&&SPR.heroSheetId('Warrior','tarrow')==='sprite:hero-warrior'&&SPR.heroSheetId('Warrior')==='sprite:hero-warrior'&&SPR.heroSheetId('Mage','ashfolk')==='sprite:hero-mage'&&SPR.heroSheetId('Nobody','ashfolk')===null,'the renderer takes the people sheet of a hero, else the class sheet, else the procedural sprite');
-      AS.setAssetPixels('sprite:hero-warrior',null);AS.setAssetPixels('sprite:hero-warrior-ashfolk',null);ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior','and falls back when the sheets leave (ids are re-read when assets change)')}}
+      AS.setAssetPixels('sprite:hero-warrior',null);AS.setAssetPixels('sprite:hero-warrior-ashfolk',null);ok(SPR.heroSheetId('Warrior','ashfolk')==='sprite:hero-warrior','and falls back when the sheets leave (ids are re-read when assets change)')
+      // a townsperson's sheet (#832): role and people, then the role alone, then the procedural figure; every role has a look for every people
+      AS.setAssetPixels('sprite:npc-smith',px);AS.setAssetPixels('sprite:npc-smith-ashfolk',px);
+      ok(SPR.npcSheetId('smith','ashfolk')==='sprite:npc-smith-ashfolk'&&SPR.npcSheetId('smith','tarrow')==='sprite:npc-smith'&&SPR.npcSheetId('bard','ashfolk')===null,'a townsperson picks the role sheet of the people, then of the role, else nothing');
+      AS.setAssetPixels('sprite:npc-smith',null);AS.setAssetPixels('sprite:npc-smith-ashfolk',null);
+      {const {NPC_ROLES,WANDER_ROLES}=await import('../src/data/npcs.js'),cfg=JSON.parse(readFileSync('scripts/art/lpc-townsfolk.json','utf8'));
+        ok([...NPC_ROLES,...WANDER_ROLES].every(R=>cfg.roles[R.id])&&Object.keys(cfg.roles).length===NPC_ROLES.length+WANDER_ROLES.length+cfg.renderOnly.length&&cfg.renderOnly.every(id=>cfg.roles[id]&&![...NPC_ROLES,...WANDER_ROLES].some(R=>R.id===id)),'lpc-townsfolk.json has a look for every role of data/npcs.js, and otherwise only for its render-only roles');}
+      // the town guards (#830): a render-only role, no sim row; a frame bigger than a figure comes out of the sheet whole, and no sheet means the pixel sprite
+      {const gd=AS.pixelsOf(192,256,new Uint8Array(192*256*4));ok(SPR.npcSheetId('guard','ashfolk')===null,'a guard with no sheet is the procedural figure');
+        AS.setAssetPixels('sprite:npc-guard-ashfolk',gd);ok(SPR.npcSheetId('guard','ashfolk')==='sprite:npc-guard-ashfolk','a guard takes the sheet of its people');AS.setAssetPixels('sprite:npc-guard-ashfolk',null)}
+      // critters (#830): each sheet the config makes is cut from a set under an allowed licence, and every palette variant of critters.js has one; a bird also its flight
+      {const C=await import('./art/lpc-critters.mjs'),CR=await import('../src/render/critters.js'),cfg=JSON.parse(readFileSync('scripts/art/lpc-critters.json','utf8')),idx=JSON.parse(readFileSync('assets/index.json','utf8')).assets;
+        ok(Object.values(cfg.sets).every(s=>['CC-BY-SA 3.0','OGA-BY 3.0','CC0'].includes(s.licence)&&licenceOk(s.offered)&&s.url&&s.authors),'every critter set is used under CC-BY-SA 3.0, OGA-BY 3.0 or CC0, is offered so, and names its authors and page');
+        ok(C.jobsOf(cfg).every(j=>idx['sprite:'+j.name+'@32']?.license===j.set.licence&&idx['sprite:'+j.name+'@32']?.source===j.K.set),'every critter sheet is in the index with its source and licence');
+        ok(Object.entries(CR.CRITTER_KINDS).every(([k,v])=>!cfg.kinds[k]||v.pal.length===cfg.kinds[k].variants.length),'a kind with sheets has one for each of its palettes');
+        ok(SPR.idFrame('sprite:critter-none-0',0,0)===null,'a critter with no sheet draws the pixel sprite');
+        const g=C.decodeGif(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7','base64'));ok(g.w===1&&g.h===1&&g.data[3]===0,'a GIF is read as pixels, its transparent colour clear');}}}
 
   // --- daily.mjs: quota-driven, resumable, into incoming/<date>/ for review
   {const dir=join(tmp,'assets'),logP=join(tmp,'art.log'),days=['2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07','2026-11-08','2026-11-09','2026-11-10'];let d=0;
@@ -443,7 +465,7 @@ try{
       const re=await node('review.mjs',['--dir',join(tmp,'no-such-assets'),'--log',join(tmp,'none.log')]);ok(re.code===0&&/nothing waiting/.test(re.s),'art:review with no assets/incoming and no queue prints "nothing waiting"')}
     r=await node('accept.mjs',['--dir',dir,'--reject','tile:mud']);q=Q();ok(r.code===0&&q.rejected['tile:mud@32']===1&&!q.incoming['tile:mud@32'],'a rejected asset leaves the queue for a redraw');
     r=await node('accept.mjs',['--dir',dir,'tile:nope']);ok(r.code===2,'accepting an unknown id is refused');
-    const p5=P0();r=await daily(['--now','--date',days[d]]);q=Q();
+    const p5=P0();r=await daily(['--now','--date',days[d]],{ART_MAX_CALLS:'400'});q=Q(); // ART_MAX_CALLS: the manifest has outgrown the default 100 calls
     ok(S.posts.slice(p5).some(p=>p.seed===1775+7919),'the rejected asset is redrawn with a new seed');
     ok(Object.keys(q.incoming).length+checkIndex(man,dir).count===N,`--now finishes the manifest (${Object.keys(q.incoming).length} waiting + ${checkIndex(man,dir).count} accepted)`);
     // buildings and landmarks (#763) wait for an in-game look: refused without an art:preview record, taken with one
@@ -462,10 +484,11 @@ try{
     ok(P0()-p6===3&&Object.keys(q.incoming).every(k=>/#alt1$/.test(k))&&S.posts.slice(p6).every(p=>p.seed>=2771),'complete manifest: alternates with new seeds (--max 3)');
     await previewAll(dir);const altKey=Object.keys(q.incoming)[0],before=checkIndex(man,dir);r=await node('accept.mjs',['--dir',dir,altKey]);
     {const ix=loadIndex(dir),id=altKey.split('#')[0];ok(r.code===0&&ix.assets[id].fromAlt===1&&before.count===N&&!checkIndex(man,dir).errs.length,'an accepted alternate replaces its asset')}
-    d++;r=await daily(['--date','2026-12-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); d++;r=await daily(['--date','2027-01-10'],{ART_MAX_CALLS:'400'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // a month's credits no longer cover two alternates of every asset (the manifest passed 100 assets, #834): the rest in the next month // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
-    d++;const p7=P0();r=await daily(['--date','2027-01-11']);ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all'+(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog())?'':' ('+(P0()-p7)+' calls; '+lastLog().slice(0,300)+')'));
-    ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$2\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
-    S.deny=true;r=await daily(['--now','--date',days[d],'--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
+    const bigM=join(tmp,'manifest-credits.json');{const mm=JSON.parse(readFileSync(join(ROOT,'scripts','art','manifest.json'),'utf8'));mm.allowance={...mm.allowance,monthlyUsd:20};writeFileSync(bigM,JSON.stringify(mm))} // two alternates for every asset cost more than the real $2.00 now
+    d++;r=await daily(['--date','2026-12-10','--manifest',bigM],{ART_MAX_CALLS:'800'});await previewAll(dir);r=await node('accept.mjs',['--dir',dir,'all']); // all the alternates in one run (2 per asset exceeds the default 100 calls as the manifest grows), in a new month: November's $2.00 is spent by now
+    d++;const p7=P0();r=await daily(['--date','2026-12-11','--manifest',bigM],{ART_MAX_CALLS:'400'});ok(P0()===p7&&/manifest complete, alternates too: no call/.test(lastLog()),'everything made: no call at all');
+    ok(readFileSync(logP,'utf8').trim().split('\n').every(l=>/^\d{4}-\d\d-\d\d \d\d:\d\d \| made \d+ \| rejected \d+ \| calls \d+ \| (?:estimated|billed|mixed) \$[\d.]+(?: \(billed \$[\d.]+\))? \(month \$[\d.]+ of \$(?:2|20)\.00 credits\)/.test(l)),'every art.log line has date, made, rejected, calls and the estimated credits');
+    S.deny=true;r=await daily(['--now','--date','2027-01-05','--dir',join(tmp,'assets2')]);S.deny=false;ok(r.code===2&&/HTTP 401/.test(lastLog())&&!readFileSync(logP,'utf8').includes(MOCK_TOKEN),'a refused token stops the run and is never logged')}
 
   // --- flat outputs are rejected but kept raw; art:reprocess re-makes them offline; the credit budget
   {const dir=join(tmp,'assets3'),logP=join(tmp,'art3.log'),Q=()=>JSON.parse(readFileSync(join(dir,'queue.json'),'utf8')),last=f=>readFileSync(f,'utf8').trim().split('\n').pop();
@@ -701,6 +724,20 @@ console.log('renderer with assets off, on and off again');
   ok(Tr.terrainArt(),'a terrain asset loaded: chunks are painted at TILE');
   A.setAssetPixels('tile:grass',null);const back=sample();ok(back.every((v,i)=>v[1]===off[i][1]),'asset removed: the procedural terrain is back exactly');ok(!Tr.terrainArt(),'and chunks go back to the procedural grid')}
 
+console.log('mountains (#895, #989): the height field over the ground once the atlases are in, the procedural mountain without them');
+{const A=await import('../src/render/assets.js'),Pk=await import('../src/render/peaks.js'),Tr=await import('../src/render/terrain.js'),{W,H,PEAK}=await import('../src/world/tiles.js'),{tiles,I}=await import('../src/world/map.js');
+  const ids=Object.keys(Pk.ASSET_PEAKS),n=W*H;let p=-1,far=-1;for(let i=0;i<n;i++){const x=i%W,y=(i/W)|0;let q=false;for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)if(x+dx>=0&&y+dy>=0&&x+dx<W&&y+dy<H&&tiles[I(x+dx,y+dy)]===PEAK)q=true;if(tiles[I(x,y)]===PEAK&&p<0)p=i;if(!q&&far<0)far=i}
+  const px=(i,ax,ay)=>Tr.pixel(tiles[i],i%W,(i/W)|0,ax,ay);ok(!Pk.peakArt(),'no atlas: no cliffs');
+  const before=Tr.texel(PEAK,p%W,(p/W)|0,4,4),im={w:512,h:148,data:new Uint8Array(512*148*4)};for(let i=0;i<512*148;i++)im.data.set([0x11,0x22,0x33,255],i*4);
+  ok(Tr.artTexel(PEAK,p%W,(p/W)|0,8,8)===before,'and a mountain tile keeps its procedural texel');
+  for(const id of ids)A.setAssetPixels(id,A.pixelsOf(im.w,im.h,im.data));
+  ok(Pk.peakArt()&&Tr.terrainArt(),'three atlases loaded: cliffs, painted at TILE');let rock=null;for(let y=0;y<32&&!rock;y++)for(let x=0;x<32&&!rock;x++){const c=Pk.peakPixel(p%W,(p/W)|0,x,y);if(c&&px(p,x,y)===c)rock=c}ok(rock,'a mountain tile draws its rock');ok(Pk.peakPixel(far%W,(far/W)|0,8,8)===null,'and a tile with no mountain near it does not');
+  {const Q=await import('../src/render/peaks.js?backwards'),n=[];for(let i=p,k=0;i<W*H&&k<400;i++)if(tiles[i]===PEAK||k){n.push(i);k++}
+    const read=(M,i)=>{const o=[];for(let y=0;y<32;y++)for(let x=0;x<32;x++)o.push(M.peakPixel(i%W,(i/W)|0,x,y));return o.join()},fwd=n.map(i=>read(Pk,i)),back=[...n].reverse().map(i=>read(Q,i)).reverse();
+    ok(fwd.every((v,i)=>v===back[i]),'a chunk paints the same whichever tile comes first');const drawn=fwd.filter(v=>v.replace(/,/g,'').length>700);ok(new Set(drawn).size===drawn.length,'no two mountain tiles alike (a tile with a lone stone on it aside)')}
+  A.setAssetPixels(ids[0],null);ok(!Pk.peakArt(),'one atlas missing: the procedural mountains, all of them');
+  for(const id of ids)A.setAssetPixels(id,null);ok(!Tr.terrainArt(),'none: chunks back on the procedural grid')}
+
 console.log('tiers: index, loader, fallback, generation settings');
 {const A=await import('../src/render/assets.js'),{TILE:RT}=await import('../src/render/tile.js');
   const other=TIERS.find(t=>t!==RT);
@@ -778,7 +815,28 @@ for(const world of ['eldmoor','stepping']){
   process.stdout.write(r.s.split('\n').filter(Boolean).map(l=>l.replace(/^ {2}(ok |FAIL)/,`  $1 [${world}]`)).join('\n')+'\n');
   if(r.code!==0){fails++;if(!/FAIL/.test(r.s))console.log(`  FAIL [${world}] the ${mode.slice(2)} probe exited ${r.code}`)}}}
 
+// Part 11 (#1013 slice 4): the art of a map after a switch is the art of a process that started on it. Each map is sampled by a child that began there and by one that began on another
+// map of another size and went through a third, so a table sized or built from the first map shows up as a different hash.
+console.log('map switch: terrain after setWorld equals a fresh process');
+{const child=(world,...hops)=>new Promise(f=>{const c=spawn(process.execPath,[join(ROOT,'scripts','artcheck.mjs'),'--mapswitch',hops.join(',')],{env:{...process.env,ELDMOOR_WORLD:world},stdio:['ignore','pipe','pipe']});
+    let s='';c.stdout.on('data',d=>s+=d);c.stderr.on('data',d=>s+=d);c.on('close',code=>f({code,s}))});
+  const tail=r=>(/SAMPLE (S+)/.exec(r.s)||[])[1]||'none: '+r.s.trim().slice(-300);
+  for(const [map,from,via] of [['vale','hollin','stepping'],['hollin','vale','testlinka'],['stepping','vale','testlinka'],['eldmoor','testlinkb','vale'],['testlinkb','vale','stepping']]){
+    const [a,b]=await Promise.all([child(map),child(from,via,map)]),A=tail(a),B=tail(b);ok(a.code===0&&b.code===0&&A===B,`${map}: ${from} by way of ${via} paints what a fresh process paints (${A}${A===B?'':' against '+B})`)}}
+
 console.log(fails?`artcheck: ${fails} FAILED`:'artcheck: all ok');process.exit(fails?1:0);
+
+// Part 11, in a child: a hash of the map as the art reads it, on every third tile, after going through the maps named.
+async function mapSwitchProbe(hops){const M=await import('../src/world/map.js'),Tl=await import('../src/world/tiles.js'),Tr=await import('../src/render/terrain.js'),Sc=await import('../src/render/scenery.js'),Hb=await import('../src/render/harbour.js');
+  globalThis.document = {createElement: () => ({getContext: () => ({})})}; await import('../src/render/draw.js'); delete globalThis.document; // every render module's hook, as on the page; two make a small canvas as they load
+  let h;const mixIn=v=>{const s=String(v);for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}};
+  // painted on every map on the way: a table left over is only stale if something filled it
+  const sample=()=>{h=2166136261;mixIn([Tl.W,Tl.H,Tr.CHUNKS_X,Tr.CHUNKS_Y,Sc.sceneryOn]);
+    for(let ty=0;ty<Tl.H;ty+=3)for(let tx=0;tx<Tl.W;tx+=3){const t=M.tiles[M.I(tx,ty)];
+      for(const [px,py] of [[2,3],[8,8],[13,11]]){mixIn(Tr.procPixel(t,tx,ty,px,py));mixIn(Tr.shade(t,tx,ty,px,py));mixIn(Sc.riverPixel(tx,ty,px*2,py*2));mixIn(Sc.roadPixel(tx,ty,px*2,py*2))}
+      mixIn(Sc.waterLevel(tx+.5,ty+.5));mixIn(Hb.quayOver(tx,ty));const a=Tr.treeAnchor(tx,ty);mixIn(a?a.x+','+a.y:'-')}};
+  sample();for(const id of (hops||'').split(',').filter(Boolean)){M.setWorld(id);sample()}
+  console.log('SAMPLE '+(h>>>0).toString(16))}
 
 // Part 6, run in a child per world: the full map rendered pixel by pixel (terrain.js pixel(), as paintChunk does) with
 // no assets, with every fixture asset (PNG files in a temp folder, decoded back), with pieces removed, and with none.
@@ -844,7 +902,7 @@ async function autotileProbe(){
   ok(mapHash()===m0,'the map hash never moved')}
 
 // A tiny 2D context for Node (part 8): fillRect with '#rgb[a]' / '#rrggbb[aa]' colours (alpha blended), drawImage of
-// decoded pixels ({w, h, hex}), and translate / scale / quarter-turn rotate / save / restore. Enough for townart.js.
+// decoded pixels ({w, h, hex}), whole or a source rect, and translate / scale / quarter-turn rotate / save / restore. Enough for townart.js.
 function rasterClass(){return class Raster{ // a function, so the child mode at the top can use it before this line runs
   constructor(w,h){this.w=w;this.h=h;this.px=new Uint32Array(w*h);this.m=[1,0,0,1,0,0];this.st=[];this.fillStyle='#000';this.imageSmoothingEnabled=true}
   save(){this.st.push(this.m.slice())}restore(){this.m=this.st.pop()||[1,0,0,1,0,0]}
@@ -859,10 +917,10 @@ function rasterClass(){return class Raster{ // a function, so the child mode at 
     for(let Y=Math.max(0,y0);Y<Math.min(this.h,y1);Y++)for(let X=Math.max(0,x0);X<Math.min(this.w,x1);X++){const i=Y*this.w+X,o=this.px[i];
       const or=(o>>16)&255,og=(o>>8)&255,ob=o&255,oa=o>>>24?1:0,k=oa?al:1;
       this.px[i]=(0xff000000|(Math.round(r*k+or*(1-k)*oa)<<16)|(Math.round(g*k+og*(1-k)*oa)<<8)|Math.round(b*k+ob*(1-k)*oa))>>>0}}
-  drawImage(img,dx,dy,dw,dh){const [x0,y0,x1,y1]=this.rect(dx,dy,dw,dh),[a,b,c,d,e,f]=this.m,det=a*d-b*c;
+  drawImage(img,...v){const src=v.length>4?v.slice(0,4):[0,0,img.w,img.h],[dx,dy,dw,dh]=v.slice(-4),[x0,y0,x1,y1]=this.rect(dx,dy,dw,dh),[a,b,c,d,e,f]=this.m,det=a*d-b*c;
     for(let Y=Math.max(0,y0);Y<Math.min(this.h,y1);Y++)for(let X=Math.max(0,x0);X<Math.min(this.w,x1);X++){
       const px=X+.5-e,py=Y+.5-f,ux=(d*px-c*py)/det,uy=(-b*px+a*py)/det; // back to the image's user space
-      const sx=Math.floor((ux-dx)/dw*img.w),sy=Math.floor((uy-dy)/dh*img.h);if(sx<0||sy<0||sx>=img.w||sy>=img.h)continue;
+      const sx=src[0]+Math.floor((ux-dx)/dw*src[2]),sy=src[1]+Math.floor((uy-dy)/dh*src[3]);if(sx<0||sy<0||sx>=img.w||sy>=img.h)continue;
       const hx=img.hex[sy*img.w+sx];if(hx)this.px[Y*this.w+X]=(0xff000000|parseInt(hx.slice(1),16))>>>0}}}}
 
 // Part 8, run in a child per world: every town and landmark drawn into rasters at art resolution (TILE a tile).
@@ -929,7 +987,7 @@ async function townProbe(){
   // taller than its box (the rise is the image, and the chunk tests must follow it)
   {const idx=JSON.parse(readFileSync(new URL('../assets/index.json',import.meta.url),'utf8')).assets,bad=[];let n=0;
     for(const c of CITY)for(const b of c.buildings){const a=idx[`building:lpc-${D.townStyle(c)}-${b.piece}@${RT}`];if(!a){bad.push(`${c.name}: no cut ${b.piece}`);continue}n++;
-      if(a.source!=='lpc-base'||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
+      if(!/lpc-base/.test(a.source||'')||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
       if(a.foot[0]!==b.box[2]||a.foot[1]!==b.box[3]||a.door[0]!==b.door[0]-b.box[0]||a.door[1]!==b.door[1]-b.box[1])bad.push(`${c.name}: ${a.id} cut for ${a.foot} door ${a.door}`);
       if(a.w!==b.box[2]*RT)bad.push(`${a.id}: ${a.w} wide on a ${b.box[2]} tile footprint`);
       const rise=Math.ceil(a.h/RT-b.box[3]);for(let j=1;j<=rise;j++)for(let i=0;i<b.box[2];i++){const tx=b.box[0]+i,ty=b.box[1]-j;
@@ -941,4 +999,37 @@ async function townProbe(){
     ok(d3.n>0&&!d3.out&&Math.abs(TA.pieceSpot(c,b,'flag')[1]-(top+4*U/RT))<1e-6,`a cut hall stands on its footprint and rises one tile over the wall behind it (${d3.n} pixels), and says where its flag goes`);
     lay([b.box[2]+1,b.box[3]],[0,0]);ok(same(render(),off)&&TA.pieceSpot(c,b,'flag')===null,'a cut made for another footprint is not stretched: the procedural form stays');
     A.setAssetPixels(id,null);ok(same(render(),off),'and with no cut the procedural town is back, pixel for pixel')}
+  // kit rows (#830/#940): a plan may name a row with its own footprint, and each has its own cut; a town of a world with no rows keeps
+  // the one cut per piece. Houses stand in the plans that list them and no others, and the palisade is a whole set, credited.
+  {const idx=JSON.parse(readFileSync(new URL('../assets/index.json',import.meta.url),'utf8')).assets,bad=[],rows=new Set(),{WORLDS,TOWN_KIT}=await import('../src/world/spec.js'),{buildWorld}=await import('../src/world/gen.js');
+    for(const [wn,spec] of Object.entries(WORLDS))for(const c of buildWorld(spec).CITY)for(const b of c.buildings){
+      if(!spec.towns.some(t=>t.name===c.name&&Array.isArray(t.buildings))){if(b.kit||b.piece==='house'||c.wall)bad.push(`${wn}/${c.name}: a town with no plan has ${b.kit||b.piece}`);continue}
+      const k=TOWN_KIT[b.kit],a=idx[`building:lpc-${D.townStyle(c)}-${b.kit}@${RT}`];if(!k||!a){bad.push(`${c.name}: no cut for ${b.kit}`);continue}rows.add(a.id);
+      if(a.foot[0]!==b.box[2]||a.foot[1]!==b.box[3]||a.door[0]!==b.door[0]-b.box[0]||a.door[1]!==b.door[1]-b.box[1])bad.push(`${c.name}: ${a.id} cut for ${a.foot} door ${a.door}`);
+      if(a.w!==b.box[2]*RT||a.h!==(b.box[3]+Math.ceil(k.rise))*RT&&b.kit!==b.piece)bad.push(`${a.id}: ${a.w}x${a.h} on a ${b.box[2]}x${b.box[3]} footprint rising ${k.rise}`);
+      if(!/lpc-base/.test(a.source||'')||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
+      if(/-(croft|gable)$/.test(a.id)&&!/lpc-roofs/.test(a.source))bad.push(`${a.id}: LPC Roofs parts owe LPC Roofs`)}
+    ok(rows.size>0&&!bad.length,`${rows.size} kit rows cut for the plans that name them, and none in a town without a plan`+(bad.length?': '+bad.slice(0,4).join('; '):''));
+    const pal=['plaza','wall-n','wall-e','wall-s','wall-w','tower','pier','pier-tall'].map(k=>idx[`${k==='plaza'||k.startsWith('wall')?'tile':'building'}:lpc-palisade-${k}@${RT}`]);
+    ok(pal.every(a=>a&&/lpc-base/.test(a.source)&&/^CC-BY-SA/.test(a.license))&&!D.TOWN_PIECES.some(p=>p.piece==='house'),'the palisade set is whole and credited, and house is no piece of the default town plan');
+    const streets=Object.keys(D.TOWN_STYLES).map(st=>idx[`tile:lpc-${st}-street@${RT}`]);
+    ok(streets.every(a=>a&&a.w===RT&&a.h===RT&&/lpc-base/.test(a.source)&&/^CC-BY-SA/.test(a.license)),'every town style has its street cut, one tile, credited')}
+  // walls, towers, piers and plaza cut from the LPC kit (#830): credited, sized, one cut per side and none of them turned, drawn only as
+  // a whole set, and nothing of it past the ring and the shadow it throws
+  {const idx=JSON.parse(readFileSync(new URL('../assets/index.json',import.meta.url),'utf8')).assets,keys=['plaza','wall-n','wall-e','wall-s','wall-w','tower','pier','pier-tall'],kind=k=>k==='plaza'||k.startsWith('wall')?'tile':'building';
+    const size={plaza:[4,4],'wall-n':[2,1],'wall-s':[2,1],'wall-e':[1,2],'wall-w':[1,2],tower:[1,2],pier:[1,1],'pier-tall':[1,2]},bad=[],st=D.townStyle(CITY[0]),ids=k=>`${kind(k)}:lpc-${st}-${k}`;
+    for(const s of styles)for(const k of keys){const a=idx[`${kind(k)}:lpc-${s}-${k}@${RT}`];if(!a){bad.push(`no ${s} ${k}`);continue}
+      if(a.source!=='lpc-base'||!/^CC-BY-SA/.test(a.license||'')||!(a.authors||[]).length)bad.push(`${a.id}: no source, licence or authors`);
+      if(a.w!==size[k][0]*RT||a.h!==size[k][1]*RT)bad.push(`${a.id}: ${a.w}x${a.h}`)}
+    {const sides=new Set(['n','e','s','w'].map(k=>idx[`tile:lpc-${st}-wall-${k}@${RT}`]?.sha256));if(sides.size!==4)bad.push('a side reuses another side\'s cut')}
+    ok(!bad.length,`the wall set of every style is committed, credited and sized, one cut a side`+(bad.length?': '+bad.slice(0,4).join('; '):''));
+    const col={plaza:'#101010','wall-n':'#aa0000','wall-e':'#00aa00','wall-s':'#0000aa','wall-w':'#aaaa00',tower:'#00aaaa',pier:'#aa00aa','pier-tall':'#aa00ab'};
+    const fill=k=>{const [w,h]=size[k],n=w*h*RT*RT;A.setAssetPixels(ids(k),{w:w*RT,h:h*RT,hex:new Array(n).fill(col[k])})};
+    for(const k of keys.slice(0,-1))fill(k);
+    ok(same(render(),off),'part of the wall set loaded: the WALL and FLOOR tiles stay, pixel for pixel');
+    fill('pier-tall');const r=render(),towns=CITY.filter(t=>D.townStyle(t)===st),inTown=(x,y)=>towns.some(t=>x>=t.x0&&x<t.x1+2&&y>=t.y0&&y<t.y1+2),d=diffs(r,off,inTown);
+    const c=towns[0],px=(tx,ty)=>{const k=regions.findIndex(([x0,y0,x1,y1])=>tx>=x0&&tx<x1&&ty>=y0&&ty<y1);if(k<0)return null;const [x0,y0,x1]=regions[k],v=r[k][((ty-y0)*RT+RT/2)*(x1-x0)*RT+(tx-x0)*RT+RT/2];return (v&0xffffff).toString(16).padStart(6,'0')},midy=c.y0+3;
+    ok(d.n>0&&!d.out,`the whole set paints the towns of its style and nothing past their ring and shadow (${d.n} pixels)`);
+    {const got=[px(c.x0+2,c.y1),px(c.x0,midy+1),px(c.x0+2,c.y0),px(c.x1-1,c.y1-1)];ok(got[0]==='0000aa'&&got[1]==='aaaa00'&&got[2]==='aa0000',`each side draws its own cut, unturned (${got})`)}
+    for(const k of keys)A.setAssetPixels(ids(k),null);ok(same(render(),off),'and with the set gone the procedural town is back, pixel for pixel')}
   ok(!Tr.terrainArt()&&mapHash()===m0,`${process.env.ELDMOOR_WORLD||'eldmoor'}: chunks back on the procedural grid, the map hash never moved`)}

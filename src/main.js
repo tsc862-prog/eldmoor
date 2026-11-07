@@ -4,12 +4,14 @@
 // module map and who owns what.
 import {init,step,S,provideCampaigns,campaignIdOf} from './sim/index.js';
 import {createRenderer} from './render/draw.js';
-import {provideAssets} from './render/assets.js';
+import {provideAssets,worldArt} from './render/assets.js';
 import {select,ctl,setView,startHero} from './ui/controls.js';
 import {boot,autoSaveTick,bootKind} from './ui/save.js';
+import {openSaves} from './ui/savestore.js'; // the save slots live in IndexedDB (#1013): loaded before the title asks about them
 import {initSetup,openSetup,afterBoot} from './ui/setup.js'; // the New World setup page (#133)
 import {renderTable} from './ui/table.js';
 import {renderHold} from './ui/holdbar.js'; // gambit hold bar (#630)
+import {renderRoad} from './ui/mapswitch.js'; // the road off the map and what it waits on (#1013)
 import {checkRunAlerts,sync as syncRunAlert} from './ui/runalert.js'; // sound and notes when a Fellowship or DM runner stops
 import {every} from './ui/ticker.js'; // timers that a hidden tab does not throttle
 import {checkRunGate} from './ui/rungate.js'; // hold the world while an agent seat is not connected (#171)
@@ -18,6 +20,7 @@ import {titleWanted,showTitle,provideNotes} from './ui/title.js'; // Continue, N
 import {slotted} from './sim/company.js'; // the slotted company (#588)
 import {frameDone,gapSeen,setWhere} from './ui/pagewatch.js'; // frame-time watchdog (#736)
 import {viewWhere} from './render/viewinfo.js'; // what the screen shows, for the watchdog's lines
+import {resumeCinema} from './ui/cinema.js'; // the cinema view, when it was on (or asked for on the title screen)
 import {installProbe} from './ui/probe.js'; // ?probe=1: frame timings for npm run shoot -- --crawl (#736)
 
 // The world is built only when the owner picks Continue (or the default world) on the title screen, or at once with
@@ -34,12 +37,13 @@ provideAssets(Object.values(import.meta.glob('../assets/index.json',{import:'def
 initSetup();
 let renderer=null;
 function start(kind){
-  boot(init); // restores the localStorage save when there is one, else init()
+  boot(init); // restores the saved world when there is one, else init()
   renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
   initUI(renderer);
   if(bootKind()==='fresh'&&kind!=='default')openSetup({first:true});else afterBoot(); // no save and no queued setup: the setup page opens over the default world; a setup boot starts its runners
   select(startHero()); // the saved hero when it rides with the followed company, else that company's leader (#546)
   if(slotted())setView('fellow'); // the Fellowship is the story: frame it by default (#68)
+  resumeCinema();
   last=performance.now();requestAnimationFrame(frame)}
 
 let last=performance.now(),uiT=0;
@@ -49,7 +53,7 @@ function advance(real){
   checkRunGate();
   if(ctl.speed>0&&!ctl.held){let dt=real*ctl.speed;const n=Math.ceil(dt/.05);for(let i=0;i<n;i++)step(dt/n);autoSaveTick()}
   checkRunAlerts();syncRunAlert();
-  renderTable(ctl.held?0:ctl.speed);renderHold()} // Table mode (#68): the sim pauses for Fellowship scenes only at 1x
+  renderTable(ctl.held?0:ctl.speed);renderHold();renderRoad()} // Table mode (#68): the sim pauses for Fellowship scenes only at 1x
 // The watchdog (#736, ui/pagewatch.js): each frame's sim, render and panel halves, and the time between frames when the thread
 // was busy elsewhere (a tool call, a long message). A hidden tab has no frames, so its gap is not counted.
 let frameEnd=0;
@@ -64,4 +68,6 @@ if(typeof document!=='undefined')document.addEventListener('visibilitychange',()
 setWhere(()=>viewWhere(document.getElementById('cv')));installProbe();
 every(250,()=>{if(!renderer||typeof document==='undefined'||!document.hidden)return;
   const now=performance.now(),real=Math.min(.5,(now-last)/1000);last=now;advance(real)});
-if(titleWanted())showTitle(start);else start('direct');
+// The world's art starts loading now, under the title screen, and the first paint waits for it; the short pause lets the cut pieces' one repaint pass (terrain.js, 150 ms) before any chunk is made.
+const artIn=worldArt().then(()=>new Promise(r=>setTimeout(r,170))),begin=kind=>artIn.then(()=>start(kind));
+openSaves().then(()=>{if(titleWanted())showTitle(begin);else begin('direct')});

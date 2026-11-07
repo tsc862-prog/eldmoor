@@ -52,16 +52,18 @@ export function startHero(){const p=S.pinned&&typeof S.pinned.x==='number'&&S.ag
   if(C&&!(p&&C.ids.includes(p.id)))return storyLead(C)||p||ranked()[0];return p||ranked()[0]}
 
 // 'map' is the free camera (the Whole map button also resets the zoom); 'follow' tracks cam.sel.
-export function setView(v){cam.view=v;if(v==='map'&&R)R.setZoom(1);syncView()}
+export function setView(v){if(cam.view==='cinema')return; // the director holds the camera until the cinema view is left (#979)
+  cam.view=v;if(v==='map'&&R)R.setZoom(1);syncView()}
 
 // Region view (#430): fill the picker from the world's regions and wire it. A region frames the camera on it and
 // narrows the lists; All regions clears that. Follow and Fellowship still work inside the filter.
 export function pickRegion(v){const i=v===''||v==null?null:+v;setRegion(i);
   if(i==null){if(cam.view==='region')setView('map')}else setView('region');
   renderTops();renderConditions();refreshChronicle();syncView()}
-function initRegionPicker(){const vr=$('vReg');if(!vr)return;
-  for(const r of regionList()){const o=document.createElement('option');o.value=String(r.i);o.textContent=r.name;vr.append(o)}
-  vr.onchange=()=>pickRegion(vr.value)}
+// fillRegionPicker again after a map switch (#1013): the first option is All regions, the rest are this map's.
+export function fillRegionPicker(){const vr=$('vReg');if(!vr)return;while(vr.children.length>1)vr.removeChild(vr.lastChild);
+  for(const r of regionList()){const o=document.createElement('option');o.value=String(r.i);o.textContent=r.name;vr.append(o)}}
+function initRegionPicker(){const vr=$('vReg');if(!vr)return;fillRegionPicker();vr.onchange=()=>pickRegion(vr.value)}
 
 // The living hero nearest a world point (tiles), within a pick radius that shrinks as the view zooms in; null for none.
 export function heroAt(wx,wy){let best=null,bd=cam.view==='follow'?1.2:Math.max(1.2,2.2/cam.zoom);
@@ -83,10 +85,10 @@ export function initControls(renderer){R=renderer;
 
   const scr=$('screen');
   // wheel: zoom one step around the cursor (in follow mode this drops to the free camera)
-  scr.addEventListener('wheel',e=>{e.preventDefault();if(e.deltaY)renderer.zoomAt(e.clientX,e.clientY,e.deltaY<0?1:-1)},{passive:false});
+  scr.addEventListener('wheel',e=>{e.preventDefault();if(cam.view==='cinema'){if(e.deltaY&&cam.director)cam.director.nudge(e.deltaY<0?1:-1);return}if(e.deltaY)renderer.zoomAt(e.clientX,e.clientY,e.deltaY<0?1:-1)},{passive:false});
   // drag: pan; a press that moves less than DRAG_PX stays a click
   let drag=null,dragged=false;
-  scr.addEventListener('pointerdown',e=>{if(e.button!==undefined&&e.button!==0)return;drag={id:e.pointerId,x:e.clientX,y:e.clientY};dragged=false});
+  scr.addEventListener('pointerdown',e=>{if(cam.view==='cinema'||e.button!==undefined&&e.button!==0)return;drag={id:e.pointerId,x:e.clientX,y:e.clientY};dragged=false});
   // hover (a mouse only): the nearest hero under the pointer gets the purpose tooltip and its map overlays (render/purposefx.js)
   scr.addEventListener('pointermove',e=>{if(drag||(e.pointerType&&e.pointerType!=='mouse'))return;const w=renderer.screenToWorld(e.clientX,e.clientY);hoverHero(heroAt(w.x,w.y),e.clientX,e.clientY)});
   scr.addEventListener('pointerleave',()=>hoverHero(null));
@@ -99,6 +101,7 @@ export function initControls(renderer){R=renderer;
   scr.addEventListener('click',e=>{if(dragged){dragged=false;return}
     const {x:wx,y:wy}=renderer.screenToWorld(e.clientX,e.clientY);
     const best=heroAt(wx,wy);
+    if(cam.view==='cinema'){if(best)select(best);return} // a hero picked in the cinema view: the director goes to them
     if(best){select(best);setView('follow');showDock('hero')}else{const L=cryptAt(wx,wy)||lairAt(wx,wy)||siteAt(wx,wy);if(L)openDungeon(L)}}); // a crypt's door, a lair's ring (the raid arena, #85) or a DM-made site's mouth (#642)
   syncView();
 }

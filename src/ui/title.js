@@ -10,18 +10,20 @@
 // What's new (#664): the patch notes (docs/patchnotes/*.md, a Vite ?raw glob handed over by main.js through provideNotes)
 // that this viewer has not read, newest first: three expanded, the rest behind a "more" fold, a NEW badge until read
 // (Got it, or any choice that leaves the title). Read notes are kept per viewer in localStorage with the build's commit.
-import {WORLD_ID} from '../world/map.js';
-import {WORLDS} from '../world/spec.js';
+import {WORLD_ID,MAP_ID} from '../world/map.js';
+import {WORLDS,MAPS} from '../world/spec.js';
 import {FAC} from '../data/factions.js';
 import {heroSprite,outlined} from '../render/sprites.js';
 import {saveSummary,exportStored,importFile,takeSkipTitle,hasPending,afterReset} from './save.js';
 import {openSetup,pollRelay,watchRelay,relayState,pulledModels} from './setup.js';
 import {notesFrom,noteLabel} from './patchnotes.js';
+import {cinemaWish,setCinemaWish} from './cinema.js'; // open the world in the cinema view (#979)
+import {worldFacts,worldPreview} from '../render/worldpreview.js';
 
 const HELP_URL='https://github.com/tsc862-prog/eldmoor#readme';
 const DEFAULT_FIVE=['Warrior','Priest','Mage','Hunter','Rogue'];
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
-const worldName=id=>(WORLDS[id]&&WORLDS[id].name)||id;
+const worldName=id=>(MAPS[id]&&MAPS[id].name)||id;
 const hhmm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 
 export function titleWanted(search){const q=new URLSearchParams(search!=null?search:(typeof location!=='undefined'&&location.search)||'');
@@ -35,7 +37,7 @@ export function ago(at,now=Date.now()){if(!at)return '';const s=Math.max(0,(now-
   try{return new Date(at).toLocaleDateString()}catch(e){return ''}}
 
 // The one line under Continue: world, day and time, the Fellowship and its levels, when it was saved.
-export function saveLine(sum,id=WORLD_ID){if(!sum)return '';const parts=[worldName(id)+' · Day '+sum.day+', '+hhmm(sum.min)];
+export function saveLine(sum,id=WORLD_ID){if(!sum)return '';const parts=[worldName(sum.map||id)+' · Day '+sum.day+', '+hhmm(sum.min)];
   const F=sum.fellowship;
   if(F&&F.members.length)parts.push((F.name?F.name+': ':'')+F.members.map(m=>m.name+' '+(m.dead?'(fallen)':m.lvl)).join(', '));
   else parts.push(sum.heroes+' heroes, no Fellowship');
@@ -78,12 +80,20 @@ function art(sum){const c=el('canvas','tart');const F=sum&&sum.fellowship;
     const sp=outlined(heroSprite(a,!!h.dead,0));x.drawImage(sp,i*W+Math.round((W-sp.width*S)/2),H-sp.height*S-2,sp.width*S,sp.height*S)}catch(e){}});
   x.fillStyle='#2e3456';x.fillRect(0,H-2,c.width,2);return c}
 
-function mapRow(){const row=el('div','tmap');row.setAttribute('role','group');row.setAttribute('aria-label','World map');
-  row.append(el('span','tlbl','Map'));
-  for(const id of Object.keys(WORLDS)){const sum=id===WORLD_ID?st.sum:saveSummary(id);
-    const b=btn(worldName(id),'map','tmapbtn');b.dataset.world=id;b.setAttribute('aria-pressed',String(id===WORLD_ID));
-    b.title=sum?'Saved world: day '+sum.day:'No saved world yet';b.append(el('span','tmapsub',sum?'day '+sum.day:'new'));row.append(b)}
-  return row}
+// The maps (WORLDS, however many): one card each with a small picture drawn from the built map, its name, a line about it,
+// its size and shape, and the save it holds. The card for the map this page runs is marked and the others reload into theirs.
+function worldCard(id){const f=worldFacts(id),on=id===WORLD_ID,sum=on?st.sum:saveSummary(id);
+  const b=el('button','tbtn tworld'+(on?' on':''));b.type='button';b.dataset.a='map';b.dataset.world=id;b.setAttribute('aria-pressed',String(on));
+  b.title=(sum?'Saved world: day '+sum.day+'. ':'No saved world yet. ')+(on?'This is the map you are on.':'Switch to this map (the page reloads).');
+  const pic=el('span','twpic');pic.append(worldPreview(id,'tpv'));b.append(pic);
+  const body=el('span','twbody');
+  const head=el('span','twhead');head.append(el('span','twname',f.name));
+  head.append(el('span','twtag'+(on?' on':''),on?'On this map':sum?'Day '+sum.day:'No save'));body.append(head);
+  body.append(el('span','twblurb',f.blurb),el('span','twfact',f.line1),el('span','twfact',f.line2));
+  b.append(body);return b}
+function mapRow(){const row=el('section','tworlds');row.setAttribute('aria-label','World map');
+  row.append(el('div','tlbl','Choose a map'));
+  const grid=el('div','twgrid');for(const id of Object.keys(WORLDS))grid.append(worldCard(id));row.append(grid);return row}
 
 function relayText(){const s=relayState(),models=pulledModels();
   const t={checking:'Checking the relay…',offline:'Relay offline: agents will not play until it runs (npm run relay -- --runners).',
@@ -94,21 +104,24 @@ function paintRelay(){if(!root)return;const n=root.querySelector('.trelay');if(!
 
 function render(){const page=el('div','tpage'),sum=st.sum;
   page.append(art(sum),el('h1','ttl','Eldmoor'),el('div','tsub','A hardcore 8-bit world played by AI heroes. You watch the Fellowship’s story.'));
+  const here=sum&&sum.map||MAP_ID,cur=el('div','tcur');cur.append('Playing on ',el('b',null,worldName(here)));if(here!==WORLD_ID)cur.append(', on the road from '+worldName(WORLD_ID));page.append(cur); // the map the company stands on (#1013), which the save knows before any world is built
   page.append(mapRow());
   const menu=el('div','tmenu');
-  if(sum){const c=btn('Continue','continue','primary');c.setAttribute('aria-describedby','tsaveline');menu.append(c);
+  if(sum&&!sum.stale){const c=btn('Continue','continue','primary');c.setAttribute('aria-describedby','tsaveline');menu.append(c);
     const line=el('div','tsave',saveLine(sum));line.id='tsaveline';menu.append(line)}
+  else if(sum){const line=el('div','tsave',worldName(WORLD_ID)+' · Day '+sum.day+' · saved on an earlier, narrower map: it cannot continue on this one. Export it to keep it, then start a new world.');line.id='tsaveline';menu.append(line)}
   if(st.ask){const box=el('div','tconfirm');box.setAttribute('role','alertdialog');box.setAttribute('aria-label','Replace the saved world?');
     box.append(el('div',null,'A new world replaces the saved '+worldName(WORLD_ID)+' world (day '+sum.day+') when you press Start on the next page. It cannot be brought back unless you export it first.'));
     const row=el('div','tbtns');row.append(btn('Export it first','export'),btn('Set up a new world','replace','danger'),btn('Back','back'));box.append(row);menu.append(box)}
   else menu.append(btn('New world','new',sum?'':'primary'));
   menu.append(btn('Load from file','load'));
   if(!sum)menu.append(btn('Watch the default world','default'));
+  const cin=btn('Cinema view: '+(cinemaWish()?'on':'off')+' · C','cinema');cin.setAttribute('aria-pressed',String(cinemaWish()));cin.setAttribute('aria-keyshortcuts','c');cin.title='Open the world as a full-window film: a director camera and thin overlays. C enters and leaves it in play';menu.append(cin);
   page.append(menu);
   const news=newsBlock();if(news)page.append(news);
   if(st.msg)page.append(el('div','tmsg',st.msg));
   const rl=el('div','trelay');rl.append(el('span','sdot'),el('span','trtext',''));page.append(rl);
-  const foot=el('div','tfoot');foot.append(el('span',null,'Enter: '+(sum?'Continue':'New world')+' · '));
+  const foot=el('div','tfoot');foot.append(el('span',null,'Enter: '+(sum&&!sum.stale?'Continue':'New world')+' · '));
   const help=el('a',null,'Help');help.href=HELP_URL;help.target='_blank';help.rel='noopener';foot.append(help);page.append(foot);
   const file=el('input');file.type='file';file.accept='application/json,.json';file.hidden=true;file.className='tfile';page.append(file);
   file.onchange=()=>{const f=file.files&&file.files[0];if(f)importFile(f,m=>{st.msg=m;render();focus('load')})};
@@ -117,14 +130,15 @@ function render(){const page=el('div','tpage'),sum=st.sum;
 function focus(a){const b=root&&root.querySelector('[data-a="'+a+'"]');if(b&&b.focus)b.focus()}
 function hide(){if(root)root.hidden=true;if(timer){clearInterval(timer);timer=0}}
 function show(){root.hidden=false;st.ask=false;st.msg='';st.sum=saveSummary(WORLD_ID);render();
-  if(!timer&&typeof setInterval==='function')timer=setInterval(()=>pollRelay(),3000);pollRelay(true);focus(st.sum?'continue':'new')}
+  if(!timer&&typeof setInterval==='function')timer=setInterval(()=>pollRelay(),3000);pollRelay(true);focus(st.sum&&!st.sum.stale?'continue':'new')}
 
 function play(kind){markNotesRead();hide();if(unwatch){unwatch();unwatch=null}if(root){root.remove();root=null}const f=playFn;playFn=null;if(f)f(kind)}
 function newWorld(confirmed){markNotesRead();hide();openSetup({back:()=>show(),confirmed:confirmed?WORLD_ID:null})}
 
 function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a]'):null;if(!t||!root||!root.contains(t))return;const a=t.dataset.a;
   if(a==='continue')return play('continue');
-  if(a==='notesread'){markNotesRead();st.notesOpen=false;render();focus(st.sum?'continue':'new');return}
+  if(a==='cinema'){setCinemaWish(!cinemaWish());render();focus('cinema');return}
+  if(a==='notesread'){markNotesRead();st.notesOpen=false;render();focus(st.sum&&!st.sum.stale?'continue':'new');return}
   if(a==='notesmore'){st.notesOpen=!st.notesOpen;render();focus('notesmore');return}
   if(a==='default')return afterReset(()=>play('default')); // a world reset stops the runners first (#691)
   if(a==='new'){if(st.sum){st.ask=true;render();focus('export');return}return newWorld(false)}
@@ -137,8 +151,9 @@ function onClick(e){const t=e.target&&e.target.closest?e.target.closest('[data-a
 
 function onKey(e){if(!root||root.hidden)return;
   if(e.key==='Escape'&&st.ask){st.ask=false;render();focus('new');return}
+  if((e.key==='c'||e.key==='C')&&!e.repeat&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!st.ask){setCinemaWish(!cinemaWish());render();focus('cinema');return}
   if(e.key!=='Enter')return;const tag=e.target&&e.target.tagName;if(tag==='BUTTON'||tag==='A'||tag==='INPUT'||tag==='SELECT')return; // the focused control acts itself
-  if(e.preventDefault)e.preventDefault();if(st.ask)return;if(st.sum)play('continue');else newWorld(false)}
+  if(e.preventDefault)e.preventDefault();if(st.ask)return;if(st.sum&&!st.sum.stale)play('continue');else if(st.sum){st.ask=true;render();focus('export')}else newWorld(false)}
 
 export function showTitle(onPlay){playFn=onPlay;st={sum:null,ask:false,msg:''};
   root=el('div','title');root.id='title';root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-label','Eldmoor: title');

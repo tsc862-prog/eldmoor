@@ -5,7 +5,8 @@
 // browser side (localStorage, buttons, auto-save) is src/ui/save.js and the headless
 // check is scripts/savecheck.mjs.
 //
-// Format: {version, <every key of S except fx>, GOODS:{name:{supply,prev}}, CRYPT:{group,cd}, CRYPTS:{name:{group,cd}} (the later dungeons of a world with several, #891), kept:{<module state, kept.js>}}.
+// Format: {version, <every key of S except fx and maps>, GOODS:{name:{supply,prev}}, CRYPT:{group,cd}, CRYPTS:{name:{group,cd}} (the later dungeons of a world with several, #891), kept:{<module state, kept.js>},
+// campaign:{id, map, maps:{<id>:<a frozen map, sim/mappack.js>}}} (#1013: id the campaign, map the one on screen; the live map's keys stay flat). mapRev is the live map's.
 // Objects that live in one of the HOMES arrays are written in full there and everywhere
 // else as a reference {ref:'hero'|'mob'|'party'|'enc'|'guild', id}; the boss is written in full under its own key, {ref:'boss'} everywhere else.
 // An entity that is referenced but no longer in its home array (a recycled grave in an
@@ -13,7 +14,8 @@
 // heroes with name and fac so the panels can still print it; restore turns those into
 // detached stubs. Functions and canvases never appear in S (savecheck asserts it).
 import {S,SAVE_VERSION,newWorldId} from './state.js';
-import {CRYPT,CRYPTS} from '../world/map.js';
+import {CRYPT,CRYPTS,MAP_ID,setWorld} from '../world/map.js';
+import {MAPS,WORLD_ID} from '../world/spec.js';
 import {GOODS,MATERIALS,price} from '../data/items.js';
 import {rollScores} from './abilities.js';
 import {convertItem} from './gear.js';
@@ -27,16 +29,20 @@ import {dmlog} from './dmlog.js';
 import {relinkCompanies} from './company.js';
 import {keptState,restoreKept} from './kept.js';
 import {homeOf} from '../data/races.js';
+import {frozenHeroes} from './atlas.js';
 
 export {SAVE_VERSION};
 
 // Where each kind of entity lives on S. Guilds carry a numeric id (S.guildSeq) that is never reused.
 const HOMES={agents:'hero',mobs:'mob',parties:'party',encounters:'enc',GUILDS:'guild'};
+// The same homes inside a frozen map (#1013); ids are S.uid's, so they never meet the live map's. dead holds the stubs.
+const MAP_HOMES={agents:'hero',dead:'hero',mobs:'mob',parties:'party',encounters:'enc'};
 const idOf=(kind,o)=>o.id;
 // Per-key handlers for keys of S that are not just walked. A handler returning undefined
 // drops the key from the save; `reset` is what restore does to it instead.
 const KEYS={
   fx:{save:()=>undefined,reset:()=>{S.fx.length=0}}, // transient damage text, bolts and rings
+  maps:{save:()=>undefined,reset:()=>{delete S.maps}}, // the frozen maps ride in snap.campaign
 };
 // Older versions step through here one at a time: MIGRATIONS[v] takes a version-v snapshot
 // to version v+1. Empty for now.
@@ -58,7 +64,9 @@ const MIGRATIONS={1:snap=>{const ids={};(snap.GUILDS||[]).forEach((g,i)=>{ids[g.
   // v6 -> v7: companies (#402, #438). The Fellowship singleton becomes S.companies[0] (its old id kept as the name seed),
   // a.fellow/a.fellowRole/a.fellowFrom become a.company (role from the slot, home town in C.from), p.fellow becomes
   // p.company, S.fellowshipsPast becomes S.companiesPast, and every living agent hero with no company becomes a solo.
-  6:snap=>migrateCompanies(snap)};
+  6:snap=>migrateCompanies(snap),
+  // v7 -> v8: one campaign, one live map (#1013). A v7 save is a campaign that never left its first map.
+  7:snap=>{snap.campaign={id:WORLD_ID,map:WORLD_ID,maps:{}};return snap}};
 function migrateCompanies(snap){let seq=0;const companies=[],day=Math.floor((snap.gameMin||0)/1440)+1;
   const F=snap.fellowship,heroes=(snap.agents||[]).filter(a=>a&&a.kind==='hero');
   if(F&&typeof F==='object'){const C={...F,id:++seq,seed:F.id,from:{}};const ids=new Set((F.ids||[]).map(String));
@@ -79,6 +87,7 @@ export function snapshot(){
   const refs=new Map();
   for(const k in HOMES)for(const o of S[k]||[])refs.set(o,{ref:HOMES[k],id:idOf(HOMES[k],o)});
   refs.set(S.boss,{ref:'boss'});
+  for(const id in S.maps||{}){const m=S.maps[id];for(const k in MAP_HOMES)for(const o of m[k]||[])refs.set(o,{ref:MAP_HOMES[k],id:o.id});refs.set(m.boss,{ref:'boss',map:id})}
   const ser=(v,home)=>{
     if(v===null||typeof v!=='object')return v;
     if(!home){const r=refs.get(v);if(r)return {...r};
@@ -87,14 +96,18 @@ export function snapshot(){
     if(Array.isArray(v)){const out=new Array(v.length);for(let i=0;i<v.length;i++)out[i]=ser(v[i],false);return out}
     const o={};for(const k in v){const x=v[k];if(x===undefined||typeof x==='function')continue;o[k]=ser(x,false)}return o};
   const snap={version:SAVE_VERSION};
+  {const r=MAPS[MAP_ID]&&MAPS[MAP_ID].rev;if(r)snap.mapRev=r}
   for(const k of Object.keys(S)){
     if(KEYS[k]){const v=KEYS[k].save(S[k],ser);if(v!==undefined)snap[k]=v;continue}
     snap[k]=k in HOMES?(S[k]||[]).map(o=>ser(o,true)):ser(S[k],k==='boss')} // the boss is written in full here, as a reference everywhere else
   snap.GOODS={};for(const n in GOODS)snap.GOODS[n]={supply:GOODS[n].supply,prev:GOODS[n].prev};
   snap.MATS={};for(const n in MATERIALS)snap.MATS[n]={supply:MATERIALS[n].supply,prev:MATERIALS[n].prev}; // gathered materials sold at the auction house (#257)
-  snap.CRYPT={group:ser(CRYPT.group,false),cd:CRYPT.cd};
+  if(CRYPT)snap.CRYPT={group:ser(CRYPT.group,false),cd:CRYPT.cd}; // a map may hold no dungeon (#1013)
   if(CRYPTS.length>1){snap.CRYPTS={};for(const D of CRYPTS)if(D!==CRYPT)snap.CRYPTS[D.name]={group:ser(D.group,false),cd:D.cd}}
   snap.kept=keptState(); // the world's state that lives in modules: dice streams and timers (kept.js)
+  snap.campaign={id:WORLD_ID,map:MAP_ID,maps:{}};
+  for(const id in S.maps||{}){const m=S.maps[id],o=snap.campaign.maps[id]={};
+    for(const k in m)o[k]=k in MAP_HOMES?m[k].map(x=>ser(x,true)):ser(m[k],k==='boss')}
   return snap}
 
 // ---- restore ----
@@ -104,16 +117,28 @@ function migrate(snap){let v=snap.version;
   while(v<SAVE_VERSION){const m=MIGRATIONS[v];if(m)snap=m(snap)||snap;v++}
   if(snap.version!==SAVE_VERSION)snap.version=SAVE_VERSION;return snap}
 
+// Map revision (#979): a world whose map was cut again (spec.rev) writes it into its saves; a save from another revision (none = 0)
+// was made on ground that no longer exists (towns, sites and everyone's position), so restore refuses it by name and the page keeps a copy.
+// A world with no rev writes nothing, so its saves and hashes are as before.
+// A campaign's save is judged by the map it stands on; a frozen map cut again is the crossing's to handle (switchMap), and a map gone from the build is stale too.
+export const mapStale=(snap,id=WORLD_ID)=>{if(!snap)return false;const c=snap.campaign,m=c&&c.id===id&&c.map?c.map:id;
+  if(m!==id&&!MAPS[m])return true;return (snap.mapRev||0)!==((MAPS[m]&&MAPS[m].rev)||0)};
+export const STALE_MAP='This save was made on an earlier map of this world and cannot be carried onto the current one.';
 export function restore(snap){
   if(!isSave(snap))throw new Error('Not an Eldmoor save');
   if(snap.version>SAVE_VERSION)throw new Error('Save version '+snap.version+' is newer than this build ('+SAVE_VERSION+')');
+  if(mapStale(snap)){const e=new Error(STALE_MAP);e.code='stale-map';throw e}
   snap=migrate(snap);
+  {const c=snap.campaign;if(c&&c.id===WORLD_ID&&c.map)setWorld(c.map)} // the saved map, before anything is placed on it (a no-op on the map already live)
+  const frozen=(snap.campaign&&snap.campaign.maps)||{};
   // Pass 1: allocate every entity so references can be resolved in any order.
   const pools={},alloc={};
   for(const k in HOMES){const kind=HOMES[k],pool=pools[kind]=new Map();
     alloc[k]=(snap[k]||[]).map(e=>{const o={};pool.set(String(idOf(kind,e)),o);return o})}
+  const fz={};for(const id in frozen){const m=frozen[id],a=fz[id]={boss:{}};for(const k in MAP_HOMES){const pool=pools[MAP_HOMES[k]];
+      if(m[k])a[k]=m[k].map(e=>{const o={};pool.set(String(e.id),o);return o})}}
   const stubs=new Map();
-  const resolve=r=>{if(r.ref==='boss')return S.boss;
+  const resolve=r=>{if(r.ref==='boss')return r.map&&fz[r.map]?fz[r.map].boss:S.boss;
     const pool=pools[r.ref],o=pool&&pool.get(String(r.id));if(o)return o;
     const key=r.ref+':'+r.id;if(!stubs.has(key)){const s={kind:r.ref};for(const k in r)if(k!=='ref')s[k]=r[k];
       if(r.ref==='hero')s.state='dead';else if(r.ref==='mob'){s.alive=false;s.gone=true}stubs.set(key,s)}return stubs.get(key)};
@@ -123,21 +148,24 @@ export function restore(snap){
   // Pass 2: fill the entities, then put every key back on S. Arrays and the boss are
   // refilled in place; everything else is replaced.
   for(const k in HOMES)(snap[k]||[]).forEach((e,i)=>{const o=alloc[k][i];for(const f in e)o[f]=de(e[f])});
+  for(const id in frozen){const m=frozen[id],a=fz[id];for(const k in MAP_HOMES)(m[k]||[]).forEach((e,i)=>{const o=a[k][i];for(const f in e)o[f]=de(e[f])});
+    for(const k in m){if(k==='boss'){const v=de(m.boss);Object.assign(a.boss,v)}else if(!(k in MAP_HOMES))a[k]=de(m[k])}}
   for(const k of Object.keys(S)){if(KEYS[k])KEYS[k].reset();else if(!(k in snap))delete S[k]}
-  for(const k in snap){if(k==='version'||k==='GOODS'||k==='MATS'||k==='CRYPT'||k==='CRYPTS'||k==='kept'||KEYS[k])continue;
+  for(const k in snap){if(k==='version'||k==='mapRev'||k==='campaign'||k==='GOODS'||k==='MATS'||k==='CRYPT'||k==='CRYPTS'||k==='kept'||KEYS[k])continue;
     const v=k in HOMES?alloc[k]:de(snap[k]),cur=S[k];
     if(Array.isArray(cur)&&Array.isArray(v)){cur.length=0;for(const x of v)cur.push(x)}
     else if(k==='boss'&&cur&&v){if(v!==cur){for(const f in cur)delete cur[f];Object.assign(cur,v)}} // a save from before held only {ref:'boss'}: the boss stays as it stands
     else S[k]=v}
   for(const n in snap.GOODS||{}){const g=GOODS[n],s=snap.GOODS[n];if(!g||!s)continue;g.supply=s.supply;g.prev=s.prev!=null?s.prev:price(n)}
   for(const n in MATERIALS){const g=MATERIALS[n],s=snap.MATS&&snap.MATS[n];g.supply=s?s.supply:6;g.prev=s&&s.prev!=null?s.prev:price(n)} // an older save: the table's opening stock
-  if(snap.CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
+  if(snap.CRYPT&&CRYPT){CRYPT.group=de(snap.CRYPT.group);if(snap.CRYPT.cd!=null)CRYPT.cd=snap.CRYPT.cd}
   for(const D of CRYPTS)if(D!==CRYPT){const s=snap.CRYPTS&&snap.CRYPTS[D.name];D.group=s?de(s.group):null;if(s&&s.cd!=null)D.cd=s.cd} // an older save: nobody is down there
     restoreKept(snap.kept);
+  if(Object.keys(fz).length)S.maps=fz;
   if(!S.worldId)S.worldId=newWorldId(); // an older save gets its instance id on load
   for(const a of S.agents||[])if(a.kind==='hero')normalizeWounds(a); // a.wounds (#656): an old save's heroes carry none
   for(const a of S.agents||[])if(a.profs!==undefined)normalizeProfs(a); // a.profs is optional (professions, #254): absent reads as [], present is cleaned
-  reserveNames(S.agents||[],S.fallen||[]); // names stay unique after a reload (no two Loreths)
+  reserveNames([...(S.agents||[]),...frozenHeroes()],S.fallen||[]); // names stay unique after a reload (no two Loreths), those on frozen maps too
   relinkCompanies(); // stale a.fellow / p.fellow fields dropped (#588); agent heroes without a company ride as solos
   ensureCampaign(); // an older save whose DM notes are empty gets the campaign seed once
   convertOldDm();
@@ -170,5 +198,6 @@ export function describeSave(snap){if(!isSave(snap))return null;
     fellowship={name:F.name||'',members}}
   const companies=(CS.length?CS:F?[F]:[]).filter(c=>c&&Array.isArray(c.ids)).map(c=>{const ms=c.ids.map(id=>byId.get(String(id))).filter(Boolean);
     return {id:c.id,name:c.name||'',fac:c.fac,solo:c.ids.length===1,members:ms.map(h=>({name:h.name,cls:h.cls,lvl:h.lvl,dead:h.state==='dead'}))}});
+  const away=Object.values((snap.campaign&&snap.campaign.maps)||{}).reduce((n,m)=>n+(m.agents||[]).filter(a=>a.state!=='dead').length,0); // those on frozen maps are in the world too
   return {day:Math.floor(snap.gameMin/1440)+1,min:Math.floor(snap.gameMin)%1440,
-    heroes:byId.size?[...byId.values()].filter(a=>a.state!=='dead').length:0,fellowship,companies}}
+    heroes:(byId.size?[...byId.values()].filter(a=>a.state!=='dead').length:0)+away,fellowship,companies}}

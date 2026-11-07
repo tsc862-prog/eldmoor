@@ -23,7 +23,7 @@
 // they reach, a step out of a foe's reach gives it a free blow (cr.free, settled with the foes' turn), a Mage's read is a blast on a square,
 // a ward reaches those near, tending needs their side, and a withdrawal needs the stair. GEO.ON=false, or a room with no grid, plays as before.
 import {rnd,ri,pickA} from '../core/rng.js';
-import {CRYPT,CRYPTS} from '../world/map.js';
+import {CRYPT,CRYPTS,LVL_CAP} from '../world/map.js';
 import {standAt} from '../world/passable.js';
 import {BESTIARY,VARIANTS,ROLES,heroTag,baseId} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
@@ -36,7 +36,7 @@ import {bestUse,useItem} from './inv.js';
 import {notify} from './notify.js';
 import {engage as loreEngage,slain as loreSlain} from './lore.js'; // what a hero learns of a creature it fights here, as in the open (#188): agent heroes only, no RNG
 import {setCrawlHook,payClear,clearXp,firstKey} from './dungeon.js';
-import {cryptOfGroup,cryptOfCtx,cryptCtx,cryptRun} from './crypts.js';
+import {cryptOfGroup,cryptGroupOf,cryptCtx,cryptRun} from './crypts.js';
 import {tableOn,openScene,setSceneKind,sceneFor} from './table.js';
 import {moment,setReflectHold} from './reflect.js'; // no reflection while a crawl runs; one moment when it ends (#687)
 import {companyOf,companyById,roleOf,slotKeyOf,slotted,slotHeroes} from './company.js';
@@ -98,7 +98,7 @@ export function startCrawl(g){if(!crawlFits(g))return false;
 // the Fellowship's five-slot company meets the rooms as written.
 const scaleN=(n,cr)=>{const C=companyById(cr.co);return !C||C.slots||!cr.crew?n:Math.max(1,Math.round(n*cr.crew/5))};
 // A site's room (#69) names its foes' level outright (alvl, plus the site's growth); the Crypt's rooms are relative to the party.
-function buildFoes(room,lvl,cr,D){const out=[],fl=room.alvl!=null?room.alvl+((D&&D.grow)||0):lvl+(room.lvl||0);
+function buildFoes(room,lvl,cr,D){const out=[],fl=Math.min(LVL_CAP,room.alvl!=null?room.alvl+((D&&D.grow)||0):lvl+(room.lvl||0));
   for(const f of room.foes)for(let k=0;k<scaleN(f.n,cr);k++){const h=hitsOf(f);out.push({type:f.type,name:foeName(f),hp:h,hits:h,atk:f.atk||1,lvl:Math.max(1,fl)})}
   return out}
 // A foe above the party hits harder in a site room (its level is its own); the Crypt's rooms keep their written hit.
@@ -122,7 +122,7 @@ function openRound(g){const cr=g.crawl,room=roomsOf(g)[cr.i];
 const SPECIAL={Warrior:['hold','Hold the line: the foes\' blows on the others fall short'],Priest:['ward','Ward the group with prayer: a little mending and a steadier hand for all'],
   Rogue:['scout','Look for the gap in their guard'],Hunter:['scout','Read their movements and call the gap'],Mage:['read','Read the old wards and turn them on the foes'],Wildspeaker:['ward','Ask the roots for a steadier hand for all'],Skald:['read','Sing a dirge that turns the old wards on the foes']};
 // The group a crawl scene belongs to: the site its ctx names, else the spec dungeon's (ctx.dun, none for the first).
-const grp=sc=>{const id=sc&&sc.ctx&&sc.ctx.site;if(id!=null){const D=siteById(id),g=D&&D.group;return g&&g.crawl?g:null}const G=cryptOfCtx(sc&&sc.ctx).group;return G&&G.crawl?G:null};
+const grp=sc=>{const id=sc&&sc.ctx&&sc.ctx.site;if(id!=null){const D=siteById(id),g=D&&D.group;return g&&g.crawl?g:null}const G=cryptGroupOf(sc&&sc.ctx);return G&&G.crawl?G:null};
 // The crew is the company at the table (#441); background fill-ins ride along: they are paid and brought home, but do not act,
 // take blows or count for the foes. A crawl saved before companies (no cr.co) treats the whole group as the crew.
 const crewOf=g=>{const C=g.crawl&&g.crawl.co!=null?companyById(g.crawl.co):null;return C?g.mem.filter(a=>C.ids.includes(a.id)):g.mem};

@@ -4,7 +4,7 @@
 import {wounded} from './wounds.js'; // a wounded background hero stays out of the Crypt (#656)
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {CRYPT,CRYPTS,dist} from '../world/map.js';
-import {CRYPT_LVL,entryOf,needOf,cryptFor,cryptOfGroup,cryptRun} from './crypts.js';
+import {CRYPT_LVL,entryOf,needOf,cryptFor,cryptOfGroup,cryptRun,cryptName} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
@@ -29,9 +29,11 @@ let CRAWL=null;export const setCrawlHook=h=>{CRAWL=h};
 export const firstKey=(D,who)=>'crypt:'+who+(D===CRYPT?'':':'+D.name); // a first clear is counted per dungeon
 const tagOf=(gu,f,name)=>gu?{t:'<'+gu.tag+'> '+gu.name,c:'f'+f}:name?{t:name,c:'f'+f}:{t:'A '+FAC[f].name+' group',c:'f'+f};
 // A group sets out for the Crypt (also called by sim/council.js when the Fellowship votes to go).
+const GATHER_NEAR=45,GATHER_PACE=1.3; // tiles a group may walk in the first 30 s; tiles a second past that
 export function musterCrypt(mem,f,main,name,D=CRYPT){
   mem.forEach((a,i)=>{a.state='dungeon';a.dgIdx=i;a.target=null;a.dest=null});
-  D.group={fac:f,mem,guild:main,phase:'gather',t:30};if(name)D.group.name=name;
+  const far=Math.max(0,...mem.map(m=>dist(m,D))); // the gather clock is the walk to the mouth: a hall far from the dungeon (the Vale's Drowned Weir, 90 tiles from the north bank) gets the extra time, within GATHER_NEAR tiles it is the old 30 s
+  D.group={fac:f,mem,guild:main,phase:'gather',t:30+Math.max(0,far-GATHER_NEAR)/GATHER_PACE};if(name)D.group.name=name;
   for(const a of mem)record(a,'Joined a group for ',{t:D.name,c:'gd'},'.');
   log(tagOf(main,f,name),' formed a group for ',{t:D.name,c:'gd'},'.')}
 // A background group still gathering gives way to the Fellowship (#135): back to hunting. A group already
@@ -44,18 +46,19 @@ export function yieldCrypt(F,D=CRYPT){const g=D.group;if(!g||g.phase!=='gather'|
 export const clearXp=a=>250+a.lvl*20;
 export function payClear(g,perRoom){const D=cryptOfGroup(g);
   for(const a of g.mem)record(a,'Cleared ',{t:D.name,c:'gd'},' and destroyed ',{t:D.boss,c:'gd'},'.');
-  for(const a of g.mem){gainXp(a,perRoom?Math.round(clearXp(a)*perRoom):clearXp(a));a.gold+=25+ri(0,20);a.kills+=ri(8,14);addGood(a,'Grave Dust',3);addUse(a,'Marrowmend Tonic',1);
+  for(const a of g.mem){gainXp(a,Math.round(clearXp(a)*(perRoom||1)*(D.xp!=null?D.xp:1)));a.gold+=25+ri(0,20);a.kills+=ri(8,14);addGood(a,'Grave Dust',3);addUse(a,'Marrowmend Tonic',1);
     if(rnd()<.25)getEpic(a,pickA(DG_EPICS),D.boss);goalEvent(a,'crypt',D.name);goHome(a)}}
 // One die, like pickA: with every weight 1 it returns exactly pickA's choice.
 function pickW(list,w){let tot=0;for(const x of list)tot+=w(x);let r=rnd()*tot;for(const x of list){r-=w(x);if(r<0)return x}return list[list.length-1]}
 // Each dungeon keeps its own group and cooldown (#891). A hero answers only the dungeon that fits it (crypts.js cryptFor), one sworn to
 // clear a dungeon that dungeon; a company answers as its leader, so it is never split between two calls. No dice; with one dungeon, always yes.
-const calledTo=(a,D)=>{if(CRYPTS.length<2)return true;const g=a.goal;if(g&&g.type==='delve'&&!g.done)return (g.dun||CRYPT.name)===D.name;return cryptFor(leaderFor(a)||a)===D};
+const calledTo=(a,D)=>{if(CRYPTS.length<2)return true;const g=a.goal;if(g&&g.type==='delve'&&!g.done)return (g.dun||cryptName())===D.name;return cryptFor(leaderFor(a)||a)===D};
 export function dungeonCheck(dt){for(const D of CRYPTS)checkCrypt(D,dt)}
 function checkCrypt(D,dt){const agents=S.agents;
   const g=D.group;
   if(!g){if(cryptHold(D))return; // a company's own vote holds the dungeon (reserved, or waiting with the cooldown waived)
-    D.cd-=dt;if(D.cd>0)return;D.cd=20+rnd()*25;
+    D.cd-=dt;if(D.cd>0)return;D.cd=(D.gap!=null?D.gap:20)+rnd()*(D.span!=null?D.span:25); // gap and span: a spec dungeon may rest longer between musters (the Quarry Cellars, #1013)
+   
     const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&(a.lvl>=entryOf(D)||companyOf(a))&&!a.raid&&(a.player||!wounded(a))&&['hunt','travel','town','return'].includes(a.state)&&calledTo(a,D)&&inMuster(a,'crypt')&&brainOk(a,'crypt'));
     const cands=livingGuilds().filter(x=>x.fac===f&&pool.filter(a=>a.guild===x).length>=3),gu=cands.length?pickW(cands,cryptWeight):null; // none: the unguilded mixed pool below; a Delve guild (sim/guildfocus.js) weighs more
     let mem=pool.filter(a=>gu&&a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first

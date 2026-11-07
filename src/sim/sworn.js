@@ -3,7 +3,8 @@
 // keepOath for what it cannot see), it fails (a protected companion falls), or the hero renounces it, at a cost.
 // What can be tracked is matched from the words: a named elite, a named epic, an enemy hero, Kragmaw, clearing the Crypt, a place,
 // a companion, a kind of creature. Anything else is kept as words: the game never calls it kept; the hero says so with keep_oath.
-import {S} from './state.js';
+import {S,foeOf} from './state.js';
+import {isAway} from './atlas.js';
 import {CRYPT,CRYPTS,zoneAt,dist} from '../world/map.js';
 import {ELITES,MOBS} from '../data/mobs.js';
 import {EPICS,DG_EPICS,BOSS_EPICS} from '../data/items.js';
@@ -43,7 +44,7 @@ export function matchWords(a,text,kind,about){
   {const D=CRYPTS.find(x=>names(text,x.name));if(D&&CLEAR.test(text))return D===CRYPT?{type:'delve'}:{type:'delve',dun:D.name}}
   const E=longest(ELITES).find(e=>names(text,e.name));if(E)return {type:'avenge',target:E.name};
   const ep=longest(allEpics()).find(n=>names(text,n));if(ep)return epicGoal(ep);
-  if(SLAY.test(text)){const h=S.agents.find(x=>x.kind==='hero'&&x.fac!==a.fac&&alive(x)&&names(text,x.name));if(h)return slayGoal(a,h.name)}
+  if(SLAY.test(text)){const h=S.agents.find(x=>x.kind==='hero'&&foeOf(a,x)&&alive(x)&&names(text,x.name));if(h)return slayGoal(a,h.name)}
   if(GUARD.test(text)){const C=companyOf(a),b=(C?C.ids.map(byId):[]).find(x=>x&&x!==a&&alive(x)&&names(text,x.name));if(b)return {type:'own',kind:'protect',about:{name:b.name,id:b.id}}}
   const place=longest(placeList()).find(n=>names(text,n));if(place){const p=placeNamed(place);if(p)return {type:'own',kind:'reach',about:{name:p.name,zone:p.zone,x:p.x,y:p.y,r:p.r}}}
   if(SLAY.test(text)){const m=longest(Object.values(MOBS).map(m=>m.name).filter(Boolean)).find(n=>names(text,n));if(m)return {type:'own',kind:'slay',about:{name:m}}}
@@ -52,7 +53,7 @@ const allEpics=()=>[...EPICS.flat(),...DG_EPICS,...BOSS_EPICS];
 const epicGoal=n=>({type:DG_EPICS.includes(n)?'heirloomCrypt':BOSS_EPICS.includes(n)?'heirloomBoss':'heirloom',target:n});
 const knownEpic=w=>{const n=allEpics().find(x=>norm(x)===norm(w));return n?epicGoal(n):null};
 function slayGoal(a,w){const E=ELITES.find(e=>norm(e.name)===norm(w));if(E)return {type:'avenge',target:E.name};
-  const h=S.agents.find(x=>x.kind==='hero'&&x.fac!==a.fac&&alive(x)&&norm(x.name)===norm(w));return h?{type:'avengeHero',target:h.name,targetId:h.id,targetFac:h.fac,victim:null}:null}
+  const h=S.agents.find(x=>x.kind==='hero'&&foeOf(a,x)&&alive(x)&&norm(x.name)===norm(w));return h?{type:'avengeHero',target:h.name,targetId:h.id,targetFac:h.fac,victim:null}:null}
 // Is this oath one only the hero can call kept?
 export const wordsOnly=g=>!!(g&&g.type==='own'&&(g.kind==='vow'||g.kind==='protect'));
 
@@ -82,7 +83,7 @@ export function ownHit(a,kind,x){const g=a.goal;if(!g||g.type!=='own'||g.done||g
   return g.kind==='recover'&&kind==='epic'&&norm(String(x))===w}
 // Twice a real second, for a hero holding an 'own' oath: 'kept', 'failed' or null.
 export function ownTick(a,g){if(g.kind==='reach'&&a.state!=='ghost'){const p=g.about,here=p&&(p.zone!=null?zoneAt(a.x,a.y)===p.zone:dist(a,p)<=(p.r||4));return here?'kept':null}
-  if(g.kind==='protect'&&!alive(byId(g.about&&g.about.id)))return 'failed';return null}
+  if(g.kind==='protect'&&!alive(byId(g.about&&g.about.id))&&!isAway(g.about&&g.about.id))return 'failed';return null}
 // The one it swore to keep alive fell.
 export function oathFailed(a,why){const g=a.goal;if(!g)return;oathDone(a,g,'failed');a.goal=null;log(a,' failed an oath: ',{t:g.text,c:'dm'});record(a,'The oath failed: ',{t:g.text,c:'gd'});mark(a,'vow','An oath failed: '+g.text+' '+why);
   ev(a,'Your oath failed: '+g.text+' '+why,true);a.vowBroke={text:g.text,at:Math.round(S.gameMin),how:'failed'}}

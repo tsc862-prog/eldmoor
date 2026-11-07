@@ -8,7 +8,7 @@ import {outpostHonor,outpostDest} from './outposts.js';
 import {SPEED} from '../world/tiles.js';
 import {standAt} from '../world/passable.js';
 import {pathLeg,pathReached,pathStep,clearLine,HOLD,DONE} from './path.js'; // paths, not straight lines (#794)
-import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
+import {CRYPT,LVL_CAP,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
 import {assignRace,homeOf} from '../data/races.js';
 import {FAC,genName} from '../data/factions.js';
@@ -16,7 +16,7 @@ import {CLS} from '../data/classes.js';
 import {rollTraits,tm,traitPhrase} from '../data/traits.js';
 import {MOBS} from '../data/mobs.js';
 import {EPICS,GOODS,price} from '../data/items.js';
-import {S,clockStr,noOthers} from './state.js';
+import {S,clockStr,noOthers,sidesOff,raidSide} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
 import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,leaveParty,regroup,steerClear} from './party.js';
@@ -100,7 +100,10 @@ export function moveTo(e,x,y,dt,sp){let st=-1;
     e.x=q.x;e.y=q.y;st-=d;pathReached(e)} // a leg's end inside this tick: the rest of the step goes on along the next
   return false}
 
-export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
+// A chapter map (spec.chapter, #1013) tapers XP once a hero stands above its top band (LVL_CAP): a level over, a sixth of it; two or more, a fiftieth.
+// Every other map has LVL_CAP Infinity and is untouched. The one place; kills, crawls, quests and shares all pass through gainXp.
+const xpPlateau=l=>{const over=l-LVL_CAP;return over>=2?.02:over>=1?.17:1};
+export function gainXp(a,x){if(a.lvl>=20)return;if(LVL_CAP<Infinity)x*=xpPlateau(a.lvl);a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
   while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)levelGrowth(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     record(a,'Reached level '+a.lvl+'.');
@@ -159,9 +162,9 @@ export function slay(a,killer,o){o=o||{};
   bondEvent(a,'died',[killer]);
   for(const x of nearHeroes(a.x,a.y,10))if(x!==a&&x.state!=='dead'&&((a.guild&&x.guild===a.guild)||(a.party&&x.party===a.party))&&dist(x,a)<=10)say(x,'mourn',{target:a.name});
   if(killer.kind==='hero'&&o.bled){log(a,' ',lv,' bled out in ',ZONES[zoneAt(a.x,a.y)],', left where ',killer,' struck them down.');
-    S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild).forEach(x=>{if(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name});
+    S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild).forEach(x=>{if(!sidesOff(x,killer)&&(a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party)))x.nemesis[killer.id]=a.name});
     inheritGrudge(a,killer);fall(a,'bled out after '+killer.name+' struck them down')}
-  else if(killer.kind==='hero'){const oh=outpostHonor(a);killer.honor+=oh;S.facStats[killer.fac].honor+=oh;const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
+  else if(killer.kind==='hero'){const off=sidesOff(a,killer),oh=outpostHonor(a);if(!off){killer.honor+=oh;S.facStats[killer.fac].honor+=oh}const g=Math.floor(a.gold*.1);a.gold-=g;killer.gold+=g;
     killer.state=killer.raid?'raid':'hunt';killer.target=null;gainXp(killer,40+a.lvl*8);
     say(killer,'kill',{target:a.name});
     record(killer,killer.nemesis[a.id]?'Avenged '+killer.nemesis[a.id]+' by slaying ':o.finish?'Finished ':'Killed ',a,' (level '+a.lvl+')'+(o.finish&&!killer.nemesis[a.id]?' where they lay':'')+'.');
@@ -169,10 +172,10 @@ export function slay(a,killer,o){o=o||{};
     if(killer.nemesis[a.id]){debtDone(killer,a);log(killer,' avenged ',{t:killer.nemesis[a.id],c:'f'+killer.fac},' by slaying ',a,' ',lv,'.');delete killer.nemesis[a.id]}
     else log(killer,o.finish?' finished ':' killed ',a,' ',lv,o.finish?' where they lay':'',' in ',ZONES[zoneAt(a.x,a.y)],'.');
     const mates=S.agents.filter(x=>x!==a&&x.state!=='dead'&&a.guild&&x.guild===a.guild);
-    mates.forEach(x=>{if(o.finish||a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party))x.nemesis[killer.id]=a.name}); // only a fallen veteran, or one finished where they lay (#657), swears the whole guild; lesser deaths bind just their party
+    mates.forEach(x=>{if(!sidesOff(x,killer)&&(o.finish||a.lvl>=GUILD_GRUDGE_LVL||(a.party&&x.party===a.party)))x.nemesis[killer.id]=a.name}); // only a fallen veteran, or one finished where they lay (#657), swears the whole guild; lesser deaths bind just their party
     inheritGrudge(a,killer);
     goalEvent(killer,'slay',a);
-    if(mates.length&&a.guild&&(a.lvl>=4||o.finish))log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
+    if(mates.length&&a.guild&&!off&&(a.lvl>=4||o.finish))log({t:'<'+a.guild.tag+'> '+a.guild.name,c:'f'+a.fac},' swears vengeance on ',killer,'.');
     fall(a,'slain by '+killer.name);}
   else if(killer.kind==='boss'){log(a,' ',lv,' was incinerated by ',{t:'Kragmaw',c:'gd'},'.');fall(a,'incinerated by Kragmaw')}
   else{const n=MOBS[killer.type].name;log(a,' ',lv,' fell to a ',n,'.');fall(a,'slain by a '+n)}}
@@ -186,7 +189,7 @@ export function strike(a,t,o){
   if(t.kind==='hero')d*=.6*dmgTaken(t);
   d=Math.round(d);t.hp-=d;actHit(a,t,d,crit);if(t.kind==='hero')actHurt(t,a,d);if(c.range>2)bolt(a,t,c.orb||c.acc);
   pop(t.x,t.y-.6,crit?d+'!':String(d),crit?'#ffe060':'#ffffff');
-  if(t.kind==='boss'){S.boss.dmg[a.fac]+=d;return d}
+  if(t.kind==='boss'){S.boss.dmg[raidSide(a)]+=d;return d}
   if(t.hp<=0){if(t.kind==='mob')killMob(a,t);else agentDie(t,a)}
   return d}
 
@@ -295,13 +298,14 @@ export function updAgent(a,dt){
     if(b.target&&b.target.kind==='hero')priestHeal(a,[b.target,a,...partyMates(a)]);
     {const mv=fightMoves(a,b,[a,...partyMates(a)],a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,b);a.cd=1.1}}break}
   case 'dungeon':{if(a.hidden)break;a.hp=Math.min(mh,a.hp+mh*.03*dt);const k=a.dgIdx,D=a.siteIn!=null&&a.siteAt||cryptOfHero(a)||CRYPT; // a.siteAt: the mouth of a DM-made site a background party gathers at (sim/sites.js, #642)
+    if(!D){goHome(a);break} // no mouth to wait at: a map with no dungeon (#1013)
     moveTo(a,D.x+(k%3-1)*.9,D.y+.6+Math.floor(k/3)*.7,dt,2.6);break}
   case 'raid':{if(!boss.alive){a.raid=false;goHome(a);break}
     if(a.hp<mh*RAID_FLEE&&rnd()<dt*2){a.raid=false;a.target=null;pop(a.x,a.y-.6,'RETREAT','#ffd070');log(a,' broke from the raid on ',{t:'Kragmaw',c:'gd'},' wounded and fled the lair.');goHome(a);break} // live to raid again
     const idx=a.raidIdx,ang=Math.PI*(.55+idx*.18),rr=Math.min(CLS[a.cls].range+.9,3.2);
     const px=boss.x+Math.cos(ang)*rr*-1,py=boss.y-.3+Math.sin(ang)*rr*(idx%2?1:-1)*.8;
     if(dist(a,boss)>rr+.6){moveTo(a,px,py,dt,2.4);break}a.moving=false;a.face=boss.x>a.x?1:-1;
-    const raiders=S.agents.filter(b=>b.raid&&b.fac===a.fac);priestHeal(a,raiders);
+    const raiders=S.agents.filter(b=>b.raid&&raidSide(b)===raidSide(a));priestHeal(a,raiders);
     {const mv=fightMoves(a,boss,raiders,a.cd<=0);if(a.cd<=0){if(mv!=='swing')strike(a,boss);a.cd=1.1}}
     fightAid(a,boss);break}
   }}

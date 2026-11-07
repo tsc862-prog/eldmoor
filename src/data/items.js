@@ -98,7 +98,7 @@ export const EPIC_ITEMS={
   'Mosswoven Cloak':{armor:1,bonus:{grit:1,insight:1},property:'vital',flavour:'Grown rather than sewn; the bog keeps its wearer warm.'},
   'Bogwalker Boots':{armor:1,bonus:{reflex:1,grit:1},property:'swift',flavour:'The mud lets go of them a heartbeat early.'},
   'Fenlight Lantern':{bonus:{insight:2,wits:1},property:'keen',flavour:'A pale flame that shows where a foe is weakest.'},
-  'Ember-Forged Greatsword':{damage:1.45,bonus:{brawn:2},flavour:'Quenched in Cinderpass ash; it is never quite cold.'},
+  'Ember-Forged Greatsword':{damage:1.45,bonus:{brawn:2},flavour:'Quenched in {lairRegion} ash; it is never quite cold.'},
   'Cinderscale Mantle':{armor:1.25,bonus:{grit:1,brawn:1},property:'warding',flavour:'Scales shed by something that did not need them any more.'},
   'Magma-Tempered Gauntlets':{armor:1.1,bonus:{brawn:2},property:'swift',flavour:'They glow when a grip is about to matter.'},
   'Rime-Etched Warpick':{damage:1.4,bonus:{brawn:1,grit:1},property:'keen',flavour:'Frost patterns crawl up the haft with every swing.'},
@@ -131,7 +131,7 @@ export const INV={
 // bandage (heal out of one), ration and torch (used at camp), antidote (cures venom), scroll
 // (effect: recall | ward), pack (more slots).
 export const USES={
-  'Redroot Draught':   {kind:'potion', heal:.35,price:8, lvl:1, tier:1,drop:10,flavour:'Bitter, red, and quick. The herbwives of the Thornvale roads swear by it.'},
+  'Redroot Draught':   {kind:'potion', heal:.35,price:8, lvl:1, tier:1,drop:10,flavour:'Bitter, red, and quick. The herbwives of the {lowRegion} roads swear by it.'},
   'Marrowmend Tonic':  {kind:'potion', heal:.55,price:26,lvl:10,tier:2,drop:10,flavour:'Brewed from hearthbloom and cold-water silt; it knits what a blade has parted.'},
   'Linen Bandage':     {kind:'bandage',heal:.2, price:3, lvl:1, drop:6, flavour:'Boiled linen, tightly rolled. Useless in the middle of a fight, a mercy after one.'},
   'Trail Ration':      {kind:'ration', heal:.2, price:3, lvl:1, drop:3, flavour:'Hard bread, smoked meat and a pinch of salt. A camp supper that mends a little.'},
@@ -147,12 +147,12 @@ export const USES={
   'Spit-Roast Perch':  {kind:'ration',heal:.25,price:7, lvl:1, drop:0,craft:true,buff:{stat:'speed',v:.03,mins:60},flavour:'A river perch turned over the coals until the skin crackles. Quick hands at supper.'},
   'Fenmire Eel Stew':  {kind:'ration',heal:.35,price:18,lvl:6, drop:0,craft:true,buff:{stat:'defense',v:.04,mins:120},flavour:'Eel, fen moss and patience. The fen-folk swear it keeps the damp out of the bones.'},
   'Tarn Whitefish Chowder':{kind:'ration',heal:.45,price:32,lvl:12,drop:0,craft:true,buff:{stat:'health',v:.06,mins:180},flavour:'Thick with whitefish and salt, scalding in a tin cup. Lasts the whole of a cold watch.'},
-  'Hoarfell Survey Chart':{kind:'map',reveal:'region',price:40,lvl:12,drop:0,craft:true,flavour:'Ink on scraped hide: the safe fords, the thin ice and the old cairns of the Hoarfell, drawn by someone who walked them.'},
+  'Hoarfell Survey Chart':{kind:'map',reveal:'region',price:40,lvl:12,drop:0,craft:true,flavour:'Ink on scraped hide: the safe fords, the thin ice and the old cairns of the {farRegion}, drawn by someone who walked them.'},
   // Bands 1 and 4 (issue #718), same rules as the rows above.
   'Fenwater Salve':    {kind:'potion', heal:.45,price:20,lvl:6, tier:0,drop:0,craft:true,flavour:'Redroot pounded into fen-water until it runs green; thin stuff, but it closes a cut by morning.'},
   'Wightbone Philtre': {kind:'potion', heal:.8, price:110,lvl:18,tier:0,drop:0,craft:true,flavour:'Tarn wight marrow ground fine and cut with rimebloom. It tastes of a cold cellar and brings a hero back from the edge.'},
   'Hearthbloom Fish Pie':{kind:'ration',heal:.3,price:20,lvl:4,drop:0,craft:true,buff:{stat:'crit',v:.02,mins:90},flavour:'Perch baked in a crust with hearthbloom petals. The first bite makes the eye sharper.'},
-  "Tarn Hunter's Feast":{kind:'ration',heal:.6,price:80,lvl:16,drop:0,craft:true,buff:{stat:'health',v:.08,mins:240},flavour:'Whitefish, eel and bloom in one pot, the meal a Hoarfell hunter saves for a long winter march.'},
+  "Tarn Hunter's Feast":{kind:'ration',heal:.6,price:80,lvl:16,drop:0,craft:true,buff:{stat:'health',v:.08,mins:240},flavour:'Whitefish, eel and bloom in one pot, the meal a {farRegion} hunter saves for a long winter march.'},
   'Scroll of the Brief Ward':{kind:'scroll',effect:'ward',ward:.15,price:20,lvl:3,drop:0,craft:true,flavour:'A hurried ward in cheap ink; it holds only a moment, but a moment is sometimes enough.'},
   'Scroll of the Unbroken Line':{kind:'scroll',effect:'ward',ward:.35,price:60,lvl:16,drop:0,craft:true,flavour:'Grave dust in the ink and a line that never lifts from the page; blows slide off the reader like rain.'}};
 // What a consumable does, as tooltip lines [css, text] (src/ui/panels.js prints them like gear stats).

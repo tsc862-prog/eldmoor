@@ -29,9 +29,7 @@ function drawOne(ctx,S,cam,o,g){const {inView,blink,drawText}=o;
   if(cam.close&&!S.table){const w=ids.map(id=>S.agents.find(x=>x.id===id)).find(a=>a&&a.id===g.watcher);
     drawText('CAMP'+(w?' · '+w.name+' on watch':''),cx,cy-26,'#f4c070',13)}}
 
-// Warm light for the night overlay (draw.js calls this in the 'lighter' pass).
-export function drawCampLight(ctx,S,dk,inView){for(const g of camps(S))lightOne(ctx,dk,inView,g)}
-function lightOne(ctx,dk,inView,g){const x=g.x*T,y=g.y*T,r=54;if(!inView(x,y,r))return;
-  const fl=.85+.15*Math.sin(performance.now()/90);
-  const gr=ctx.createRadialGradient(x,y,0,x,y,r);gr.addColorStop(0,'rgba(255,170,70,'+(dk*.85*fl)+')');gr.addColorStop(1,'rgba(255,170,70,0)');
-  ctx.fillStyle=gr;ctx.fillRect(x-r,y-r,r*2,r*2)}
+// Warm light at night (render/lightmap.js): each fire is one light, breathing slowly.
+const FIRE_LIGHT=[255,170,70];
+export function drawCampLight(glow,S,dk,inView,now){for(const g of camps(S)){const x=g.x*T,y=g.y*T,r=78;if(!inView(x,y,r))continue;
+  glow(x,y-3,r,FIRE_LIGHT,dk*1.7*(.86+.09*Math.sin(now*2.3+g.x)+.05*Math.sin(now*5.1+g.y)))}}

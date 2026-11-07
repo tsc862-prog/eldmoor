@@ -12,12 +12,19 @@ import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
+import {drawQuay} from './harbour.js';
+import {sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery,soilAt,soilEdge} from './scenery.js';
+import {ASSET_PEAKS,peakArt,peakPixel} from './peaks.js';
+import {onWorld} from '../sim/kept.js';
 
 // Generated tile art (#177, scripts/art/manifest.json): the asset id that may replace a tile type's
 // procedural texel. A tile asset repeats every w x h art pixels (a TILE x TILE patch per tile at its tier); a missing
 // or not yet loaded asset, or a transparent pixel of it, falls back to the procedural texel below. Every id
 // here or in ASSET_ROAD, ASSET_EDGES or ASSET_PROPS needs a manifest entry whose hook names that table (npm run artcheck checks both ways).
-export const ASSET_TILES={'tile:grass':G,'tile:meadow':FLOWER,'tile:fen-grass':SGRASS,'tile:swamp':SWAMP,'tile:mud':MUD,'tile:ash-rock':ROCK,'tile:snow':SNOW,'tile:ice':ICE};
+export const ASSET_TILES={'tile:grass':G,'tile:meadow':FLOWER,'tile:fen-grass':SGRASS,'tile:swamp':SWAMP,'tile:mud':MUD,'tile:ash-rock':ROCK,'tile:snow':SNOW,'tile:ice':ICE,'tile:lava':LAVA};
+// The ground tiles of the biomes (#835) are one 32 px patch repeated, so each tile draws it flipped by a hash of its place (four
+// variants) and the repeat stops reading as a grid. Grass and meadow keep the single patch they were reviewed with.
+const SCATTER=new Set(['tile:fen-grass','tile:swamp','tile:mud','tile:ash-rock','tile:snow','tile:ice','tile:lava']);
 // Road and water (slice 2): the road patch runs left to right and is turned for a north-south road; the water patch
 // fills the river away from its banks (the banks are the bank-water transition pieces, else the procedural foam).
 export const ASSET_ROAD={'tile:road':ROAD,'tile:water':RIVER};
@@ -40,7 +47,9 @@ function snowBase(x,y,h){return h>.985?'#ffffff':pk(SNOWP,h)}
 const SGP=['#46622f','#3d5729','#42602c','#4a6632'];
 
 // Procedural colour of pixel (px,py) inside tile (tx,ty) of type t. px,py are 0..U-1 (the 16x16 procedural grid).
-export function texel(t,tx,ty,px,py){
+// noBg (art path, #835): a tree or mountain tile answers null where it shows plain ground, so the caller paints the biome's ground
+// asset there instead of the procedural ground texel.
+export function texel(t,tx,ty,px,py,noBg=false){
   const x=tx*U+px,y=ty*U+py;
   const h=hash(x,y,3);
   switch(t){
@@ -67,21 +76,21 @@ export function texel(t,tx,ty,px,py){
             return pk(['#1e4f44','#24584a'],h)}}
         else if(px===7||px===8)return px===7?'#3a2a20':'#241810';
         if(py>=12&&px>=9&&px<=11)return '#c8d2de';
-        return snowBase(x,y,h)}
+        return noBg?null:snowBase(x,y,h)}
       if(bio==='fen'){ // Mirefen swamp tree: wide olive canopy, hanging moss strands, crooked trunk, on wet grass
         const dx=px-7.5,dy=py-5.5,r2=(dx*dx)/58+(dy*dy)/27;
         if(r2<1){if(r2>.74)return '#2a3a1e';if(dx+dy*1.2<-3.2)return '#7a9a44';if(dx+dy>3.2)return '#34502a';return h>.88?'#5a7a3a':pk(['#4e6e2e','#46642a','#4a6a2c'],h)}
         if((px===2||px===5||px===10||px===13)&&py>=8&&py<=(px%2?11:10))return '#5a7a34';
         if(py>=9&&(px===7||px===8))return px===7?'#4a3a28':'#2e2418';
         if(py===15&&(px===6||px===9))return '#3a2e20';
-        return h>.93?'#3a5a4a':pk(SGP,h)}
+        return noBg?null:h>.93?'#3a5a4a':pk(SGP,h)}
       // Thornvale oak: round canopy with lit crown and shadowed skirt, trunk and roots, on grass
       const dx=px-7.5,dy=py-6.5,r2=(dx*dx)/52+(dy*dy)/36;
       if(r2<1){if(r2>.74)return '#1a5a22';if(dx+dy*1.1<-3.6)return '#5cb84e';if(dx+dy>3.4)return '#1e6a28';return h>.9?'#4aa844':pk(['#2f8a36','#2a7e31','#338f3a'],h)}
       if(py>=11&&(px===7||px===8))return px===7?'#5a3a20':'#3a2414';
       if(py===15&&(px===6||px===9))return '#4a3018';
       if(py>=12&&px>=9&&px<=12)return '#2f6a2c';
-      return grass(x,y,h)}
+      return noBg?null:grass(x,y,h)}
     case SNOW:{ // drifts (a soft wavy ridge on some tiles) and sparkle
       if(hash(tx,ty,8)>.35){const w=Math.sin(x/4.5+hash(tx,ty,7)*6)*1.6,c=7+Math.round(hash(tx,ty,9)*4);
         if(Math.abs(py-c-w)<.6)return '#c4ced8';if(Math.abs(py-c+1-w)<.6)return '#f8fafc'}
@@ -129,7 +138,7 @@ export function texel(t,tx,ty,px,py){
       // neighbouring tiles join into peaks and saddles), snow on the crest, faces lit where the
       // ridge rises to the right (they face the top-left light) and shadowed where it falls
       const r=ridgeAt(tx,ty,px),slope=ridgeAt(tx,ty,px+1)-ridgeAt(tx,ty,px-1),depth=py-r;
-      if(depth<0)return groundOf(biomeOfZone(zone[I(tx,ty)]),x,y,h);
+      if(depth<0)return noBg?null:groundOf(biomeOfZone(zone[I(tx,ty)]),x,y,h);
       const capped=r<6||biomeOfZone(zone[I(tx,ty)])==='tundra';
       if(capped&&depth<2.6-slope*.4)return slope<-.2?'#f4f6fa':slope>.2?'#c0c8d8':'#e2e6ee';
       if(slope<-.2)return depth<1?'#c4bab4':h>.85?'#b4aaa4':'#a0968e';
@@ -167,11 +176,14 @@ export function texel(t,tx,ty,px,py){
       if((px===2||px===13)&&py%4===3)return '#4a3018';
       return h>.9?'#9a6a3c':((py>>2)&1)?'#8a5a32':'#7a4e2a'}
   }return '#000'}
+let fk2=-1,fv2=0;const flipOf=(tx,ty)=>{const k=ty*W+tx;if(k!==fk2){fk2=k;fv2=Math.floor(hash(tx,ty,737)*4)}return fv2};
 // The asset colour of tile type t at art pixel (ax,ay) of tile (tx,ty) (0..TILE-1), or null: the base tile patches, the
 // road patch (turned for a north-south road) and the water patch (away from the banks, which keep the procedural foam).
 function assetTexel(t,tx,ty,ax,ay){
   const x=tx*TILE+ax,y=ty*TILE+ay;
-  if(TILE_ASSET[t]){const A=assetPixels(TILE_ASSET[t]);return A?A.hex[(y%A.h)*A.w+x%A.w]:null}
+  if(TILE_ASSET[t]){const id=TILE_ASSET[t],A=assetPixels(id);if(!A)return null;
+    if(A.w===TILE&&A.h===TILE&&SCATTER.has(id)){const k=flipOf(tx,ty);let u=ax&(TILE-1),v=ay&(TILE-1);if(k&1)u=TILE-1-u;if(k&2)v=TILE-1-v;return A.hex[v*TILE+u]}
+    return A.hex[(y%A.h)*A.w+x%A.w]}
   if(t===ROAD){const A=assetPixels('tile:road');if(!A)return null;const v=roadVerticalAt(tx,ty),u=v?y:x,w=v?x:y;return A.hex[(w%A.h)*A.w+u%A.w]}
   if(t===RIVER){const A=assetPixels('tile:water');if(!A)return null;const px=Math.floor(ax/ART),py=Math.floor(ay/ART);
     if((px<=1&&!isWater(tx-1,ty))||(px>=U-2&&!isWater(tx+1,ty))||(py<=1&&!isWater(tx,ty-1))||(py>=U-2&&!isWater(tx,ty+1)))return null;
@@ -202,19 +214,28 @@ function groundOf(bio,x,y,h){return bio==='tundra'?snowBase(x,y,h):bio==='ash'?p
 // never blend. The neighbour's colour comes from its own texel at the same world pixel, so
 // ruts, drifts and noise run on across the seam.
 const BLEND=new Uint8Array(16);for(const t of [G,FLOWER,SGRASS,MUD,SNOW,ICE,ROCK,ROAD,LAVA,SWAMP])BLEND[t]=1;
+BLEND[ROAD]=sceneryOn?0:1; // country roads are a shape of their own there (render/scenery.js)
 const fam=t=>t===FLOWER?G:t;
 const EDGE=[.42,.6,.78]; // noise threshold by distance to the edge: nearer edges bleed more
 const tileOr=(tx,ty)=>tx<0||ty<0||tx>=W||ty>=H?-1:tiles[I(tx,ty)];
+// The ground a tree or mountain tile stands on (its region's biome ground), for transition pieces; other tiles are themselves.
+const baseOf=(tx,ty)=>GROUND[propBiome(biomeOfZone(zone[I(tx,ty)]))];
+const groundAt=(tx,ty)=>{const t=tileOr(tx,ty);return t===TREE||t===PEAK?baseOf(tx,ty):sceneryOn&&t>=0?sceneGround(t,tx,ty):t};
 // The blend is decided on the procedural grid (pixel (px,py) of U x U), so it bleeds the same at every tier; (ax,ay) is
 // the art pixel (0..TILE-1) inside it whose colour is wanted, from the asset of whichever tile type wins.
 // With art=false it answers at the procedural grid alone (ax,ay unused): the no-asset fast path of paintChunk.
+// Whether any ground tile asset is loaded (then the blend is decided per art pixel, else on the procedural grid as before).
+let gArt=null;const groundArt=()=>gArt===null?(gArt=Object.keys(ASSET_TILES).some(id=>assetPixels(id))):gArt;
 function blendPixel(t,tx,ty,px,py,ax,ay,art=true){
   if(BLEND[t]){let d=3,n=-1,ox=0,oy=0;const L=U-1;
-    if(px<d){const k=tileOr(tx-1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=px;n=k;ox=-1;oy=0}}
-    if(L-px<d){const k=tileOr(tx+1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=L-px;n=k;ox=1;oy=0}}
-    if(py<d){const k=tileOr(tx,ty-1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=py;n=k;ox=0;oy=-1}}
-    if(L-py<d){const k=tileOr(tx,ty+1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=L-py;n=k;ox=0;oy=1}}
-    if(n>=0){const x=tx*U+px,y=ty*U+py;if(vnoise(x/2.3,y/2.3,93)>EDGE[d])return art?artTexel(n,tx+ox,ty+oy,ax-ox*TILE,ay-oy*TILE):texel(n,tx+ox,ty+oy,px-ox*U,py-oy*U)}}
+    // On the art path the edge is decided per art pixel (finer than the procedural texel, so a seam where no piece applies is
+    // not a stair of 2x2 blocks): fx, fy are the pixel's centre in procedural units, d the distance to the edge in them.
+    const fine=art&&groundArt(),fx=fine?(ax+.5)/ART:px,fy=fine?(ay+.5)/ART:py,ex=fx,ey=fy,Lx=fine?U-fx:L-px,Ly=fine?U-fy:L-py;
+    if(ex<d){const k=tileOr(tx-1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=ex;n=k;ox=-1;oy=0}}
+    if(Lx<d){const k=tileOr(tx+1,ty);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=Lx;n=k;ox=1;oy=0}}
+    if(ey<d){const k=tileOr(tx,ty-1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=ey;n=k;ox=0;oy=-1}}
+    if(Ly<d){const k=tileOr(tx,ty+1);if(k>=0&&BLEND[k]&&fam(k)!==fam(t)){d=Ly;n=k;ox=0;oy=1}}
+    if(n>=0){const x=tx*U+fx,y=ty*U+fy;if(vnoise(x/2.3,y/2.3,93)>EDGE[Math.min(2,d|0)])return art?artTexel(n,tx+ox,ty+oy,ax-ox*TILE,ay-oy*TILE):texel(n,tx+ox,ty+oy,px-ox*U,py-oy*U)}}
   return art?artTexel(t,tx,ty,ax,ay):texel(t,tx,ty,px,py)}
 // ---- autotile (#177 slice 2) ----
 // Transition pieces sit on the tile corners (a "dual grid"): every pixel belongs to the quadrant of its tile nearest
@@ -224,15 +245,41 @@ function blendPixel(t,tx,ty,px,py,ax,ay,art=true){
 // bottom-right quarter (corner) and A in the top-left quarter (inner). Anything else (one tile type, two in a diagonal,
 // three types, objects, the map's rim), a missing piece or a transparent pixel of one falls back to the procedural
 // edge blend below, per quadrant, so with no assets the map is painted exactly as before.
+// A transition set is ground b (its island and hole, drawn over) on ground a: the plain tile underneath. One set per border
+// the maps have (#835 added the biome ones; each id is cut by scripts/art/packcut-biomes.mjs).
 const PAIRS=[
   {id:'grass-road',a:[G,FLOWER],b:[ROAD]},
   {id:'bank-water',a:[G,FLOWER],b:[RIVER]},
   {id:'meadow-fen',a:[G,FLOWER],b:[SGRASS]},
-  {id:'fen-ash',a:[SGRASS],b:[ROCK]},
-  {id:'ash-snow',a:[ROCK],b:[SNOW]},
+  {id:'meadow-ash',a:[ROCK],b:[G,FLOWER]},
+  {id:'mud-fen',a:[MUD],b:[SGRASS]},
+  {id:'fen-swamp',a:[SGRASS],b:[SWAMP]},
+  {id:'mud-swamp',a:[MUD],b:[SWAMP]},
+  {id:'mud-ash',a:[ROCK],b:[MUD]},
+  {id:'fen-ash',a:[ROCK],b:[SGRASS]},
+  {id:'ash-snow',a:[SNOW],b:[ROCK]},
+  {id:'meadow-snow',a:[G,FLOWER],b:[SNOW]},
+  {id:'fen-snow',a:[SGRASS],b:[SNOW]},
+  {id:'swamp-snow',a:[SNOW],b:[SWAMP]},
+  {id:'mud-snow',a:[MUD],b:[SNOW]},
+  {id:'ice-ash',a:[ICE],b:[ROCK]},
+  {id:'ash-lava',a:[ROCK],b:[LAVA]},
+  {id:'snow-ice',a:[ICE],b:[SNOW]},
   {id:'fen-river',a:[SGRASS],b:[RIVER]},
   {id:'snow-river',a:[SNOW],b:[RIVER]},
-  {id:'mud-swamp',a:[MUD],b:[SWAMP]}];
+  {id:'road-fen',a:[SGRASS],b:[ROAD]},
+  {id:'road-mud',a:[MUD],b:[ROAD]},
+  {id:'road-ash',a:[ROCK],b:[ROAD]},
+  {id:'road-snow',a:[SNOW],b:[ROAD]},
+  {id:'road-swamp',a:[SWAMP],b:[ROAD]},
+  {id:'ice-fen',a:[ICE],b:[SGRASS]},
+  {id:'lava-snow',a:[SNOW],b:[LAVA]},
+  {id:'ash-swamp',a:[ROCK],b:[SWAMP]},
+  {id:'mud-river',a:[MUD],b:[RIVER]},
+  {id:'swamp-river',a:[SWAMP],b:[RIVER]},
+  {id:'meadow-swamp',a:[G,FLOWER],b:[SWAMP]},
+  {id:'meadow-mud',a:[MUD],b:[G,FLOWER]},
+  {id:'road-ice',a:[ICE],b:[ROAD]}];
 const PIECE={edge:'',corner:'-corner',inner:'-inner'};
 export const ASSET_EDGES={};
 for(const p of PAIRS)for(const k of Object.values(PIECE))ASSET_EDGES['autotile:'+p.id+k]=[p.a[0],p.b[0]];
@@ -250,14 +297,30 @@ function sampleXf(A,xf,x,y){let u=x,v=y;const L=TILE-1;
   return A.hex[(v%A.h)*A.w+u%A.w]}
 // The transition piece on the corner point (vx,vy) (the top-left corner of tile (vx,vy)): {id, A, xf} or null.
 // With asset=false it answers the piece id the point wants even when the asset is missing (for checks and tools).
-export function autotileAt(vx,vy,asset=true){
-  const q0=tileOr(vx-1,vy-1),q1=tileOr(vx,vy-1),q2=tileOr(vx-1,vy),q3=tileOr(vx,vy);
-  if(q0<0||q1<0||q2<0||q3<0)return null;
-  let o=-1;for(const t of [q1,q2,q3])if(fam(t)!==fam(q0)){o=t;break}
+// Three ground types round a point (two tiles of one, one each of two others, which a tile-mosaic ground like the fen has all
+// over) take the piece of the majority type and the single type that ranks higher (RANK: road, snow ... mud); the third
+// type's tile keeps its own ground in its quarter (self = that tile's place round the point, 0 top left to 3 bottom right,
+// answers null for it) and the procedural blend joins it to the rest.
+const RANK=[];RANK[ROAD]=9;RANK[SNOW]=7;RANK[ICE]=6;RANK[LAVA]=6;RANK[SWAMP]=5;RANK[ROCK]=4;RANK[SGRASS]=3;RANK[MUD]=2;RANK[G]=1;
+export function autotileAt(vx,vy,asset=true,self=-1){
+  const q=[groundAt(vx-1,vy-1),groundAt(vx,vy-1),groundAt(vx-1,vy),groundAt(vx,vy)];
+  if(q[0]<0||q[1]<0||q[2]<0||q[3]<0)return null;
+  let o=-1;for(let i=1;i<4;i++)if(fam(q[i])!==fam(q[0])){o=q[i];break}
   if(o<0)return null;
-  const pi=PAIR_AT.get(q0*16+o);if(pi===undefined)return null;
+  let pi=PAIR_AT.get(q[0]*16+o),skip=-1;
+  const P0=pi===undefined?null:PAIRS[pi];
+  if(!P0||q.some(t=>!P0.a.includes(t)&&!P0.b.includes(t))){ // not two types: look for three with a majority
+    const f=q.map(fam),cnt={};for(const t of f)cnt[t]=(cnt[t]||0)+1;const ts=Object.keys(cnt).map(Number);
+    if(ts.length!==3)return null;
+    const M=ts.find(t=>cnt[t]===2),singles=ts.filter(t=>cnt[t]===1);if(M===undefined)return null;
+    const ok=singles.filter(t=>PAIR_AT.has(M*16+t)).sort((x,y)=>(RANK[y]||0)-(RANK[x]||0));
+    if(!ok.length)return null;
+    const S=ok[0],R=singles.find(t=>t!==S);pi=PAIR_AT.get(M*16+S);skip=f.indexOf(R);
+    if(self===skip)return null;
+    // the single left over counts as the majority ground for the shape of the piece
+    q[skip]=M}
   const P=PAIRS[pi],B=P.b;let m=0,i=0;
-  for(const t of [q0,q1,q2,q3]){if(B.includes(t))m|=1<<i;else if(!P.a.includes(t))return null;i++}
+  for(const t of q){if(B.includes(t))m|=1<<i;else if(!P.a.includes(t))return null;i++}
   const k=QUAD[m];if(!k)return null;
   const id='autotile:'+P.id+PIECE[k[0]];
   if(!asset)return {id,xf:k[1]};
@@ -267,11 +330,12 @@ export function autotileAt(vx,vy,asset=true){
 // A tree replaces the procedural tree of a TREE tile, standing on that biome's ground texel; a rock sits on about one
 // ground tile in 28 of its biome's own ground type. A missing variant gives way to the next one there is; none at all
 // is today's tree and no rock.
-const VARIANTS=3,PROP_BIOMES=['meadow','fen','ash','tundra'];
-const propBiome=b=>b==='highland'||!PROP_BIOMES.includes(b)?'meadow':b;
-const GROUND={meadow:G,fen:SGRASS,ash:ROCK,tundra:SNOW};
+const VARIANTS=3,PROP_BIOMES=['meadow','fen','ash','tundra','highland'];
+// The highland has its own cut rocks and canopies (Hawkwold, the Vale); a world whose highland has none of its own keeps borrowing the meadow's.
+const propBiome=b=>b==='highland'?'highland':!PROP_BIOMES.includes(b)?'meadow':b;
+const GROUND={meadow:G,fen:SGRASS,ash:ROCK,tundra:SNOW,highland:G};
 export const ASSET_PROPS={};
-for(const b of PROP_BIOMES)for(let i=1;i<=VARIANTS;i++){ASSET_PROPS[`prop:tree-${b}-${i}`]=TREE;ASSET_PROPS[`prop:rock-${b}-${i}`]=GROUND[b]}
+for(const b of PROP_BIOMES)for(let i=1;i<=VARIANTS;i++){if(b!=='highland')ASSET_PROPS[`prop:tree-${b}-${i}`]=TREE;ASSET_PROPS[`prop:rock-${b}-${i}`]=GROUND[b]}
 // Whole trees (#834): LPC crowns are 3 tiles wide and 2.5 tall, so a tree is bigger than a one-tile prop. prop:canopy-<biome>-1..3
 // (96x120 art px at the 32 tier: crown, trunk and its ground shadow, root on row CANOPY_ROOT) stand on about every other TREE tile
 // (a checkerboard of the map's own tiles, nothing the sim sees) and are drawn over the chunk's ground in tile-row order. A TREE tile of
@@ -286,19 +350,20 @@ function canopyImg(b,h){const n=Math.floor(h*VARIANTS)%VARIANTS;let got=null;
   return got}
 const treeSpots=new Map(); // tile key -> anchor {tree, x, y (the base, in tiles), ax, ay, w, h (world units), im} or false
 function anchorAt(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return null;const k=ty*W+tx;let a=treeSpots.get(k);if(a!==undefined)return a||null;
-  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0){const v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
+  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0&&!(sceneryOn&&treeFelled(tx,ty))){const v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
     if(v){const w=v.im.naturalWidth/ART,h=v.im.naturalHeight/ART;
       a={tree:true,id:v.id,im:v.im,x:tx+.5,y:ty+1,ax:(tx+.5)*U+(hash(tx,ty,613)-.5)*5-w/2,ay:(ty+1)*U-CANOPY_ROOT/ART+(hash(tx,ty,615)-.5)*3-1,w,h}}}
   treeSpots.set(k,a);return a||null}
 // Paint the trees that reach chunk tiles x0..x1 by y0..y1 (crowns overhang: a tree rooted up to two rows below or a column aside counts).
 function paintCanopy(c,x0,y0,x1,y1){for(let ty=y0;ty<Math.min(H,y1+3);ty++)for(let tx=Math.max(0,x0-2);tx<Math.min(W,x1+2);tx++){const a=anchorAt(tx,ty);if(a)c.drawImage(a.im,a.ax,a.ay,a.w,a.h)}}
 export const drawTree=(c,a)=>c.drawImage(a.im,a.ax,a.ay,a.w,a.h);
+export const treeAnchor=anchorAt; // the whole tree standing on tile (tx,ty), or null: shadows.js and lightmap.js read where trees are
 // The trees standing in front of something at (x,y) tiles (its feet): rooted below it, close enough for a crown or a crown over a crown
 // to reach it. Pushed into out once each per frame (stamp), for draw.js to sort among the entities and redraw over them.
 export function treesNear(x,y,out,stamp){if(!canopyOn)return;const cx=Math.floor(x),cy=Math.floor(y);
   for(let ty=cy;ty<=cy+5;ty++)for(let tx=cx-3;tx<=cx+3;tx++){const a=anchorAt(tx,ty);if(a&&a.y>y&&a.stamp!==stamp){a.stamp=stamp;out.push(a)}}}
 let canopyOn=false;
-const ROCK_ODDS=.036;
+const ROCK_ODDS=.036,ROCK_ODDS_BY={highland:.06}; // a rockier upland
 function pickVariant(kind,b,h,asset){const n=Math.floor(h*VARIANTS)%VARIANTS;
   for(let k=0;k<VARIANTS;k++){const id=`prop:${kind}-${b}-${1+(n+k)%VARIANTS}`;if(!asset)return {id};const A=assetPixels(id);if(A)return {id,A}}
   return null}
@@ -306,31 +371,39 @@ function pickVariant(kind,b,h,asset){const n=Math.floor(h*VARIANTS)%VARIANTS;
 export function propAt(tx,ty,asset=true){const t=tileOr(tx,ty);if(t<0)return null;
   const b=propBiome(biomeOfZone(zone[I(tx,ty)]));
   if(t===TREE&&asset&&canopyImg(b,0))return {id:'canopy',A:EMPTY,kind:'tree',ground:GROUND[b]}; // the tree is a whole canopy tree over this tile's ground (paintCanopy)
-  if(t===TREE){const v=pickVariant('tree',b,hash(tx,ty,611),asset);return v&&{...v,kind:'tree',ground:GROUND[b]}}
-  if(t===GROUND[b]&&hash(tx,ty,617)<ROCK_ODDS){const v=pickVariant('rock',b,hash(tx,ty,619),asset);return v&&{...v,kind:'rock',ground:t}}
+  if(t===TREE){const v=pickVariant('tree',b==='highland'?'meadow':b,hash(tx,ty,611),asset); // highland has canopies, no one-tile trees
+   return v&&{...v,kind:'tree',ground:GROUND[b]}}
+  if(t===GROUND[b]&&hash(tx,ty,617)<(ROCK_ODDS_BY[b]||ROCK_ODDS)){const v=pickVariant('rock',b,hash(tx,ty,619),asset);return v&&{...v,kind:'rock',ground:t}}
   return null}
 
 // Per-tile plan, worked out once for the tile being painted: its four corner pieces and its prop.
 let planKey=-1;const plan={q:[null,null,null,null],prop:null};
 function planFor(tx,ty){const k=ty*W+tx;if(k===planKey)return plan;planKey=k;
-  for(let i=0;i<4;i++)plan.q[i]=autotileAt(tx+(i&1),ty+(i>>1));
+  for(let i=0;i<4;i++)plan.q[i]=autotileAt(tx+(i&1),ty+(i>>1),true,3-i);
   plan.prop=propAt(tx,ty);return plan}
 // Final colour of art pixel (ax,ay) (0..TILE-1) of tile (tx,ty) of type t, before the shade: prop, transition piece,
 // then the blend and the texel (the base tile, road and water assets, else the procedural texel scaled up).
 const HALF=TILE>>1;
-export function pixel(t,tx,ty,ax,ay){const P=planFor(tx,ty),pr=P.prop;
-  if(pr){const c=pr.A.hex[(ay%pr.A.h)*pr.A.w+ax%pr.A.w];if(c)return c;if(pr.kind==='tree')return artTexel(pr.ground,tx,ty,ax,ay)}
+let soilKind=-1; // the kind of ground pixel() last drew by shape, or -1
+export function pixel(t,tx,ty,ax,ay){const P=planFor(tx,ty),pr=P.prop,mt=peakArt(); // mt: mountains are the height field of peaks.js over the biome's ground
+  if(mt){const c=peakPixel(tx,ty,ax,ay);if(c)return c}
+  if(pr){const c=pr.A.hex[(ay%pr.A.h)*pr.A.w+ax%pr.A.w];if(c)return c}
+  soilKind=-1;if(sceneryOn&&(t!==TREE||!(pr&&pr.kind!=='tree'))&&t!==FLOOR&&t!==WALL){const s=soilAt(tx,ty,ax,ay);if(s>=0&&(t!==PEAK||mt)){soilKind=s;return soilEdge(artTexel(s,tx,ty,ax,ay),s,tx,ty,ax,ay)}} // the ground as shapes: no tile edge near a border
+  if(pr&&pr.kind==='tree')return artTexel(pr.ground,tx,ty,ax,ay);
+  let g=t;
+  if((t===TREE||t===PEAK)&&groundArt()){const c=mt&&t===PEAK?null:texel(t,tx,ty,(ax/ART)|0,(ay/ART)|0,true);if(c)return c;g=baseOf(tx,ty);soilKind=g} // canopy and rock stay; the ground round them is the biome's
   const q=P.q[(ax>=HALF?1:0)+(ay>=HALF?2:0)];
   if(q){const c=sampleXf(q.A,q.xf,(ax+HALF)%TILE,(ay+HALF)%TILE);if(c)return c}
-  return blendPixel(t,tx,ty,(ax/ART)|0,(ay/ART)|0,ax,ay)}
+  return blendPixel(g,tx,ty,(ax/ART)|0,(ay/ART)|0,ax,ay)}
 // The same at the procedural grid only (px,py 0..U-1), for chunks painted with no terrain asset loaded.
 export const procPixel=(t,tx,ty,px,py)=>blendPixel(t,tx,ty,px,py,0,0,false);
 
 // Light from the top left: ground just below or right of a mountain lies in its shadow, and
 // the foot of a massif darkens where it meets the ground. (px,py) on the procedural grid.
 export function shade(t,tx,ty,px,py){
-  if(t===PEAK)return isPeak(tx,ty+1)||py<14?1:.82;
+  if(t===PEAK)return isPeak(tx,ty+1)||py<14||peakArt()?1:.82;
   if(t===WALL||t===FLOOR)return 1;
+  if(peakArt())return 1; // the mountains shade themselves and cast their own shadow
   let k=1;if(py<3&&isPeak(tx,ty-1))k=.72+py*.08;if(px<2&&isPeak(tx-1,ty))k=Math.min(k,.8+px*.08);return k}
 
 // ---- chunks ----
@@ -339,36 +412,76 @@ export function shade(t,tx,ty,px,py){
 // so a world 30x this size costs nothing until the camera reaches it. A chunk is about 1024 art pixels square at any
 // tier (32 tiles at 32 px, 16 at 64), so a tier change keeps the canvases the same size.
 export const CH=Math.max(8,Math.round(1024/TILE));
-export const CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
-const chunks=new Map();
+export let CHUNKS_X=Math.ceil(W/CH),CHUNKS_Y=Math.ceil(H/CH);
+const chunks=new Map(),jobs=new Map(); // jobs: chunks half made in idle moments (getChunk)
 // Bumped whenever cached chunks are thrown away, so a renderer holding a copy of them (draw.js's still-camera terrain
 // cache, #716) knows to redraw it.
 export let chunkGen=0;
 // Whether any terrain asset is loaded (then chunks are painted at TILE, else at U). Refreshed when assets change.
 let artOn=null;
-const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_CANOPY,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
+const terrainIds=()=>[ASSET_TILES,ASSET_ROAD,ASSET_EDGES,ASSET_PROPS,ASSET_PEAKS,ASSET_CANOPY,ASSET_TOWNS].flatMap(Object.keys); // a town or landmark piece too: it is drawn at TILE
 export function terrainArt(){if(artOn===null)artOn=terrainIds().some(id=>assetPixels(id));return artOn}
-onAssets(id=>{if(id&&/^portrait:/.test(id))return;chunks.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))}); // a tile asset arrived (a face is not terrain, #710) (or the index changed): repaint on the next request
+// A tile asset arrived (or the index changed): repaint on the next request. A sprite sheet is none of the terrain's business:
+// each one used to throw every chunk away, a stall on whatever camera was up when the sheets came in (#729).
+// A cut town piece has no hook table of its own (townart.js asks for them by name), nor is the scenery sheet in the tables above, so they count by name: fields, bridges and walls and towers that arrived after the last
+// listed asset used to stay missing until something else repainted.
+const repaint=()=>{chunks.clear();jobs.clear();chunkGen++;treeSpots.clear();planKey=-1;artOn=null;gArt=null;canopyOn=PROP_BIOMES.some(b=>canopyImg(b,0))};
+// Another map (#1013): none of what was painted is any use, and the grid is its size. fk and fk2 key a tile's layout by its index, and an index is another tile now.
+onWorld(()=>{CHUNKS_X=Math.ceil(W/CH);CHUNKS_Y=Math.ceil(H/CH);BLEND[ROAD]=sceneryOn?0:1;fk=fk2=-1;repaint()},()=>({chunkGrid:[CHUNKS_X,CHUNKS_Y],roadBlends:BLEND[ROAD]}));
+let cutWait=null; // the cut pieces come in a burst: one repaint for the lot
+onAssets(id=>{if(id!=null&&/^(building|tile):lpc-|^prop:scenery$/.test(id)&&!terrainIds().includes(id)){if(cutWait===null)cutWait=setTimeout(()=>{cutWait=null;repaint()},150);return}
+  if(id!=null&&!terrainIds().includes(id))return;repaint()});
 
 // Cached canvas for chunk (cx,cy): min(CH,W-cx*CH) by min(CH,H-cy*CH) tiles at k pixels a tile (TILE, or U with no
 // terrain asset). c.uw and c.uh give its size in world units (tiles * U), which is what the renderer scales it to.
-export function getChunk(cx,cy){const k=cy*CHUNKS_X+cx;let c=chunks.get(k);if(!c){c=paintChunk(cx,cy);chunks.set(k,c)}return c}
+// A chunk's pixels take a few hundred ms of plain script, too long for one frame, so they are made a row of tiles at a time in the
+// browser's idle moments, nearest the camera first (warmChunks): the camera finds them done, on the road and after a cut. A chunk asked
+// for before that is simply finished on the spot, from the row it had reached; the result is the same either way.
+export function getChunk(cx,cy){const k=cy*CHUNKS_X+cx;let c=chunks.get(k);if(!c){const j=jobs.get(k)||startChunk(cx,cy);paintRows(j,Infinity);c=finishChunk(j);chunks.set(k,c);jobs.delete(k)}return c}
 
-function paintChunk(cx,cy){
-  const art=terrainArt(),k=art?TILE:U,tx0=cx*CH,ty0=cy*CH,cw=Math.min(CH,W-tx0),ch=Math.min(CH,H-ty0),stride=cw*k;
+function startChunk(cx,cy){
+  const art=terrainArt(),k=art?TILE:U,tx0=cx*CH,ty0=cy*CH,cw=Math.min(CH,W-tx0),ch=Math.min(CH,H-ty0);
   const cv=document.createElement('canvas');cv.width=cw*k;cv.height=ch*k;cv.uw=cw*U;cv.uh=ch*U;
-  const c=cv.getContext('2d');
-  const img=c.createImageData(cw*k,ch*k),d=img.data;
-  for(let j=0;j<ch;j++)for(let i=0;i<cw;i++){const tx=tx0+i,ty=ty0+j,t=tiles[I(tx,ty)];
+  const c=cv.getContext('2d'),img=c.createImageData(cw*k,ch*k);
+  return {art,k,tx0,ty0,cw,ch,cv,c,img,row:0}}
+// The chunk's pixels from the row it reached, until the clock passes `until`. True when they are all done.
+function paintRows(J,until){const {art,k,tx0,ty0,cw,ch}=J,stride=cw*k,d=J.img.data;
+  for(;J.row<ch;J.row++){const j=J.row;if(until!==Infinity&&performance.now()>=until)return false;
+    for(let i=0;i<cw;i++){const tx=tx0+i,ty=ty0+j,t=tiles[I(tx,ty)];
     for(let py=0;py<k;py++)for(let px=0;px<k;px++){
-      const col=rgb(art?pixel(t,tx,ty,px,py):procPixel(t,tx,ty,px,py)),o=((j*k+py)*stride+i*k+px)*4,sh=art?shade(t,tx,ty,(px/ART)|0,(py/ART)|0):shade(t,tx,ty,px,py);
-      d[o]=col[0]*sh;d[o+1]=col[1]*sh;d[o+2]=col[2]*sh;d[o+3]=255}}
-  c.putImageData(img,0,0);
+      const col=rgb(art?(sceneryOn?scenePixel(t,tx,ty,px,py):pixel(t,tx,ty,px,py)):procPixel(t,tx,ty,px,py)),o=((j*k+py)*stride+i*k+px)*4,sh=art?shade(t,tx,ty,(px/ART)|0,(py/ART)|0):shade(t,tx,ty,px,py);
+      d[o]=col[0]*sh;d[o+1]=col[1]*sh;d[o+2]=col[2]*sh;d[o+3]=255}}}
+  return true}
+function finishChunk(J){const {art,k,tx0,ty0,cw,ch,cv,c}=J;
+  c.putImageData(J.img,0,0);J.img=null;if(art&&sceneryOn){c.save();c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);paintScenery(c,tx0,ty0,tx0+cw,ty0+ch);c.restore()}
   // decorations are painted in world units; the scaled, translated context clips them to this chunk
   c.scale(k/U,k/U);c.translate(-tx0*U,-ty0*U);
   if(art)paintCanopy(c,tx0,ty0,tx0+cw,ty0+ch);
   decorate(c,tx0,ty0,tx0+cw,ty0+ch);
   return cv}
+
+// The idle painter. draw.js says where the camera is, every frame; while any chunk is missing one idle callback at a time does a slice
+// of the nearest. WARM.SLICE caps a slice, so it fits the gap a frame leaves; a chunk's last step (its scenery, canopy and places) is one
+// short piece of its own. Nothing is scheduled once every chunk is done, or after a repaint until the next frame asks.
+export const WARM={SLICE:7,WAIT:300};
+let warmX=0,warmY=0,warmDue=false,warmAfter=0;
+// A row of tiles is a slice's smallest step and can take 20 ms: fine on the road, a dropped frame in a fade. The idle painter sits out the next `ms`; draw.js's next ask after that starts it again.
+export const warmRest=ms=>{warmAfter=performance.now()+ms};
+function nextChunk(){let best=-1,bd=Infinity;for(let cy=0;cy<CHUNKS_Y;cy++)for(let cx=0;cx<CHUNKS_X;cx++){const k=cy*CHUNKS_X+cx;if(chunks.has(k))continue;
+    const dx=(cx+.5)*CH-warmX,dy=(cy+.5)*CH-warmY,d=dx*dx+dy*dy-(jobs.has(k)?CH*CH:0);if(d<bd){bd=d;best=k}}return best}
+function warmStep(room){const k=nextChunk();if(k<0)return;let J=jobs.get(k);if(!J){J=startChunk(k%CHUNKS_X,Math.floor(k/CHUNKS_X));jobs.set(k,J)}
+  if(J.row>=J.ch){chunks.set(k,finishChunk(J));jobs.delete(k)}else paintRows(J,performance.now()+Math.max(1,room))}
+function warmSlice(dl){warmDue=false;if(performance.now()<warmAfter)return;warmStep(dl&&dl.timeRemaining?Math.min(WARM.SLICE,dl.timeRemaining()):WARM.SLICE);
+  if(chunks.size<CHUNKS_X*CHUNKS_Y)askIdle()}
+function askIdle(){if(warmDue||performance.now()<warmAfter)return;warmDue=true;if(typeof requestIdleCallback==='function')requestIdleCallback(warmSlice,{timeout:WARM.WAIT});else setTimeout(warmSlice,16)}
+// tx,ty: the camera's centre in tiles. One comparison a frame once the map is done.
+export function warmChunks(tx,ty){warmX=tx;warmY=ty;if(chunks.size<CHUNKS_X*CHUNKS_Y)askIdle()}
+// The same work without waiting for idle moments, for `ms` of this frame: behind the dark of a crossing there is nothing to keep smooth (render/roadfade.js).
+export function warmNow(ms,tx,ty){warmX=tx;warmY=ty;const end=performance.now()+ms;while(chunks.size<CHUNKS_X*CHUNKS_Y){const left=end-performance.now();if(left<=0)return;warmStep(left)}}
+// A chunk only if it is done (a crossing's first frames never stop to paint one), and whether every chunk over tiles x0..x1, y0..y1 is.
+export const peekChunk=(cx,cy)=>chunks.get(cy*CHUNKS_X+cx)||null;
+export function chunksDone(x0,y0,x1,y1){const i0=Math.max(0,Math.floor(x0/CH)),i1=Math.min(CHUNKS_X-1,Math.floor(x1/CH)),j0=Math.max(0,Math.floor(y0/CH)),j1=Math.min(CHUNKS_Y-1,Math.floor(y1/CH));
+  for(let j=j0;j<=j1;j++)for(let i=i0;i<=i1;i++)if(!chunks.has(j*CHUNKS_X+i))return false;return true}
 
 // Paint every chunk into one W*U by H*U canvas (world units). Compatibility helper for tools and
 // previews; the renderer never calls it.
@@ -378,6 +491,11 @@ export function buildTerrain(){
   for(let cy=0;cy<CHUNKS_Y;cy++)for(let cx=0;cx<CHUNKS_X;cx++){const c=getChunk(cx,cy);tctx.drawImage(c,cx*CH*U,cy*CH*U,c.uw,c.uh)}
   return terrain}
 
+// A world with a scenery note (render/scenery.js): the river as one smooth water, its land edges as plain ground with no tile-shaped
+// bank piece, the meadow flowers as drifts rather than flower tiles, and the region's ground tone over it all.
+function scenePixel(t,tx,ty,ax,ay){const w=peakArt()&&peakPixel(tx,ty,ax,ay)?null:riverPixel(tx,ty,ax,ay)||roadPixel(tx,ty,ax,ay);if(w)return w; // a peak rising over the tile north of it stands in front of the river there
+  const g=sceneGround(t,tx,ty);soilKind=-1;const c=pixel(g,tx,ty,ax,ay);return tonePixel(c,soilKind>=0?soilKind:g,tx,ty,ax,ay)}
+
 // Towns and landmarks (walls, gate, buildings, banners, graves, crypt mouths, the lair): render/townart.js draws them in
 // world units onto the chunk context, from their generated assets or procedurally (#177 slice 3).
-function decorate(tctx,x0,y0,x1,y1){drawPlaces(tctx,x0,y0,x1,y1)}
+function decorate(tctx,x0,y0,x1,y1){drawPlaces(tctx,x0,y0,x1,y1);drawQuay(tctx,x0,y0,x1,y1)}

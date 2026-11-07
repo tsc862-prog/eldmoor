@@ -44,7 +44,7 @@ import {mirrorDirty} from '../src/sim/notebook.js';
 import {memoryMirror} from './memory-mirror.mjs';
 import {semanticRecall} from './embed.mjs'; // semantic memory search, opt in with --embed (issue #553)
 import {ollamaAdapter} from './providers/ollama.mjs';
-import {WORLD_ID, CRYPT} from '../src/world/map.js';
+import {WORLD_ID, MAP_ID, CRYPT} from '../src/world/map.js';
 import {learnPlace} from '../src/sim/lore.js';
 import {season} from '../src/sim/opening.js';
 import {loadCampaigns} from './campaign-files.mjs';
@@ -69,7 +69,7 @@ export function localBackend(hostOpts) {
       return a ? hostCall(a.id, tool, args, hostOpts) : Promise.resolve({ok: false, error: heroId != null ? `Hero #${heroId} is not agent-played.` : 'No agent-played hero.', offline: true})},
     dmCall: (tool, args) => hostDm(tool, args, hostOpts), // the DM seat (issue #66): answered at once, the voice calls long-polled (#680)
     narrate: (heroId, text) => {const a = heroId != null ? playerSeat(heroId) : playerSeat(); if (a) playerNarrate(a.id, text)},
-    info: () => ({connected: true, dm: dmSeatOn(), ...(prepView().state !== 'idle' ? {dmPrep: prepView()} : {}), heroes: seats().map(seatInfo)}),
+    info: () => ({connected: true, map: MAP_ID, dm: dmSeatOn(), ...(prepView().state !== 'idle' ? {dmPrep: prepView()} : {}), heroes: seats().map(seatInfo)}),
   };
 }
 
@@ -90,6 +90,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     restore(snap);
     console.log(`[play] resumed ${worldFile} at day ${Math.floor(S.gameMin / 1440) + 1}`);
   } else {
+    if (opt('sides', null)) process.env.ELDMOOR_SIDES = opt('sides', null); // --sides lore (#1025): read by init() as ELDMOOR_SIDES
     const fs = flag('fellowship') || opt('fellowship', null); const others = opt('others', null), none = (others || process.env.ELDMOOR_OTHERS) === 'none', pro = opt('prologue', null), po = pro ? {prologue: pro} : {}; init(fs || none ? {fac: Number(opt('fac', 0)) === 1 ? 1 : 0, ...(others ? {others} : {}), ...po} : {fellowship: false, ...po}); // --others none (#780): the company alone, whoever the DM brings
     const warm = Number(opt('warm', 0)) * 3600; for (let i = 0; i < warm; i++) step(1 / 60);
   }

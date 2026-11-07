@@ -19,10 +19,11 @@
 //
 // State (lazy, saved with the world): S.rivals = {heat:{'lo:hi':n}, on:{'lo:hi':{since,why}},
 // last:{'crypt:gid'|'boss:gid':gameMin}, t, stats:{declared,ended,duels,assists,heat:{kind:events}}}; keys are guild ids.
-import {S} from './state.js';
+import {S,loreSides,inCompany} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {inSlots} from './company.js'; // the slotted company (#588)
+import {WORDS} from '../world/words.js';
 
 export const RIV={VET:12,KILL_VET:2.5,KILL:1,CRYPT:1,BOSS:1.5,CONTEST:1440,DECLARE:3.5,END:1,CAP:8,HALF:2,DUEL:1.6,ASSIST:1.5,TICK:30};
 
@@ -30,7 +31,7 @@ const R=()=>S.rivals||(S.rivals={heat:{},on:{},last:{},t:S.gameMin,stats:{declar
 const key=(g,h)=>g.id<h.id?g.id+':'+h.id:h.id+':'+g.id;
 const tagTxt=g=>({t:'<'+g.tag+'> '+g.name,c:'f'+g.fac});
 const live=g=>g&&!g.retired;
-const hasFellow=g=>S.agents.some(a=>a.guild===g&&inSlots(a)&&a.state!=='dead');
+const hasFellow=g=>S.agents.some(a=>a.guild===g&&(inSlots(a)||(loreSides()&&inCompany(a)))&&a.state!=='dead'); // sides as lore (#1025): no company's guild feuds
 const byId=id=>S.GUILDS.find(g=>g.id===Number(id));
 
 function heat(g,h,n,why,kind){
@@ -51,7 +52,7 @@ export function rivalKill(victim,killer){
 // others: guilds of the other side present at the deed (Kragmaw's losing raiders), if any.
 export function rivalDeed(kind,g,others){
   if(!live(g))return;const r=R(),amt=kind==='boss'?RIV.BOSS:RIV.CRYPT;
-  const what=kind==='boss'?'both lay claim to Kragmaw':'both stake their name on the Sunken Crypt';
+  const what=kind==='boss'?'both lay claim to Kragmaw':'both stake their name on '+WORDS.crypt;
   const seen=new Set();
   for(const h of others||[]){if(seen.has(h))continue;seen.add(h);heat(g,h,amt,'they fought over Kragmaw',kind)}
   for(const k in r.last){const [kd,id]=k.split(':');if(kd!==kind)continue;const h=byId(id);
