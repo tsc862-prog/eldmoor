@@ -46,6 +46,7 @@ import {ensureNpcs} from './npcs.js';
 import {stageScene} from './staged.js';
 import {heard,since,dmAlive,goneEpoch,callDeadline,lateWhy} from './dmreflex.js'; // the DM's reflexes (#561)
 import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
+import {farAnswer} from './farlands.js'; // the roads out and what lies past them (#1013)
 import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
 import {inSlots,slotHeroes,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
@@ -377,13 +378,14 @@ function townAnswer(p,a,text){const raw=String(text||''),t=raw.toLowerCase();if(
   for(const m of S.places||[])if(m.name&&nmRe(m.name).test(t))pl.push({name:m.name,at:m,z:m.z});
   for(const g of pl.slice(0,1)){learnPlace(a,g.name,'told');
     parts.push(g.name+' lies '+(g.at?wayTo(p,g.at):'a way off')+(g.z!=null&&ZONES[g.z]&&g.name!==ZONES[g.z]?', in '+ZONES[g.z]:'')+(g.z!=null&&g.name===ZONES[g.z]?'; '+jobRumour(a,g.z):'')+'.')}
+  const far=farAnswer(a,t);if(far)parts.push(far);
   if(CRYPTQ.test(t)||cryptIf(n=>nmRe(n.replace(/^the /i,'')).test(t))){fit=true;const D=CRYPT;
     const cw=p.role==='captain'?captainWarning(a):null;
     parts.push(cw||((D?D.name:'The Crypt')+' lies '+(D?wayTo(p,D):'far off')+'. Tried blades go down together, or not at all.'));
     if(D)learnPlace(a,D.name,'told')}
   // a name nobody here knows: a capitalised run in the middle of the line
   const known=new Set([a.name,p.name,...people().flatMap(q=>[q.name,String(q.name||'').split(' ')[0]]),...(S.agents||[]).map(b=>b.name),...ZONES,...CITY.map(c=>c.name),...LANDMARKS.map(l=>l.name),cryptTitle()].filter(Boolean).flatMap(x=>String(x).split(' ')).map(x=>x.toLowerCase()));
-  if(!hit.length&&!pl.length&&!(CRYPTQ.test(t))){const runs=[];let cur=[];
+  if(!hit.length&&!pl.length&&!far&&!(CRYPTQ.test(t))){const runs=[];let cur=[];
     for(const m of raw.matchAll(/[A-Za-z][A-Za-z'-]*/g)){const w=m[0],i=m.index,before=raw.slice(0,i).trimEnd(),start=!before||/[.!?]$/.test(before),lw=w.toLowerCase();
       const cap=/^[A-Z]/.test(w)&&!known.has(lw)&&!STOP.has(lw)&&(!start||cur.length);
       if(cap)cur.push(w);else{if(cur.length)runs.push(cur.join(' '));cur=[]}}
