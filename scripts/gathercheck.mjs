@@ -148,5 +148,39 @@ const back = S.agents.find(x => x.id === someone.id);
 ok(back && JSON.stringify(back.profs) === before, 'professions survive a save round trip');
 ok(MATERIALS['Tin Ore'].supply === snap.MATS['Tin Ore'].supply, 'material supply survives a save round trip');
 
+console.log('the invitations (#872)');
+{ const {hostPace} = await import('../src/sim/player-host.js'), {INVITE, sellsBest} = await import('../src/sim/invite.js'), {memoryNote, talkText} = await import('./pacing.mjs'), {TRADE_AGE, wakeLevelUp} = await import('../src/sim/wakes.js');
+  reseed(0x3a4e5 ^ 11); init({fellowship: false});
+  const h = S.agents.find(x => x.fac === 0 && x.state !== 'dead'); markPlayer(h, true); h.profs = []; h.reflect = null;
+  const town = CITY.find(c => c.fac === h.fac), inTown = () => {h.state = 'town'; h.x = town.ah.x; h.y = town.ah.y; h.pq = []; h.target = null};
+  const field = n => {h.state = 'hunt'; h.x = n.x + 3; h.y = n.y; h.pq = []; h.target = null; h.dest = null};
+  const turn = async () => {h.playFresh = true; h.reflect = null; return (await hostPace(h.id, {brief: true})).brief}; // what a runner reads after its wake
+  const later = m => {S.gameMin += m};
+  inTown(); let b = await turn();
+  ok(b.invite && b.invite.kind === 'trainer' && /Trainers here teach herbalism, mining/.test(b.invite.text) && /learn_profession/.test(b.invite.text) && talkText(b).includes(b.invite.text), 'in a friendly town the header names the trainers: ' + (b.invite || {}).text);
+  b = await turn(); ok(!b.invite, 'the next turn carries no line');
+  later(2 * 1440); b = await turn(); ok(!b.invite || b.invite.kind !== 'trainer', 'nor two game days on, still on the same visit');
+  let lk = call(h, 'look'); ok(!lk.trainer && /about \d+g, .+ about \d+g/.test(lk.gathered_sells_best), 'look keeps once a visit too, and names the two materials selling best: ' + lk.gathered_sells_best);
+  ok(call(h, 'auction_browse').gathered_sells_best === sellsBest(), 'auction_browse says the same');
+  const n0 = NODES.find(n => n.kind === 'herb'); field(n0);
+  S.gameMin += INVITE.DAY; b = await turn();
+  ok(b.invite && b.invite.kind === 'nodes_in_sight' && /an herb patch 3 tiles west \(herbalism\)/.test(b.invite.text) && /you hold no gathering trade/.test(b.invite.text) && b.invite.text.length < 130, 'a node in sight is named, with no trade to work it: ' + (b.invite || {}).text);
+  lk = call(h, 'look'); ok(/herb patch/.test(lk.nodes_in_sight) && /no gathering trade/.test(lk.nodes_in_sight), 'look carries nodes_in_sight: ' + lk.nodes_in_sight);
+  ok(!(h.profs || []).length && !h.gathering && !(h.pq || []).length, 'the words do nothing: no trade learned, no gathering begun');
+  b = await turn(); ok(!b.invite, 'not again for days to a hero with no trade');
+  const far = NODES.reduce((w, n) => {const d = Math.min(...NODES.filter(x => x !== n).map(x => dist(x, n))); return d > w.d ? {n, d} : w}, {n: null, d: 0}).n;
+  ok(far, 'a spot stands apart'); h.x = far.x + 40; const empty = call(h, 'look'); ok(!empty.nodes_in_sight || !/herb patch 3 tiles/.test(empty.nodes_in_sight), 'out of sight, the spot is not named');
+  later(INVITE.DAY); inTown(); await turn(); ok(!(await turn()).invite, 'back in town: told once');
+  call(h, 'learn_profession', {id: 'herbalism'}); later(INVITE.DAY); field(n0); b = await turn();
+  ok(b.invite && b.invite.node === n0.id && /you can work it \(gather\)/.test(b.invite.text), 'with the trade: you can work it: ' + (b.invite || {}).text);
+  later(INVITE.NODE_GAP + 1); b = await turn(); ok(!b.invite || b.invite.node !== n0.id, 'the same spot is not told twice');
+  later(INVITE.DAY); inTown(); h.profs = [{id: 'herbalism', skill: 1}, {id: 'alchemy', skill: 1}]; b = await turn(); ok((b.invite || {}).kind !== 'trainer' && !call(h, 'look').trainer, 'two trades held: no trainer line');
+  h.state = 'fight'; h.profs = []; later(INVITE.DAY); b = await turn(); ok(!b.invite, 'never in a fight');
+  h.state = 'town'; h.lvl = 3; h.profs = []; h.playEv = []; wakeLevelUp(h, 100); ok(h.playEv.some(e => e.text === TRADE_AGE && !e.w) && h.playEv.some(e => e.w === 2), 'level 3 with no trade: the line rides the level-up turn and wakes nothing itself');
+  h.profs = [{id: 'mining', skill: 1}]; h.playEv = []; wakeLevelUp(h, 100); ok(!h.playEv.some(e => e.text === TRADE_AGE), 'not for a hero with a trade');
+  const sc = S.agents.find(x => !x.player && x.state !== 'dead'), {inviteBrief} = await import('../src/sim/invite.js'); ok(inviteBrief(sc, null) === null, 'a scripted hero is never invited');
+  S.gameMin += 0; ok(memoryNote({}) === memoryNote({invite: null}), 'nothing in the header without a line');
+}
+
 console.log(fail ? '\n' + fail + ' check(s) FAILED\n' : '\nall gathering checks passed\n');
 process.exit(fail ? 1 : 0);

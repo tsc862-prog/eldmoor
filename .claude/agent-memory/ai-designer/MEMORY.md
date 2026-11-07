@@ -91,14 +91,21 @@
 - [Others none #780](others_none.md) — no-roster world, summon_hero lever, guild skip, GOODS floor, heir rule, fixture traps
 - [Log outcome tags #785](log_outcome_tags.md) — OUTCOME regex in history.js leaves src off outcome lines; add new outcome openings there
 - [Crawl positions #744](crawl_positions.md) — cr.pos from roomgrid.js, move on scene_act, room in words; reach vs 2 rounds for #745; fixture trap
+- [Open patch #746](open_patch.md) — fights on the map: sc.fp, agentsDecide gate, tiles to x y, ELDMOOR_PATCH=all, what was left out
 - [Crawl geometry #745](crawl_geometry.md) — geometry.js rules, reach fine at rounds:2, GUARD_CUT not monotonic, deaths noise needs 60+ sims
 - [Wait is not progress #790](wait_not_progress.md) — wait cap 240, level condition -> hunt, 12 h town-idle guard, refusals list the board
 - [Errands inside #790](errand_wait.md) — #732 + #802: an errand is a capped wait, stale unless run, guard outranks it and ARRIVE_HOLD
 - [Paths #794](paths_794.md) — path.js rules: near lines skip A*, mob limit, clearLine, reachable goal swap, road shoulders, fixture traps
 - [Emote repeat #801](emote_repeat.md) — emote repeat refusal, unseen emote act:false; runner flag left to brain-builder
+- [Invitations #872/#864](invitations.md) — invite.js: one rare header line, computed at read, marks on playFresh; why not events
 - [Road traffic #796](road_traffic.md) — tile-list walkers, MARKET flag is the hash proof, mobs untouched, rescue via stageScene, no wake for passing
 - [New blood grace #660](new_blood_grace.md) — Fellowship replacements skip chance duels 480 min; recruit() stamps newBlood, pvp.js skips
 - [DM day one #910](dm_day_one.md) — ensure() in postHook/withdrawHook; held-world prep turn must not crash; dmcheck --dayone
 - [Seeded import dice #888](seeded_import_dice.md) — GOODS stock rolled at import, before seedRng; seeded checks import scripts/seed-first.mjs first
 - [Save drift #324](save_drift.md) — v7/v6 flake = solo id reuse in the fixture; boss, dice, timers now saved (kept.js); play-on check
+- [Map rebind #1013](map_rebind.md) — onWorld hooks, worded() tables, WORDS.world stays, atlas tables, mapKey, capture lint, no-lair gap
 - [Several dungeons #891](multi_dungeon.md) — CRYPTS, crypts.js one reader, first dungeon writes nothing, cryptFor, entry, a room's blows must fit its rounds
+- [Guild choice #954](guild_choice.md) — hasLinks gate in guilds open(); guild_join/guild_found tools
+- [Sides as lore #1025](sides_lore.md) — loreSides gates: sameSide, ownTown, foeOf, mayFight, sidesOff, raidSide; fac stays, others stays separate
+- [Opening job fit #1016](opening_job_fit.md) — jobbar.js level bar; opening names a fitting job; job proposals refused up front; hosted-only
+- [No lair #1013](no_lair.md) — readers crypts.js/lair.js, rule 12, dormant boss, boot words, TESTBARE fixtures, errors hidden as sentences

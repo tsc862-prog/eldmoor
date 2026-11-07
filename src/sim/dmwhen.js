@@ -24,12 +24,14 @@ import {dmlog} from './dmlog.js';
 import {companies,companyById,slotted} from './company.js';
 import {ensureNpcs} from './npcs.js';
 import {maxHp} from './heroes.js';
+import {markNamed} from './dmnames.js'; // a place the DM marked, with or without "the" (#1017)
+import {onWorld} from './kept.js';
 
 export const WHEN={MAX:6,PER_DAY:12,HOURS:24,MIN_H:1,MAX_H:72,EVERY:2,KEEP:12,SEEN_H:24,R:4,R_MIN:1,R_MAX:15};
 export const WATCH={MAX:6,PER_DAY:12};
 const DAY=1440,NIGHT_HH=20,DAWN_HH=6;
 // The actions a when may carry: the DM's voice and its world tools (only those that exist in DM_TOOLS; create_site joins when it lands).
-const DEFER0=['narrate','npc_say','whisper','dream','stage_scene','post_hook','place_person','mark_place','give_item','take_item','create_site','summon_hero','pull_lever'];
+const DEFER0=['narrate','npc_say','whisper','dream','stage_scene','post_hook','place_person','mark_place','give_item','take_item','create_site','summon_hero','call_to','pull_lever'];
 export const deferTools=()=>DEFER0.filter(n=>DM_TOOLS.some(t=>t.name===n));
 const WHO_RE=/\{who\}|\$who\b/gi,WHO_TEST=/\{who\}|\$who\b/i;
 // The trigger table (append-only): args (? = optional), what it means, and whether it names a hero ({who}).
@@ -76,7 +78,7 @@ function companyOfArg(v){const s=clean(v,40),lo=s.toLowerCase();if(!s)return nul
   return companies().find(C=>String(C.id)===s||String(C.name||'').toLowerCase()===lo)||null}
 function placeArg(v){const s=clean(v,60),lo=s.toLowerCase();if(!s)return null;
   const m=/^\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?$/.exec(s);if(m)return {x:Number(m[1]),y:Number(m[2]),name:m[1]+','+m[2]};
-  const pl=(S.places||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo);if(pl)return {x:pl.x,y:pl.y,name:pl.name,pid:pl.id};
+  const pl=markNamed(s);if(pl)return {x:pl.x,y:pl.y,name:pl.name,pid:pl.id};
   const mk=(S.marks||[]).find(p=>String(p.id)===s||(p.name||'').toLowerCase()===lo);if(mk)return {x:mk.x,y:mk.y,name:mk.name||'the marked spot'};
   const lm=LANDMARKS.find(l=>{const n=l.name.toLowerCase();return n===lo||n.replace(/^the /,'')===lo.replace(/^the /,'')});if(lm)return {x:lm.x,y:lm.y,name:lm.name};
   const c=townOf(s);if(c)return {x:c.gate.x,y:c.gate.y,name:c.name};
@@ -165,7 +167,9 @@ const yes=v=>v===true||/^(yes|true|1|on)$/i.test(String(v==null?'':v).trim());
 const objArg=v=>{if(typeof v==='string'){try{v=v.trim()?JSON.parse(v):{}}catch(e){return null}}return v==null?{}:typeof v==='object'&&!Array.isArray(v)?{...v}:null};
 const hoursOf=v=>v==null||v===''?WHEN.HOURS:Number(v);
 const usesWho=x=>WHO_TEST.test(typeof x==='string'?x:JSON.stringify(x||{}));
-export const WHEN_USAGE='when takes: trigger ('+TRIGGER_NAMES.join('|')+'), on (an object of the trigger\'s arguments, e.g. {"region":"'+ZONES[ZONES.length-1]+'","company":"fellowship"}), action (a tool: '+deferTools().join('|')+', or a lever name such as set_condition), args (an object of that tool\'s arguments, as you would call it; "{who}" in a text is the hero who tripped it), hours? (1-72 until it lapses, default 24), once? (yes|no, default yes; a repeating one fires at most once a game day), reason';
+const whenUsage=()=>'when takes: trigger ('+TRIGGER_NAMES.join('|')+'), on (an object of the trigger\'s arguments, e.g. {"region":"'+ZONES[ZONES.length-1]+'","company":"fellowship"}), action (a tool: '+deferTools().join('|')+', or a lever name such as set_condition), args (an object of that tool\'s arguments, as you would call it; "{who}" in a text is the hero who tripped it), hours? (1-72 until it lapses, default 24), once? (yes|no, default yes; a repeating one fires at most once a game day), reason';
+export let WHEN_USAGE=whenUsage();
+onWorld(()=>{WHEN_USAGE=whenUsage()},()=>({whenUsage:WHEN_USAGE})); // its example names a region of the live map (#1013)
 export const WATCH_USAGE='watch takes: trigger ('+TRIGGER_NAMES.join('|')+'), on (the trigger\'s arguments, as for when), note? (what to remember when it wakes you), hours? (1-72, default 24), once? (yes|no, default yes)';
 const triggersList=()=>Object.entries(TRIGGERS).map(([k,t])=>k+' {'+t.args+'}: '+t.desc);
 // Split loose top-level keys between the trigger (on) and the action (args).

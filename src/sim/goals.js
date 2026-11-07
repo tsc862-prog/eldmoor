@@ -24,13 +24,14 @@
 // Tiers: a recruit's first oath is tier 0; each kept oath rolls the next tier (max 2). An oath
 // whose target dies first is void and re-rolled at the same tier. Counts live on S.goals.
 import {rnd,ri,pickA} from '../core/rng.js';
-import {CRYPT,ZONES,REGIONS,ZPTS,zoneAt,zoneFor,dist} from '../world/map.js';
+import {ZONES,REGIONS,ZPTS,zoneAt,zoneFor,dist} from '../world/map.js';
+import {cryptName,cryptZone,cryptMouth,nearCrypt} from './crypts.js';
 import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {ELITES} from '../data/mobs.js';
 import {EPICS,DG_EPICS,BOSS_EPICS} from '../data/items.js';
 import {HAMLETS,TRADES,RAIDERS,PILGRIM_ZONE,KIN,CHILD,ORIGINS,GOAL_TEXT,GOAL_DONE} from '../data/origins.js';
-import {S} from './state.js';
+import {S,foeOf} from './state.js';
 import {log} from './chronicle.js';
 import {timeline} from './history.js';
 import {moment} from './reflect.js';
@@ -41,6 +42,7 @@ import {hushed} from './oath.js'; // an agent hero's goal is an offered thread u
 import {oathKept,ownHit,ownTick,oathFailed} from './sworn.js';
 import {hasLinks} from './runlink.js';
 import {ev} from './notify.js';
+import {onWorld} from './kept.js';
 
 const fill=(t,v)=>t.replace(/\{(\w+)\}/g,(m,k)=>v[k]!==undefined?String(v[k]):m);
 const lc=t=>t.charAt(0).toLowerCase()+t.slice(1);
@@ -49,8 +51,9 @@ const bump=(o,k)=>{o[k]=(o[k]||0)+1};
 
 // Lowest level that hunts in zone z (from the zoneFor ladder), so goals can speak in bands.
 const bandMin=z=>{for(let l=1;l<=20;l++)if(zoneFor(l)===z)return l;return 99};
-const FAR=ZONES.indexOf(PILGRIM_ZONE)>=0?ZONES.indexOf(PILGRIM_ZONE):REGIONS.findIndex(r=>r.far), // a spec can mark its far region with far:true
-  CRYPT_Z=zoneAt(CRYPT.x,CRYPT.y);
+const farZone=()=>ZONES.indexOf(PILGRIM_ZONE)>=0?ZONES.indexOf(PILGRIM_ZONE):REGIONS.findIndex(r=>r.far); // a spec can mark its far region with far:true
+let FAR=farZone(),CRYPT_Z=cryptZone();
+onWorld(()=>{FAR=farZone();CRYPT_Z=cryptZone()},()=>({goalFar:FAR,goalCryptZone:CRYPT_Z})); // another map (#1013)
 const alive=x=>x&&x.state!=='dead';
 const byId=id=>S.agents.find(x=>x.id==id); // loose: nemesis keys are strings
 
@@ -80,7 +83,7 @@ const M={
   ascend:(a,t)=>{if(a.lvl>=20)return null;const need=Math.min(20,Math.max(a.lvl+ri(3,4),t===0?a.lvl+ri(4,7):t===1?ri(10,14):ri(16,20)));return mk('ascend',t,{need})},
   hoard:(a,t)=>mk('hoard',t,{need:Math.max(ri(...HOARD[t]),a.gold+30)}),
   pilgrimCrypt:(a,t)=>CRYPT_Z>=0?Object.assign(mk('pilgrimCrypt',t),{zone:CRYPT_Z,minLvl:Math.max(1,bandMin(CRYPT_Z)-3)}):null,
-  pilgrimFar:(a,t)=>FAR>=0?Object.assign(mk('pilgrimFar',t,{zone:PILGRIM_ZONE}),{zone:FAR,minLvl:Math.max(1,bandMin(FAR)-3)}):null,
+  pilgrimFar:(a,t)=>FAR>=0?Object.assign(mk('pilgrimFar',t,{zone:ZONES[FAR]}),{zone:FAR,minLvl:Math.max(1,bandMin(FAR)-3)}):null,
   avenge:(a,t,E)=>{if(!E){const pool=ELITES.filter(e=>e.lvl>=ELITE_LV[t][0]&&e.lvl<=ELITE_LV[t][1]);if(!pool.length)return null;E=pickA(pool)}
     const g=mk('avenge',t,{target:E.name+', '+E.title});g.target=E.name;return g},
   heirloom:(a,t,name)=>{if(name){if(DG_EPICS.includes(name))return mk('heirloomCrypt',t,{target:name});if(BOSS_EPICS.includes(name))return mk('heirloomBoss',t,{target:name});return mk('heirloom',t,{target:name})}
@@ -89,10 +92,10 @@ const M={
   heirloomBoss:(a,t)=>mk('heirloomBoss',t,{target:pickA(BOSS_EPICS)}),
   delve:(a,t)=>mk('delve',t),
   legend:(a,t)=>a.lvl>=8||t>=2?mk('legend',t):null, // a mid-tier oath only for heroes already past Mirefen
-  rival:(a,t)=>{const pool=S.agents.filter(x=>x.fac!==a.fac&&alive(x)&&x.lvl>a.lvl&&x.lvl<=a.lvl+6);if(!pool.length)return null;const r=pickA(pool);
+  rival:(a,t)=>{const pool=S.agents.filter(x=>foeOf(a,x)&&alive(x)&&x.lvl>a.lvl&&x.lvl<=a.lvl+6);if(!pool.length)return null;const r=pickA(pool);
     return mk('rival',t,{target:r.name,targetId:r.id,targetFac:r.fac,fac:FAC[r.fac].name,need:r.lvl+1})},
   // A guildmate's killer who still lives; the hero takes them as a nemesis so pvp.js hunts them on sight.
-  avengeHero:(a,t)=>{const seen={};for(const x of S.agents){if(!a.guild||x.guild!==a.guild||!alive(x))continue;for(const id in x.nemesis){const k=byId(id);if(alive(k)&&k.fac!==a.fac)seen[id]=x.nemesis[id]}}
+  avengeHero:(a,t)=>{const seen={};for(const x of S.agents){if(!a.guild||x.guild!==a.guild||!alive(x))continue;for(const id in x.nemesis){const k=byId(id);if(alive(k)&&foeOf(a,k))seen[id]=x.nemesis[id]}}
     const ids=Object.keys(seen).sort((p,q)=>byId(p).lvl-byId(q).lvl);if(!ids.length)return null;const id=ids[ri(0,Math.min(1,ids.length-1))],k=byId(id);a.nemesis[k.id]=seen[id]; // the two lowest-level killers: a recruit can catch those
     return mk('avengeHero',t,{target:k.name,targetId:k.id,targetFac:k.fac,victim:seen[id]})},
 };
@@ -131,13 +134,13 @@ export function goalEvent(a,kind,x){
   if(a&&a.vow)vowEvent(a,kind,x);
   if(a&&ownHit(a,kind,x))complete(a); // an oath in the hero's own words (#800)
   // An enemy hero x fell to a: every oath-bearer of a's side in the fight (within 8 tiles) shares the vengeance.
-  if(kind==='slay'){for(const h of S.agents){const g=h.goal;if(!g||g.done||g.type!=='avengeHero'||g.targetId!==x.id||!alive(h))continue;if(h===a||(h.fac!==x.fac&&dist(h,x)<=8))complete(h)}return}
+  if(kind==='slay'){for(const h of S.agents){const g=h.goal;if(!g||g.done||g.type!=='avengeHero'||g.targetId!==x.id||!alive(h))continue;if(h===a||(foeOf(h,x)&&dist(h,x)<=8))complete(h)}return}
   const g=a&&a.goal;if(!g||g.done)return;
   switch(kind){
   case 'kill':if(g.type==='avenge'&&x.elite&&x.name===g.target)complete(a);break;
   case 'epic':if(g.type.indexOf('heirloom')===0&&x===g.target)complete(a);break;
   case 'level':if(g.type==='ascend'){g.progress=a.lvl;if(a.lvl>=g.need)complete(a)}else if(g.type==='rival')checkRival(a);break;
-  case 'crypt':if(g.type==='delve'&&(g.dun||CRYPT.name)===x)complete(a);break; // x: the dungeon cleared; an oath is to one dungeon (#891)
+  case 'crypt':if(g.type==='delve'&&(g.dun||cryptName())===x)complete(a);break; // x: the dungeon cleared; an oath is to one dungeon (#891)
   case 'boss':if(g.type==='legend')complete(a);break;
   case 'died':if(rnd()<.5&&!g.offered)log(a,' died with the oath unkept: ',{t:g.text,c:'dm'},'.');break;
   }}
@@ -150,10 +153,10 @@ export const raidPull=a=>a.goal&&!a.goal.done&&(a.goal.type==='legend'||a.goal.t
 // heads for the goal point instead of a random hunting spot. a.zone is left alone, so a low
 // hero crossing a higher zone neither stops to hunt there nor picks its monsters. On arrival
 // the oath is kept and, if the zone is above their band, they turn for home.
-function goalPoint(a,g){if(g.type==='pilgrimCrypt')return{x:CRYPT.x,y:CRYPT.y+1};
+function goalPoint(a,g){if(g.type==='pilgrimCrypt')return cryptMouth(1);
   const gate=homeOf(a).gate;let best=null,bd=1e9;for(const p of ZPTS[g.zone]){const d=dist(p,gate);if(d<bd){bd=d;best=p}}return best}
 function pilgrimStep(a,g){
-  const arrived=g.type==='pilgrimCrypt'?dist(a,CRYPT)<2.6:zoneAt(a.x,a.y)===g.zone,thread=g.offered&&hasLinks(); // in real play a thread walks nobody anywhere (#800); a world with no host keeps its dice
+  const arrived=g.type==='pilgrimCrypt'?nearCrypt(a,2.6):zoneAt(a.x,a.y)===g.zone,thread=g.offered&&hasLinks(); // in real play a thread walks nobody anywhere (#800); a world with no host keeps its dice
   if(arrived&&a.state!=='ghost'){complete(a);if(!thread&&huntZone(a)!==g.zone&&(a.state==='hunt'||a.state==='travel'))goHome(a);return}
   if(thread)return;
   if(a.lvl<g.minLvl||a.party||(a.state!=='travel'&&a.state!=='hunt'))return;

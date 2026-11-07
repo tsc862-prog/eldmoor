@@ -832,7 +832,7 @@ onAssets(()=>{for(const c of Object.keys(npcId))delete npcId[c]});
 const MOB_SHEET=new Map();
 function mobSheetId(t){let v=MOB_SHEET.get(t);if(v===undefined)MOB_SHEET.set(t,v='sprite:mob-'+slug(baseId(t)));return v}
 export function sheetFrame(e,dir,col){
-  const id=e.kind==='hero'?heroSheetId(e.cls,e.race):e.kind==='mob'?mobSheetId(e.type):e.kind==='npc'&&e.role?npcSheetId(e.role,e.race):null;if(!id)return null;
+  const id=e.kind==='hero'?heroSheetId(e.cls,e.race):e.kind==='mob'?mobSheetId(e.type):e.kind==='npc'&&e.role?npcSheetId(e.role,e.race):e.kind==='boss'?'sprite:boss-kragmaw':null;if(!id)return null;
   const c=sheetOf(id,e.kind==='hero'||e.kind==='npc'?e.fac:0);if(!c)return null;
   FR.img=c;FR.fw=Math.floor(c.width/SHEET.cols);FR.fh=Math.floor(c.height/SHEET.rows);FR.sx=col*FR.fw;FR.sy=dir*FR.fh;return FR}
 

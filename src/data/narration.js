@@ -9,6 +9,7 @@
 // elite; {dmg} a number; {hero} a hero.
 
 // Zone entry after dark under a clear sky.
+import {WORDS} from '../world/words.js';
 export const NIGHT=[
   'Night falls on {zone}; {who} presses on by lantern light.',
   'The last light leaves {zone}. {who} does not turn back.',
@@ -103,7 +104,7 @@ export const BOSS_PULL=[
 ];
 
 // Dawn recap fragments. The narrator assembles 1-3 sentences from these.
-export const DAWN_OPEN=['Dawn, day {day}.','Dawn breaks over Eldmoor on day {day}.','Day {day} begins.'];
+export const DAWN_OPEN=['Dawn, day {day}.','Dawn breaks over '+WORDS.world+' on day {day}.','Day {day} begins.'];
 export const DAWN_QUIET=[
   'Nobody died since the last dawn; the Chronicler checks the list twice.',
   'No graves were dug since the last dawn. It will not last.',

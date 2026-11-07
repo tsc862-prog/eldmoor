@@ -27,7 +27,7 @@
 - [LPC creatures](lpccreatures.md) — #831 OGA LPC creature cut, what fit and what did not, staging a creature shot
 - [LPC landmarks](lpclandmarks.md) — #836 crypt mouth and lair from LPC castlewalls/lavarock, landmark shot staging, C: full gotcha
 - [Whole-map marks](entitylod.md) — #729 lod.js: threshold, pawns plus 1:1 creature sprites, sheet warm-up, probe in a junction worktree
-- [Mountains](peaks.md) — #895 LPC cliffs: sheet is a dual grid, atlases, tiers, cut peaks, softer ground over rock for borders
+- [Mountains](peaks.md) — #989 height field in peaks.js, what shaped it, Node preview; #895 atlases as the switch, softer ground over rock
 - [LPC trees and rocks](lpctrees.md) — #834 whole canopy trees painted in chunk, redrawn over entities; cutter needs ELDMOOR_PACKS; C: disk full gotcha
 - [Scene figures](scenefigures.md) — #862 sceneFigure helper for room views, portrait head crop hook, staging
 - [Follow zoom](followzoom.md) — #846 followTiles scales with pane width, art-snapped; crawl frame half steps
@@ -36,5 +36,9 @@
 - [LPC town buildings](lpcbuildings.md) — #833 cutter, rise rule, north-door inn, shared Vite port trap
 - [Town walls and plaza](lpcwalls.md) — #830 LPC walls per side, towers, shadows, LPC Roofs shakes, vite restart trap
 - [Kit rows and houses](lpchouses.md) — plan `kit` rows, houses out of TOWN_PIECES, palisade wall set, streets through the plaza
+- [Showcase light](showcaselight.md) — #979 grade, cast shadows, multiply light map, air, sheen, effects switch; staging at full window
 - [Scenery](scenery.md) — #940 Vale art pass: scenery.js, spec note, smoothed river and roads, felled trees, staging
 - [Vale stack](valestack.md) — #980 ten PRs as one branch: merge order, shadow-pass trap, stacked PRs after landing
+- [Vale at scale](valescale.md) — #979 great kit, notch outlines, ground shapes, wyrm sheet, the onAssets repaint race
+- [GPU frames](gpuframes.md) — #979 final: real-GPU numbers, chunk stalls were the problem, staging a setup world for a probe
+- [Second polish](polish2.md) — #979 dusk water, gatehouse deco pair, harbour from spec pier, cast shadow in the light map, traps

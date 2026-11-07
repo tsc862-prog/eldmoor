@@ -18,7 +18,7 @@ const count = (s, x) => s.split(x).length - 1;
 const sys = systemPrompt(st) + '\n' + fellowshipPrompt(st);
 ok(SITUATION_HEADINGS.every(h => sys.includes('\n' + h)), 'every situation heading is in the full orders: ' + SITUATION_HEADINGS.length);
 ok(sys.includes(PRIORITY_HEADING) && /Table scene outranks everything.*vote or offer.*party lines.*Danger.*quest in focus.*Travel.*Shopping/.test(sys), 'the priority list runs scene, vote, party lines, danger, quest, travel, shopping');
-ok(sys.includes(EXAMPLES_HEADING) && /Quiet road:/.test(sys) && /Camp with a proposal open:/.test(sys) && /Look before you leave: you are level 2, alone in Highgate.*Thornvale/.test(sys), 'three worked turns, with the Thornvale look-before-you-leave one');
+ok(sys.includes(EXAMPLES_HEADING) && /Quiet road:/.test(sys) && /Camp with a proposal open:/.test(sys) && /Look before you leave: you are level 2, alone in town.*next region up/.test(sys), 'three worked turns, with the look-before-you-leave one');
 ok(sys.includes(ANTI_HEADING) && /move_to a far region, read the warning, then move_to back/.test(sys) && /Writing a tool call as text/.test(sys), 'anti-patterns named: move_to and back, text calls');
 ok(/Never use move_to to find out whether a place is safe/.test(sys) && /roads line/.test(sys), 'look before you leave under On the road');
 ok(/^- Trust the fresh header/m.test(sys.split('How to play:\n')[1]), 'the header rule is the first line of How to play');

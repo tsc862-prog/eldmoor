@@ -20,12 +20,15 @@ export const FAUNA={
   cinderreach:{tier:2,species:['golem','drake','spider'],count:14,roadMinX:0,elite:'Scoriath'},
   rimeholt:  {tier:3,species:['rimehound','shaghorn','wolf'],count:12,roadMinX:0,elite:{name:'Whitemaw',title:'the Snow-Hound of Rimeholt',base:'rimehound'}},
   palereach: {tier:3,species:['rimehound','shaghorn','wight'],count:11,roadMinX:0,elite:'Ulfryn Coldmarrow'},
+  linkmead:  {tier:0,species:['wolf','boar'],count:3,roadMinX:0,elite:'Hollowfang'}, // the TESTLINK fixtures (spec.js), so a crossing check spawns on them
+  baremead:  {tier:0,species:['wolf','boar'],count:4,roadMinX:0,elite:'Hollowfang'}, // the TESTBARE fixture (spec.js): no lair, no dungeon
+  barefell:  {tier:0,species:['wolf','spider'],count:4,roadMinX:0,elite:'Hollowfang'},
   // The Wending Vale (epic #940, slice D): each region has its own creatures, levels, names and trade goods. Entries are objects
   // {sp: stock species (its sprite and stat block), name, pl, lv, loot, q}. Only species the LPC creature slice draws (wolf, boar,
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the
   // shaghorn are left out on purpose. Levels sit inside the region's band (nothing near a home town above it; elites are the one
   // exception, as everywhere). Goods are Vale-only (VALE_GOODS), priced up the same ladder as Eldmoor's.
-  wendmouth: {tier:0,count:12,roadMinX:30,elite:'Hollowfang',species:[
+  wendmouth: {tier:0,count:12,roadMinX:999,elite:'Hollowfang',species:[
     {sp:'wolf',name:'Strand Wolf',pl:'Strand Wolves',lv:[1,3],loot:'Strandpelt',q:'Wolves on the Strand'},
     {sp:'boar',name:'Reed Boar',pl:'Reed Boars',lv:[2,4],loot:'Reed-Tusk',q:'Tusks from the Reeds'},
     {sp:'spider',name:'Dyke Weaver',pl:'Dyke Weavers',lv:[3,5],loot:'Dyke Silk',q:'Sweep the Dykes'}]},
@@ -57,9 +60,18 @@ export const VALE_GOODS=[['Strandpelt',4],['Reed-Tusk',5],['Dyke Silk',7],['Sall
   ['Heath Pelt',6],['Crag Tusk',8],['Gale Sinew',12],['Oak Silk',13],['Thicket Hide',15],['Greywood Fur',18],
   ['Ash Silk',20],['Slag Core',24],['Ember Fur',28],['Squall Pelt',30],['Crown Rime',34],['Crown Marrow',40]];
 
+// The stock tables as they stood before any world touched them (#1013): the tables below are rewritten in place, and a second
+// map in one process must start from these, not from the first map's rows. Rows are shared, never written to.
+const STOCK={mobs:{...MOBS},counts:{...COUNTS},elites:ELITES.slice(),epics:EPICS.slice(),roadMinX:ECO.roadMinX};
+const put=(t,rows)=>{for(const k of Object.keys(t))delete t[k];Object.assign(t,rows)};
+let rewritten=false; // the tables hold a world's rows, not the stock
+
 export function applyFauna(regions){
-  if(!regions.some(r=>FAUNA[r.id]))return false;
-  const stock={...MOBS},stockElites=ELITES.slice(),stockEpics=EPICS.slice();
+  if(!regions.some(r=>FAUNA[r.id])){
+    if(rewritten){put(MOBS,STOCK.mobs);put(COUNTS,STOCK.counts);ELITES.length=0;ELITES.push(...STOCK.elites);EPICS.length=0;EPICS.push(...STOCK.epics);ECO.roadMinX=STOCK.roadMinX;rewritten=false}
+    return false}
+  rewritten=true;
+  const stock=STOCK.mobs,stockElites=STOCK.elites,stockEpics=STOCK.epics;
   for(const k of Object.keys(MOBS))delete MOBS[k];
   for(const k of Object.keys(COUNTS))delete COUNTS[k];
   ELITES.length=0;EPICS.length=0;ECO.roadMinX=[];
@@ -71,7 +83,7 @@ export function applyFauna(regions){
       const lo=Math.round(a+i*(hi-a-2)/Math.max(1,n-1)),key=sp+'@'+z;
       MOBS[key]={...stock[sp],z,lv:[lo,Math.min(hi,lo+3)]};COUNTS[key]=F.count});
     const E=typeof F.elite==='string'?stockElites.find(e=>e.name===F.elite):F.elite;
-    ELITES.push({...E,base:(E.base||'wolf')+'@'+z,lvl:E.fixLvl||Math.min(hi+2,24),scale:E.scale||2.2,hit:E.hit||1.5});
+    ELITES.push({...E,...(E.title?{title:E.title.replace(/ of (Thornvale|Mirefen|Cinderpass|Hoarfell)$/,' of '+r.name)}:{}),base:(E.base||'wolf')+'@'+z,lvl:E.fixLvl||Math.min(hi+2,24),scale:E.scale||2.2,hit:E.hit||1.5});
     EPICS.push(stockEpics[F.tier]);
     ECO.roadMinX.push(F.roadMinX||0)});
   if(regions.some(r=>FAUNA[r.id]&&FAUNA[r.id].species.some(x=>typeof x==='object')))for(const [n,base] of VALE_GOODS)if(!GOODS[n]){GOODS[n]={base,supply:8,prev:0};GOODS[n].prev=price(n)}
