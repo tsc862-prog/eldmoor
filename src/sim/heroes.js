@@ -7,7 +7,7 @@ import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {outpostHonor,outpostDest} from './outposts.js';
 import {SPEED} from '../world/tiles.js';
 import {standAt} from '../world/passable.js';
-import {pathLeg,pathReached,pathStep,clearLine,HOLD,DONE} from './path.js'; // paths, not straight lines (#794)
+import {pathLeg,pathReached,pathStep,clearLine,outOfReach,HOLD,DONE} from './path.js'; // paths, not straight lines (#794)
 import {CRYPT,LVL_CAP,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
 import {assignRace,homeOf} from '../data/races.js';
@@ -269,7 +269,7 @@ export function updAgent(a,dt){
     spotMob(a,m);
     scoutCheck(a,m); // Chronicler: ambush / outleveled scout roll at fight entry (sim/narrator.js)
     const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
-    if(d>r){moveTo(a,m.x,m.y,dt,2.4);break}a.moving=false;
+    if(d>r){moveTo(a,m.x,m.y,dt,2.4);if(outOfReach(a,m)){if(m.target===a){m.target=null;m.pack=false;m.dest={...m.home}}a.state='hunt';a.target=null;a.path=null}break}a.moving=false; // no way to it (across a river, #1060): the fight is over, hunt on
     if(!m.target)m.target=a;
     const mates=a.party?a.party.mem:[a];priestHeal(a,mates);
     const mv=fightMoves(a,m,mates,a.cd<=0); // class abilities: free ones at once, a striking one in place of the blow

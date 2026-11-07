@@ -13,7 +13,7 @@
 import {W,H,SPEED,BRIDGE} from '../world/tiles.js';
 import {tiles,I,solid,land,CITY} from '../world/map.js';
 import {WHY,crossing,stepOpen} from '../world/solidgrid.js';
-import {nearestOpen} from '../world/passable.js';
+import {nearestOpen,landAt} from '../world/passable.js';
 import {S} from './state.js';
 import {onWorld} from './kept.js';
 
@@ -40,6 +40,10 @@ onWorld(()=>{COST=G=FROM=SEEN=HI=HF=null;N=0},()=>{ready();return {pathN:N,pathC
 // A new tick: the plan budget starts over. step() calls it; a clock that moved does the same for walkers driven outside step().
 export function pathTick(){used=0;usedNodes=0;usedAt=S.gameMin}
 export const noWay=e=>!!(e.path&&e.path.none);
+// No way to t at all from where e stands: no path (noWay), or t stands on other land (a foe across a river with no crossing,
+// #1060; a path there only reaches e's own bank). A chase or a fight that reads this is over: waiting on the bank is not a fight.
+// Asks the land of both tiles, never the path's 'near' flag: a path planned for a solid spot near t is 'near' and still gets there.
+export const outOfReach=(e,t)=>{if(noWay(e))return true;const lt=landAt(t.x,t.y),le=landAt(e.x,e.y);return lt>=0&&le>=0&&lt!==le};
 
 // The time to walk the straight line between two points (tiles at pace 1), or Infinity when it touches solid ground.
 // Tile by tile; a line through the exact corner of two tiles needs both beside it open.

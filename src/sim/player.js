@@ -49,7 +49,7 @@ import {S,clockStr,dayNo,loreSides,ownTown,sameSide,foeOf,mayFight} from './stat
 import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slotted} from './company.js'; // every agent hero rides in exactly one company (#438)
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
-import {route,doorAt,clearLine} from './path.js'; // the way a walk goes (#794)
+import {route,doorAt,clearLine,outOfReach} from './path.js'; // the way a walk goes (#794)
 import {partyMates,leaderOf,leaveParty,keeps} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {whisperTo,emoteAct} from './aside.js'; // whisper and emote (#627)
@@ -571,7 +571,9 @@ function fight(a,dt,cmd){const m=a.target,mh=maxHp(a);a.cd-=dt;
     if(cmd&&cmd.kind==='fight'){done(a,m&&!m.alive?'Slew '+(m.elite?m.name:'the '+mobName(m))+'.':'The fight is over.')}
     return true}
   const r=CLS[a.cls].range,d=dist(a,m);a.face=m.x>a.x?1:-1;
-  if(d>r){if(letGo(a,m,cmd)){a.target=null;a.state='hunt';a.dest=null;return true}moveTo(a,m.x,m.y,dt,2.4);return true}a.moving=false;
+  if(d>r){if(letGo(a,m,cmd)){a.target=null;a.state='hunt';a.dest=null;return true}moveTo(a,m.x,m.y,dt,2.4);
+    if(outOfReach(a,m)){a.target=null;a.state='hunt';a.dest=null;a.path=null;if(cmd&&cmd.kind==='fight')done(a,'Your foe is out of reach: there is no way to it from this side.')} // across water with no crossing (#1060): even an order to fight it ends
+    return true}a.moving=false;
   if(!m.target)m.target=a;
   // The hero's fight gambits (#617), every moment in order. The class preset is the old fixed sequence: the class heal
   // (priestHeal), a blow when the weapon is ready, the pack's reflex (sim/inv.js fightAid), and the flee mark (past_flee_mark).
