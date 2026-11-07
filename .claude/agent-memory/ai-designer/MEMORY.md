@@ -112,3 +112,4 @@
 - [Map pack #1013](map_pack.md) — mappack.js, save v8, who freezes, split keys, away is not gone, IndexedDB mirror, what slice 3 owes
 - [Crossing #1013](crossing.md) — crossing.js: road is the leader's words only, atlas leaf, tick at head of step, parked whens, fixture traps
 - [No lair #1013](no_lair.md) — readers crypts.js/lair.js, rule 12, dormant boss, boot words, TESTBARE fixtures, errors hidden as sentences
+- [Company party keeps #1048](company_party_keeps.md) — keeps(p) with a host: no end on a town walk, comeIn, formUp anywhere, lead_to any company, C.road.walk
