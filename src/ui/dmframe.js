@@ -39,7 +39,7 @@ export function dmFrameData(){const open=dmSeatOn(),r=runnerByKey('dm'),on=!!(r&
   const v=dmAgentView()||{day:{}},d=v.day||{},today=d.d===Math.floor(S.gameMin/1440)?d:{},sv=stagedView(),fs=focusStats(),D=S.dmAgent;
   const notes=D&&D.notes?Object.values(D.notes).reduce((n,a)=>n+(a?a.length:0),0):0;
   const link=dmLink(),pb=link!=='off'&&link!=='offline'?pageBusy():null; // #736: a page that froze reads page busy
-  return {open:true,link:pb?'pagebusy':link,linkText:pb?busyText(pb):LINK[link]||LINK_TEXT[link]||link,mind:(dmRunnerTag()||'')+(prepView().state==='running'?(dmRunnerTag()?' · ':'')+'preparing':dmReadyWord()?(dmRunnerTag()?' · ':'')+READY_TEXT[dmReadyWord()]:''),ready:dmReadyWord(),prep:prepView().state==='running',now:nowLine(r),last:r&&r.lastTurnAgo!=null&&!DONE_STATE[r.state]?r.lastTurnAgo:null,
+  return {open:true,link:pb?'pagebusy':link,live:link==='connected'||link==='waiting',linkText:pb?busyText(pb):LINK[link]||LINK_TEXT[link]||link,mind:(dmRunnerTag()||'')+(prepView().state==='running'?(dmRunnerTag()?' · ':'')+'preparing':dmReadyWord()?(dmRunnerTag()?' · ':'')+READY_TEXT[dmReadyWord()]:''),ready:dmReadyWord(),prep:prepView().state==='running',now:nowLine(r),last:r&&r.lastTurnAgo!=null&&!DONE_STATE[r.state]?r.lastTurnAgo:null,
     turns:r?r.turns:0,cost:r?r.cost:0,
     narr:(today.narr||0)+'/'+DMA.NARRATE_PER_DAY,narrN:today.narr||0,levers:(today.pulls||0)+'/'+DMA.PULLS_PER_DAY,scenes:sv.today,
     staged:sv.cur?sv.cur.title+' · '+sv.cur.kind+(sv.cur.hours_left!=null?' · '+sv.cur.hours_left+' h left':''):'',
@@ -66,13 +66,13 @@ function build(){const f=el('div','dmf');f.tabIndex=0;f.setAttribute('role','but
 export function mountDmFrame(parent){node=build();parent.append(node);return node}
 
 export function renderDmFrame(){if(!node)return;const x=dmFrameData(),r=refs;
-  const gone0=x.open?gateMissing().find(m=>m.kind==='dm'):null,calm=x.open&&!gone0&&(x.link==='connected'||x.link==='waiting')&&!x.prep&&(!x.ready||x.ready==='ready')&&!x.staged&&!x.pending.length&&!X.open;
+  const gone0=x.open?gateMissing().find(m=>m.kind==='dm'):null,calm=x.open&&!gone0&&x.live&&!x.prep&&(!x.ready||x.ready==='ready')&&!x.staged&&!x.pending.length&&!X.open;
   setCls(node,'dmf'+(x.open?'':' closed')+(calm?' calm':''));r.chip.hidden=x.open;r.full.hidden=!x.open;
   if(!x.open)return;
   {const gone=gateMissing().find(m=>m.kind==='dm');setText(r.alert,gone?'DM runner gone: the world is paused. '+whyMissing(gone)+'. Restart DM, or Start anyway in the bar over the map.':'');r.alert.hidden=!gone}
   setText(r.link,x.linkText);setCls(r.link,'mlink '+x.link);setText(r.mind,x.mind);
   const rr=runnerByKey('dm');
-  setText(r.now,x.now?'» '+x.now:(x.link==='connected'||x.link==='waiting'||(rr&&!DONE_STATE[rr.state])?'':'No DM runner: press Start DM (the world waits for it)'));setTitle(r.now,x.now);
+  setText(r.now,x.now?'» '+x.now:(x.live||(rr&&!DONE_STATE[rr.state])?'':'No DM runner: press Start DM (the world waits for it)'));setTitle(r.now,x.now);
   setText(r.act,'Narrations '+x.narr+' · Levers '+x.levers+' · Scenes '+x.scenes+' today');
   setTitle(r.act,'The DM agent\'s narrations and lever pulls today against their daily limits, and staged scenes (3 a day)');
   setText(r.stg,x.staged?'Staged: '+x.staged:'');

@@ -32,17 +32,18 @@ import {openSheet} from './sheet.js';
 import {runnerFor,stateLine,leftOf} from './runners.js'; // the runner's state, on the mind dot's tooltip (#546: Start / Stop live in the Company tab)
 import {mountDmFrame,renderDmFrame} from './dmframe.js'; // the DM beside the party (owner request)
 import {countKind} from '../sim/inv.js'; // potion count on the frame (#124)
-import {agentReadyWord} from './player-bridge.js'; // the start gate (#222): claimed / warming / ready / failed
+import {agentReadyWord,agentLink} from './player-bridge.js'; // the start gate (#222): claimed / warming / ready / failed
 import {styled} from '../sim/epithet.js'; // a name given for a deed (bestow, #638)
 import {downView,downText,downTitle,flashOf,pips} from './downview.js'; // DOWNED, the save tally and the timer (#659)
 const READY_TEXT={claimed:'claimed',warming:'warming up',ready:'ready',failed:'warm-up failed'};
 const mindLine=a=>{const w=a&&a.player&&a.state!=='dead'?agentReadyWord(a):null;return mindText(a)+(w?' · '+READY_TEXT[w]:'')};
 // The mind dot (#546): the frame carries the glance only. agent = a runner plays it (live or thinking), autopilot = the agent
 // is quiet and autopilot carries its last order, reflex = no runner (reflexes hold until one connects), ai / scripted for
-// the rest. The words and the runner's state are the dot's tooltip; Start / Stop is in the Company tab's Members and minds.
+// the rest. A long frame changes the label's words (page busy), never the dot: the page was slow, the runner is as the relay last said (#1049).
+// The words and the runner's state are the dot's tooltip; Start / Stop is in the Company tab's Members and minds.
 export function mindDot(a){if(!a||a.state==='dead')return {k:'none',word:'',title:''};const m=mindOf(a),L=mindLabel(a);
   let k=m,word=MIND_WORD[m]||m;
-  if(m==='agent'){const live=L.link==='connected'||L.link==='waiting'||L.link==='busy';k=!live?'reflex':a.playIdle?'autopilot':'agent';word=DOT_WORD[k]}
+  if(m==='agent'){const lk=L.link==='pagebusy'?agentLink(a):L.link,live=lk==='connected'||lk==='waiting'||lk==='busy';k=!live?'reflex':a.playIdle?'autopilot':'agent';word=DOT_WORD[k]}
   const r=a.player?runnerFor(a):null,lf=leftOf(r,a),rs=!a.player?'':lf?'the Fellowship runner is done with '+a.name+' ('+lf.why+'): no runner; restart it in the Company tab':stateLine(r,'hero:'+a.id); // #563: never its runner's live line for a member it let go
   return {k,word,title:word+': '+mindLine(a)+(rs?'\nRunner: '+rs:'')+'\n'+L.title}}
 const MIND_WORD={ai:'AI',quiet:'AI (quiet)',scripted:'Scripted'},DOT_WORD={agent:'Agent',autopilot:'Autopilot',reflex:'Reflex'};
