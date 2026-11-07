@@ -1,7 +1,7 @@
 // Gathering node state (issue #255, epic #238). Where the nodes are is world data (world/nodes.js, NODES in map.js);
 // this file keeps only which of them are spent. S.nodes = {world, ready:{[nodeId]: gameMin when it is ready again}},
 // plain data, created on the first harvest (so a world nobody gathers in carries nothing, and the seeded run is
-// untouched), saved with the world by the generic S walk, and reset when a new world instance starts (worldId).
+// untouched), saved with the world by the generic S walk, and reset when a new world instance starts or the state is another map's (mapKey).
 // Respawn needs no tick: a node is ready when the game clock has passed its time. Nothing here draws from the RNG.
 // Gathering itself (who, when, what comes out) is #257; this is the registry it calls.
 //   isReady(node)        -> boolean
@@ -10,15 +10,16 @@
 //   availableNodes(zone, kind?) / availableNear(x, y, r, kind?) -> ready nodes only
 import {S} from './state.js';
 import {NODES,nodeById,nodesIn,nodeNear} from '../world/map.js';
+import {mapKey} from './atlas.js';
 
 export {NODES,nodeById,nodesIn,nodeNear};
 
 function ensure(){
-  if(!S.nodes||S.nodes.world!==S.worldId||typeof S.nodes.ready!=='object')S.nodes={world:S.worldId,ready:{}};
+  if(!S.nodes||S.nodes.world!==mapKey()||typeof S.nodes.ready!=='object')S.nodes={world:mapKey(),ready:{}};
   return S.nodes}
 const resolve=n=>typeof n==='string'?nodeById(n):n;
 
-export const readyAt=node=>{const n=resolve(node);if(!n||!S.nodes||S.nodes.world!==S.worldId)return 0;
+export const readyAt=node=>{const n=resolve(node);if(!n||!S.nodes||S.nodes.world!==mapKey())return 0;
   const t=S.nodes.ready[n.id];return t!==undefined&&t>S.gameMin?t:0};
 export const isReady=node=>{const n=resolve(node);return !!n&&readyAt(n)===0};
 

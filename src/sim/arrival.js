@@ -30,7 +30,7 @@
 //   S.opening  {queue:[{company, kind:'new'|'heir', fallen?, cause?, hold?:{since, away:[id], where}}]}  openings still to play; gone once all have
 //   C.arrivals [{slot?, cls, fallen, name, lvl, since}]                   recruits waiting for the next camp or town
 import {S,clockStr,dayNo,noOthers} from './state.js';
-import {ZONES,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,zoneFor,zoneAt,dist} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {homeOf} from '../data/races.js';
@@ -57,6 +57,7 @@ import {TABLE,openScene,setSceneKind,tableOn,sceneFor,callSeen,callLeft,callKey}
 import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf,placeWord} from './company.js';
 import {inRange} from './reach.js';
+import {jobBar,jobShort} from './jobbar.js';
 
 export const ARRIVE={
   POLL_MS:5000,   // the table waits for the DM's voice only if its runner polled table_call this recently (as staged scenes)
@@ -83,9 +84,14 @@ const townOf=C=>{const ld=leadOf(C);return C&&C.hall?C.hall:ld?homeOf(ld).name:'
 
 // ---- what the company has before it: the hall's first job, the gate captain's writ, a rumour ----
 function jobTitle(h){const T=AD.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return (h.title||T.name||h.tpl)+(th?': '+plain(Array.isArray(th)?th:[th]):'')}
-function firstMoves(town){const hooks=(S.adventures||[]).filter(v=>v.phase==='open'&&v.town===town);const job=hooks.find(v=>v.ff)||hooks[0]||null;
-  const b=(S.bounties||[]).find(x=>x.town===town&&MOBS[x.type]);
-  return {job:job?jobTitle(job):null,writ:b?b.need+' '+(MOBS[b.type].pl||MOBS[b.type].name)+' in '+(ZONES[b.z]||'the wilds'):null}}
+function firstMoves(town,C){const hooks=(S.adventures||[]).filter(v=>v.phase==='open'&&v.town===town);
+  // A company is offered what it can take (#1016): in a hosted world the first move is a job its lowest member's level meets, else the board is honest about it.
+  const lo=C&&hasLinks()?Math.min(...memOf(C).map(a=>a.lvl)):null,fit=lo==null?hooks:hooks.filter(v=>jobShort(v,lo)==null);
+  const job=fit.find(v=>v.ff)||fit[0]||null,far=!job&&lo!=null?hooks.find(v=>v.ff)||hooks[0]||null:null;
+  const b=(S.bounties||[]).find(x=>x.town===town&&MOBS[x.type]&&(lo==null||(REGIONS[x.z]&&REGIONS[x.z].band&&REGIONS[x.z].band[0]<=lo+2)));
+  const g=lo!=null?ZONES[zoneFor(lo)]:null;
+  return {job:job?jobTitle(job):null,writ:b?b.need+' '+(MOBS[b.type].pl||MOBS[b.type].name)+' in '+(ZONES[b.z]||'the wilds'):null,
+    ...(far?{beyond:{title:jobTitle(far),need:jobBar(far),lvl:lo,ground:g}}:{})}}
 function rumourNear(a){let best=null,bd=1e9;for(const m of S.mobs||[]){if(!m.alive||!(m.elite||m.named))continue;const d=dist(a,m);if(d<bd){bd=d;best=m}}
   return best?(best.name||MOBS[best.type].name)+' is seen in '+(ZONES[zoneAt(best.x,best.y)]||'the wilds'):null}
 // A member's introduction in their own words, from their persona (a silent agent's reflex shows this line).
@@ -117,7 +123,7 @@ function gathered(q){const C=q.kind==='new'?companyById(q.company):null;if(!C||!
 // The panels and the DM's status: who session zero waits for, or null.
 export function openingWait(){const q=S.opening&&S.opening.queue&&S.opening.queue.find(x=>x.hold);if(!q)return null;const C=companyById(q.company);
   return {company:C&&C.name||null,where:q.hold.where,names:q.hold.away.map(byId).filter(living).map(a=>a.name),minutes_left:Math.max(0,Math.round(ARRIVE.GATHER_MIN-(S.gameMin-q.hold.since)))}}
-function openingFrame(C,q){const L=memOf(C),ld=leadOf(C),town=townOf(C),d=Math.floor(S.gameMin/1440)+1,{job,writ}=firstMoves(town);
+function openingFrame(C,q){const L=memOf(C),ld=leadOf(C),town=townOf(C),d=Math.floor(S.gameMin/1440)+1,{job,writ}=firstMoves(town,C);
   if(L.length===1){const a=L[0],r=rumourNear(a);
     const head=q.kind==='heir'?[a,' comes to ',gd(town),', sent for after ',gd(q.fallen||'one who fell'),' fell'+(q.cause?' ('+q.cause+')':'')+'. ']:[a,' stands at the gate of ',gd(town),' on day '+d+'. '];
     return [...head,'The gate captain has '+(writ?'a writ: '+writ:'nothing posted yet')+'.',r?' In the inn they say '+r+'.':'']}
@@ -129,7 +135,7 @@ function openingFrame(C,q){const L=memOf(C),ld=leadOf(C),town=townOf(C),d=Math.f
 function openOpening(q){const C=companyById(q.company),L=memOf(C);if(!C||!L.length)return null;const ld=leadOf(C),town=townOf(C),solo=L.length===1;
   if(q.kind==='heir')log(nar(''),'The Chronicle remembers ',gd(q.fallen||'one who fell'),(q.cause?', '+q.cause:'')+'. In '+town+', ',L[0],' takes up the road.');
   const title='SESSION ZERO · '+(solo?L[0].name:C.name||ld.name+'\'s company');
-  const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,setting:C.prologue?'field':'tavern',...(C.prologue?{prologue:1}:{}),...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town)};
+  const ctx={opening:q.kind,lead:ld?ld.id:null,town,anchor:ld?ld.id:null,solo:solo?1:0,setting:C.prologue?'field':'tavern',...(C.prologue?{prologue:1}:{}),...(q.fallen?{fallen:q.fallen}:{}),...firstMoves(town,C)};
   const frame=openingFrame(C,q);
   if(!tableOn())return settleOpening(C,ctx,[],title);
   const far=farFrom(C),sc=openScene('opening',title,frame,ctx,C);
@@ -156,8 +162,8 @@ function swearAt(sc,a,raw){const w=swearWord(raw);if(swearBlock(a,w))return '';i
 function viewOpening(sc,a){if(sc.acts[a.id]||swornOf(a))return {};const t=threadText(a);
   return {swear:'You may swear your own oath as you act (swear: your words; "yes" takes up what your past holds, "no" sets it aside). Say nothing of it and you are bound to nothing.',...(t?{your_past:t}:{})}}
 // The first move in words, and the leader told it (at the first table, or at the hall gate after a first delve, #922).
-const firstLine=m=>m.job||m.writ?'Before them: '+[m.job?'the hall\'s job ('+m.job+')':null,m.writ?'the gate captain\'s writ ('+m.writ+')':null].filter(Boolean).join(' and ')+'.':'The board is bare; the road is theirs to choose.';
-export const firstMove=town=>({first:firstLine(firstMoves(town))});
+const firstLine=m=>m.beyond&&!m.job?'The hall\'s job ('+m.beyond.title+') asks for level '+m.beyond.need+' and the company is level '+m.beyond.lvl+': the job-giver would turn you away, so do not put it to the table yet. '+(m.writ?'Before them instead: the gate captain\'s writ ('+m.writ+'). ':'')+'Grow first'+(m.beyond.ground?': hunt '+m.beyond.ground+' together':'')+', and take the job at level '+m.beyond.need+'.':m.job||m.writ?'Before them: '+[m.job?'the hall\'s job ('+m.job+')':null,m.writ?'the gate captain\'s writ ('+m.writ+')':null].filter(Boolean).join(' and ')+'.':'The board is bare; the road is theirs to choose.';
+export const firstMove=(town,C)=>({first:firstLine(firstMoves(town,C))});
 export function tellFirstMove(ld,first,many){if(ld&&ld.player)notify(ld,'The first move is yours to put to them: '+first+(many?' Propose it (propose, kind job) or name another road.':' Take it up (quests, take_quest) or choose your own road.'),true,2)}
 export const openingLead=leadOf;
 // The outcome: met, the leader, the first move. beats: the table's acts (none when no scene could open).

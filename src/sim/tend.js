@@ -8,7 +8,7 @@
 // wounds, smaller prey), dungeon.js (no Crypt). Agent heroes hear of it in words and decide for themselves; autopilot and the
 // gambit presets know nothing of wounds. On an agent hero the creature that did it is learned as feared (lore.js woundFear),
 // the record line below is the landmark (tiers.js RX) and the reflection moment is kind 'wound'.
-import {S,dayNo} from './state.js';
+import {S,dayNo,ownTown,sameSide,loreSides} from './state.js';
 import {CITY,dist} from '../world/map.js';
 import {record} from './history.js';
 import {log} from './chronicle.js';
@@ -49,7 +49,7 @@ function dayOff(t){let k=0;for(let i=1;i<t.wounds.length;i++)if(woundEnd(t.wound
   const w=t.wounds[k];w.days--;if(left(w)<=0)closeWound(t,k);return w}
 // Why by may not tend t now, or null. Nobody tends their own wound; the downed need saving first; one tending a game day.
 export function tendBlock(by,t){if(!wounded(t))return t.name+' carries no wound.';if(by===t)return 'You cannot dress your own wound: a companion must, or the chapel priest in town (chapel_tend).';
-  if(t.state==='dead'||t.state==='downed')return t.name+' is past tending now.';if(t.fac!==by.fac)return t.name+' is no friend of yours.';
+  if(t.state==='dead'||t.state==='downed')return t.name+' is past tending now.';if(!sameSide(t,by))return t.name+' is no friend of yours.';
   if(t.tendDay===dayNo())return t.name+'\'s wound has been tended today; the next can come tomorrow.';return null}
 // how: 'heal' (a heal-class ability landed on t) or 'camp' (the tend action at a camp). Returns true when a day came off.
 export function tendBy(by,t,how){if(tendBlock(by,t))return false;t.tendDay=dayNo();stats().tended++;const w=dayOff(t);
@@ -74,8 +74,8 @@ function paid(payer,t,c,p){const fee=priestFee(t);payer.gold-=fee;t.chapelDay=da
 export function chapelVisit(a){if(!wounded(a)||!reflexMay(a)||a.chapelDay===dayNo()||a.gold<priestFee(a))return;
   const c=homeOf(a),p=c&&priestOf(c);if(p)paid(a,a,c,p)}
 // The chapel_tend tool (sim/player.js): payer stands at a chapel of their side and pays for t. -> {ok, ...} or {error}.
-export function chapelTend(payer,t){const c=CITY.find(x=>x.fac===payer.fac&&x.spots&&x.spots.chapel&&dist(payer,x.spots.chapel)<=W.CHAPEL_R),p=c&&priestOf(c);
-  if(!p)return {error:'The priest is at the chapel of a town of your side: walk there first (move_to chapel).'};
+export function chapelTend(payer,t){const c=CITY.find(x=>ownTown(x,payer)&&x.spots&&x.spots.chapel&&dist(payer,x.spots.chapel)<=W.CHAPEL_R),p=c&&priestOf(c);
+  if(!p)return {error:'The priest is at the chapel of a town'+(loreSides()?'':' of your side')+': walk there first (move_to chapel).'};
   if(!wounded(t))return {error:(t===payer?'You carry':t.name+' carries')+' no wound.'};
   if(t!==payer&&dist(payer,t)>W.NEAR)return {error:t.name+' must stand with you at the chapel.'};
   if(t.chapelDay===dayNo())return {error:p.title+' '+p.name+' has dressed that wound today; come back tomorrow.'};
