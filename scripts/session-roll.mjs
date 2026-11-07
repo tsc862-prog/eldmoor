@@ -9,6 +9,7 @@
 //                settings, turn count and spend stay on the session object; the hero's memory is in the game (journal, notebook,
 //                persona) and the first turn after a roll is told to read it. Never inside a turn, never with a scene open or
 //                due, never on a reflection turn (it needs the day it reflects on). The claim and the pacer are not touched.
+//                The last hours of talk come along as a short recap in that first prompt (scripts/session-recap.mjs, #808).
 // A fresh session asked from the page reaches the runner as a "fresh" line on stdin (askFresh) and rolls by the same rules.
 //   compaction   the net, for one very long turn or a roll held back by a scene. CLAUDE_CODE_AUTO_COMPACT_WINDOW through query()'s
 //                env (read by the CLI; `npm run sessioncheck` proves it on the real binary). The CLI's threshold is the window less
