@@ -46,8 +46,11 @@ export const ctxText = n => Number.isFinite(n) ? `ctx ${Math.round(n / 1000)}k` 
 // at its next safe moment, a multi-hero runner's each on its own. Counted per session object, never saved.
 let freshAsks = 0; const freshSeen = new WeakMap();
 export const askFresh = () => {freshAsks++};
-export function rollDue(sess, limit, {busy = false, legacy = true} = {}) {
+// lazy (#808): whether this runner plays with lazy tools (undefined for seats with no such switch): a session started the other way rolls, so
+// none carries both tool shapes.
+export function rollDue(sess, limit, {busy = false, legacy = true, lazy} = {}) {
   if (busy) return null;
+  if (lazy !== undefined && sess.sessionId && !!sess.lazyTools !== lazy) return {why: 'tools', line: `[session rolled: lazy tools ${lazy ? 'on' : 'off'}]`};
   if (freshAsks > (freshSeen.get(sess) || 0)) {
     if (sess.sessionId || (sess.local && sess.local.history && sess.local.history.length)) return {why: 'asked', line: '[session rolled: a fresh session was asked for]'};
     freshSeen.set(sess, freshAsks); // nothing to set aside yet

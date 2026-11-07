@@ -19,7 +19,8 @@
 //   C.prologue {row, site, phase:'intro'|'descend'|'below'|'out', town, ids?, end?:'clear'|'left'|'off'}   gone when the delve is over
 //   q.pro      on an opening in S.opening.queue: this opening has been looked at, so nothing is raised twice
 //   site.prologue  the row's id: its ruin stays on the map; site.xp its share of a site's XP; its loot is plain and it has no epic
-import {CITY,CRYPT,zoneAt} from '../world/map.js';
+import {CITY,zoneAt} from '../world/map.js';
+import {cryptName} from './crypts.js';
 import {onMainLand} from '../world/passable.js';
 import {clearLine} from './path.js';
 import {hash} from '../core/rng.js';
@@ -49,7 +50,7 @@ const living=a=>!!a&&a.kind==='hero'&&a.state!=='dead';
 const memOf=C=>(C===slotted()?slotHeroes(C):members(C).filter(a=>!a.hire)).filter(living);
 const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1];
 const rowOf=id=>PROLOGUES.find(r=>r.id===id)||null;
-const fill=(t,P)=>String(t).replace(/\{town\}/g,P.town).replace(/\{crypt\}/g,CRYPT?CRYPT.name:'the deep places');
+const fill=(t,P)=>String(t).replace(/\{town\}/g,P.town).replace(/\{crypt\}/g,cryptName());
 const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
 const words=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.t||'').join('');
 
@@ -114,7 +115,7 @@ Object.defineProperty(kindHooks('crawl'),'dm',{get:()=>(S.companies||[]).some(C=
 PLAY.homecoming='all';
 const optsHome=()=>[{k:'speak',text:'Say what the place taught you'},{k:'quiet',text:'Say nothing; look at the town'}];
 const applyHome=(sc,a,act)=>act.k==='speak'?'says what the place taught them':act.k==='quiet'?'keeps quiet':null;
-function settleHome(C,ctx){const L=memOf(C),ld=openingLead(C),m=firstMove(ctx.town);delete C.prologue;
+function settleHome(C,ctx){const L=memOf(C),ld=openingLead(C),m=firstMove(ctx.town,C);delete C.prologue;
   const line=(ctx.end==='clear'?'They came out of '+ctx.site+' a company':'They came back from '+ctx.site+' with it unfinished')+(ctx.lost.length?', without '+names(ctx.lost):'')+'.';
   campaign(C,'session',gd(ctx.site),': '+line+' '+m.first);
   timeline('oath',gd(C.name||'A company'),ctx.end==='clear'?' cleared ':' came back from ',gd(ctx.site),' and reached the gate of ',gd(ctx.town),'.');
@@ -134,7 +135,7 @@ function atGate(P,L){const c=CITY.find(x=>x.name===P.town)||homeOf(L[0]),g=c.gat
   L.forEach((a,i)=>{Object.assign(a,spreadAt(g,i,L.length),{zone:zoneAt(g.x,g.y),dest:null,target:null,moving:false});if(a.state!=='downed'){a.state='town';a.townStep=1}})}
 function comeHome(C,P){const L=memOf(C),s=siteById(P.site),row=rowOf(P.row);
   if(!L.length){delete C.prologue;return}
-  if(P.end==='off'){delete C.prologue;const ld=openingLead(C);if(ld)tellFirstMove(ld,firstMove(P.town).first,L.length>1);return} // the table went away before they went down: nobody fled anything, and the place stays open
+  if(P.end==='off'){delete C.prologue;const ld=openingLead(C);if(ld)tellFirstMove(ld,firstMove(P.town,C).first,L.length>1);return} // the table went away before they went down: nobody fled anything, and the place stays open
   atGate(P,L);const end=P.end==='clear'?'clear':'left',words=fill(row.closing[end],P);
   const lost=(P.ids||[]).map(byId).filter(a=>a&&a.state==='dead').map(a=>a.name),site=s?s.name:row.name;
   const ctx={prologue:1,town:P.town,anchor:(openingLead(C)||L[0]).id,setting:'gate',end,site,lost,words};

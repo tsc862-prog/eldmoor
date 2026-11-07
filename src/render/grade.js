@@ -32,7 +32,9 @@ const darkness=h=>h>=21||h<5?.55:h>=18?(h-18)/3*.55:h<7?(7-h)/2*.55:0;
 // Fill G for the hour h (0..24) under cloud 0..1.
 export function gradeAt(h,cloud){let i=0;while(i<K.length-2&&h>=K[i+1][0])i++;
   const a=K[i],b=K[i+1],t=sm(clamp01((h-a[0])/(b[0]-a[0]))),m=j=>mix(a[j],b[j],t);
-  const am=G.amb,grey=(m(1)+m(2)+m(3))/3;for(let j=0;j<3;j++)am[j]=mix(m(1+j),grey*(.86+.06*j),cloud*.75)*(1-cloud*.2);
+  // An overcast sky scatters the low sun: the more the hour's colour is the sun's own (not the moon's blue), the more cloud turns it to a cool grey, so fog at dusk is not pink.
+  const am=G.amb,hi=Math.max(m(1),m(2),m(3)),lo=Math.min(m(1),m(2),m(3)),grey=(m(1)+m(2)+m(3))/3,sunTint=clamp01((1-lo/hi)*3)*clamp01(1-(m(3)-m(1))/m(3)*2.5),veil=Math.min(1,cloud*(.75+.6*sunTint));
+  for(let j=0;j<3;j++)am[j]=mix(m(1+j),grey*(.86+.06*j+.04*sunTint*(j-1)),veil)*(1-cloud*.2);
   for(let j=0;j<3;j++){G.wash[j]=m(4+j);G.shade[j]=m(8+j)}
   G.washA=m(7)*(1-cloud*.9);G.hour=h;G.dk=darkness(h);G.cloud=cloud;
   const day=h>=RISE&&h<=SET,u=day?(h-RISE)/(SET-RISE):((h+(h<RISE?24:0))-SET)/(24-SET+RISE),e=Math.sin(Math.PI*u);

@@ -31,8 +31,9 @@
 //   encRate()  encounter spawn-rate multiplier     encKind(p,kind)  ambush bias at a road spot
 //   encSpot(spots) a spot inside a danger area     sightLever(z)    fog-bound sight multiplier
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
+import {worldFill} from '../world/words.js';
 import {clamp} from '../core/rng.js';
-import {keep} from './kept.js';
+import {keep,onWorld} from './kept.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
 import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
@@ -55,6 +56,7 @@ import {moveTo} from './heroes.js';
 import {clearLine} from './path.js';
 import {spawnMob} from './mobs.js';
 import {postHook,withdrawHook} from './dm.js';
+import {jobBar} from './jobbar.js';
 import {postSupply,withdrawSupply,openAt as supplyOpenAt,SUP} from './supply.js'; // goods jobs (#720): post_hook takes their names as tpl
 import {customFoe,spawnFoe} from './encounterbuilder.js';
 import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
@@ -363,7 +365,10 @@ register({name:'post_hook',about:'Post a job on a town board: template, giver ro
     if(SUPPLY[p.tpl]){const j=postSupply(c,p.tpl,{...o,by:ctx&&ctx.by,src:p.src,reward:p.reward,for:p.forHero!=null?p.forHero:o.for});
       return {ok:true,effect:{hook:j.id,tpl:j.tpl,giver:j.giver?j.giver.name:null,zone:'any',wants:j.want.n+' '+j.want.id,pays:j.gold+'g'},ret:j}}
     if(p.reward!=='fair')o.data.payMul=REWARD[p.reward];
-    const h=postHook(c,p.tpl,p.src,o);return {ok:true,effect:{hook:h.id,tpl:h.tpl,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone]},ret:h}},
+    const h=postHook(c,p.tpl,p.src,o);
+    // the DM agent is told what the job asks (#1016): a company below it is turned away at the gate, so post it for later or pick another
+    const lows=ctx&&ctx.by==='dm-agent'?(S.companies||[]).filter(C=>C.hall===p.town).map(C=>Math.min(...C.ids.map(i=>(S.agents.find(x=>x.id===i)||{lvl:99}).lvl))):[],need=jobBar(h),short=lows.filter(l=>l<need);
+    return {ok:true,effect:{hook:h.id,tpl:h.tpl,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone],...(ctx&&ctx.by==='dm-agent'?{needs_level:need}:{}),...(short.length?{warning:'This job asks for level '+need+' and a company of '+p.town+' is level '+Math.min(...short)+': the job-giver will turn it away until it grows. Do not offer it as their first move; post it for later or choose a template the board can give them now.'}:{})},ret:h}},
   describe:p=>p.tpl+' at '+p.town+(p.giver?' from the '+p.giver:'')});
 register({name:'withdraw_hook',about:'Take an open job down from a board.',params:{hook:{type:'id'}},limits:{perDay:60},
   check(p){const h=(S.adventures||[]).find(x=>x.id===p.hook)||(S.supply||[]).find(x=>x.id===p.hook);return !h?'no such hook':h.phase!=='open'?'hook #'+p.hook+' is already taken':null},
@@ -379,6 +384,7 @@ register({name:'withdraw_hook',about:'Take an open job down from a board.',param
 const livingHero=id=>{const a=S.agents.find(x=>x.id===id);return a&&a.kind==='hero'&&a.state!=='dead'&&a.state!=='ghost'?a:null};
 const FIGHT_STATES=['fight','duel','assist','raid'];
 const EPIC_NAMES=new Set([...EPICS.flat(),...BOSS_EPICS,...DG_EPICS]);
+onWorld(()=>{for(const n of EPICS.flat())EPIC_NAMES.add(n)},()=>({epicsUnnamed:EPICS.flat().filter(n=>!EPIC_NAMES.has(n))})); // another map (#1013): an epic stays an epic, so the set only grows
 const lc=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 // item text -> {kind:'quest'|'use'|'gear', id} or {err}
 function itemOf(text){const t=lc(text);if(!t)return {err:'item is required'};
@@ -403,7 +409,7 @@ function itemCheck(p,give){const a=livingHero(p.hero);if(!a)return 'no such livi
   else{if(it.kind!=='quest')return it.kind==='gear'?'gear cannot be taken back':'consumables cannot be taken back; only a quest item or a token';
     if(!(a.inv&&a.inv.list.some(x=>x.kind==='quest'&&x.id===it.id)))return a.name+' does not carry it'}
   return null}
-const FLAVOUR=it=>it.kind==='quest'?QUEST_ITEMS[it.id].flavour:it.kind==='use'?(USES[it.id].flavour||''):'';
+const FLAVOUR=it=>it.kind==='quest'?worldFill(QUEST_ITEMS[it.id].flavour):it.kind==='use'?worldFill(USES[it.id].flavour||''):'';
 // An object found where the hero stands (a cache a hero searched out, sim/search.js #525): the give_item path without the lever's
 // limits. A quest item or consumable by name, or one plain piece of gear for a slot at the hero's level. Returns {name} or {err}.
 export function foundItem(a,text){const it=itemOf(text);if(it.err)return {err:it.err};if(room(a)<=0)return {err:'pack full'};let got,name=it.id;

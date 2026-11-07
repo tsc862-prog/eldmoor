@@ -10,7 +10,7 @@
 //
 // State on the hero: a.summoned {day}. No other state, so a world with no summons is unchanged. Owned by ai-designer.
 import {rnd} from '../core/rng.js';
-import {S,dayNo} from './state.js';
+import {S,dayNo,loreSides} from './state.js';
 import {CITY,ZONES,zoneAt,dist} from '../world/map.js';
 import {standAt} from '../world/passable.js';
 import {FAC} from '../data/factions.js';
@@ -53,7 +53,7 @@ function levelBand(at){const f=at&&nearest(at);
 
 function townError(p,f){const c=townRow(p.town);
   if(!focuses().some(o=>o.members.some(a=>inTown(a,c))))return 'no company stands in '+c.name+', and nobody is summoned inside a town no company is in: use a spot outside its gate (survey near '+c.name+' lists open ground as "x,y") or near a region';
-  if(c.fac!==f)return c.name+' is a town of the '+FAC[c.fac].name+' and this hero is of the '+FAC[f].name+': use a spot outside its gate (survey near '+c.name+' lists open ground as "x,y")';
+  if(!loreSides()&&c.fac!==f)return c.name+' is a town of the '+FAC[c.fac].name+' and this hero is of the '+FAC[f].name+': use a spot outside its gate (survey near '+c.name+' lists open ground as "x,y")';
   return null}
 
 // Registered by installSummonLever (sim/index.js, after every module has loaded: the sim's imports are one big cycle).
