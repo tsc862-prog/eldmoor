@@ -7,4 +7,8 @@ export const SNAPSHOTS = {
   eldmoor:  {zone: '7d08ac18', tiles: 'bda9e97b', minSpawn: 1},
   stepping: {zone: '1089eab4', tiles: '2763d8b2', minSpawn: 200},
   vale:     {zone: '258a7280', tiles: 'ca3628f2', minSpawn: 150},
+  hollin:   {zone: '7bfcd86f', tiles: 'f2e0d16a', minSpawn: 150},
+  wendmouth: {zone: 'ccc10dc1', tiles: 'dd4e6959', minSpawn: 150},
+  hawkwold: {zone: '47133cab', tiles: 'bd88e28b', minSpawn: 150},
+  weirgate: {zone: 'f8609ff3', tiles: '2daca9c0', minSpawn: 150},
 };

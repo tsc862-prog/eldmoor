@@ -8,7 +8,7 @@ import {outpostHonor,outpostDest} from './outposts.js';
 import {SPEED} from '../world/tiles.js';
 import {standAt} from '../world/passable.js';
 import {pathLeg,pathReached,pathStep,clearLine,HOLD,DONE} from './path.js'; // paths, not straight lines (#794)
-import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
+import {CRYPT,LVL_CAP,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
 import {assignRace,homeOf} from '../data/races.js';
 import {FAC,genName} from '../data/factions.js';
@@ -19,7 +19,7 @@ import {EPICS,GOODS,price} from '../data/items.js';
 import {S,clockStr,noOthers,sidesOff,raidSide} from './state.js';
 import {log,gold,epic} from './chronicle.js';
 import {pop,bolt} from './effects.js';
-import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,leaveParty,regroup,steerClear} from './party.js';
+import {partyMates,leaderOf,followPt,seekParty,shareKill,disband,leaveParty,regroup,steerClear,comingIn} from './party.js';
 import {say,spotMob} from './chat.js';
 import {speedMul,sightMul,isStorm} from './weather.js';
 import {assignBackstory,goalEvent} from './goals.js';
@@ -100,7 +100,10 @@ export function moveTo(e,x,y,dt,sp){let st=-1;
     e.x=q.x;e.y=q.y;st-=d;pathReached(e)} // a leg's end inside this tick: the rest of the step goes on along the next
   return false}
 
-export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
+// A chapter map (spec.chapter, #1013) tapers XP once a hero stands above its top band (LVL_CAP): a level over, a sixth of it; two or more, a fiftieth.
+// Every other map has LVL_CAP Infinity and is untouched. The one place; kills, crawls, quests and shares all pass through gainXp.
+const xpPlateau=l=>{const over=l-LVL_CAP;return over>=2?.02:over>=1?.17:1};
+export function gainXp(a,x){if(a.lvl>=20)return;if(LVL_CAP<Infinity)x*=xpPlateau(a.lvl);a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
   while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)levelGrowth(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     record(a,'Reached level '+a.lvl+'.');
@@ -258,7 +261,7 @@ export function updAgent(a,dt){
     if(!a.dest)a.dest=outpostDest(a)||zonePoint(a.zone,a);if(moveTo(a,a.dest.x,a.dest.y,dt,1.8))a.dest=null;break}
   // Party member at the leader's side: heals, picks off nearby mobs, joins the leader's fights (party tick),
   // hangs back when hurt. Drops to solo hunting (or heads home) the moment there is no leader to follow.
-  case 'follow':{const L=leaderOf(a);if(!L){a.state=a.party&&a.party.home?'return':'hunt';a.dest=null;break}
+  case 'follow':{const L=leaderOf(a);if(!L){a.state=a.party&&comingIn(a.party)?'return':'hunt';a.dest=null;break}
     a.hp=Math.min(mh,a.hp+mh*.025*dt);priestHeal(a,a.party.mem);
     a.scan-=dt;if(a.scan<=0&&a.hp>=mh*.45&&L.state!=='return'){a.scan=.4+rnd()*.3;const m=findMob(a);if(m){a.target=m;a.state='fight';a.dest=null;break}}
     if(dist(a,L)>2){a.dest=followPt(a);moveTo(a,a.dest.x,a.dest.y,dt,L.state==='return'?2.5:2.1)}else{a.dest=null;a.moving=false}break}

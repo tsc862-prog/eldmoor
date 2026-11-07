@@ -79,7 +79,7 @@ export function doing(a){const c=homeOf(a).name,zn=ZONES[a.zone];
   switch(a.state){
     case 'town':return a.townStep===0?`Selling loot at the ${c} auction house`:a.townStep===1?`Checking in with the ${c} quest giver`:`Leaving ${c} for ${ZONES[a.party?a.party.zone:zoneFor(a.lvl,homeOf(a).gate)]}`;
     case 'travel':return `Traveling to ${zn}`;
-    case 'hunt':return a.quest?`Hunting ${MOBS[a.quest.type].pl} in ${zn}`:`Hunting in ${zn}`;
+    case 'hunt':return a.quest&&MOBS[a.quest.type]?`Hunting ${MOBS[a.quest.type].pl} in ${zn}`:`Hunting in ${zn}`; // a quest may name a creature of a map left behind (#1013): MOBS is this map's
     case 'fight':return a.target?`Fighting a level ${a.target.lvl} ${MOBS[a.target.type].name}`:'Fighting';
     case 'return':return `Heading back to ${c}`;
     case 'mend':return `Mending from wounds in ${c}`;
@@ -174,7 +174,7 @@ function story(b,a){sec(b,'Story');
   {const fr=friendsOf(a).slice(0,6);if(fr.length){const d=el('div','meta');d.append('Friends: ');fr.forEach((f,i)=>{d.append(hn(f));if(i<fr.length-1)d.append(', ')});b.append(d)}}
   const nem=Object.entries(a.nemesis||{}).filter(([id])=>S.agents.some(x=>x.id==id&&x.state!=='dead')).pop();
   if(nem){const foe=S.agents.find(x=>x.id==nem[0]);const d=el('div','meta');d.append('Nemesis: ',hn(foe),` (killed guildmate ${nem[1]})`);b.append(d)}
-  const q=a.quest?`${MOBS[a.quest.type].q}: ${a.quest.have}/${a.quest.need} ${MOBS[a.quest.type].pl}`:'No quest';
+  const qm=a.quest&&MOBS[a.quest.type],q=qm?`${qm.q}: ${a.quest.have}/${a.quest.need} ${qm.pl}`:a.quest?`A hunt from another land: ${a.quest.have}/${a.quest.need}`:'No quest';
   b.append(el('div','meta','Quest: '+q));
   {const ad=advLine(a);if(ad){const d=el('div','meta adv');d.dataset.adv=a.adv;d.title='Open this adventure in the Dungeon Master log';parts(d,ad);b.append(d)}} // the DM's adventure and scene (sim/dm.js)
   b.append(el('div','meta',`Weather: ${weatherName(a.zone)} in ${ZONES[a.zone]}`))}

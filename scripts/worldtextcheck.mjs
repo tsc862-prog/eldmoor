@@ -39,9 +39,9 @@ const own = namesOf(WORLDS.vale), foreign = new Set();
 for (const [id, sp] of Object.entries(WORLDS)) if (id !== 'vale') for (const n of namesOf(sp)) if (!own.has(n)) foreign.add(n);
 foreign.delete('Kragmaw'); // the wyrm is every world's (the lair is the Vale's too)
 const words = [...foreign, 'Eldmoor'].map(n => n.replace(/^The /, ''));
-// Exempt: item names that carry an Eldmoor region (ids shared by every world and kept in saved packs), and the homeland names of the
+// Exempt: item names that carry an Eldmoor region (ids shared by every world and kept in saved packs), and the homeland and hamlet names of the
 // peoples (a people's own past, canon in docs/LORE.md, not a place on this map).
-const EXEMPT = [/Hoarfell Survey Chart/g, /chart-hoarfell/g, /Thornteeth/g, /X-Eldmoor-/g];
+const EXEMPT = [/Hoarfell Survey Chart/g, /chart-hoarfell/g, /Thornteeth/g, /Brinereach/g, /X-Eldmoor-/g];
 const re = new RegExp('\\b(' + words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')\\b', 'i');
 const heard = [];
 const keep = (what, v) => {heard.push({what, text: typeof v === 'string' ? v : JSON.stringify(v)}); return v};
@@ -67,12 +67,12 @@ for (const m of M) {
   for (const t of TOOLS) keep(m.name + ' ' + t, act(m, t, t === 'chat_read' || t === 'party_read' ? {n: 40} : {}));
   keep(m.name + ' brief', PC.paceBrief(m.id)); keep(m.name + ' self brief', PC.paceBrief(m.id, {self: true}));
   keep(m.name + ' oath and origin', m.goal ? [m.goal.text, m.origin, m.originShort] : '');
-  const st = act(m, 'status'); keep(m.name + ' system prompt', systemPrompt(st)); keep(m.name + ' fellowship prompt', fellowshipPrompt(st));
+  const st = act(m, 'status'); if (!st || st.ok === false || !st.name) continue; /* a member who fell in the days above has no status to read; the prompts are built from one */ keep(m.name + ' system prompt', systemPrompt(st)); keep(m.name + ' fellowship prompt', fellowshipPrompt(st));
   keep(m.name + ' persona facts', PE.factsOf(m));
 }
 const A = M[0];
 // refusals that used to name Eldmoor's places
-for (const [tool, args] of [['move_to', {target: 'The Sunken Crypt'}], ['move_to', {target: 'Highgate'}], ['go_crypt', {}], ['join_raid', {}], ['hunt', {where: 'Thornvale'}], ['enter_site', {}], ['intent', {goal: 'hunt', why: 'x'}], ['attempt', {what: 'ласка'}]]) keep(A.name + ' ' + tool, act(A, tool, args));
+for (const [tool, args] of [['move_to', {target: 'The Sunken Crypt'}], ['move_to', {target: 'Highgate'}], ['go_crypt', {}], ['join_raid', {}], ['hunt', {where: 'Thornvale'}], ['enter_site', {}], ['intent', {goal: 'hunt', why: 'x'}], ['attempt', {what: 'ласка'}]]) {let r = JSON.stringify(act(A, tool, args)); for (const v of Object.values(args)) if (typeof v === 'string') r = r.split(v).join('<probe>'); keep(A.name + ' ' + tool, r)} // the refusal quotes the tester's own words back; what the game adds must not name another world
 // the tool descriptions and the standing prompts every agent reads
 keep('player tool descriptions', PLAYER_TOOLS); keep('DM tool descriptions', DM_TOOLS); keep('prompts', PR);
 // the templates behind them, every row (a goal type no Vale hero happened to roll still must not name Eldmoor)

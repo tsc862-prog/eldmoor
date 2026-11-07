@@ -99,6 +99,7 @@ export function dmSystemPrompt(st) {
     DM_CALL_ORDERS,
     DM_NAME_ORDERS,
     DM_WHEN_ORDERS,
+    ...dmMapOrders(st),
     DM_BETWEEN_ORDERS,
     DM_RENOWN_ORDERS,
     DM_ASK_ORDERS,
@@ -109,6 +110,11 @@ export function dmSystemPrompt(st) {
     DM_EACH_TURN,
   ].join('\n');
 }
+// Several lands (#1013): only a campaign with a road to another map hears of them. dm_status campaign says so; one map, not a word.
+export const DM_MAP_ORDERS = '- This campaign runs on several lands joined by roads, and only the land the company stands on is live: survey, regions, near, npcs and hooks read that one; the others wait frozen. dm_status campaign says what is next along each road. You may prepare the next land while the company travels: notes_write plans that name it (your frames at the road read them), seed_rumour {about: a place over there} so they hear of it, and when {trigger: "enter_map", on: {map}, action, args} leaves a narrate, a person or a staged scene waiting at the road\'s end (its places are read when it fires, on that land; it waits up to 240 hours).';
+export const DM_EMPTY_LAND_ORDERS = '- In this world nobody else rides: a new land is empty until you fill it. When the company comes to one, its people, jobs and places are yours to make (place_person, summon_hero, post_hook, mark_place), for the company first.';
+export const dmMapOrders = st => st && st.campaign && (st.campaign.roads || []).some(r => r.open) ? [DM_MAP_ORDERS, ...(st.others ? [DM_EMPTY_LAND_ORDERS] : [])] : [];
+export const withDmMapOrders = (sys, st) => dmMapOrders(st).reduce((s, l) => s.includes(l) ? s : s + '\n' + l, String(sys || ''));
 // On stage (#1017, under the story-first direction of #1012). Live play: the seat was told it prepares and does not run scenes, and to
 // speak sparingly; in 13 turns it never spoke. It is the voice of the game now: every turn ends in something the company can hear.
 export const DM_JOB = 'You run this game for the company, and they should hear you: the table has a DM, and that is you. Between scenes you read what happened, keep your campaign notes and shape what comes next so they meet interesting choices, recurring faces and consequences of what they did; but the heart of the seat is telling it: what they see as they arrive, what the road and the weather do, who calls out to them.';
@@ -439,14 +445,15 @@ export function narratorVoice({base, adapter, model, effort = 'low', log = () =>
 // a few seconds while this loop polls, then the scripted DM rules. One forced structured answer per call (enums for skill, DC and
 // effect kinds), then ruling_answer; a refused answer (an illegal effect) is logged and the scripted DM rules at the deadline.
 export const RULING_POLL_IDLE = 1500, RULING_POLL_HOT = 400;
+export const RULING_AGAIN_MS = 1500; // a refused answer goes back to the model once if this much of the budget is left (#864)
 export const RULING_SYSTEM = 'You are the Dungeon Master of Eldmoor, a hardcore fantasy world (original setting; no names from other games or books), ruling on what a hero tries. ' +
   NO_WORDS +
   'The hero may try anything; you decide which skill it tests and how hard it is (easy 8, fair 12, hard 15, heroic 18), and what follows a success and a failure, drawn only from the legal effects. ' +
   'The game rolls the dice; you never decide the result, what a hero thinks or chooses, and never touch level, XP, gold or life (a wound is at most 15% and never below 10% HP). ' +
   'Most attempts deserve none or one small effect: a clever idea a reveal (a fact they learn, a place, a creature) or someone warming to them, a reckless one a small wound or exposed. ' +
   'text is what the heroes hear on a success and fail_text on a failure (vivid, as much as the moment needs, usually one to three sentences, true to what is in sight). ' +
-  'An effect is {kind, target, value}: move {target: a direction or "x,y"}, reveal {target: place|fact|creature, value: the name or the fact}, attitude {target: a person in sight, value: -3..3}, open_talk {target: a person}, ' +
-  'open_scene {target: mystery|meeting|social|ambush|trap}, item {target: give|take, value: the item}, wound {target: 1..15}, condition {target: warded|exposed, value: minutes}, boon {target: d4|d6|d8}, none. ' +
+  'An effect is {kind, target, value} (value "" when the form has none): move {target: a direction or "x,y"}, reveal {target: place|fact|creature, value: the name or the fact}, attitude {target: a person in sight, value: -3..3}, open_talk {target: a person}, ' +
+  'open_scene {target: mystery|meeting|social|ambush|trap}, item {target: give|take, value: the item}, wound {target: the percent as a number, 1..15}, condition {target: warded|exposed, value: minutes}, boon {target: d4|d6|d8}, none. ' +
   'Reply as JSON {"skill": "...", "dc": "...", "effects": [...], "fail_effects": [...], "text": "...", "fail_text": "...", "note": "..."}; note is for your own log.';
 export function rulingPrompt(c) {
   const h = c.hero || {}, w = c.where || {}, s = c.in_sight || {}, t = c.attempt || {};
@@ -465,25 +472,30 @@ export const rulingSchema = c => {const L = c.legal || {}, kinds = (L.effects ||
 // {kind, target, value} -> the game's "kind:target:value" form (empty parts dropped); "none" entries dropped unless alone.
 export const effectText = e => e && typeof e === 'object' ? [e.kind, e.target, e.value].map(x => String(x == null ? '' : x).trim()).filter((x, i) => i === 0 || x).join(':') : String(e || '');
 export const effectList = L => {const a = (Array.isArray(L) ? L : []).slice(0, 3).map(effectText).filter(Boolean), b = a.filter(x => x !== 'none'); return b.length ? b : a.slice(0, 1)};
+const rulingWho = c => `${c.hero ? c.hero.name : 'call ' + c.call} "${short(c.attempt && c.attempt.what || '', 60)}"`; // the log names the hero and the attempt (#864)
 export function rulingVoice({base, adapter, model, effort = 'low', log = () => {}, onCost = () => {}, stopped = () => false, tool = dmTool, pollIdle = RULING_POLL_IDLE, pollHot = RULING_POLL_HOT, budgetS = 8, waitMs = VOICE_WAIT_MS}) {
   let done = false, seen = 0;
   const loop = async () => {
     while (!done && !stopped()) {
       const p0 = Date.now(), t = await tool(base, 'ruling_call', {budget_s: budgetS, ...(waitMs > 0 ? {wait_ms: waitMs} : {})});
       const c = t && t.ok && t.call;
+      if (c && c.call !== seen && c.seconds_left <= .8) {seen = c.call; log(`[ruling] ${rulingWho(c)}: picked up with ${Number(c.seconds_left).toFixed(1)} s left, too late to ask; the scripted DM rules`)} // #864: this loss left no line
       if (c && c.call !== seen && c.seconds_left > .8 && !stopped()) {
         seen = c.call; const t0 = Date.now(), left = `left ${Number(c.seconds_left).toFixed(1)} s`; // #885
+        const end = t0 + Math.max(800, c.seconds_left * 1000 - 400); let user = rulingPrompt(c);
         try {
-          const ms = Math.max(800, c.seconds_left * 1000 - 400);
-          const r = await adapter.call({system: RULING_SYSTEM, user: rulingPrompt(c), schema: rulingSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
-          let j = null; try {j = JSON.parse(r.text)} catch {}
-          onCost(r.usage || {});
-          if (!j || typeof j.text !== 'string' || !j.text.trim()) log(`[ruling] call ${c.call}: the model's reply was not usable; the scripted DM rules`);
-          else {
+          for (let again = false; ; again = true) { if (stopped()) break; // one more try after a refused answer (#864): the game's words say what was wrong, and the DM's ruling beats the scripted one
+            const ms = end - Date.now();
+            const r = await adapter.call({system: RULING_SYSTEM, user, schema: rulingSchema(c), maxTokens: 800, model, effort, timeoutMs: ms, signal: AbortSignal.timeout(ms)});
+            let j = null; try {j = JSON.parse(r.text)} catch {}
+            onCost(r.usage || {});
+            if (!j || typeof j.text !== 'string' || !j.text.trim()) {log(`[ruling] call ${c.call}: the model's reply was not usable; the scripted DM rules`); break}
             const a = await tool(base, 'ruling_answer', {call: c.call, skill: j.skill, dc: j.dc, effects: effectList(j.effects), fail_effects: effectList(j.fail_effects), text: j.text, fail_text: j.fail_text || '', note: j.note || ''});
-            log(`[ruling] ${c.hero ? c.hero.name : '?'} "${short(c.attempt && c.attempt.what || '', 60)}": ${j.skill} ${j.dc} -> ${a.ok ? (a.outcome || 'ruled') + (a.roll ? ' (' + a.roll + ')' : '') : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
+            log(`[ruling] ${rulingWho(c)}: ${j.skill} ${j.dc} -> ${a.ok ? (a.outcome || 'ruled') + (a.roll ? ' (' + a.roll + ')' : '') : 'x ' + short(a.error, 100)} | ${((Date.now() - t0) / 1000).toFixed(1)} s${r.usage ? ', ' + r.usage.in + ' in / ' + r.usage.out + ' out, ' + money(r.usage.cost) : ''}, ${left}`);
+            if (a.ok || again || /already ruled|is waiting|lapses/.test(a.error || '') || end - Date.now() < RULING_AGAIN_MS) break;
+            user = rulingPrompt(c) + `\nYour last answer was refused: ${short(a.error, 300)} Answer again, with only legal effects (or none).`;
           }
-        } catch (e) {log(`[ruling] call ${c.call}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s (${left} at pickup); the scripted DM rules`)}
+        } catch (e) {log(`[ruling] ${rulingWho(c)}: ${short(String(e && e.message || e), 100)} after ${((Date.now() - t0) / 1000).toFixed(1)} s (${left} at pickup); the scripted DM rules`)}
         continue;
       }
       if (t && t.ok && pollRest(p0, waitMs)) continue; // a held long poll came back empty: ask again at once
@@ -593,6 +605,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.rolled = true; log(`[dm] the seat changes mind (${was} -> ${rs.provider}): a new conversation; the notes, whens and DM log stay with the world${note ? '; ' + note : ''}`);
   }
   sess.runner = rs;
+  sess.system = withDmMapOrders(sess.system, st0);
   sess.system = withDmAskOrders(withDmStageOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
   const saveSess = () => saveDmSession(sess, {url: base});

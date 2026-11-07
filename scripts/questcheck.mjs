@@ -421,5 +421,10 @@ ok(JSON.stringify(questLog(a2)) === before, 'save/restore: the quest log comes b
   else ok(false, 'a Fellowship founded');
 }
 
+// The pilgrimFar done line names the far region, not its index (#1011).
+{const {doneLine} = await import('../src/sim/goals.js'); const {ZONES} = await import('../src/world/map.js');
+  const line = doneLine({type: 'pilgrimFar', zone: ZONES.length - 1});
+  ok(line.includes(ZONES[ZONES.length - 1]) && !/\d/.test(line), 'pilgrimFar done line names the region: ' + line)}
+
 console.log(fail ? `\n${fail} check(s) FAILED\n` : '\nAll quest log checks passed.\n');
 process.exit(fail ? 1 : 0);

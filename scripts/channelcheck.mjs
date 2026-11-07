@@ -18,6 +18,7 @@
 //            earshot; party chat reaches every member
 //   relay    a claimed hero answers only its runner; heroes have no DM tools and the DM no hero
 //            tools; one runner never holds a hero and the DM seat; /play/health carries no text
+//   crossing (issue #1013) a hold at a road, the leaving and the far side: the DM's calls carry its plans, no hero text does (crossingcheck --channel)
 //   memories (issue #155) remember, recall (word, tag, about, id), update_memory, forget, pin, the state
 //            header's notes, the caps (200 notes, 600 characters, archive, pins, writes a day), the letter a
 //            fallen member leaves (and nothing else of theirs), the Markdown mirror, snapshot -> restore, and
@@ -55,6 +56,7 @@ const {homeOf} = await import('../src/data/races.js');
 const {PLAYER_TOOLS} = await import('../src/data/player-tools.js');
 const {systemPrompt, turnPrompt} = await import('./agent-player.mjs');
 const {fellowshipPrompt, memberPrompt} = await import('./fellowship.mjs');
+const {noteTurn, recapNote} = await import('./session-recap.mjs');
 const SS = await import('./agent-sessions.mjs');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
@@ -169,7 +171,7 @@ B.gold = Math.max(B.gold || 0, 5);
   ok(ra.ok && !ra.shouted && who.intent && who.intent.goal.includes(SECRETS.bAim), who.name + ' (not the leader) states a private aim (intent)')}
 B.mind = [{id: 1, t: 'D1 08:00', kind: 'townPlan', snapshot: {secret: plant('bMind')}, sent: {user: 'prompt ' + plant('bMindPrompt')}, outcome: 'applied'}];
 P.playerNarrate(B.id, 'B thinks ' + plant('bNarration'));
-const bs = SS.loadSession(B.id, B.name, () => ({sessionId: 's-b', heroId: B.id, heroName: B.name, system: 'You are B. ' + plant('bPrompt'), turns: 3, costUsd: 0, lastTotal: 0})).sess; SS.saveSession(bs, {});
+const bs = SS.loadSession(B.id, B.name, () => ({sessionId: 's-b', heroId: B.id, heroName: B.name, system: 'You are B. ' + plant('bPrompt'), turns: 3, costUsd: 0, lastTotal: 0, recap: {lines: ['B heard ' + plant('bRecapLine')], did: [{t: '', text: 'B did ' + plant('bRecapDid')}]}})).sess; SS.saveSession(bs, {});
 // and what A's companions keep about A stays theirs too: a rest member's private journal
 ok(act(rest[0], 'journal_write', {text: 'Of A I think ' + plant('mateJournal')}).ok, 'a third member\'s journal');
 // the notebooks (issue #155): every seat's own, the DM's included
@@ -280,6 +282,12 @@ const st = act(A, 'status');
 keep('A system prompt', systemPrompt(st)); keep('A fellowship prompt', fellowshipPrompt(st));
 for (let k = 0; k < 4; k++) {keep('A turn prompt ' + k, turnPrompt(k)); keep('A member prompt ' + k, memberPrompt(k, false)); keep('A scene prompt ' + k, memberPrompt(k, true))}
 ok(!/QZX/.test(memberPrompt(0, false) + memberPrompt(3, true) + turnPrompt(2)), 'turn prompts are fixed text: nothing from any other seat');
+// the recap a rolled session carries (#808): built from A's own briefs and narration, on A's own session object, with B's ring in B's file
+{const as = {heroId: A.id, heroName: A.name}, br = PC.paceBrief(A.id).brief; noteTurn(as, br, 'I keep my watch.'); noteTurn(as, {...br, heard: ['Day 1 (you): the first word']}, 'I walked on.');
+  const rc = keep('A recap', recapNote(as, br));
+  ok(/I walked on\./.test(rc) && /the first word/.test(rc), 'a recap is made of the hero\'s own session');
+  ok(SS.loadSession(B.id, B.name, () => null).sess.recap.did.length === 1 && !rc.includes(SECRETS.bRecapDid) && !rc.includes(SECRETS.bRecapLine), 'and another member\'s recap stays in that member\'s session');
+  ok(!/\bimport\b.*from/.test(readFileSync(new URL('./session-recap.mjs', import.meta.url), 'utf8')), 'the recap module imports nothing: it can only read the session and brief it is handed')}
 // the brain snapshots for A (a model-played hero sees only these)
 BR.enableBrain(A);
 const snaps = {townPlan: BR.snapshotFor(A, 'townPlan'), say: BR.snapshotFor(A, 'say', {trigger: 'idle', ctx: {}}), fightOrFlee: BR.snapshotFor(A, 'fightOrFlee', {mob: S.mobs.find(m => m.alive)}), cryptCall: BR.snapshotFor(A, 'cryptCall'),
@@ -431,7 +439,7 @@ const lt = act(D2, 'remember', {title: 'To whoever comes next', text: 'Trust the
 const lp = act(D2, 'pin', {id: lt.remembered.id}); ok(lp.ok && /letter/.test(lp.note || ''), 'pin a note tagged "letter": sealed for the Fellowship');
 HE.fall(D2, 'a test of the hardcore rule'); run(2);
 // a world with runner links (the relay section above) refills the seat through an arrival scene at the next town or camp (#452): bring them home
-for (let k = 0; k < 60 * 60 && SLT.slotted().slots[slot] == null; k++) {if (SLT.slotted().arrivals && !S.table) for (const x of S.agents.filter(b => SLT.inSlots(b) && b.state !== 'dead')) {const g = homeOf(x).gate; x.state = 'town'; x.townStep = 1; x.x = g.x - 1; x.y = g.y; x.hidden = false} step(1 / 60)}
+for (let k = 0; k < 60 * 60 && SLT.slotted().slots[slot] == null; k++) {if (SLT.slotted().arrivals && !S.table) for (const x of S.agents.filter(b => SLT.inSlots(b) && b.state !== 'dead')) {const g = homeOf(x).gate; x.state = 'town'; x.townStep = 1; x.x = g.x - 1; x.y = g.y; x.hidden = false; x.pq = []} step(1 / 60)} // no order left: a walk home under way would put the leader back on the road each step, and a company's leader stays its leader now (#1048)
 while (S.table) step(1 / 60);
 const nh = S.agents.find(x => x.id === SLT.slotted().slots[slot]);
 ok(nh && nh !== D2 && nh.player, `${D2.name} fell; ${nh && nh.name} takes the place, agent-played`);
@@ -545,6 +553,9 @@ act(C1, 'forget', {id: id1});
   const view = keep('party_read after a call', act(L, 'party_read'));
   ok(view.ok !== false && !/\bDM\b|dungeon master/i.test(JSON.stringify(view)), 'what the party reads never says who sent it');
   T.TABLE.mode = tm; for (const [b, h] of hp) b.hp = h}
+// The crossing (#1013): a child on the linked fixtures plants DM notes, plans, a watch and a when's reason, plays a hold, the leaving and the far side with the DM at the table, and hunts them in every hero-side text.
+{const {spawnSync} = await import('node:child_process'), r = spawnSync(process.execPath, ['scripts/crossingcheck.mjs', '--channel'], {env: {...process.env, ELDMOOR_WORLD: 'testlinka'}, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+  process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000)); ok(r.status === 0, 'the crossing\'s texts carry nothing of another seat')}
 console.log('the verdict');
 const L = leaks();
 ok(Object.keys(SECRETS).length >= 20, `${Object.keys(SECRETS).length} secrets planted`);

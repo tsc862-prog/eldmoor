@@ -73,6 +73,7 @@ import {openaiRunner, isCompat, compatLabel} from './agent-chat.mjs';
 import {onSupervisorStop} from './runners.mjs';
 import {reportTurn, localRec, turnCollector, usageDelta} from './behavior-turn.mjs'; // behavior logs (issue #129)
 import {ctxOf, ctxText, rollDue, rollPoint, rollSession, withCompactWindow, reportThreshold} from './session-roll.mjs'; // sessions kept under the price line (issue #787)
+import {noteTurn, recapNote, recapOn} from './session-recap.mjs'; // the last hours of talk across a roll (issue #808)
 import {lazyOn, toolOptions, withLazyEnv, markLazy, lazyLine, searchCount, lazyRec} from './lazy-tools.mjs'; // AGENT_LAZY_TOOLS (issue #808)
 import {PLAYER_TOOLS, toolsFor} from '../src/data/player-tools.js';
 import {watchWorld, newWorldLine, NEW_WORLD_EXIT, paceSettings, paceText, turnCap, capText, failTracker, localWorked, makePacer, sceneGrab, grabSpend, SCENE_GRAB_MS, GRAB_RESUME, wakeNote, briefText, talkText, memoryNote, claudeBrief, refreshPersona, withClaudeSlot, tableHooks, localModelNote, preferLoaded, reflectPrompt, reflectNow, closeReflection} from './pacing.mjs';
@@ -183,7 +184,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
       {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
     if (!RUNNER_PROVIDERS.includes(rs.provider)) {skip(h, `provider "${rs.provider}" has no agent runner yet (anthropic, ollama, openai, huggingface or google); skipped`); await release(h.id); return}
-    sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides); // the short variant for a local model (#531)
+    sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides, st.land); // the short variant for a local model (#531)
     if (rs.provider === 'ollama') {
       // a local member (issue #97 part 2): plays through scripts/local-agent.mjs, no key, cost 0
       if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;
@@ -259,7 +260,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const model = scene || m.id === leadId || !followerModel ? m.rs.model : followerModel;
     const b0 = m.pacer ? await m.pacer.brief() : null, tc = turnCollector(); let err = null; // the behavior log (issue #129); outside a scene the fresh state header and the turn order (#401)
     if (await refreshPersona(m.pacer, m.sess, b0)) {out(m.name, '[persona: standing orders refreshed]'); saveSession(m.sess, {url: base})} // who the member is now (#409)
-    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + memberPrompt(m.sess.turns, scene, w, Label) + (scene ? '' : resumeNote(m.turns === 0 || m.sess.rolled, m.sess.turns) + claudeBrief(b0)); // a reflection (#179): the same prompt, with tool use
+    const recap = !refl && m.sess.rolled && recapOn(env) ? recapNote(m.sess, b0) : ''; if (recap) out(m.name, `[session recap: ${recap.length} chars]`); // the first prompt of a fresh session (#808)
+    const prompt = refl ? reflectPrompt(refl) + memoryNote(b0) : (again ? GRAB_RESUME + ' ' : '') + memberPrompt(m.sess.turns, scene, w, Label) + recap + (scene ? '' : resumeNote(m.turns === 0 || m.sess.rolled, m.sess.turns) + claudeBrief(b0)); // a reflection (#179): the same prompt, with tool use
     if (refl) out(m.name, `[reflection: ${refl.why}]`);
     const t0 = Date.now(); let result = null, tools = 0, failed = false;
     // Scene first (issue #515): the member's own scene is open as the turn starts. One structured answer (the member's model, effort
@@ -267,7 +269,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // error_max_turns). Answered: the turn is that answer. Missed twice: the turn plays with tool use as before.
     const sc0 = !refl && b0 ? sceneDue(b0.scene, m.sess) : null;
     if (sc0) {const first = await claudeScene(m, model, sc0, tc);
-      if (first && first.tools) {m.sess.turns++; m.turns++; m.scenes++; m.tools += first.tools;
+      if (first && first.tools) {m.sess.turns++; m.turns++; m.scenes++; m.tools += first.tools; noteTurn(m.sess, b0, first.narration);
         reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: first.narration || '', seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: first.in, ...(first.cached ? {tokensCached: first.cached} : {}), tokensOut: first.out, cost: first.cost, ...(first.sceneS ? {sceneS: first.sceneS} : {}), flags: ['scene', 'forced-scene', 'scene-first']});
         saveSession(m.sess, {url: base}); return true}}
     const ac = new AbortController(); aborts.add(ac); m.ac = ac; let rested = false;
@@ -321,10 +323,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
       if (sc) {out(m.name, '[scene: the turn ended without scene_act; one structured answer]');
         forced = await claudeScene(m, model, sc, tc);
         if (forced) {turnCost = (turnCost || 0) + forced.cost; tools += forced.tools; m.tools += forced.tools; if (forced.sceneS) sceneS.push(...forced.sceneS)}}}
+    noteTurn(m.sess, b0, forced && forced.narration || tc.narration);
     let wrote = 0; if (refl) {wrote = tc.tools.filter(t => /remember$/.test(t.name) && t.ok).length; m.notes = (m.notes || 0) + wrote; m.reflections = (m.reflections || 0) + 1;
       await closeReflection(base, m.id, runnerId, refl.id, wrote); out(m.name, `[reflection] ${wrote} memor${wrote === 1 ? 'y' : 'ies'} written`)}
     reportTurn(base, {hero: m.id, runner: runnerId, provider: m.rs.provider, model, turn: m.sess.turns, wake: w, brief: b0, tools: tc.tools, narration: tc.narration, seconds: +((Date.now() - t0) / 1000).toFixed(1), tokensIn: tin, tokensOut: tout, cacheRead: cread, cacheWrite: cwrite, cost: turnCost, ...(m.sess.ctx != null ? {ctx: m.sess.ctx} : {}), ...(sceneS.length ? {sceneS} : {}), ...lazyRec(lazy, tc.tools),
-      flags: [...(lazy ? ['lazy-tools'] : []), ...(m.rolledNow ? ['session-rolled'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
+      flags: [...(lazy ? ['lazy-tools'] : []), ...(m.rolledNow ? ['session-rolled'] : []), ...(recap ? ['session-recap'] : []), ...(scene ? ['scene'] : []), ...(grab.grabbed() ? ['scene-grab'] : []), ...(grabCost ? ['grab-cost:' + grabCost.how] : []), ...(refl ? ['reflection'] : []), ...(forced ? ['forced-scene'] : []), ...(rested ? ['table-rest'] : []), ...(result && result.subtype !== 'success' ? [result.subtype] : [])], ...(err ? {error: err} : {})});
     m.rolledNow = false; saveSession(m.sess, {url: base});
     if (grab.grabbed() && !again && !stopping && !m.ended && !failed) {out(m.name, '[scene answered; resuming the turn]'); return (await claudeTurn(m, null, w, null, true)) || tools > 0}
     return !failed && (tools > 0 || !!refl);

@@ -26,7 +26,8 @@
 //   The turn record is the DM's own data for the watcher's DM tab: no hero tool, prompt or snapshot reads it (issue #123).
 import {S,clockStr,dayNo,noOthers,loreSides} from './state.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // what a hero swore aloud, and the thread only offered (#800)
-import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,EXITS,MAP_ID,WORLD_ID,zoneAt,dist} from '../world/map.js';
+import {campaignMaps,crossingView,landHead,farHint,exitOpen,mapName} from './atlas.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
@@ -245,7 +246,8 @@ function sigOf(fo){const F=fo.company,field=fo.members.filter(a=>a.state!=='town
   return [z,field.length?1:0,(F.past||[]).length,t.scenes||0,done,oaths,companyThreads(F).length,!!S.table].join('|')}
 // One signature per company joined with | (#450): any company's change makes a DM event turn due. One company: its own
 // (the Fellowship alone reads exactly as before).
-export function companiesSig(){const fs=focuses();if(!fs.length)return null;return fs.length===1?sigOf(fs[0]):fs.map(f=>f.cid+':'+sigOf(f)).join('|')}
+export function companiesSig(){const fs=focuses();if(!fs.length)return null;const on=MAP_ID===WORLD_ID?'':'@'+MAP_ID; // the map too (#1013): a crossing is an event turn, and a first map reads as before
+  return (fs.length===1?sigOf(fs[0]):fs.map(f=>f.cid+':'+sigOf(f)).join('|'))+on}
 
 // ---- every company a thread (#450) ----
 // What each company needs from the DM, neediest first: the followed company when it must choose (a scene or vote of its own
@@ -315,7 +317,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
     ...(prologueStatus()?{first_delve:prologueStatus()}:{}), // #922: the place, its rooms and what is behind it, for this seat alone
     prep:{...prepView(),...(openingDue()?{opening_due:true}:{}),...(openingWait()?{opening_waits_for:openingWait().names}:{})}, // #437: while it runs the world is held for you; end it with prep_done
-    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:ourScene().gf?'A scene opens for them: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own line stands).':['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
+    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:ourScene().gf?'A scene opens for them: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own line stands).':['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':['crossing','farside'].includes(ourScene().kind)?'A company stands on a road between lands: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out. Your table voice framed it; narrate near "table" is the most a turn adds.'}):{open:false},
     staged:stagedView(),
@@ -335,7 +337,8 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
-    campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
+    campaign:{...(D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}}),...campaignMaps()}, // the seed, and the maps: where the company is, what it has walked, the roads off this land (#1013)
+    ...(crossingView()?{crossing:crossingView()}:{}), // a company at a road off the map, and what it waits on
     ...whenFields(),
     notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length])),relevant_notes:relevant(dmBook(D),dmContext())}} // relevant_notes: your notes that bear on the moment, {id,title} (#155)
 
@@ -381,7 +384,7 @@ const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({
 function readScope(tool,town,region){const t=clean(town,40),g=clean(region,40);if(!t&&!g)return {};
   if(t){const c=townOf(t);if(c)return {towns:[c.name],c,label:c.name}}
   const v=g||t,z=regionIdx(v);
-  if(z==null)return {err:'No '+(g?'region':'town or region')+' called "'+v+'". '+tool+' takes town ('+CITY.map(c=>c.name).join(', ')+') or region ('+ZONES.join(', ')+').'};
+  if(z==null)return {err:'No '+(g?'region':'town or region')+' called "'+v+'". '+tool+' takes town ('+CITY.map(c=>c.name).join(', ')+') or region ('+ZONES.join(', ')+').'+farHint(v)};
   return {z,towns:CITY.filter(c=>zoneAt(c.gate.x,c.gate.y)===z).map(c=>c.name),label:ZONES[z],...(!g?{note:'"'+t+'" is a region, not a town: read as the region '+ZONES[z]+'.'}:{})}}
 const scopeHead=Q=>Q.label?{scope:Q.z!=null?{region:Q.label,towns:Q.towns}:{town:Q.label},...(Q.note?{note:Q.note}:{})}:{};
 function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)return {ok:false,error:Q.err};const c=Q.c,inT=n=>!Q.label||Q.towns.includes(n.town);
@@ -391,15 +394,17 @@ function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)re
     ...(attOf(w).length?{attitudes:attOf(w)}:{}),...(recordView(w)?{fellowship:recordView(w)}:{}),placed_by_lever:w.lever||null}));
   return {ok:true,...scopeHead(Q),townsfolk:folk.slice(0,60),wanderers:wand}}
 
+const roadOut=e=>({name:e.name,at:Math.round(e.x)+','+Math.round(e.y),...(exitOpen(e)?{to:mapName(e.to.map),open:true}:{toward:e.to.heard,open:false})}); // a road off the map (#1013)
 function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Array(ZONES.length).fill(0);
   for(const m of S.mobs)if(m.alive&&!m.gone){const z=zoneAt(m.x,m.y);if(z>=0)mobs[z]++}
   for(const a of S.agents)if(alive(a)&&a.state!=='town'&&!a.hidden){const z=zoneAt(a.x,a.y);if(z>=0)heroes[z]++}
-  return {ok:true,regions:ZONES.map((name,z)=>{const cond=(S.conditions||[]).filter(c=>c.z===z),marks=(S.marks||[]).filter(m=>m.z===z),pl=(S.places||[]).filter(p=>p.z===z);
+  return {ok:true,...landHead(),regions:ZONES.map((name,z)=>{const cond=(S.conditions||[]).filter(c=>c.z===z),marks=(S.marks||[]).filter(m=>m.z===z),pl=(S.places||[]).filter(p=>p.z===z);
     return {index:z,name,levels:band(z),monsters:mobs[z],heroes_out:heroes[z],creatures:Object.keys(MOBS).filter(k=>MOBS[k].z===z).slice(0,8),
       ...(cond.length?{condition:cond.map(c=>c.kind+' '+c.str+' ('+Math.max(0,Math.round((c.until-S.gameMin)/60))+'h left)')}:{}),
       ...(marks.length?{areas:marks.map(m=>m.kind+' at '+Math.round(m.x)+','+Math.round(m.y)+' r'+m.r)}:{}),
       ...(pl.length?{places:pl.map(p=>({id:p.id,kind:p.kind,name:p.name,at:Math.round(p.x)+','+Math.round(p.y)}))}:{})}}),
-    towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]}))}}
+    towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]})),
+    ...(EXITS.length?{roads_out:EXITS.map(roadOut)}:{})}}
 
 function hooksRead(town,region){const Q=readScope('hooks',town,region);if(Q.err)return {ok:false,error:Q.err};
   const A=(S.adventures||[]).filter(v=>!Q.label||Q.towns.includes(v.town)||(Q.z!=null&&v.zone===Q.z)),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};
@@ -662,7 +667,7 @@ function narrate(a){const day=today(),t=clean(a.text,DMA.NARRATE_MAX);if(!t)retu
   else{const p=placeOf(near);if(!p)return {ok:false,error:'Unknown place "'+near+'". Use a hero name or id, a town, a marked place, a landmark, a region name, "x,y", or "table".'+nameHint(near)};
     const r=nOf(a.radius,DMA.NARRATE_R,4,20);label=p.label;
     hs=S.agents.filter(b=>alive(b)&&!b.hidden&&(dist(b,p)<=r||p.town&&b.state==='town'&&b.town===p.town))}
-  const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true,...(a._voice?{quiet:1}:{})};for(const b of hs)hearLine(b,e); // _voice: the narrator's voice between scenes (#1017), a moment's kind
+  const e={t:clockStr(),d:dayNo(),from:NARRATOR,text:t,trigger:'dm',dm:true,...(a._voice?{quiet:1}:{})};for(const b of hs){hearLine(b,e);if(b.player)b.dmSaid=Math.round(S.gameMin)} // _voice: the narrator's voice between scenes (#1017), a moment's kind; dmSaid: the header may invite an attempt (#864)
   for(const sc of allScenes())if(hs.some(b=>sc.ids.includes(b.id)))sc.narr={t:e.t,text:t}; // the banner and tableView show it
   day.narr=(day.narr||0)+1;
   dmlog('agent',null,['Narrator ('+label+'): ',t],{by:'dm-agent',voice:'narrate',text:t,heard:hs.map(b=>b.id),...(a._voice?{moment:a._voice}:{})});
@@ -804,7 +809,8 @@ function surveyRead(near,radius){const s=clean(near,60),lo=s.toLowerCase();if(!s
   if(!p){const lm=LANDMARKS.find(l=>l.name.toLowerCase()===lo||l.name.toLowerCase().replace(/^the /,'')===lo.replace(/^the /,''));if(lm)p={x:lm.x,y:lm.y,label:'around '+lm.name}}
   if(!p){const pl=markNamed(s);if(pl)p={x:pl.x,y:pl.y,label:'around '+pl.name}}
   if(!p)return {ok:false,error:'Unknown place "'+s+'".'+nameHint(s)+' '+nearTakes()};
-  return surveyAt(p,radius)}
+  const r=surveyAt(p,radius);if(r&&r.ok&&EXITS.length){const near=EXITS.filter(e=>dist(p,e)<=r.radius+e.r);if(near.length)r.roads_out=near.map(roadOut)}
+  return r&&r.ok?{...landHead(),...r}:r}
 // A place tool that was refused for the ground names survey as the fix (#558).
 const GROUND_ERR=/open ground|walkable|tiles of|inside|too close|off the map|unknown place|not a road|on the |outside /i;
 export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();

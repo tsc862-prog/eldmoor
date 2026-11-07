@@ -19,13 +19,15 @@ import {homeOf} from '../data/races.js';
 import {FAC} from '../data/factions.js';
 import {bond} from './bonds.js';
 import {CITY,ZONES,zoneFor,zoneAt,dist} from '../world/map.js';
-import {solidAt,standAt} from '../world/passable.js';
+import {solidAt,standAt,nearestOpen} from '../world/passable.js';
+import {clearLine} from './path.js';
 import {ELITES,MOBS} from '../data/mobs.js';
 import {hash} from '../core/rng.js';
 import {log} from './chronicle.js';
 import {record,timeline,onRecord} from './history.js';
 import {makeHero,maxHp,goHome,seedLevel} from './heroes.js';
 import {leaveParty} from './party.js';
+import {hasLinks} from './runlink.js';
 import {moment} from './reflect.js'; // reflection moments (#179)
 import {disableBrain,askRelay} from './brain.js';
 import {markPlayer} from './player.js';
@@ -244,7 +246,8 @@ function recruit(C,fac,cls){const i=S.recruits.findIndex(r=>r.fac===fac&&r.cls==
 
 // ---- founding, joining, leaving ----
 // Where the i-th of n stands around a point: two rows, a tile and a half apart, in order. No dice.
-export function spreadAt(p,i,n){const cols=Math.ceil(n/2),q={x:p.x+(i%cols-(cols-1)/2)*1.5,y:p.y+(i<cols?-.7:.7)};return solidAt(q.x,q.y)?standAt(q.x,q.y,2):q} // not on a building (#793)
+export function spreadAt(p,i,n){const cols=Math.ceil(n/2),q={x:p.x+(i%cols-(cols-1)/2)*1.5,y:p.y+(i<cols?-.7:.7)};if(!solidAt(q.x,q.y))return q;
+  return nearestOpen(q.x,q.y,2,o=>clearLine(p,o))||(solidAt(p.x,p.y)?standAt(q.x,q.y,2):p)} // not on a building (#793), nor over a river from the rest (#934: a mouth on the bank stood one hero in the next land)
 // A new world's company stands in its hall (#771): a setup's members come from their peoples' home towns, and an opening
 // scene takes only those in shouting range. Members already all inside the hall town stay exactly where they are (a
 // single-people company builds the world of before), so this rolls no dice. Returns those who came from another town;
@@ -406,9 +409,13 @@ export function editSheet(a,which,field,text,F=slotted()){if(!a)return false;con
   return false}
 
 // ---- the tick ----
+// With a host a company forms up wherever it stands, round the highest level who has a companion near (#1048): after a fall, a Crypt or a raid
+// it may be nowhere near a town, and nothing else would make it a party again. With no host only in town, as ever, so no seeded hash moves.
+function formUp(L){const free=L.filter(b=>!b.splitUntil&&!b.hidden&&(b.state==='town'||loose(b))).sort((x,y)=>y.lvl-x.lvl);
+  for(const ld of free){const g=free.filter(b=>b===ld||b.state==='town'||dist(b,ld)<12);if(g.length>1)return g}return []}
 function muster(F){const L=slotHeroes(F);let P=slotParty(F);
   for(const b of L)if(b.party&&b.party!==P)leaveParty(b);
-  if(!P){const inTown=L.filter(b=>b.state==='town'&&!b.splitUntil);if(inTown.length<2)return;
+  if(!P){const inTown=hasLinks()?formUp(L):L.filter(b=>b.state==='town'&&!b.splitUntil);if(inTown.length<2)return;
     let lead=inTown[0];for(const b of inTown)if(b.lvl>lead.lvl)lead=b;
     P=linkParty({id:++S.uid,fac:F.fac,leader:lead,mem:inTown.slice(),zone:zoneFor(Math.min(...inTown.map(b=>b.lvl)),homeOf(lead).gate),home:false,company:F.id});
     for(const b of inTown)b.party=P;S.parties.push(P);return}
@@ -419,6 +426,7 @@ const fightSeen=new Map(),lastState=new Map();
 // Saved with the world (kept.js): a member mid-fight at a reload still remembers how it ended; the foe goes by id.
 keep('watch',()=>({seen:[...fightSeen].map(([id,f])=>[id,{...f,m:f.m.id}]),last:[...lastState]}),
   v=>{fightSeen.clear();lastState.clear();for(const [id,f] of v.seen)fightSeen.set(id,{...f,m:S.mobs.find(m=>m.id===f.m)||{id:f.m,alive:false}});for(const [id,st] of v.last)lastState.set(id,st)});
+export const forgetFight=a=>{fightSeen.delete(a.id)}; // a hero who leaves the map leaves the fight with it (#1013): nothing to remember of how it ended
 function watch(F,a){const st=a.state,prev=lastState.get(a.id);lastState.set(a.id,st);
   if(st==='fight'&&a.target&&a.target.kind==='mob'){const m=a.target;fightSeen.set(a.id,{m,lvl:m.lvl,elite:!!m.elite,name:m.elite?m.name:MOBS[m.type].name,z:zoneAt(a.x,a.y)});}
   else if(fightSeen.has(a.id)){const f=fightSeen.get(a.id);fightSeen.delete(a.id);

@@ -57,7 +57,7 @@ let r = dmAct('when', {trigger: 'enter_region', on: {region: ZONES[zA], hero: M.
 ok(r.ok && r.when, 'when enter_region -> narrate is set', r);
 const wid = r.when;
 let L = dmAct('whens');
-ok(L.ok && L.whens.length === 1 && L.whens[0].id === wid && /enters/.test(L.whens[0].when) && L.triggers.length === W.TRIGGER_NAMES.length && L.actions.includes('narrate'), 'whens lists it, the triggers and the actions', L);
+ok(L.ok && L.whens.length === 1 && L.whens[0].id === wid && /enters/.test(L.whens[0].when) && L.triggers.length === W.TRIGGER_NAMES.filter(t => t !== 'enter_map').length && L.actions.includes('narrate'), 'whens lists it, the triggers and the actions', L);
 tick(); ok(!(M.chat || []).some(e => /FOG-LINE/.test(e.text)), 'nothing fires while the hero is elsewhere');
 park(M, zA); tick();
 ok((M.chat || []).some(e => /FOG-LINE/.test(e.text) && e.dm), 'the hero who entered hears the narration ({who} is that hero)');

@@ -58,6 +58,7 @@ import {findScene} from './scenes.js'; // one open scene per company (#518)
 import {companies,companyById,companyOf,members,leaderOf,followed,campaign,joinCompany,soloFor,setCompanyDeathHook,roleOf,slotHeroes,slotParty,slotted,seatRecruit,setArrivalHook,lcRoleOf,placeWord} from './company.js';
 import {inRange} from './reach.js';
 import {jobBar,jobShort} from './jobbar.js';
+import {townNear} from './atlas.js';
 
 export const ARRIVE={
   POLL_MS:5000,   // the table waits for the DM's voice only if its runner polled table_call this recently (as staged scenes)
@@ -80,7 +81,7 @@ const LIVE={connected:1,waiting:1};
 const isFellowship=C=>!!C&&C===slotted();
 const memOf=C=>!C?[]:isFellowship(C)?slotHeroes(slotted()):members(C).filter(a=>!a.hire); // a hire is never seated at a scene (#634)
 const leadOf=C=>{if(!C)return null;if(isFellowship(C)){const P=slotParty(slotted());if(P&&living(P.leader))return P.leader;const L=slotHeroes(slotted());let b=L[0]||null;for(const x of L)if(x.lvl>b.lvl)b=x;return b}return leaderOf(C)||members(C)[0]||null};
-const townOf=C=>{const ld=leadOf(C);return C&&C.hall?C.hall:ld?homeOf(ld).name:'town'};
+const townOf=C=>{const ld=leadOf(C);return C&&C.hall?townNear(C.hall,ld):ld?homeOf(ld).name:'town'}; // a hall left on another map: the nearest town that takes them (#1013)
 
 // ---- what the company has before it: the hall's first job, the gate captain's writ, a rumour ----
 function jobTitle(h){const T=AD.ADVENTURES[h.tpl]||{},th=h.data&&h.data.thing;return (h.title||T.name||h.tpl)+(th?': '+plain(Array.isArray(th)?th:[th]):'')}
@@ -216,7 +217,7 @@ function makeRecruit(C,q){if(isFellowship(C))return seatRecruit(C,q);
   const L=members(C);if(!L.length||C.ids.length>=8)return null;
   const a=hushOath(()=>makeHero(C.fac,q.cls,null,1));seedLevel(a,Math.min(...L.map(b=>b.lvl))-2);
   if(!joinCompany(C,a).ok)return null;markPlayer(a,true);if(q.fallen!=null)a.succeeds=q.fallen;return a}
-function place(C,a,where){const ld=leadOf(C)||a,town=isFellowship(C)?C.hall:ld.town||a.town;
+function place(C,a,where){const ld=leadOf(C)||a,town=townNear(isFellowship(C)?C.hall:ld.town||a.town,ld);
   if(a.town&&a.town!==town){a.born=a.born||a.town;a.town=town} // home is where the company is (#771); their people's town stays in their origin text
   if(where==='road'){Object.assign(a,standAt(ld.x+1.2,ld.y+.9));a.zone=ld.zone;a.state='hunt';a.dest=null;a.moving=false;return ld.name+'\'s side'} // the wait ran out in the field: they come to the company, not to an empty gate
   if(where==='camp'){const g=C.camp;Object.assign(a,standAt(g.x+1.2,g.y+.9));a.state='camp';a.camp=g.ids.length;a.dest=null;a.moving=false;if(!g.ids.includes(a.id))g.ids.push(a.id);return 'the camp\'s edge'}
@@ -269,8 +270,8 @@ const DM_OPEN={
       '. What the table already shows: '+plain(sc.frame)+premise()+(sc.ctx.prologue&&PRO?PRO.about(companyById(sc.company)||slotted()):'')+' Write what they see and hear as they sit down (or set out): one or two short paragraphs. Hint at the premise through what can be seen; reveal none of your secrets; decide nothing for them.'})},
   onAll(){},
   live,
-  fill(sc,c){if(sc.ctx.prologue&&PRO){resolve(sc,c,{text:PRO.fillLine(companyById(sc.company)||slotted(),sc)+' '+plain(sc.frame),by:'scripted'});return}
-    resolve(sc,c,{text:pickH(sc.id,1,['The fire is low and the room smells of rain and old wood.','Outside, the gate bell marks the hour; inside, a bench scrapes as someone makes room.','Lamps along the road outside burn low, one already dark.'])+' '+plain(sc.frame),by:'scripted'})},
+  fill(sc,c){if(sc.ctx.prologue&&PRO){resolve(sc,c,{text:PRO.fillLine(companyById(sc.company)||slotted(),sc),by:'scripted'});return} // the frame is on the table already: the fill adds its own line only (#966)
+    resolve(sc,c,{text:pickH(sc.id,1,['The fire is low and the room smells of rain and old wood.','Outside, the gate bell marks the hour; inside, a bench scrapes as someone makes room.','Lamps along the road outside burn low, one already dark.']),by:'scripted'})},
   done(sc){sc.summaryDone=1},
 };
 const DM_ARRIVE={

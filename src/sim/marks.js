@@ -8,6 +8,7 @@ import {S} from './state.js';
 import {dist,zoneAt,ZONES,CITY,LANDMARKS} from '../world/map.js';
 import {cryptIf} from './crypts.js';
 import {loreOf} from './lore.js';
+import {spotHere} from './atlas.js';
 
 export const MARK={MAX:12,NAME_MIN:3,NAME_MAX:40,NOTE_MAX:120,SIGHT:6};
 const inTown=p=>CITY.some(c=>p.x>=c.x0-.5&&p.x<=c.x1+1.5&&p.y>=c.y0-.5&&p.y<=c.y1+1.5);
@@ -54,7 +55,7 @@ export function unmarkPlace(a,{name}){const n=findOwn(a,name);
 
 // The walkable spot of a marked or told place by name (any case, "the" optional), or null (planOne).
 export function markAt(a,t){if(!a||!a.lore)return null;const k=key(t);if(!k)return null;
-  for(const n of Object.keys(a.lore.p)){const e=a.lore.p[n];if(!e.mk||e.x==null||key(n)!==k)continue;return {x:e.x,y:e.y,name:n,warn:e.note?n+': '+e.note+'.':null}}
+  for(const n of Object.keys(a.lore.p)){const e=a.lore.p[n];if(!e.mk||e.x==null||key(n)!==k||!spotHere(e))continue;return {x:e.x,y:e.y,name:n,warn:e.note?n+': '+e.note+'.':null}}
   return null}
 
 // Words for lists: places and lore.
@@ -67,5 +68,5 @@ export function hearMarks(b,speaker,text){if(!b||!speaker||speaker===b||speaker.
   for(const nm of own(speaker)){const e=speaker.lore.p[nm];if(!new RegExp('(^|[^A-Za-z])'+reEsc(bare(nm))+'($|[^A-Za-z])','i').test(t))continue;
     const L=loreOf(b).p,mine=Object.keys(L).find(x=>key(x)===key(nm));
     if(mine&&(!L[mine].mk||L[mine].mk===1))continue; // already its own, or a known land
-    L[nm]={how:'told',mk:2,src:speaker.name,at:Math.round(S.gameMin),day:day(),x:e.x,y:e.y,zone:e.zone};n++}
+    L[nm]={how:'told',mk:2,src:speaker.name,at:Math.round(S.gameMin),day:day(),x:e.x,y:e.y,zone:e.zone,...(e.map?{map:e.map}:{})};n++}
   return n}

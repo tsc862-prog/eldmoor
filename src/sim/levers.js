@@ -36,7 +36,7 @@ import {clamp} from '../core/rng.js';
 import {keep,onWorld} from './kept.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
-import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,LVL_CAP,zoneAt,zoneFor,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {GOODS,QUEST_ITEMS,USES,EPICS,BOSS_EPICS,DG_EPICS,SLOTS} from '../data/items.js';
 import {addQuest,addUse,addGear,take,room,count} from './inv.js';
@@ -142,7 +142,7 @@ export function spotErr(p,o={}){
 // further out is refused, so nothing level-40 ever walks Thornvale.
 export function bandLvl(z,lvl){const [lo]=band(z),hi=bandHi(z);
   if(lvl<lo-3||lvl>hi+3)return {err:'level '+lvl+' is outside '+ZONES[z]+'’s band '+lo+'-'+(band(z)[1]===Infinity?'+':band(z)[1])};
-  return {lvl:clamp(lvl,lo,hi+2),clamped:lvl<lo||lvl>hi+2}}
+  const top=Math.min(hi+2,LVL_CAP);return {lvl:clamp(lvl,lo,top),clamped:lvl<lo||lvl>top}}
 
 // ---- the registry ----
 export const LEVERS=Object.create(null); // no prototype: a lever named 'constructor' or '__proto__' is not found
@@ -538,7 +538,7 @@ function ecology(){
   for(const m of S.marks){const rec=recOf(m.lever);if(!rec)continue;
     if(m.kind==='danger'){const have=mobsOf(m.lever).filter(x=>x.alive).length;
       if(have<LK.DANGER_MOBS){const t=typeFor(m.z,m.lvl);if(t){const x=spawnMob(t),p=spotNear(m);if(p){x.x=x.home.x=x.spawn.x=p.x;x.y=x.home.y=x.spawn.y=p.y;x.home={...p};x.spawn={...p}}
-        x.lvl=clamp(m.lvl+Math.floor(r()*3)-1,band(m.z)[0],bandHi(m.z)+2);x.maxhp=25+x.lvl*16;x.hp=x.maxhp;x.lever=m.lever}}}
+        x.lvl=clamp(m.lvl+Math.floor(r()*3)-1,band(m.z)[0],Math.min(bandHi(m.z)+2,LVL_CAP));x.maxhp=25+x.lvl*16;x.hp=x.maxhp;x.lever=m.lever}}}
     else for(const x of S.mobs){if(!x.alive||x.gone||x.elite||x.named||x.adv!=null||x.lever!=null||MOBS[x.type].z!==m.z)continue;
       const d=dist(x.home,m);if(d>=m.r)continue;const k=(m.r+1)/Math.max(.1,d),q={x:m.x+(x.home.x-m.x)*k,y:m.y+(x.home.y-m.y)*k};
       if(d<.1||spotErr(q,{clear:.1})||zoneAt(q.x,q.y)!==m.z)continue;x.home={...q};x.spawn={...q};if(!x.target)x.dest={...q}}}

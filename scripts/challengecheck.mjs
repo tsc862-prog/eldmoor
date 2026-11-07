@@ -101,7 +101,7 @@ console.log('yield at 30%:');
 S.gameMin += 1440; placeAll(); const lv = C.lvl;
 r = act(C, 'challenge', {hero: D.name, to: 'yield'}); const r2 = act(D, 'answer_challenge', {answer: 'accept'});
 sc = duel(); ok(!!sc, 'a second duel opens' + (sc ? '' : ': ' + JSON.stringify([r, r2])));
-C.lvl = 60; C.hp = maxHp(C); D.hp = Math.ceil(maxHp(D) * .3) + 2;
+C.lvl = 60; C.hp = maxHp(C); D.hp = Math.ceil(maxHp(D) * .3) + 2; B.x += 30; // the company forms up in the field now (#1048), and its healer would tend the loser the moment it is over
 sc = play(a => a === D ? 'guard' : 'strike'); C.lvl = lv; C.hp = Math.min(C.hp, maxHp(C));
 ok(sc.ctx.end === 'yield' && sc.ctx.lose === D.id && share(D) <= DUEL.YIELD + 1e-9 && D.state !== 'downed' && D.state !== 'dead', 'a duellist at 30% yields, never downed: ' + Math.round(share(D) * 100) + '% (' + sc.summary + ')');
 

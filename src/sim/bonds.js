@@ -17,6 +17,7 @@ import {rnd} from '../core/rng.js';
 import {dist,ZONES,zoneAt} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {S,foeOf,sidesOff} from './state.js';
+import {isAway} from './atlas.js';
 import {log} from './chronicle.js';
 import {record} from './history.js';
 import {say} from './chat.js';
@@ -85,5 +86,5 @@ export function avenged(avenger,slain){const victim=avenger.nemesis[slain.id];if
 export function bondsTick(dt){S.bondT=(S.bondT||0)+dt*6;if(S.bondT<DAY)return;S.bondT-=DAY;
   for(const a of S.agents){if(!alive(a)||!a.bonds)continue;
     for(const id in a.bonds){const b=byId(id);
-      if(!alive(b)){delete a.bonds[id];continue}
+      if(!alive(b)){if(!isAway(id))delete a.bonds[id];continue} // someone on a frozen map is not gone, and a bond waits with them (#1013)
       if(dist(a,b)>NEAR&&--a.bonds[id]<=0)delete a.bonds[id]}}}
