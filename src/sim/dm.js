@@ -35,13 +35,15 @@
 // heading back) simply resumes the adventure from the same scene on the next trip out.
 import {rnd,ri,clamp,pickA} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
-import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPT,ZPTS,zoneAt,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,ZPTS,zoneAt,dist} from '../world/map.js';
+import {hasCrypt,cryptTitle,cryptZone,cryptMouth} from './crypts.js';
 import {standAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {homeOf} from '../data/races.js';
 import {tm} from '../data/traits.js';
 import * as D from '../data/adventures.js';
-import {S} from './state.js';
+import {S,loreSides,ownTown} from './state.js';
+import {oathZone} from './atlas.js';
 import {log,gold} from './chronicle.js';
 import {pop} from './effects.js';
 import {maxHp,gainXp,moveTo,goHome,huntZone,xpNeed,getEpic} from './heroes.js';
@@ -67,7 +69,9 @@ import {pull,ready,spotErr,attitudeDc,activeOf} from './levers.js';
 import {GOODS} from '../data/items.js';
 import {playerBranch} from './player-choice.js';
 import {isSolo,inSlots} from './company.js';
+import {hasLinks} from './runlink.js';
 import {supplyPlan,notePosted} from './supply.js'; // goods jobs: the board asks for crafted or gathered goods (#720)
+import {onWorld} from './kept.js';
 
 // ---- knobs ----
 export const K={
@@ -178,10 +182,13 @@ function beat(adv,big,...parts){if(adv.told||watched(adv)||big){line(adv,...part
 function note(adv,text){for(const b of members(adv))record(b,text)}
 
 // ---- the map: candidate points for scenes (built once, scale-safe) ----
-const ROADS=ZONES.map(()=>[]);
-for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){if(tiles[I(x,y)]!==ROAD)continue;const p={x:x+.5,y:y+.5};
-  if(CITY.some(c=>dist(p,c.gate)<K.GATE_CLEAR))continue;ROADS[zoneAt(p.x,p.y)].push(p)}
-const safeFor=(p,fac)=>!CITY.some(c=>c.fac!==fac&&dist(p,c.gate)<K.ENEMY_GATE);
+function roadPoints(){const R=ZONES.map(()=>[]);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){if(tiles[I(x,y)]!==ROAD)continue;const p={x:x+.5,y:y+.5};
+    if(CITY.some(c=>dist(p,c.gate)<K.GATE_CLEAR))continue;R[zoneAt(p.x,p.y)].push(p)}
+  return R}
+let ROADS=roadPoints();
+onWorld(()=>{ROADS=roadPoints()},()=>({dmRoads:ROADS})); // another map (#1013)
+const safeFor=(p,fac)=>loreSides()||!CITY.some(c=>c.fac!==fac&&dist(p,c.gate)<K.ENEMY_GATE);
 // A point from a list: preferably 8-30 tiles from `near`, never near an enemy gate.
 function pickPt(list,near,fac){if(!list||!list.length)return null;let best=null;
   for(let i=0;i<30;i++){const p=pickA(list);if(!safeFor(p,fac))continue;const d=near?dist(p,near):15;if(d>=10&&d<=32)return{x:p.x,y:p.y};if(!best)best=p}
@@ -259,6 +266,7 @@ export function takeBounty(a,b){a.quest={type:b.type,need:b.need,have:0,at:Math.
 function fellowHook(c,fo){
   const lo=Math.min(...fo.members.map(b=>b.lvl)),hi=Math.max(...fo.members.map(b=>b.lvl)),five=!!fo.company.slots,co=fo.cid;
   if(!five&&lo<K.MIN_LVL)return null; // nothing on a board fits a company with a member this green (#450)
+  if(five&&lo<K.MIN_LVL&&hasLinks())return null; // in a hosted world the hall posts no job the five's agents would be turned away from (#1016); a headless world draws as before
   for(const a of fo.members){if(a.adv||a.lvl<K.MIN_LVL||S.adventures.some(h=>h.phase==='open'&&h.for===a.id))continue;
     const o=oathTpl(a);if(o)return newHook(c,o.tpl,'oath',{for:a.id,zone:o.zone,thing:o.thing,data:o.data,ff:1,cid:co},(five?'a Fellowship member’s ':'a company member’s ')+(a.goal.offered?'unsworn thread':'oath'),true)}
   const taken=m=>S.adventures.some(h=>h.data&&h.data.eliteId===m.id&&h.phase!=='done');
@@ -317,8 +325,8 @@ function oathTpl(a){const g=a.goal;if(!g||g.done)return null;
   case 'avenge':{const E=S.mobs.find(m=>m.elite&&m.alive&&!m.gone&&m.name===g.target);
     return E?{tpl:'hunt',zone:MOBS[E.type].z,data:{eliteId:E.id,beast:E.name,btitle:E.title,eliteLvl:E.lvl}}:null}
   case 'heirloom':case 'heirloomCrypt':return {tpl:'relic',thing:'a clue to the '+g.target,data:{heirloom:g.target}};
-  case 'pilgrimCrypt':return CRYPT&&g.minLvl!=null&&a.lvl>=g.minLvl?{tpl:'deliver',zone:zoneAt(CRYPT.x,CRYPT.y),thing:'a candle for the drowned dead',data:{dest:{x:CRYPT.x,y:CRYPT.y+1.2},place:CRYPT.name}}:null;
-  case 'pilgrimFar':{if(g.minLvl==null||a.lvl<g.minLvl||g.zone==null)return null;const p=nearestPt(ZPTS[g.zone],homeOf(a).gate);
+  case 'pilgrimCrypt':return hasCrypt()&&g.minLvl!=null&&a.lvl>=g.minLvl?{tpl:'deliver',zone:cryptZone(),thing:'a candle for the drowned dead',data:{dest:cryptMouth(1.2),place:cryptTitle()}}:null;
+  case 'pilgrimFar':{if(g.minLvl==null||a.lvl<g.minLvl||oathZone(g)==null)return null;const p=nearestPt(ZPTS[g.zone],homeOf(a).gate);
     return p?{tpl:'deliver',zone:g.zone,thing:'a pilgrim’s token',data:{dest:p,place:'the edge of '+ZONES[g.zone]}}:null}
   case 'hoard':return {tpl:'escort'};
   default:return null}}
@@ -341,7 +349,7 @@ const partyZone=a=>a.party?a.party.zone:huntZone(a);
 function start(h,a,mem){const T=D.ADVENTURES[h.tpl],L=a,c=homeOf(L);
   const z=h.zone!=null?h.zone:partyZone(a),d=h.data;
   // where the deliveries go: another town of the faction, else the Crypt or a far waymark
-  if(T.scenes.some(s=>s.at==='dest')&&!d.dest){const towns=CITY.filter(t=>t.fac===L.fac&&t!==c);
+  if(T.scenes.some(s=>s.at==='dest')&&!d.dest){const towns=CITY.filter(t=>ownTown(t,L)&&t!==c);
     if(towns.length){const t=pickA(towns);d.dest={x:t.gate.x,y:t.gate.y};d.place=t.name}
     else{const p=pickPt(ROADS[z],c.gate,L.fac)||pickPt(ZPTS[z],c.gate,L.fac);if(p){d.dest=p;d.place='the '+ZONES[z]+' waymark'}}}
   if(T.scenes.some(s=>s.foe&&s.foe.named)||(T.scenes.some(s=>s.type==='choice'))){if(!d.beast){const types=Object.keys(MOBS).filter(k=>MOBS[k].z===z);const k=pickA(types.length?types:Object.keys(MOBS));
@@ -727,7 +735,7 @@ function serveStarved(fs){if(fs.length<2)return;
 // one posted job sized for a single hero, inside the lowest solo's level band and paid K.SOLO_PAY. Not posted at all with
 // no solo (the default together world and a world without a Fellowship draw no dice here and stay byte-identical). The
 // Fellowship's hall keeps its own ff job. Returns the hook or null.
-const soloHeroes=fac=>(S.companies||[]).filter(C=>isSolo(C)&&!C.slots&&C.fac===fac).map(C=>S.agents.find(a=>a.id===C.ids[0])).filter(a=>a&&a.player&&a.state!=='dead'&&a.lvl>=K.MIN_LVL);
+const soloHeroes=fac=>(S.companies||[]).filter(C=>isSolo(C)&&!C.slots&&(loreSides()||C.fac===fac)).map(C=>S.agents.find(a=>a.id===C.ids[0])).filter(a=>a&&a.player&&a.state!=='dead'&&a.lvl>=K.MIN_LVL);
 function soloHook(c,fo){const hs=soloHeroes(c.fac);if(!hs.length)return null;
   if(fo&&fo.town&&fo.town.name===c.name)return null;
   if(S.adventures.some(h=>h.phase==='open'&&h.town===c.name&&h.solo))return null;

@@ -29,6 +29,7 @@ import {followedCompany,followedMembers} from './companyview.js';
 import {members} from '../sim/company.js';
 import {chronicleShows} from './fellowship.js';
 import {downView,pips} from './downview.js';
+import {toggleWorldMap,worldMapReady} from './worldmap.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -95,6 +96,7 @@ function build(){const scr=$('screen');if(!scr)return false;root=el('div','cinem
   plates.addEventListener('click',e=>{const t=e.target&&e.target.closest?e.target.closest('.cinp'):null;if(t&&t._p&&t._p.a&&t._p.a.state!=='dead')select(t._p.a);e.stopPropagation()});
   chrome=el('div','cinbar');chrome.hidden=true;chrome.setAttribute('role','group');chrome.setAttribute('aria-label','Cinema view');
   for(const [n,t] of [[0,'Pause'],[1,'1×'],[3,'3×'],[8,'8×']]){const b=el('button','mini',t);b.type='button';b.addEventListener('click',e=>{e.stopPropagation();const s=$('sp'+n);if(s)s.click()});chrome.append(b)}
+  const wm=el('button','mini','World map · M');wm.type='button';wm.id='cinAtlas';wm.hidden=!worldMapReady();wm.addEventListener('click',e=>{e.stopPropagation();toggleWorldMap()});chrome.append(wm);
   const out=el('button','mini','Leave · C');out.type='button';out.dataset.cinleave='1';out.addEventListener('click',e=>{e.stopPropagation();leaveCinema()});chrome.append(out);
   root.append(top,shade,cap,plates,chrome);scr.append(root);
   hole=el('div','cinhole');hole.hidden=true;scr.parentNode.insertBefore(hole,scr);
@@ -114,6 +116,9 @@ export function leaveCinema(){if(!on)return false;on=false;cam.director=null;Obj
   if(R&&R.resize)R.resize();if(window.scrollTo)window.scrollTo(saved.x,saved.y);setCinemaWish(false);syncBtn();syncView();
   if(backTo&&backTo.focus)backTo.focus();backTo=null;return true}
 export const toggleCinema=()=>on?leaveCinema():enterCinema();
+// A map switch while the view is open (#1013): the director starts over on the company, in the dark, and fades up (render/roadfade.js hands it the last beat). The camera it
+// would give back on leaving was on the land left behind. aim: the company stands on the new map, the picture is not back yet.
+export function cinemaArrive(aim){if(!on)return;const [w,h]=canvasSize();director.enter(cam,w,h);if(aim&&saved){saved.camX=cam.camX;saved.camY=cam.camY;if(saved.view==='region')saved.view='map'}}
 // Opening the world: the view comes back on when it was on, or was asked for on the title screen.
 export function resumeCinema(){if(cinemaWish())enterCinema()}
 

@@ -12,7 +12,7 @@
 // section below, #588). slotted() names the company that has them (null when there is none); read membership with
 // inSlots(a), slotKeyOf(a) and partySlotted(p). Saves carry only S.companies / a.company / p.company (the old
 // S.fellowship, a.fellow, a.fellowRole and p.fellow accessors are gone; save.js migrates v6 saves that stored them).
-import {S,clockStr} from './state.js';
+import {S,clockStr,loreSides,sameSide} from './state.js';
 import {keep} from './kept.js';
 import {swornOf,hushOath} from './oath.js'; // only a sworn oath is an open thread (#800)
 import {homeOf} from '../data/races.js';
@@ -26,6 +26,7 @@ import {log} from './chronicle.js';
 import {record,timeline,onRecord} from './history.js';
 import {makeHero,maxHp,goHome,seedLevel} from './heroes.js';
 import {leaveParty} from './party.js';
+import {hasLinks} from './runlink.js';
 import {moment} from './reflect.js'; // reflection moments (#179)
 import {disableBrain,askRelay} from './brain.js';
 import {markPlayer} from './player.js';
@@ -95,13 +96,13 @@ export function newCompany(o){const lead=o.lead;return {id:o.id!=null?o.id:seqNe
   founded:Math.round(S.gameMin),day:day(),log:[],past:[],npcs:[],seq:0}}
 // Why a hero may not ride with C, or null.
 export function refuseJoin(C,a){if(!C)return 'No such company.';if(!alive(a))return 'That hero is not alive.';
-  if(C.ids.includes(a.id))return a.name+' already rides with it.';if(a.fac!==C.fac)return a.name+' is of the other faction; a company is of one faction.';
+  if(C.ids.includes(a.id))return a.name+' already rides with it.';if(!sameSide(a,C))return a.name+' is of the other faction; a company is of one faction.';
   if(C.ids.length>=PARTY.MAX)return 'A company holds at most '+PARTY.MAX+' heroes.';return null}
 // Point a hero at C without touching C.ids (the five-slot Fellowship keeps its ids in slot order itself).
 export function attach(C,a){const old=companyOf(a);if(old&&old!==C)leaveCompany(a);a.company=C.id;linkHero(a);return a}
 export function foundCompany(ids,o={}){const hs=(ids||[]).map(x=>typeof x==='object'?x:byId(x)).filter(Boolean);
   if(!hs.length&&o.fac==null)return {ok:false,error:'A company needs at least one hero.'};
-  const fac=o.fac!=null?o.fac:hs[0].fac;if(hs.some(a=>a.fac!==fac))return {ok:false,error:'A company is of one faction.'};
+  const fac=o.fac!=null?o.fac:hs[0].fac;if(!loreSides()&&hs.some(a=>a.fac!==fac))return {ok:false,error:'A company is of one faction.'};
   if(hs.length>PARTY.MAX)return {ok:false,error:'A company holds at most '+PARTY.MAX+' heroes.'};
   if(hs.some(a=>!alive(a)))return {ok:false,error:'Only living heroes ride in a company.'};
   let lead=hs[0];for(const b of hs)if(b.lvl>lead.lvl)lead=b;
@@ -116,7 +117,7 @@ export function leaveCompany(a,o={}){const C=companyOf(a);if(a&&a.company!=null)
   if(!C.ids.length&&!o.keep)dissolveCompany(C);return C}
 // B rides on as part of A (data only). Refused across factions or past the hero cap.
 export function mergeCompanies(A,B){if(!A||!B||A===B)return {ok:false,error:'Two companies are needed.'};
-  if(A.fac!==B.fac)return {ok:false,error:'A company is of one faction.'};
+  if(!sameSide(A,B))return {ok:false,error:'A company is of one faction.'};
   if(A.ids.length+B.ids.length>PARTY.MAX)return {ok:false,error:'Together they would be '+(A.ids.length+B.ids.length)+'; a company holds at most '+PARTY.MAX+'.'};
   for(const id of B.ids.slice()){const a=byId(id);if(a){a.company=A.id;linkHero(a)}if(!A.ids.includes(id))A.ids.push(id)}
   A.past=A.past.concat(B.past||[]);for(const n of B.npcs||[])if(!A.npcs.includes(n))A.npcs.push(n);
@@ -229,7 +230,7 @@ export function autoPick(fac){const pool=S.agents.filter(a=>eligible(a,fac));
 // Check a proposed slot map: five distinct living heroes (or null = recruit), one faction, classes fit.
 export function checkSlots(slots,fac){const seen=new Set(),F=slotted();
   for(const s of SLOTS){const id=slots[s.key];if(id==null)continue;const a=byId(id);
-    if(!alive(a))return s.label+': that hero is not alive.';if(a.fac!==fac)return a.name+' is not of the '+FAC[fac].name+'.';
+    if(!alive(a))return s.label+': that hero is not alive.';if(!loreSides()&&a.fac!==fac)return a.name+' is not of the '+FAC[fac].name+'.';
     if(!fits(s.key,a))return a.name+' is a '+a.cls+'; the '+s.label+' slot needs '+s.cls.join(' or ')+'.';
     if(inSlots(a)&&!(F&&F.ids.includes(a.id)))return a.name+' already rides with a Fellowship.';
     if(seen.has(a.id))return a.name+' is in two slots.';seen.add(a.id)}
@@ -406,9 +407,13 @@ export function editSheet(a,which,field,text,F=slotted()){if(!a)return false;con
   return false}
 
 // ---- the tick ----
+// With a host a company forms up wherever it stands, round the highest level who has a companion near (#1048): after a fall, a Crypt or a raid
+// it may be nowhere near a town, and nothing else would make it a party again. With no host only in town, as ever, so no seeded hash moves.
+function formUp(L){const free=L.filter(b=>!b.splitUntil&&!b.hidden&&(b.state==='town'||loose(b))).sort((x,y)=>y.lvl-x.lvl);
+  for(const ld of free){const g=free.filter(b=>b===ld||b.state==='town'||dist(b,ld)<12);if(g.length>1)return g}return []}
 function muster(F){const L=slotHeroes(F);let P=slotParty(F);
   for(const b of L)if(b.party&&b.party!==P)leaveParty(b);
-  if(!P){const inTown=L.filter(b=>b.state==='town'&&!b.splitUntil);if(inTown.length<2)return;
+  if(!P){const inTown=hasLinks()?formUp(L):L.filter(b=>b.state==='town'&&!b.splitUntil);if(inTown.length<2)return;
     let lead=inTown[0];for(const b of inTown)if(b.lvl>lead.lvl)lead=b;
     P=linkParty({id:++S.uid,fac:F.fac,leader:lead,mem:inTown.slice(),zone:zoneFor(Math.min(...inTown.map(b=>b.lvl)),homeOf(lead).gate),home:false,company:F.id});
     for(const b of inTown)b.party=P;S.parties.push(P);return}
@@ -419,6 +424,7 @@ const fightSeen=new Map(),lastState=new Map();
 // Saved with the world (kept.js): a member mid-fight at a reload still remembers how it ended; the foe goes by id.
 keep('watch',()=>({seen:[...fightSeen].map(([id,f])=>[id,{...f,m:f.m.id}]),last:[...lastState]}),
   v=>{fightSeen.clear();lastState.clear();for(const [id,f] of v.seen)fightSeen.set(id,{...f,m:S.mobs.find(m=>m.id===f.m)||{id:f.m,alive:false}});for(const [id,st] of v.last)lastState.set(id,st)});
+export const forgetFight=a=>{fightSeen.delete(a.id)}; // a hero who leaves the map leaves the fight with it (#1013): nothing to remember of how it ended
 function watch(F,a){const st=a.state,prev=lastState.get(a.id);lastState.set(a.id,st);
   if(st==='fight'&&a.target&&a.target.kind==='mob'){const m=a.target;fightSeen.set(a.id,{m,lvl:m.lvl,elite:!!m.elite,name:m.elite?m.name:MOBS[m.type].name,z:zoneAt(a.x,a.y)});}
   else if(fightSeen.has(a.id)){const f=fightSeen.get(a.id);fightSeen.delete(a.id);

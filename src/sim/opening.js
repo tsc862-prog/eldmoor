@@ -14,7 +14,7 @@
 // The old start (28 level-1 heroes in town, no Fellowship) is kept for balance comparisons:
 // ELDMOOR_FELLOWSHIP=0 in Node, ?fellowship=0 in the browser, or init({fellowship:false}).
 import {rnd,ri} from '../core/rng.js';
-import {ZONES,zoneFor,zonePoint,tileAt} from '../world/map.js';
+import {CITY,LVL_CAP,LVL_FLOOR,ZONES,zoneFor,zonePoint,tileAt} from '../world/map.js';
 import {ACTIVE_SPEC} from '../world/spec.js';
 import {WALKABLE} from '../world/tiles.js';
 import {solidAt,standAt} from '../world/passable.js';
@@ -46,6 +46,14 @@ export function othersStart(o={}){let v=o.others!=null?o.others:o.setup&&o.setup
   if(v==null&&typeof globalThis.ELDMOOR_OTHERS!=='undefined')v=String(globalThis.ELDMOOR_OTHERS);
   if(v==null){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_OTHERS!=null)v=p.env.ELDMOOR_OTHERS}
   return String(v==null?'':v).trim().toLowerCase()==='none'?'none':'full'}
+
+// The sides setting (#1025): 'lore' or nothing, read as others is: init's option, the setup's, ?sides= in the browser, ELDMOOR_SIDES in Node.
+export function sidesStart(o={}){let v=o.sides!=null?o.sides:o.setup&&o.setup.sides;
+  try{if(v==null&&typeof location!=='undefined'&&location.search)v=new URLSearchParams(location.search).get('sides')}catch(e){}
+  if(v==null&&typeof globalThis.ELDMOOR_SIDES!=='undefined')v=String(globalThis.ELDMOOR_SIDES);
+  if(v==null){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_SIDES!=null)v=p.env.ELDMOOR_SIDES}
+  if(v==null)v=ACTIVE_SPEC.sides; // a map may be lore by nature (#1013)
+  return String(v==null?'':v).trim().toLowerCase()==='lore'?'lore':null}
 
 // The first delve (#922): 'delve' or 'none', or null when nothing asks. init's option wins, then the setup's, then ?prologue= in the browser, then
 // ELDMOOR_PROLOGUE in Node. noteProlog keeps it in S.setup only when it differs from what the world would do by itself.
@@ -86,15 +94,20 @@ export function season(a,L){if(L<=1){record(a,'New to the road out of '+homeOf(a
   const ago=AGO[Math.min(AGO.length-1,Math.floor((L-1)/4))];
   record(a,'Left '+c.name+' '+ago+' ago. Level '+L+' now, '+a.kills+' kills behind them, hunting in '+ZONES[z]+'.')}
 
+// What this map holds (#1013): a side with no town here has no heroes here, and on a chapter map nobody starts above its top band (LVL_CAP).
+const sideHere=f=>CITY.some(c=>c.fac===f);
+const townSide=f=>sideHere(f)?f:CITY[0].fac;
+const sidesHere=()=>{const L=FAC.map((_,f)=>f).filter(sideHere);return L.flatMap((f,i)=>i?[' and ',fac(f)]:[fac(f)])};
 // The opening for a fresh world. Called by init() after the level-1 roster exists.
 export function opening(o={}){
   const setup=o.setup?cleanSetup(o.setup):null; // New World setup (sim/setup.js, #133): chosen classes, names, peoples and minds
   if(!setup&&!fellowshipStart(o)){if(noOthers()){emptyRoads();return null}
-    log('Twenty-eight new heroes of ',fac(0),' and ',fac(1),' arrive in ',{t:ACTIVE_SPEC.name,c:'gd'},'. Every one of them is level 1.');return null}
+    const n=S.agents.length;log(...(n===28?['Twenty-eight new heroes of ']:[String(n),' new heroes of ']),...sidesHere(),' arrive in ',{t:ACTIVE_SPEC.name,c:'gd'},'. Every one of them is level 1.');return null}
   if(setup&&setup.mode==='apart')return openApart(setup);
-  const ff=setup?setup.fac:o.fac!=null?o.fac:rnd()<.5?0:1,pick=setup?pickSetup(setup):autoPick(noOthers()?classicFive(ff):ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
+  const ff=setup?setup.fac:townSide(o.fac!=null?o.fac:rnd()<.5?0:1),pick=setup?pickSetup(setup):autoPick(noOthers()?classicFive(ff):ff),ids=new Set(Object.values(pick).filter(id=>id!=null));
   seasonOthers(ids);
   const r=foundSlots(pick,{fac:ff,ai:false,name:setup&&setup.name,hall:hallOf(setup),gather:!!setup}); // the five set out at level 1 from their hall (the setup's town, every member standing in it, #771), agent-played from the first tick (#148)
+  if(r.ok&&LVL_FLOOR>1)for(const a of S.agents.filter(h=>ids.has(h.id))){const {x,y,zone,state,dest,townStep}=a;season(a,LVL_FLOOR);Object.assign(a,{x,y,zone,state,dest,townStep})} // a map that begins above level 1 (#1013): the career, and they still stand in their hall
   if(r.ok){if(setup){const profs=applyMinds(setup);S.setup={world:setup.world,seed:setup.seed,fac:setup.fac,dm:setup.dm,...(hallOf(setup)?{hall:setup.hall}:{}),...(setup.prologue?{prologue:setup.prologue}:{}),...(profs&&Object.keys(profs).length?{profs}:{})}}}
   return r.ok?r.fellowship:null}
 
@@ -102,9 +115,9 @@ export function opening(o={}){
 function seasonOthers(ids){if(noOthers()){emptyRoads();return}
   for(let f=0;f<FAC.length;f++){const hs=S.agents.filter(a=>a.fac===f&&!ids.has(a.id)&&a.state!=='dead');
     for(let i=hs.length-1;i>0;i--){const j=Math.floor(rnd()*(i+1));[hs[i],hs[j]]=[hs[j],hs[i]]} // shuffle, so level does not follow class order
-    hs.forEach((a,i)=>season(a,startLevel((i+rnd())/hs.length)))}
+    hs.forEach((a,i)=>season(a,Math.max(LVL_FLOOR,Math.min(LVL_CAP,startLevel((i+rnd())/hs.length)))))}
   const bg=S.agents.filter(a=>!ids.has(a.id)),lv=bg.map(a=>a.lvl);
-  log({t:ACTIVE_SPEC.name,c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',fac(0),' and ',fac(1),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.')}
+  log({t:ACTIVE_SPEC.name,c:'gd'},'’s roads are already worn: ',String(bg.length),' heroes of ',...sidesHere(),' hunt its wilds, from level ',String(Math.min(...lv)),' to ',String(Math.max(...lv)),'.')}
 
 // No setup and no roster to pick from (#780): the classic five are made for the company.
 const classicFive=f=>{for(const c of CLASSIC)makeHero(f,c,null,0);return f};
@@ -121,7 +134,8 @@ function openApart(setup){
   for(const g of groupsOf(setup)){const lead=hs[g[0]],st=startOf(lead,setup.heroes[g[0]]),town=st.town,group=g.map(i=>hs[i]);
     for(const a of group){const was=homeOf(a).name;if(was!==town.name)a.born=was; // their people's town stays in their origin text (#771)
       a.town=town.name;Object.assign(a,standAt(town.x0+2+rnd()*7,town.y0+4+rnd()*3));a.state='town';a.dest=null}
-    if(st.lvl>1){for(const a of group){season(a,st.lvl);
+    const lvl=Math.max(LVL_FLOOR,st.lvl);
+    if(lvl>1){for(const a of group){season(a,lvl);
         if(st.zone!=null&&a.zone!==st.zone){const p=zonePoint(st.zone,null,town.gate);a.zone=st.zone;a.x=p.x;a.y=p.y}}
       const p={x:group[0].x,y:group[0].y}; // a group out hunting stands together too (#771): season() drew each a point of its own
       if(group.length>1)group.forEach((a,i)=>{const q=spreadAt(p,i,group.length);Object.assign(a,WALKABLE.includes(tileAt(q.x,q.y))&&!solidAt(q.x,q.y)?q:p)})}

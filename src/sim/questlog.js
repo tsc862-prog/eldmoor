@@ -24,9 +24,11 @@
 // In-game channels (#123): the watcher's questLog says who made a job (from); the hero's own view (questsView, the
 // quests tool) never does, and nothing here carries a DM note, a lever reason or a staged scene's reason.
 import {S} from './state.js';
+import {oathZoneName,frozenMaps,mapName} from './atlas.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // sworn oaths, and the thread on offer (#800)
 import {MOBS} from '../data/mobs.js';
-import {ZONES,CRYPT,dist} from '../world/map.js';
+import {ZONES,dist} from '../world/map.js';
+import {cryptTitle} from './crypts.js';
 import {homeOf} from '../data/races.js';
 import * as D from '../data/adventures.js';
 import {K as DMK,holdAdventure,resumeAdventure} from './dm.js';
@@ -87,7 +89,7 @@ function jobQ(a,h,status,focus){const T=D.ADVENTURES[h.tpl]||{},on=h.phase==='ac
 function supplyQ(a,j,status,focus){return mk({id:supplyId(j),kind:j.by==='dm-agent'||j.ff?'dm':'board',title:supplyText(j),giver:j.giver?j.giver.name:null,where:j.town,
   objective:wantText(j)+(j.hint?'. '+j.hint:''),progress:{have:Math.min(supplyHave(a,j.want),j.want.n),need:j.want.n},reward:rewardText(j),status,focus,
   started:j.phase==='taken'?j.takenAt:j.born,ends:j.until,from:j.by==='dm-agent'?'DM agent':j.ff?'scripted DM':'town board'})}
-function oathQ(a,g,status,focus){const where=g.type==='pilgrimCrypt'&&CRYPT?CRYPT.name:g.zone!=null&&typeof g.zone==='number'?ZONES[g.zone]||null:null;
+function oathQ(a,g,status,focus){const where=g.type==='pilgrimCrypt'&&cryptTitle()?cryptTitle():g.zone!=null&&typeof g.zone==='number'?oathZoneName(g)||null:null;
   return mk({id:oathId(g),kind:'oath',title:g.text,giver:null,where,objective:g.text+(g.target?' ('+g.target+')':''),
     progress:g.need>1?{have:Math.min(g.progress||0,g.need),need:g.need}:null,reward:null,status,focus,started:g.at,ends:null,from:'oath'})}
 // An offered thread: not an oath, not held; it waits under offered until the hero swears it (#800).
@@ -143,9 +145,11 @@ const hoursTo=m=>m==null?undefined:Math.max(0,Math.round((m-S.gameMin)/60));
 export function seenQ(q){const o={id:q.id,kind:KIND_SEEN(q),title:q.title,status:q.status};if(q.focus)o.focus=true;if(q.sworn!=null)o.sworn=q.sworn;
   if(q.giver)o.giver=q.giver;if(q.where)o.where=q.where;o.objective=q.objective;if(q.progress)o.progress=q.progress.have+'/'+q.progress.need;if(q.reward)o.reward=q.reward;
   if(q.ends!=null&&q.status!=='done'&&q.status!=='failed'&&q.status!=='abandoned'&&q.status!=='expired')o.ends_in_hours=hoursTo(q.ends);return o}
+// Jobs set aside on a land the hero left (#1013): named, with where they wait. They are taken up on the spot, on return.
+function elsewhere(a){const Y=a.questsAway||{},L=[...frozenMaps().flatMap(m=>(m.adventures||[]).filter(v=>v.phase==='active'&&v.held===a.id).map(v=>v.title)),...Object.keys(Y).map(id=>Y[id].text+', back in '+mapName(id))];return L.length?{left_behind:L}:{}}
 export function questsView(a){const L=questLog(a),fq=L.active.find(q=>q.focus);
   return {focus:fq?fq.title:null,active:L.active.map(seenQ),offered:L.offered.length?L.offered.map(seenQ):undefined,done:L.done.slice(0,QL.VIEW_DONE).map(seenQ),
-    holding:heldCount(a)+'/'+QL.MAX}}
+    holding:heldCount(a)+'/'+QL.MAX,...elsewhere(a)}}
 // The line for the state header (pace brief): the focused quest and how many others.
 export function questBrief(a){const L=questLog(a);if(!L.active.length)return null;const fq=L.active.find(q=>q.focus)||L.active[0];
   return {focus:fq.title+(fq.progress?' ('+fq.progress.have+'/'+fq.progress.need+')':''),id:fq.id,others:L.active.length-1}}

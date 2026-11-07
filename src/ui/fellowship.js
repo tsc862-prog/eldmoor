@@ -15,6 +15,7 @@
 //   renderThreads(node)           open threads
 //   tabMemory(node, a)            the Memory tab body
 // Hero names are .hn[data-hid] spans; panels.js owns the delegated click that follows them.
+import {loreSides} from '../sim/state.js'; // sides as lore (#1025)
 import {portrait} from '../render/sprites.js'; // face portraits (#367)
 import {FAC} from '../data/factions.js';
 import {renderNotebook} from './notebook.js'; // agent memories (#155)
@@ -151,7 +152,7 @@ function topView(node,C){const fel=!!C.slots&&slotted()===C;
   const h=el('div','fhline');
   const nm=el('span','fname f'+C.fac,cname(C));nm.title=cname(C);
   const live=members(C).length,place=C.hall?C.hall+' · ':'';
-  h.append(nm,el('span','fbadge f'+C.fac,FAC[C.fac].name),el('span','fmeta dm',place+live+(fel?'/5':'')+' standing'+((C.past||[]).length?' · '+C.past.length+' fallen':'')+' · founded day '+(Math.floor((C.founded||0)/1440)+1)));
+  h.append(nm,...(loreSides()?[]:[el('span','fbadge f'+C.fac,FAC[C.fac].name)]),el('span','fmeta dm',place+live+(fel?'/5':'')+' standing'+((C.past||[]).length?' · '+C.past.length+' fallen':'')+' · founded day '+(Math.floor((C.founded||0)/1440)+1)));
   const tools=el('span','ftools2');
   const ib=(fact,txt,label,pressed)=>{const b=el('button','ficon',txt);b.dataset.fact=fact;b.title=label;b.setAttribute('aria-label',label);if(pressed!=null)b.setAttribute('aria-pressed',String(pressed));return b};
   tools.append(ib('follow','◎','Follow '+(fel?'the Fellowship':cname(C)),cam.view==='fellow'&&followedCompany()===C),ib('drawer:members','☰','Members and minds',drawer==='members'));

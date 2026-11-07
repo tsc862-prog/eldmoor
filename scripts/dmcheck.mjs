@@ -372,6 +372,13 @@ console.log('summon_hero (scripts/summon-test.mjs)');
   const n = (out.match(/^\s+ok /gm) || []).length;
   ok(k.status === 0 && /SUMMON OK/.test(out), `summon_hero: ${n} checks (one scripted hero at the level asked, its caps and refusals, the DM log, the companies' reserve, a when, no replacement, save/restore)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
 
+// ---------------------------------------------------------------- 0c. call_to (issue #826), in a world of its own
+console.log('call_to (scripts/callto-test.mjs)');
+{const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'callto-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
+  for (const l of out.split(/\r?\n/)) if (/^\s+FAIL /.test(l)) console.error(l);
+  const n = (out.match(/^\s+ok /gm) || []).length;
+  ok(k.status === 0 && /CALLTO OK/.test(out), `call_to: ${n} checks (asked by a person and by the narrator, the caps, a decline and its wait, pile-on and the other refusals, an accepted call going down, a raid, a solo's answer, the reserve, what the DM is told, a when, save/restore, no dice)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-400)));}
+
 // ---------------------------------------------------------------- 1. the DM tools in the sim
 console.log('the DM tools');
 init({fac: 0}); run(60);
@@ -1193,6 +1200,7 @@ console.log('DM visibility: hear, carries/quests/knows, survey, world_standing')
   ok(mine && mine.carries && mine.knows && hn.heroes.filter(h => !h.fellowship).every(h => !h.carries), 'heroes_near gives company members carries/quests/knows and background heroes the old line');
   ok(JSON.stringify(m1).length < 4000, 'a member view stays small (' + JSON.stringify(m1).length + ' bytes)');
   r = dmAct('survey', {near: 'fellowship'});
+  {const w = dmAct('when', {trigger: 'enter_map', on: {map: 'Elsewhere'}, action: 'narrate', args: {near: 'table', text: 'x'}, reason: 'x'}), st = dmAct('dm_status'); ok(!w.ok && /one land/.test(w.error) && !('map' in r) && !('roads' in st.campaign) && !('map' in dmAct('regions')), 'one map, not a word of lands: survey, regions and dm_status.campaign as before, and enter_map refused in words (#1013)')}
   ok(r.ok && r.region && r.legal_spots.length >= 1 && r.legal_spots.length <= 6 && Array.isArray(r.roads) && Array.isArray(r.towns_and_landmarks) && r.radius === 12, 'survey near the Fellowship: region, roads, places and ' + (r.legal_spots && r.legal_spots.length) + ' legal spots');
   ok(dmAct('survey', {near: 'x'}).ok === false && dmAct('survey', {near: A.name, radius: 99}).radius === 30 && dmAct('survey', {near: A.name, radius: 1}).radius === 4, 'survey radius is held to 4-30 and an unknown place is refused');
   const {spotErr} = await import('../src/sim/levers.js'), {dist} = await import('../src/world/map.js');

@@ -24,9 +24,10 @@
 //              turn: {id, day, t (clock), gm0, gm1 (game minutes), open, calls, errors, reads:{tool:n}, tools:{tool:{ok,bad}}, notes, levers, staged, said, other,
 //                     and once the runner reported: turn (its number), model, provider, cost, seconds, tokensIn, tokensOut}
 //   The turn record is the DM's own data for the watcher's DM tab: no hero tool, prompt or snapshot reads it (issue #123).
-import {S,clockStr,dayNo,noOthers} from './state.js';
+import {S,clockStr,dayNo,noOthers,loreSides} from './state.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // what a hero swore aloud, and the thread only offered (#800)
-import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,zoneAt,dist} from '../world/map.js';
+import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,EXITS,MAP_ID,WORLD_ID,zoneAt,dist} from '../world/map.js';
+import {campaignMaps,crossingView,landHead,farHint,exitOpen,mapName} from './atlas.js';
 import {FAC} from '../data/factions.js';
 import {CLS} from '../data/classes.js';
 import {nearText,pointHint} from './nearform.js'; // the place shapes a local model writes (issue #467)
@@ -69,6 +70,8 @@ import {installRumourLever,rumoursView} from './rumours.js'; // seed_rumour (#63
 import {installBestowLever,epithetView} from './epithet.js'; // bestow (#638)
 import {trafficView} from './traffic.js'; // who is on the road (#796)
 import {installSummonLever,summonView,summonedAlive,SUMMON} from './summon.js'; // summon_hero (#780)
+import {installCallLever,lastCall,musterWord,CALL} from './callto.js'; // call_to (#826)
+import {worded} from '../world/words.js'; // usage lines naming the towns and regions of the live map (#1013)
 import {dmBook,addNote,updateNote,forgetNote,pinNote,recallNotes,relevant,dmContext,DM_NB} from './notebook.js'; // searchable notes (issue #155) // staged scenes and the at-the-table calls (issue #132)
 
 // ---- knobs ----
@@ -95,7 +98,7 @@ export const DMA={
   UNDOS_PER_DAY:6,     // undo, dismiss and unstage calls per game day
 };
 const DAY=1440;
-const PILING=['mark_dangerous','custom_foe','named_foe','set_condition','start_event','summon_hero'];
+const PILING=['mark_dangerous','custom_foe','named_foe','set_condition','start_event','summon_hero','call_to'];
 const DANGER_CONDS=['bandits','migration']; // the region conditions that add danger: set_condition of these kinds, or a world event that runs as one (invasion = bandits, migration)
 
 // ---- the seat ----
@@ -190,6 +193,8 @@ export const dmTurnVer=()=>S.dmAgent&&S.dmAgent.tv||0;
 
 // A Fellowship member badly hurt out in the field near the pull: the DM does not pile on.
 export function pileOn(name,p){if(!PILING.includes(name)||!p||typeof p!=='object')return null;
+  if(name==='call_to'){const f=focuses().find(x=>x.cid===Number(p.company)),b=f&&f.members.find(a=>a.state!=='town'&&a.hp<maxHp(a)*DMA.PILE_HP); // nobody is asked into the dark with a member badly hurt in the field (#826)
+    return b?b.name+' is badly hurt ('+pct(b)+'% HP) out in '+(ZONES[zoneAt(b.x,b.y)]||'the wilds')+': the DM does not pile on. Try again when they have recovered or reached a town.':null}
   if(name==='set_condition'&&!DANGER_CONDS.includes(p.kind))return null;
   if(name==='start_event'){const ev=EVENTS[p.kind];if(!DANGER_CONDS.includes(ev&&ev.cond||p.kind))return null}
   const at=p.at&&typeof p.at==='object'&&Number.isFinite(Number(p.at.x))?{x:Number(p.at.x),y:Number(p.at.y)}:null,z=p.region!=null?regionIdx(p.region):at?zoneAt(at.x,at.y):null;
@@ -213,6 +218,7 @@ const oathRows=L=>({sworn:L.filter(swornOf).map(a=>({hero:a.name,oath:a.goal.tex
 const OFFERED_NOTE=' It is not an oath: never say they swore it. You may hint at it with your levers (a rumour, a person who knew it).';
 // A downed member, for the needs lists (#655): first, and words for the DM's part (voice it; no danger, no rescue by fiat).
 const downItem=a=>a.name+' is down and dying'+(a.down&&a.down.stable?' (stable, still down)':'')+' in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': the dice decide; voice it when table_call asks, and pull nothing dangerous near them.';
+const callField=C=>{const c=lastCall(C);return c?{last_call:c}:{}}; // your last call_to, so you do not nag (#826)
 function fellowshipNeeds(){const F=slotted(),fo=focus();if(!F||!fo)return null;
   const th=companyThreads(slotted()),props=openProps(),items=[],down=fo.members.filter(isDown),hurt=fo.members.filter(a=>!isDown(a)&&a.state!=='town'&&!a.hidden&&a.hp<maxHp(a)*DMA.PILE_HP);
   for(const a of down)items.push(downItem(a)); // a downed member first (#655)
@@ -228,17 +234,19 @@ function fellowshipNeeds(){const F=slotted(),fo=focus();if(!F||!fo)return null;
   for(const x of seeItems(fo,dmState()))items.push(x);
   const adv=(S.adventures||[]).filter(v=>v.phase==='active'&&v.mem&&v.mem.some(id=>fo.ids.has(id)));
   for(const v of adv.slice(0,2))items.push('Under way: '+(v.title||v.tpl)+' (scene '+((v.idx||0)+1)+' of '+((v.scenes||[]).length||'?')+').');
+  {const mw=musterWord(F,!adv.length&&!S.table&&!props.length&&!hurt.length);if(mw)items.push(mw)} // what only the DM knows (#826)
   if(!adv.length&&!sv.cur&&!S.table&&!props.length&&!hurt.length)items.push('Nothing is under way for them: a hook near '+at+', a rumour of a named foe on their road, or a staged scene ('+(field.length?'stage_scene near "fellowship"':'in town: stage_scene kind meeting or social with at "'+at+'" and a setting')+') would give their next game hours something.');
   const quiet=!down.length&&!S.table&&!props.length&&!hurt.length&&!adv.length&&!sv.cur;
   return {summary:(down.length?down.length+' down and dying; ':'')+(field.length?field.length+' riding in '+at:'all '+fo.members.length+' in '+at)+(inTown&&field.length?', '+inTown+' in town':'')+'; '+(th.length?th.length+' open thread'+(th.length===1?'':'s'):'no open threads')+(adv.length?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(S.table?'; a Table scene is open':'')+'.',
-    where:at,riding:field.length,in_town:inTown,items,oaths:oathRows(fo.members),quiet,share_of_dm_actions:focusStats()}}
+    where:at,riding:field.length,in_town:inTown,items,oaths:oathRows(fo.members),quiet,...callField(F),share_of_dm_actions:focusStats()}}
 // What changed for them since the last look: place, falls, scenes, finished jobs and oaths. A string; equal means nothing new.
 function sigOf(fo){const F=fo.company,field=fo.members.filter(a=>a.state!=='town'&&!a.hidden),z=field.length?zoneAt(fo.x,fo.y):-1,t=F.tableStats||{};
   const done=(S.adventures||[]).filter(v=>v.phase==='done'&&v.mem&&v.mem.some(id=>fo.ids.has(id))).length,oaths=fo.members.filter(a=>a.goal&&a.goal.done).length+fo.members.filter(swornOf).length+fo.members.filter(a=>a.oathKept).length;
   return [z,field.length?1:0,(F.past||[]).length,t.scenes||0,done,oaths,companyThreads(F).length,!!S.table].join('|')}
 // One signature per company joined with | (#450): any company's change makes a DM event turn due. One company: its own
 // (the Fellowship alone reads exactly as before).
-export function companiesSig(){const fs=focuses();if(!fs.length)return null;return fs.length===1?sigOf(fs[0]):fs.map(f=>f.cid+':'+sigOf(f)).join('|')}
+export function companiesSig(){const fs=focuses();if(!fs.length)return null;const on=MAP_ID===WORLD_ID?'':'@'+MAP_ID; // the map too (#1013): a crossing is an event turn, and a first map reads as before
+  return (fs.length===1?sigOf(fs[0]):fs.map(f=>f.cid+':'+sigOf(f)).join('|'))+on}
 
 // ---- every company a thread (#450) ----
 // What each company needs from the DM, neediest first: the followed company when it must choose (a scene or vote of its own
@@ -256,6 +264,7 @@ export function companiesNeeds(){const fs=focuses();if(!fs.length)return [];cons
     if(pend.vote)items.push('A vote is open among them: leave it to them.');
     for(const a of hurt)items.push(a.name+' is badly hurt ('+pct(a)+'% HP) out in '+(ZONES[zoneAt(a.x,a.y)]||'the wilds')+': no danger near them.');
     for(const a of fo.members)if(wounded(a)&&!isDown(a))items.push(a.name+' carries a wound for '+woundSpanWord(a)+'.');
+    {const mw=musterWord(C,!down.length&&!pend.scene&&!pend.vote&&!hurt.length&&!fo.busy);if(mw)items.push(mw)} // what only the DM knows (#826)
     for(const t of th.slice(0,2))items.push('Open thread: '+txt(t.parts));
     for(const x of seeItems(fo,dmState()).slice(0,2))items.push(x);
     const quiet=!down.length&&!pend.scene&&!pend.vote&&!hurt.length&&!fo.busy;
@@ -264,7 +273,7 @@ export function companiesNeeds(){const fs=focuses();if(!fs.length)return [];cons
     return {id:C.id,company:label,size:n,solo:n===1,followed:C===fol,hall:fo.town?fo.town.name:null,where:at,riding:field.length,
       pending:pend.scene?'scene':pend.vote?'vote':null,hurt:hurt.length,...(down.length?{down:down.length}:{}),busy:fo.busy,since_dm_min:since,open_threads:th.length,
       summary:(down.length?down.length+' down and dying; ':'')+(field.length?field.length+' riding in '+at:(n===1?'in ':'all '+n+' in ')+at)+(fo.busy?'; a job is under way':'; no job under way')+(hurt.length?'; '+hurt.length+' badly hurt':'')+(since==null?'; nothing from you yet':'; your last act for them '+Math.round(since/60)+'h ago')+'.',
-      items:items.slice(0,4),oaths:oathRows(fo.members),quiet,why,
+      items:items.slice(0,4),oaths:oathRows(fo.members),quiet,why,...callField(C),
       _k:[must?0:1,pend.scene||pend.vote?0:1,hurt.length||down.length?0:1,-(since==null?Infinity:since),n,C.id]}});
   rows.sort((x,y)=>{for(let i=0;i<x._k.length;i++)if(x._k[i]!==y._k[i])return x._k[i]<y._k[i]?-1:1;return 0});
   for(const r of rows)delete r._k;
@@ -307,7 +316,7 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     ...(manyCompanies()?{companies_first:COMPANIES_FIRST,companies_needs:companiesNeeds()}:{}),
     ...(prologueStatus()?{first_delve:prologueStatus()}:{}), // #922: the place, its rooms and what is behind it, for this seat alone
     prep:{...prepView(),...(openingDue()?{opening_due:true}:{}),...(openingWait()?{opening_waits_for:openingWait().names}:{})}, // #437: while it runs the world is held for you; end it with prep_done
-    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:ourScene().gf?'A scene opens for them: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own line stands).':['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
+    table:sc?(ourScene()?{open:true,kind:sc.kind,voice:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:ourScene().gf?'A scene opens for them: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own line stands).':['crawl','homecoming'].includes(ourScene().kind)?'The first delve is at the table: your voice frames this scene (table_call, table_answer; a few seconds, then the room\'s own words stand).':['crossing','farside'].includes(ourScene().kind)?'A company stands on a road between lands: your voice frames it (table_call, table_answer; a few seconds, then the game\'s own words stand).':sc.kind==='opening'?'Session zero is at the table: your voice frames it (table_call, table_answer; a few seconds, then the scripted DM fills it).':sc.kind==='fireside'?'A company talks round its fire: your voice frames the night\'s talk (table_call, table_answer, rounds 3-6 if you like; a few seconds, then the scripted DM fills it).':'A newcomer arrives at the table: your voice speaks for them (table_call, table_answer; a few seconds, then the scripted DM fills it).'}
       :sc.ctx&&sc.ctx.staged!=null?{open:true,kind:sc.kind||null,staged:true,call:!!(sc.calls&&sc.calls.some(c=>!c.done)),note:'The scene you staged is at the table: answer its calls with table_call and table_answer (a few seconds each; silence is filled by the scripted DM).'}
       :{open:true,kind:sc.kind||null,note:'A Table scene is running: let it play out. Your table voice framed it; narrate near "table" is the most a turn adds.'}):{open:false},
     staged:stagedView(),
@@ -322,11 +331,13 @@ function status(){const D=dmState(),day=today(),tl=S.timeline||[],ch=S.chronicle
     your_lines_today:{narrate:(day.narr||0)+'/'+DMA.NARRATE_PER_DAY,npc_say:(day.npc||0)+'/'+DMA.NPC_SAY_PER_DAY},...speakTo(),spoke_for_today:day.spoke||0, // lines cut because they put words in a member's mouth (#750)
     ...(focuses().length?{map_names:{near_the_companies:mapNames(),note:NAMES_NOTE}}:{}), // what is really on the map (#1017): a name from your notes is not, until you mark it
     ...(downCallSummary()?{downed:downCallSummary()}:{}), // a hero down: voice it through table_call (#655)
-    ...(noOthers()?{others:'none: no background heroes ride here, only the companies and whoever you bring (summon_hero)'}:{}), // the world setting (#780)
+    ...(noOthers()?{others:'none: the roads are empty, and stay so unless you summon_hero (2 a game day, 8 alive, at most 2 levels above the average of the nearest company, open ground or a town a company stands in). Why: a rival, someone met on the road, a healer or trader to meet. A world for the company alone is a fair choice: bring only what their story wants.'}:{}), // the world setting (#780)
+    ...(loreSides()?{sides:'lore: every town takes in every company and no hero attacks one unasked. An antagonist is yours to bring: summon_hero of the other fac from the company\'s own is its foe, of its own fac a friend; or stage_scene'}:{}), // #1025
     ...(summonedAlive().length?{summoned:summonView()}:{}), // the heroes you brought
     rulings:rulingSummary(), // free actions waiting for your ruling (#522): ruling_call, then ruling_answer at once
     conversations:convSummary(), // NPC conversations (#170): waiting ones first; answer them with npc_call / npc_say {conv} / npc_offer
-    campaign:D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}},
+    campaign:{...(D.campaign?{loaded:!!D.campaign.loaded,sections:{...D.campaign.sections}}:{loaded:false,sections:{}}),...campaignMaps()}, // the seed, and the maps: where the company is, what it has walked, the roads off this land (#1013)
+    ...(crossingView()?{crossing:crossingView()}:{}), // a company at a road off the map, and what it waits on
     ...whenFields(),
     notes:Object.fromEntries(NOTE_SECTIONS.map(k=>[k,D.notes[k].length])),relevant_notes:relevant(dmBook(D),dmContext())}} // relevant_notes: your notes that bear on the moment, {id,title} (#155)
 
@@ -372,7 +383,7 @@ const attOf=n=>(n.att||[]).filter(x=>x.until==null||x.until>S.gameMin).map(x=>({
 function readScope(tool,town,region){const t=clean(town,40),g=clean(region,40);if(!t&&!g)return {};
   if(t){const c=townOf(t);if(c)return {towns:[c.name],c,label:c.name}}
   const v=g||t,z=regionIdx(v);
-  if(z==null)return {err:'No '+(g?'region':'town or region')+' called "'+v+'". '+tool+' takes town ('+CITY.map(c=>c.name).join(', ')+') or region ('+ZONES.join(', ')+').'};
+  if(z==null)return {err:'No '+(g?'region':'town or region')+' called "'+v+'". '+tool+' takes town ('+CITY.map(c=>c.name).join(', ')+') or region ('+ZONES.join(', ')+').'+farHint(v)};
   return {z,towns:CITY.filter(c=>zoneAt(c.gate.x,c.gate.y)===z).map(c=>c.name),label:ZONES[z],...(!g?{note:'"'+t+'" is a region, not a town: read as the region '+ZONES[z]+'.'}:{})}}
 const scopeHead=Q=>Q.label?{scope:Q.z!=null?{region:Q.label,towns:Q.towns}:{town:Q.label},...(Q.note?{note:Q.note}:{})}:{};
 function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)return {ok:false,error:Q.err};const c=Q.c,inT=n=>!Q.label||Q.towns.includes(n.town);
@@ -382,15 +393,17 @@ function npcsRead(town,region){const Q=readScope('npcs',town,region);if(Q.err)re
     ...(attOf(w).length?{attitudes:attOf(w)}:{}),...(recordView(w)?{fellowship:recordView(w)}:{}),placed_by_lever:w.lever||null}));
   return {ok:true,...scopeHead(Q),townsfolk:folk.slice(0,60),wanderers:wand}}
 
+const roadOut=e=>({name:e.name,at:Math.round(e.x)+','+Math.round(e.y),...(exitOpen(e)?{to:mapName(e.to.map),open:true}:{toward:e.to.heard,open:false})}); // a road off the map (#1013)
 function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Array(ZONES.length).fill(0);
   for(const m of S.mobs)if(m.alive&&!m.gone){const z=zoneAt(m.x,m.y);if(z>=0)mobs[z]++}
   for(const a of S.agents)if(alive(a)&&a.state!=='town'&&!a.hidden){const z=zoneAt(a.x,a.y);if(z>=0)heroes[z]++}
-  return {ok:true,regions:ZONES.map((name,z)=>{const cond=(S.conditions||[]).filter(c=>c.z===z),marks=(S.marks||[]).filter(m=>m.z===z),pl=(S.places||[]).filter(p=>p.z===z);
+  return {ok:true,...landHead(),regions:ZONES.map((name,z)=>{const cond=(S.conditions||[]).filter(c=>c.z===z),marks=(S.marks||[]).filter(m=>m.z===z),pl=(S.places||[]).filter(p=>p.z===z);
     return {index:z,name,levels:band(z),monsters:mobs[z],heroes_out:heroes[z],creatures:Object.keys(MOBS).filter(k=>MOBS[k].z===z).slice(0,8),
       ...(cond.length?{condition:cond.map(c=>c.kind+' '+c.str+' ('+Math.max(0,Math.round((c.until-S.gameMin)/60))+'h left)')}:{}),
       ...(marks.length?{areas:marks.map(m=>m.kind+' at '+Math.round(m.x)+','+Math.round(m.y)+' r'+m.r)}:{}),
       ...(pl.length?{places:pl.map(p=>({id:p.id,kind:p.kind,name:p.name,at:Math.round(p.x)+','+Math.round(p.y)}))}:{})}}),
-    towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]}))}}
+    towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]})),
+    ...(EXITS.length?{roads_out:EXITS.map(roadOut)}:{})}}
 
 function hooksRead(town,region){const Q=readScope('hooks',town,region);if(Q.err)return {ok:false,error:Q.err};
   const A=(S.adventures||[]).filter(v=>!Q.label||Q.towns.includes(v.town)||(Q.z!=null&&v.zone===Q.z)),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};
@@ -468,6 +481,7 @@ function pullLever(a,via){const day=today(),D=dmState(),name0=clean(a.lever,40),
   if(!params)return refuse('params must be an object such as {"region":"'+ZONES[0]+'"}',usage);
   if(name==='named_foe')return refuse('named foes are raised by the scripted DM inside a running scene');
   if(name==='summon_hero'&&!via&&params.near!=null)return summonTool({...params,why:reason}); // near reads as the flat tool reads it (#780)
+  if(name==='call_to'&&!via)return callTool({...params,reason}); // company and by read as the flat tool reads them (#826)
   if(!reason)return refuse('a reason is required (one sentence for the DM log)',usage);
   if(day.pulls>=DMA.PULLS_PER_DAY)return refuse('the DM agent has pulled '+DMA.PULLS_PER_DAY+' levers today; the world needs time to answer');
   const pile=pileOn(name,params);if(pile)return refuse(pile);
@@ -490,15 +504,15 @@ function leverRefuse(name,why,usage,reason,params,via){const D=dmState();D.stats
 // rule, the lever's own limits, cooldown and the Fellowship's reserved share (levers.js pull) and the DM log are identical.
 // Nothing is validated twice: the lever refuses, and its contract comes back with the refusal.
 export const FLAT_LEVERS={post_hook:'post_hook',place_person:'create_npc',mark_place:'mark_place',give_item:'give_item',take_item:'take_item',
-  retire_person:'retire_npc',withdraw_hook:'withdraw_hook',set_attitude:'set_attitude',set_condition:'set_condition',price_shock:'price_shock',mark_danger:'mark_dangerous',start_event:'start_event',nudge_relation:'nudge_relation',custom_foe:'custom_foe',create_site:'create_site',summon_hero:'summon_hero'}; // #636: every remaining lever as a flat tool
+  retire_person:'retire_npc',withdraw_hook:'withdraw_hook',set_attitude:'set_attitude',set_condition:'set_condition',price_shock:'price_shock',mark_danger:'mark_dangerous',start_event:'start_event',nudge_relation:'nudge_relation',custom_foe:'custom_foe',create_site:'create_site',summon_hero:'summon_hero',call_to:'call_to'}; // #636: every remaining lever as a flat tool
 const NEAR_FORMS='"fellowship", a member or hero, "x,y", a town, a place, a landmark or a region';
-const FLAT_USAGE={
+const FLAT_USAGE=worded(()=>({
   post_hook:'post_hook takes: town (a town: '+CITY.map(c=>c.name).join('|')+', or "fellowship", a member or a region for the nearest board), tpl (rescue|escort|investigate|clear|relic|negotiate|hunt|deliver, or a goods job that asks for crafted or gathered goods: draughts|tonics|blade|cowl|meals|scrolls|herbs|ore|sinew|perch|rimebloom), giver? (captain|innkeeper|smith|quartermaster|priest|bard), reward? (small|fair|generous), region? (where the job leads), place? (a place or person by name or id), for? (a hero by name or id), reason',
   place_person:'place_person takes: role (peddler|hermit|drover|sellsword|minstrel|stranger), near ('+NEAR_FORMS+'), name?, faction? (concord|warband|neutral), want?, attitude? (hostile|wary|neutral|friendly), hours? (6-168), spot? (in a town: inn|smith|quartermaster|chapel|square|gate), reason',
   give_item:'give_item takes: hero (a hero by name or id), item (a quest item or token, a consumable, or a gear slot head|chest|hands|feet|main|off|trinket), by? (a person in earshot, by name or id), ilvl? (gear only, never above the hero’s level), reason',
   take_item:'take_item takes: hero (a hero by name or id), item (a quest item or token), by? (a person in earshot, by name or id), reason',
   mark_place:'mark_place takes: kind (ruin|camp|shrine|cairn_door|watchtower), near ('+NEAR_FORMS+'), name?, hours? (12-336), reveal? (a secret a search uncovers), cache? (gold or an item hidden there), reason',
-  create_site:'create_site takes: theme (barrow|fortress|temple|mine|den|ruin), region (a region: '+ZONES.join('|')+'; or left out with near), band? (the level wanted, clamped to the region), rooms? (3-8), near? ('+NEAR_FORMS+'; the site is placed on open ground off the roads near it), name?, raid? (yes: a raid site for 5 or more), reason'};
+  create_site:'create_site takes: theme (barrow|fortress|temple|mine|den|ruin), region (a region: '+ZONES.join('|')+'; or left out with near), band? (the level wanted, clamped to the region), rooms? (3-8), near? ('+NEAR_FORMS+'; the site is placed on open ground off the roads near it), name?, raid? (yes: a raid site for 5 or more), reason'}));
 // A walkable spot between min and max tiles of c (rings outward, no dice), clear of towns, landmarks and, by gap, other places.
 function openSpot(c,min,max,gap){const R=q=>Math.round(q*10)/10,okAt=q=>!spotErr(q)&&!(gap&&(S.places||[]).some(p=>dist(p,q)<gap));
   if(min<=0&&okAt({x:R(c.x),y:R(c.y)}))return {x:R(c.x),y:R(c.y)};
@@ -743,9 +757,9 @@ function prepDone(a){const t=clean(a&&a.summary,DMA.INTENT_MAX);if(!prepActive()
   const v0=prepView();endPrep('done');dmlog('agent',null,['DM prep done ('+v0.kind+', '+v0.calls+' calls, '+v0.seconds+' s)'+(t?': '+t:'.')],{by:'dm-agent',prep:v0.kind,calls:v0.calls,seconds:v0.seconds,text:t||null},{heroes:[]});
   return {ok:true,prep:prepView(),note:'The table opens now.'}}
 // ---- seed_rumour (#637) and bestow (#638): flat lever tools like post_hook, through pullLever (caps, reserve, DM log) ----
-const RENOWN_USAGE={
+const RENOWN_USAGE=worded(()=>({
   seed_rumour:'seed_rumour takes: town (a town: '+CITY.map(c=>c.name).join('|')+') or region (a region: '+ZONES.join('|')+'), text (160 characters, as townsfolk say it), about? (a place, region, creature or person), days? (1-5), who? (innkeeper|captain|bard), reason',
-  bestow:'bestow takes: hero (a hero by name or id), title (2-24 characters: "Wightbane", "of the Ford"), why (one sentence, the DM log only), by? (a person within 7 tiles of the hero, by name or id)'};
+  bestow:'bestow takes: hero (a hero by name or id), title (2-24 characters: "Wightbane", "of the Ford"), why (one sentence, the DM log only), by? (a person within 7 tiles of the hero, by name or id)'}));
 function renownTool(tool,a){a=a&&typeof a==='object'?a:{};installRumourLever();installBestowLever();const usage=RENOWN_USAGE[tool],via={tool,usage};
   const reason=clean(tool==='bestow'?a.why||a.reason:a.reason||a.why,DMA.REASON_MAX);
   const no=(why,params)=>leverRefuse(tool,why,usage+'. The lever: '+leverUsage(tool),reason,params||{},via);
@@ -760,6 +774,20 @@ function renownTool(tool,a){a=a&&typeof a==='object'?a:{};installRumourLever();i
     params={hero:h.id,title:typeof a.title==='string'?a.title:a.title,...opt('by',by)}}
   const r=pullLever({lever:tool,params,reason},via);if(!r.ok)return r;const e=r.effect||{};
   return {...r,tool,...(tool==='seed_rumour'?{rumour:e.rumour,towns:e.towns,tellers:e.tellers,days:e.days,note:'The tellers pass it on in their own words; nobody learns where it started. hooks lists the live rumours.'}:{known_as:e.known_as,by:e.by,heard_by:e.heard_by})}}
+// ---- call_to (#826): the Crypt or a raid put to a company, a flat lever tool like post_hook, through pullLever (caps, reserve, pile-on, DM log) ----
+const callUsage=()=>'call_to takes: kind (crypt|raid), company? (an id, a company\'s name, "fellowship" or a member; default the followed company), by? (a townsperson or a person you placed within '+CALL.EAR+' tiles of its leader, by name or id; default the gate captain in town, else the narrator), text? (your words as spoken, up to '+CALL.TEXT_MAX+' characters), reason';
+// The company a call means: an id, a name, "fellowship", a member's name; nothing named: the followed company.
+function callCompany(v){const s=clean(v,40),lo=s.toLowerCase(),fs=focuses();if(!s)return fs[0]?fs[0].company:null;
+  const f=fs.find(x=>String(x.cid)===lo||String(x.company.name||'').toLowerCase()===lo||x.company.slots&&/^(the )?fellowship$/.test(lo))||fs.find(x=>x.members.some(a=>String(a.id)===lo||a.name.toLowerCase()===lo));return f?f.company:null}
+const noCompany=v=>'company: no company called "'+clean(v,40)+'"; companies: '+(focuses().map(f=>f.cid+' ('+(f.company.name||f.members[0].name)+')').join(', ')||'none rides now');
+function callTool(a){a=a&&typeof a==='object'?a:{};installCallLever();const usage=callUsage(),via={tool:'call_to',usage},reason=clean(a.reason||a.why,DMA.REASON_MAX);
+  const no=(why,params)=>leverRefuse('call_to',why,usage+'. The lever: '+leverUsage('call_to'),reason,params||{},via);
+  const C=callCompany(a.company);if(!C)return no(noCompany(a.company));
+  const opt=(k,v)=>v==null||v===''?{}:{[k]:v};let by;
+  if(a.by!=null&&a.by!==''){const q=personOf(a.by);if(!q)return no('by: no person called "'+clean(a.by,40)+'" (see npcs)');by=q.id}
+  const params={kind:typeof a.kind==='string'?a.kind.trim().toLowerCase():a.kind,company:C.id,...opt('by',by),...opt('text',a.text)};
+  const r=pullLever({lever:'call_to',params,reason},via);if(!r.ok)return r;const e=r.effect||{};
+  return {...r,tool:'call_to',company:e.company,by:e.by,line:e.line,heard_by:e.heard_by,...(e.proposal!=null?{proposal:e.proposal,note:'Put to them as a vote: it is theirs to settle, and dm_status shows how it went (last_call).'}:{note:'Put to a hero alone: they answer aloud (hear shows you), and dm_status shows how it went (last_call).'})}}
 // ---- summon_hero (#780): a flat lever tool like post_hook, through pullLever (caps, reserve, pile-on, DM log) ----
 const summonUsage=()=>'summon_hero takes: fac ('+FAC_NAMES()+'), cls ('+Object.keys(CLS).join('|')+'), level? (up to '+SUMMON.LVL_UP+' above the nearest company\'s average; default that average), near ('+NEAR_FORMS+'), name?, people? (a people of that faction), why (one sentence, the DM log only)';
 function summonTool(a){a=a&&typeof a==='object'?a:{};installSummonLever();const usage=summonUsage(),via={tool:'summon_hero',usage},reason=clean(a.why||a.reason,DMA.REASON_MAX);
@@ -780,7 +808,8 @@ function surveyRead(near,radius){const s=clean(near,60),lo=s.toLowerCase();if(!s
   if(!p){const lm=LANDMARKS.find(l=>l.name.toLowerCase()===lo||l.name.toLowerCase().replace(/^the /,'')===lo.replace(/^the /,''));if(lm)p={x:lm.x,y:lm.y,label:'around '+lm.name}}
   if(!p){const pl=markNamed(s);if(pl)p={x:pl.x,y:pl.y,label:'around '+pl.name}}
   if(!p)return {ok:false,error:'Unknown place "'+s+'".'+nameHint(s)+' '+nearTakes()};
-  return surveyAt(p,radius)}
+  const r=surveyAt(p,radius);if(r&&r.ok&&EXITS.length){const near=EXITS.filter(e=>dist(p,e)<=r.radius+e.r);if(near.length)r.roads_out=near.map(roadOut)}
+  return r&&r.ok?{...landHead(),...r}:r}
 // A place tool that was refused for the ground names survey as the fix (#558).
 const GROUND_ERR=/open ground|walkable|tiles of|inside|too close|off the map|unknown place|not a road|on the |outside /i;
 export function unknownTool(tool){const s=String(tool==null?'':tool).slice(0,40),lo=s.toLowerCase();
@@ -877,6 +906,7 @@ function run0(tool,args){let r;
     case 'unwatch':r=whenCancel('watch',args.id);break;
     case 'seed_rumour':case 'bestow':r=renownTool(tool,args);break; // #637, #638
     case 'summon_hero':r=summonTool(args);break; // #780
+    case 'call_to':r=callTool(args);break; // #826
   }
   return r}
 
@@ -889,9 +919,11 @@ function whenFields(){const w=whenStatus();return w?{whens:w.whens,watches:w.wat
 function whenCheck(tool,a,o={}){
   if(tool==='pull_lever'){const name=leverAlias(clean(a.lever,40));if(!LEVERS[name]||!leverNames().includes(name))return {error:'no such lever "'+clean(a.lever,40)+'"; levers: '+leverNames().join(', ')+'.'+wishInvite(dmState())};
     if(name==='named_foe')return {error:'named foes are raised by the scripted DM inside a running scene'};if(o.who)return null;
+    if(name==='call_to')return whenCheck('call_to',{...a,...(a.params&&typeof a.params==='object'?a.params:{})});
     const params=aliasParams(clean(a.lever,40),leverParams(name,a));if(!params)return {error:'params must be an object',usage:leverUsage(name)};
     const v=leverValidate(LEVERS[name],params);return typeof v==='string'?{error:'the lever '+name+': '+v,usage:leverUsage(name)}:null}
   if(o.who)return null;
+  if(tool==='call_to'){if(!callCompany(a.company))return {error:noCompany(a.company)};if(a.by!=null&&a.by!==''&&!personOf(a.by))return {error:nobody(a.by).error};return null}
   if(tool==='narrate'){const n=clean(a.near,60);if(n.toLowerCase()!=='table'&&!placeOf(n))return {error:'narrate near: unknown place "'+n+'" (a hero name or id, a town, a marked place, a landmark, a region, "x,y", or "table").'+nameHint(n)};return null}
   if(tool==='npc_say'){const p=personOf(a.npc);if(!p){const nb=nobody(a.npc);return {error:nb.error}}return null}
   if(tool==='whisper'||tool==='dream'||tool==='give_item'||tool==='take_item'){if(!heroOf(a.hero))return {error:'hero: no living hero called "'+clean(a.hero,40)+'"'};

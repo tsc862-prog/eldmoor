@@ -5,9 +5,10 @@
 //   worldPreview(id, cls)     a canvas; paints at once when the map is cached, else on the next tick
 // The active world is read from world/map.js; any other is built once from its spec (buildWorld, about 20-60 ms) and
 // only its small preview image is kept.
-import {WORLDS,WORLD_ID} from '../world/spec.js';
+import {MAPS} from '../world/spec.js';
 import {buildWorld} from '../world/gen.js';
-import {tiles as ATILES,zone as AZONE,CITY as ACITY,REGIONS as AREGIONS,LANDMARKS as ALAND} from '../world/map.js';
+import {tiles as ATILES,zone as AZONE,CITY as ACITY,REGIONS as AREGIONS,LANDMARKS as ALAND,MAP_ID} from '../world/map.js';
+import {onWorld} from '../sim/kept.js';
 import {TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,SNOW,ICE} from '../world/tiles.js';
 import {BIOME,TILE_FLAT,MARK} from './palette.js';
 import {FAC} from '../data/factions.js';
@@ -19,10 +20,11 @@ BY_TILE[SWAMP]=BY_TILE[MUD]=BY_TILE[SGRASS]=TILE_FLAT.swamp;BY_TILE[ROCK]=BY_TIL
 BY_TILE[SNOW]=BY_TILE[ICE]=TILE_FLAT.snow;BY_TILE[RIVER]=TILE_FLAT.water;BY_TILE[ROAD]=BY_TILE[BRIDGE]=BY_TILE[FLOOR]=TILE_FLAT.road;BY_TILE[WALL]=TILE_FLAT.wall;
 const rgbC={};const rgb=s=>rgbC[s]||(rgbC[s]=[parseInt(s.slice(1,3),16),parseInt(s.slice(3,5),16),parseInt(s.slice(5,7),16)]);
 
-const specOf=id=>WORLDS[id]||null;
+const specOf=id=>MAPS[id]||null; // a fixture too (?world=testlinka): the setup page opens on it
 const modelC={}; // id -> {w,h,tiles,zone,CITY,REGIONS,LANDMARKS}
+onWorld(()=>{for(const k of Object.keys(modelC))delete modelC[k]}); // the live bindings below are the map on screen (#1013), not the campaign's first
 function model(id){if(modelC[id])return modelC[id];const spec=specOf(id);if(!spec)return null;
-  if(id===WORLD_ID)return modelC[id]={w:spec.size.w,h:spec.size.h,tiles:ATILES,zone:AZONE,CITY:ACITY,REGIONS:AREGIONS,LANDMARKS:ALAND};
+  if(id===MAP_ID)return modelC[id]={w:spec.size.w,h:spec.size.h,tiles:ATILES,zone:AZONE,CITY:ACITY,REGIONS:AREGIONS,LANDMARKS:ALAND};
   const m=buildWorld(spec);return modelC[id]={w:m.w,h:m.h,tiles:m.tiles,zone:m.zone,CITY:m.CITY,REGIONS:m.REGIONS,LANDMARKS:m.LANDMARKS}}
 
 const raceName=id=>{const r=RACES.find(x=>x.id===id);return r?r.name:''};
@@ -47,14 +49,14 @@ export function worldFacts(id){const sp=specOf(id);if(!sp)return null;
 
 // The towns of one faction in a world, for the Hall select: where each stands (its region) and whose it is.
 export function worldTowns(id,fac){const sp=specOf(id);if(!sp)return [];const m=model(id);
-  return (sp.towns||[]).filter(t=>t.fac===fac).map(t=>{
+  return (sp.towns||[]).filter(t=>fac==null||t.fac===fac).map(t=>{
     let region='';if(m){const c=m.CITY.find(x=>x.name===t.name),x=Math.floor(c?(c.x0+c.x1)/2:t.x0+t.w/2),y=Math.floor(c?(c.y0+c.y1)/2:t.y0+t.h/2),r=m.REGIONS[m.zone[y*m.w+x]];region=r?r.name:''}
     const people=raceName(t.race);
     return {name:t.name,region,people,label:[t.name,region,people].filter(Boolean).join(' · ')}})}
 
-// Where an apart hero may set out in a world: its towns of one faction and its regions with their low level, from the spec.
+// Where an apart hero may set out in a world: its towns of one faction (fac null: all of them, #1025) and its regions with their low level, from the spec.
 export function worldStarts(id,fac){const sp=specOf(id);if(!sp)return {towns:[],regions:[]};
-  return {towns:(sp.towns||[]).filter(t=>t.fac===fac).map(t=>t.name),regions:(sp.regions||[]).map(r=>({name:r.name,low:r.band?r.band[0]:null}))}}
+  return {towns:(sp.towns||[]).filter(t=>fac==null||t.fac===fac).map(t=>t.name),regions:(sp.regions||[]).map(r=>({name:r.name,low:r.band?r.band[0]:null}))}}
 
 // ---- the picture ----
 const imgC={}; // id -> {cv, s} painted once
@@ -80,5 +82,5 @@ export function worldPreview(id,cls){const c=document.createElement('canvas');if
   const sp=specOf(id);if(!sp){return c}
   const s=Math.max(1,Math.min(Math.floor(BOX_W/sp.size.w),Math.floor(BOX_H/sp.size.h),6));c.width=sp.size.w*s;c.height=sp.size.h*s;
   const go=()=>{try{const p=paint(id);if(!p)return;const x=c.getContext('2d');if(x){x.imageSmoothingEnabled=false;x.drawImage(p.cv,0,0)}}catch(e){}};
-  if(imgC[id]||id===WORLD_ID)go();else if(typeof setTimeout==='function')setTimeout(go,0);else go();
+  if(imgC[id]||id===MAP_ID)go();else if(typeof setTimeout==='function')setTimeout(go,0);else go();
   return c}

@@ -9,6 +9,7 @@
 //                settings, turn count and spend stay on the session object; the hero's memory is in the game (journal, notebook,
 //                persona) and the first turn after a roll is told to read it. Never inside a turn, never with a scene open or
 //                due, never on a reflection turn (it needs the day it reflects on). The claim and the pacer are not touched.
+//                The last hours of talk come along as a short recap in that first prompt (scripts/session-recap.mjs, #808).
 // A fresh session asked from the page reaches the runner as a "fresh" line on stdin (askFresh) and rolls by the same rules.
 //   compaction   the net, for one very long turn or a roll held back by a scene. CLAUDE_CODE_AUTO_COMPACT_WINDOW through query()'s
 //                env (read by the CLI; `npm run sessioncheck` proves it on the real binary). The CLI's threshold is the window less
@@ -46,8 +47,11 @@ export const ctxText = n => Number.isFinite(n) ? `ctx ${Math.round(n / 1000)}k` 
 // at its next safe moment, a multi-hero runner's each on its own. Counted per session object, never saved.
 let freshAsks = 0; const freshSeen = new WeakMap();
 export const askFresh = () => {freshAsks++};
-export function rollDue(sess, limit, {busy = false, legacy = true} = {}) {
+// lazy (#808): whether this runner plays with lazy tools (undefined for seats with no such switch): a session started the other way rolls, so
+// none carries both tool shapes.
+export function rollDue(sess, limit, {busy = false, legacy = true, lazy} = {}) {
   if (busy) return null;
+  if (lazy !== undefined && sess.sessionId && !!sess.lazyTools !== lazy) return {why: 'tools', line: `[session rolled: lazy tools ${lazy ? 'on' : 'off'}]`};
   if (freshAsks > (freshSeen.get(sess) || 0)) {
     if (sess.sessionId || (sess.local && sess.local.history && sess.local.history.length)) return {why: 'asked', line: '[session rolled: a fresh session was asked for]'};
     freshSeen.set(sess, freshAsks); // nothing to set aside yet

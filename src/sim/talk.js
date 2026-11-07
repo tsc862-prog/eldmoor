@@ -24,12 +24,13 @@
 //   S.talks {seq, call, cur:[conv], past:[short], day:{d, lines, offers, opened}, stats}
 //   conv {id, npc, name, heroes:[ids], lines:[{who:'member'|'npc', id, name, text, t}], ex, wait:{call, hero, line, gm, real, by}|null,
 //         offers:[{kind, ex, by, mark}], offerEx, state 'open'|'done', born, last, why}
-import {S,clockStr} from './state.js';
+import {S,clockStr,ownTown,sameSide} from './state.js';
 import {keep} from './kept.js';
 import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,zoneFor,dist} from '../world/map.js';
+import {cryptIf,cryptTitle} from './crypts.js';
 import {FAC} from '../data/factions.js';
 import {USES,SLOTS} from '../data/items.js';
-import {ELITES} from '../data/mobs.js';
+import {eliteOf} from '../data/mobs.js';
 import {ADVENTURES} from '../data/adventures.js';
 import {homeOf} from '../data/races.js';
 import {ROLE_TALK,DEFAULT_TALK,ROLE_JOB,ROLE_STOCK,DEFAULT_STOCK,TALK_LINES} from '../data/talk-lines.js';
@@ -45,6 +46,7 @@ import {ensureNpcs} from './npcs.js';
 import {stageScene} from './staged.js';
 import {heard,since,dmAlive,goneEpoch,callDeadline,lateWhy} from './dmreflex.js'; // the DM's reflexes (#561)
 import {invOf,used,capOf,addUse,addGear,sellLoot,sellEntry} from './inv.js';
+import {farAnswer} from './farlands.js'; // the roads out and what lies past them (#1013)
 import {npcWarning,captainWarning,jobRumour,learnPlace,learnJob} from './lore.js'; // a townsperson warns a green blade off the next region up (#188)
 import {equip,makeItem,SHOP_COST,slotLevel,weakestSlot,refreshEpics,itemStats} from './gear.js';
 import {inSlots,slotHeroes,slotKeyOf,slotted} from './company.js'; // the slotted company (#588)
@@ -293,7 +295,7 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
     for(const b of mem)remember(b,'talk',full(p)+' told us: '+lead+(where?' ('+where+')':''));
     noteOn(p,'Told the Fellowship: '+lead)}
   else if(kind==='job'){const tpl=String(args.tpl||ROLE_JOB[p.role]||'rescue');if(!ADVENTURES[tpl]||tpl==='fallen')return no('tpl must be one of '+Object.keys(ADVENTURES).filter(k=>k!=='fallen').join(', '));
-    const town=p.town&&CITY.some(x=>x.name===p.town&&x.fac===a.fac)?p.town:home.name;
+    const town=p.town&&CITY.some(x=>x.name===p.town&&ownTown(x,a))?p.town:home.name;
     const giver=['captain','innkeeper','smith','quartermaster','priest','bard'].includes(p.role)?p.role:undefined;
     const z=args.region!=null&&args.region!==''?regionIdx(args.region):null;
     const res=pull('post_hook',{town,tpl,...(giver?{giver}:{}),forHero:a.id,...(z!=null?{region:z}:{}),reward:['small','fair','generous'].includes(args.reward)?args.reward:'fair',src:'request'},{by,reason:'a job from '+full(p)+' in conversation'});
@@ -344,7 +346,7 @@ function knows(p,a){const out=[],z=Number.isFinite(p.x)?zoneAt(p.x,p.y):null;
   for(const cnd of S.conditions||[])out.push({text:cnd.kind+' over '+ZONES[cnd.z]+'.',where:ZONES[cnd.z]});
   for(const q of S.places||[])out.push({text:'There is '+q.name+' out in '+ZONES[q.z]+', at '+Math.round(q.x)+','+Math.round(q.y)+'.',where:ZONES[q.z]});
   if(a){const w=npcWarning(a);if(w)out.push({text:w,warn:true})}
-  if(a){const hz=huntZone(a),E=ELITES[hz];if(E&&E.name)out.push({text:'They say '+E.name+' prowls '+ZONES[hz]+'. Few who meet it come home whole.',where:ZONES[hz]})}
+  if(a){const hz=huntZone(a),E=eliteOf(hz);if(E&&E.name)out.push({text:'They say '+E.name+' prowls '+ZONES[hz]+'. Few who meet it come home whole.',where:ZONES[hz]})}
   if(z!=null&&z>=0)out.sort((x,y)=>(y.where===ZONES[z])-(x.where===ZONES[z]));
   out.sort((x,y)=>(y.warn?1:0)-(x.warn?1:0)); // a warning to a green blade comes first (#188)
   return out.slice(0,5)}
@@ -372,17 +374,18 @@ function townAnswer(p,a,text){const raw=String(text||''),t=raw.toLowerCase();if(
   const pl=[];
   ZONES.forEach((n,z)=>{if(nmRe(n).test(t))pl.push({name:n,z,at:nearestOf(p,z)})});
   for(const c of CITY)if(c.name!==p.town&&nmRe(c.name).test(t))pl.push({name:c.name,at:{x:(c.x0+c.x1)/2,y:(c.y0+c.y1)/2}});
-  for(const l of LANDMARKS)if(!(CRYPT&&l.name===CRYPT.name)&&nmRe(l.name.replace(/^the /i,'')).test(t))pl.push({name:l.name,at:l,z:zoneAt(l.x,l.y)});
+  for(const l of LANDMARKS)if(!cryptIf(n=>n===l.name)&&nmRe(l.name.replace(/^the /i,'')).test(t))pl.push({name:l.name,at:l,z:zoneAt(l.x,l.y)});
   for(const m of S.places||[])if(m.name&&nmRe(m.name).test(t))pl.push({name:m.name,at:m,z:m.z});
   for(const g of pl.slice(0,1)){learnPlace(a,g.name,'told');
     parts.push(g.name+' lies '+(g.at?wayTo(p,g.at):'a way off')+(g.z!=null&&ZONES[g.z]&&g.name!==ZONES[g.z]?', in '+ZONES[g.z]:'')+(g.z!=null&&g.name===ZONES[g.z]?'; '+jobRumour(a,g.z):'')+'.')}
-  if(CRYPTQ.test(t)||(CRYPT&&nmRe(CRYPT.name.replace(/^the /i,'')).test(t))){fit=true;
+  const far=farAnswer(a,t);if(far)parts.push(far);
+  if(CRYPTQ.test(t)||cryptIf(n=>nmRe(n.replace(/^the /i,'')).test(t))){fit=true;const D=CRYPT;
     const cw=p.role==='captain'?captainWarning(a):null;
-    parts.push(cw||((CRYPT?CRYPT.name:'The Crypt')+' lies '+(CRYPT?wayTo(p,CRYPT):'far off')+'. Tried blades go down together, or not at all.'));
-    if(CRYPT)learnPlace(a,CRYPT.name,'told')}
+    parts.push(cw||((D?D.name:'The Crypt')+' lies '+(D?wayTo(p,D):'far off')+'. Tried blades go down together, or not at all.'));
+    if(D)learnPlace(a,D.name,'told')}
   // a name nobody here knows: a capitalised run in the middle of the line
-  const known=new Set([a.name,p.name,...people().flatMap(q=>[q.name,String(q.name||'').split(' ')[0]]),...(S.agents||[]).map(b=>b.name),...ZONES,...CITY.map(c=>c.name),...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).flatMap(x=>String(x).split(' ')).map(x=>x.toLowerCase()));
-  if(!hit.length&&!pl.length&&!(CRYPTQ.test(t))){const runs=[];let cur=[];
+  const known=new Set([a.name,p.name,...people().flatMap(q=>[q.name,String(q.name||'').split(' ')[0]]),...(S.agents||[]).map(b=>b.name),...ZONES,...CITY.map(c=>c.name),...LANDMARKS.map(l=>l.name),cryptTitle()].filter(Boolean).flatMap(x=>String(x).split(' ')).map(x=>x.toLowerCase()));
+  if(!hit.length&&!pl.length&&!far&&!(CRYPTQ.test(t))){const runs=[];let cur=[];
     for(const m of raw.matchAll(/[A-Za-z][A-Za-z'-]*/g)){const w=m[0],i=m.index,before=raw.slice(0,i).trimEnd(),start=!before||/[.!?]$/.test(before),lw=w.toLowerCase();
       const cap=/^[A-Z]/.test(w)&&!known.has(lw)&&!STOP.has(lw)&&(!start||cur.length);
       if(cap)cur.push(w);else{if(cur.length)runs.push(cur.join(' '));cur=[]}}
@@ -408,7 +411,7 @@ export function traderFor(a,name,range){const s=String(name==null?'':name).trim(
   const open=people().filter(p=>p.trade&&p.trade.until>S.gameMin&&(s?String(p.id)===s||String(p.name).toLowerCase()===s||full(p).toLowerCase()===s||p.role===s:true));
   if(!open.length)return s?{error:'Nobody called "'+name+'" has offered to trade with you. Talk to them first.'}:null;
   const p=open.sort((x,y)=>dist(a,x)-dist(a,y))[0];if(dist(a,p)>range)return {error:full(p)+' is too far away to trade ('+Math.round(dist(a,p))+' tiles).'};
-  if(!inSlots(a)||p.trade.fac!==a.fac)return {error:full(p)+' trades only with the Fellowship.'};
+  if(!inSlots(a)||!sameSide(p.trade,a))return {error:full(p)+' trades only with the Fellowship.'};
   return p}
 export function npcBuy(a,p,{slot,item,count}){const st=stockOf(p);
   if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>x.toLowerCase()===String(item).toLowerCase());

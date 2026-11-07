@@ -437,6 +437,7 @@ if (process.argv[2] === '--fireside') {
   {const eb = sb.beats.find(b => b.id === live.id && b.k === 'listen' && /pokes the fire/.test(b.res || '')), el = (other.chat || []).find(e => e.emote && /pokes the fire/.test(e.text));
     ok(emoted && emoted.ok && eb && !eb.line, 'a listener line at the fire is an emote: the beat is a listen with no spoken line');
     ok(el && el.from === live && el.text === 'pokes the fire with a stick' && !(other.chat || []).some(e => !e.emote && /pokes the fire/.test(e.text)), 'the emote shows to the others as "<name> <act>" (a chat line of kind emote), never as speech');
+    const own = P.playerAct(live.id, 'emote', {text: '*' + live.name + ' says nothing and counts the exits*'}); ok(own.ok && own.emoted === 'says nothing and counts the exits', 'an act that starts with their own name is shown once, not "Name Name ..." (got ' + own.emoted + ')');
     const bad = P.playerAct(live.id, 'emote', {text: 'x'.repeat(130)}); ok(!bad.ok && /Too long/.test(bad.error), 'the same validation as the emote tool: a 130-character act is refused')}
   ok(sb && sb.ctx.quiet && sb.rd === 1 && (sb.calls || []).every(c => c.by === 'scripted'), 'a silent round ends the talk early; no DM runner polls (its calls refused), so its reflexes frame it');
   ok(sb && (S.dmLog || []).some(e => e.kind === 'agent' && e.detail && e.detail.scene === 'fireside' && e.detail.fill && e.detail.why === 'gone'), 'the fireside frame filled by the reflex is logged as a fill (why: gone) (#561)');
@@ -1374,6 +1375,11 @@ const n0 = SLT.slotted().log.filter(e => e.kind === 'table').length; g1 = S.game
 SLT.slotted().tableSeen = {}; T.tableTick(); step(1 / 60);
 ok(!S.table && !T.TABLE.drop && SLT.slotted().log.filter(e => e.kind === 'table').length === n0 + 1 && S.gameMin > g1, 'at 3x with no runner anywhere (reflexes only) the scene resolves in the same step, the clock running');
 link(RA, 'connected'); link(RB, 'waiting');
+// sped up while a settled scene still shows its outcome (#1049): it closes, and is not settled a second time
+{T.TABLE.speed = 1; field3(); m = S.mobs.filter(q => q.alive && !q.gone && !q.elite)[6]; m.x = spot.x + 1; m.y = spot.y; startFight(Rrest[2], m);
+ SLT.slotted().tableSeen = {}; T.tableTick(); step(1 / 60); act(RA, 'scene_act', {option: 'strike'}); act(RB, 'scene_act', {option: 'strike'});
+ stepUntil(() => !S.table || S.table.phase === 'outcome', 30); const lines = () => SLT.slotted().log.filter(e => e.kind === 'table').length, ended = [], n = lines(), was = S.table; T.onSceneEnd(sc => ended.push(sc));
+ ok(was && was.phase === 'outcome', 'a scene is showing its outcome'); T.TABLE.speed = 8; T.tableHold(1 / 60); ok(S.table !== was && lines() === n && !ended.length, 'sped up during the outcome: the scene closes with one log line and no second ending'); T.TABLE.speed = 1}
 
 // ---- 2b. combat rounds (#276): the foe takes its turn, every blow shows its d20, the scene ends on a fall ----
 TRD.TR.ROUNDS_MAX = 3; T.TABLE.speed = 1; T.TABLE.drop = null; // 2b below pins a short cap so each case stays short; the #875 cases after it use the real one

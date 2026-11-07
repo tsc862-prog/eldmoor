@@ -19,7 +19,7 @@
 import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {buildArena} from '../world/interior.js';
 import {LANDMARKS} from '../world/map.js';
-import {S} from '../sim/state.js';
+import {S,raidSide} from '../sim/state.js';
 import {BOSSES,phaseOf} from '../data/bosses.js';
 import {CLS} from '../data/classes.js';
 import {MOBS} from '../data/mobs.js';
@@ -33,6 +33,7 @@ import {BOSS_PAL,RAID,MARK,TEXT,UI} from './palette.js';
 import {classColor} from '../core/colors.js';
 const WYRM={kind:'boss'};
 import {drawConditions} from './conditions.js';
+import {onWorld} from '../sim/kept.js';
 
 export const isArena=s=>!!s&&s.kind==='lair';
 export const arenaOf=s=>buildArena(s);
@@ -43,6 +44,7 @@ const LAIR_ROT={W:0,N:1,E:2,S:3}; // quarter turns of the nest's art for the way
 const dayOf=min=>Math.floor((min||0)/1440)+1;
 const pct=x=>Math.max(0,Math.round(x*100))+'%';
 const facName=f=>(FAC[f]&&FAC[f].name)||'A';
+const raidName=f=>S.raidName&&S.raidName[f]||facName(f); // a company's own raid goes by its name (#1025)
 const bossOf=s=>{const B=S.boss;return B&&(!s||Math.hypot(B.x-s.x,B.y-s.y)<(s.r||5)+1.5)?B:null};
 const byId=id=>{for(const a of S.agents)if(a.id===id)return a;return null};
 
@@ -50,7 +52,7 @@ const byId=id=>{for(const a of S.agents)if(a.id===id)return a;return null};
 // {fac, day, t0, party:[{id,name,cls,lvl}], broke:[{id,name,cls,hp}], fell:[{id,name,cls,x,y}], down:[{id,name,cls,x,y}], rose:[{id,name,cls}],
 //  phases:[name], low, end:null|'slain'|'defeat', mins}. down: at zero HP in the lair and not settled yet, even after the raid ended.
 const raids=[],curs={},shut={},last={}; // last[id]: the raider's last arena spot (where a fall is marked)
-function open(f){const party=S.agents.filter(a=>a.raid&&a.fac===f).sort((a,b)=>(a.raidIdx||0)-(b.raidIdx||0)).map(a=>({id:a.id,name:a.name,cls:a.cls,lvl:a.lvl}));
+function open(f){const party=S.agents.filter(a=>a.raid&&raidSide(a)===f).sort((a,b)=>(a.raidIdx||0)-(b.raidIdx||0)).map(a=>({id:a.id,name:a.name,cls:a.cls,lvl:a.lvl}));
   const r={fac:f,day:dayOf(S.gameMin),t0:S.gameMin,party,broke:[],fell:[],down:[],rose:[],phases:[],low:1,end:null,mins:0};curs[f]=r;return r}
 function close(r,end){r.end=end;r.mins=Math.max(0,Math.round(S.gameMin-r.t0));delete curs[r.fac];raids.push(r);if(raids.length>24)raids.shift()}
 // A raider who went down: it dies (a fall, where it lay), gets up (out of the raid, alive) or still lies there.
@@ -64,14 +66,15 @@ export function trackRaid(){const on=S.raidOn;if(!on)return;const B=S.boss,m=lai
     if(B&&B.maxhp)r.low=Math.min(r.low,B.alive?B.hp/B.maxhp:0);
     if(B&&B.alive&&B.maxhp){const ph=phaseOf(tplOf(B),B.hp/B.maxhp).name;if(r.phases[r.phases.length-1]!==ph)r.phases.push(ph)}
     if(B&&!B.alive){r.low=0;close(r,'slain');shut[f]=true;continue} // the kill sends every raider home in the same step: not "broke off"
-    for(const a of S.agents)if(a.raid&&a.fac===f&&!r.party.some(p=>p.id===a.id))r.party.push({id:a.id,name:a.name,cls:a.cls,lvl:a.lvl});
+    for(const a of S.agents)if(a.raid&&raidSide(a)===f&&!r.party.some(p=>p.id===a.id))r.party.push({id:a.id,name:a.name,cls:a.cls,lvl:a.lvl});
     settleDown(r);
     for(const p of r.party){const a=byId(p.id),done=r.fell.some(q=>q.id===p.id)||r.broke.some(q=>q.id===p.id)||r.down.some(q=>q.id===p.id)||r.rose.some(q=>q.id===p.id);if(done)continue;
       if(!a||a.state==='dead'){const at=last[p.id]||(m?{x:m.arena.cx,y:m.arena.cy+2}:{x:0,y:0});r.fell.push({id:p.id,name:p.name,cls:p.cls,x:at.x,y:at.y});continue}
       if(a.state==='downed'){const at=last[p.id]||(m?{x:m.arena.cx,y:m.arena.cy+2}:{x:0,y:0});r.down.push({id:p.id,name:p.name,cls:p.cls,x:at.x,y:at.y});continue} // not "broke off": goDown clears a.raid
       if(!a.raid){r.broke.push({id:p.id,name:p.name,cls:p.cls,hp:maxHp(a)>0?a.hp/maxHp(a):0});continue}
       if(m){const s=spotOf(a,m,B);const q=last[p.id]||(last[p.id]={x:0,y:0});q.x=s.x;q.y=s.y}}}}
-let lair0;const lairSite=()=>lair0!==undefined?lair0:(lair0=LANDMARKS.find(L=>L.kind==='lair')||null);
+let lair0;onWorld(()=>{lair0=undefined}); // another map (#1013)
+const lairSite=()=>lair0!==undefined?lair0:(lair0=LANDMARKS.find(L=>L.kind==='lair')||null);
 export const lairs=()=>LANDMARKS.filter(L=>L.kind==='lair');
 
 // Where a raider stands in the arena: its true place round the boss, or, still walking in, in a queue on the causeway.
@@ -102,8 +105,8 @@ export function raidState(s){const B=bossOf(s),m=arenaOf(s),Tp=tplOf(B),A=Tp.abi
   const bn=Tp.name;
   if(B&&!B.alive){st.phase='dead';const gh=Math.max(1,Math.round((B.respawn||0)*6/60));
     st.status='The lair is cold: '+bn+' lies slain on its hoard and wakes in about '+gh+(gh===1?' game hour.':' game hours.')}
-  else if(st.raiders.length){st.phase='raid';st.company=facName(st.fac)+' raid';const b=st.boss;
-    if(!st.engaged)st.status=facName(st.fac)+' raid: '+st.raiders.length+' heroes on the way in to '+bn+'.';
+  else if(st.raiders.length){st.phase='raid';st.company=raidName(st.fac)+' raid';const b=st.boss;
+    if(!st.engaged)st.status=raidName(st.fac)+' raid: '+st.raiders.length+' heroes on the way in to '+bn+'.';
     else st.status=bn+' '+pct(b.share)+' · '+b.phase+(b.enraged?' · ENRAGED':'')+' · '+st.engaged+' fighting'+(st.approach?', '+st.approach+' on the way':'')+
       (st.gone.length||st.down.length?' · '+[st.down.length?st.down.length+' down':'',countWhy(st.gone,'broke'),countWhy(st.gone,'fell')].filter(Boolean).join(', '):'')+(st.breathIn>=0&&A?' · '+A.name+' in '+Math.ceil(st.breathIn)+' s':'')}
   else{const L=raids[raids.length-1];
@@ -149,7 +152,7 @@ export function raidRows(st){const rows=[];
   return rows}
 export function raidHistory(){const all=raids.slice();for(const f in curs)all.push(curs[f]);
   return all.reverse().map(r=>{const bn=tplOf(S.boss).name,mins=r.end?r.mins:Math.max(0,Math.round(S.gameMin-r.t0));
-    return {title:'Day '+r.day+' · '+facName(r.fac)+' raid ('+r.party.length+')',outcome:!r.end?'In progress':r.end==='slain'?bn+' slain':'Beaten off at '+pct(r.low),
+    return {title:'Day '+r.day+' · '+raidName(r.fac)+' raid ('+r.party.length+')',outcome:!r.end?'In progress':r.end==='slain'?bn+' slain':'Beaten off at '+pct(r.low),
       lines:['Mustered: '+(r.party.map(p=>p.name).join(', ')||'-'),'Broke off: '+(r.broke.length?r.broke.map(q=>q.name).join(', '):'no one'),
         'Fell: '+(r.fell.length?r.fell.map(q=>q.name).join(', '):'no one'),...(r.rose.length?['Went down and lived: '+r.rose.map(q=>q.name).join(', ')]:[]),...(r.down.length?['Still down: '+r.down.map(q=>q.name).join(', ')]:[]),
         ...(r.phases.length>1?['Phases: '+r.phases.join(', ')]:[]),bn+' brought to '+pct(r.low)+' · '+(mins>=60?Math.floor(mins/60)+' h '+(mins%60)+' min':mins+' min')+(r.end?'':' so far')]}})}

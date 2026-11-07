@@ -4,7 +4,7 @@
 import {systemPrompt, withSituationOrders} from './agent-player.mjs';
 import {fellowshipPrompt} from './fellowship.mjs';
 import {withPersona} from './pacing.mjs';
-import {ORDERS_FULL, ORDERS_SHORT, ORDERS_SHORT_HAND, SHORT_BUDGET, SITUATION_HEADINGS, PRIORITY_HEADING, EXAMPLES_HEADING, ANTI_HEADING, ORDERS_HEAD, ORDERS_TAIL} from './orders.mjs';
+import {LAND_ORDERS, LAND_ORDERS_SHORT, ordersFor, ORDERS_FULL, ORDERS_SHORT, ORDERS_SHORT_HAND, SHORT_BUDGET, SITUATION_HEADINGS, PRIORITY_HEADING, EXAMPLES_HEADING, ANTI_HEADING, ORDERS_HEAD, ORDERS_TAIL} from './orders.mjs';
 import {TOOL_NAMES} from '../src/data/player-tools.js';
 import {DM_TOOL_NAMES} from '../src/data/dm-tools.js';
 import {toolMap, withToolMap, groupsOf, ungrouped, HERO_GROUPS, DM_GROUPS, MAP_HEAD, MAP_TAIL, MAP_BUDGET_CHARS} from './toolmap.mjs';
@@ -62,6 +62,12 @@ ok(!lostD.length, 'every DM tool (' + DM_TOOL_NAMES.length + ') is in the DM too
 ok(withToolMap(dmSys, 'dm') === dmSys && withToolMap(dmSys, 'dm', true).includes(MAP_HEAD) && withToolMap(dmSys, 'dm', true).split(MAP_HEAD).length === 2, 'the DM map swaps in place and never duplicates');
 const stale = [...Object.values(HERO_GROUPS).flat().filter(n => !TOOL_NAMES.includes(n)), ...Object.values(DM_GROUPS).flat().filter(n => !DM_TOOL_NAMES.includes(n))];
 ok(!stale.length, 'every name in the map groups is a real tool' + (stale.length ? ': ' + stale.join(', ') : ''));
+// lands (#1013): a line only where a road leads to another map
+ok(ordersFor(ORDERS_FULL) === ORDERS_FULL && ordersFor(ORDERS_SHORT) === ORDERS_SHORT && !/\blands?\b.*\broads_out\b|roads_out/.test(ORDERS_FULL + ORDERS_SHORT), 'with one map the hero orders are as they were, not a word of lands');
+ok(ordersFor(ORDERS_FULL, null, 'Linkb').includes(LAND_ORDERS) && ordersFor(ORDERS_SHORT, null, 'Linkb').includes(LAND_ORDERS_SHORT) && !ordersFor(ORDERS_SHORT, null, 'Linkb').includes(LAND_ORDERS), 'with several each variant has its own line');
+ok(ORDERS_SHORT_HAND.length + LAND_ORDERS_SHORT.length <= SHORT_BUDGET + 200, 'and the short line stays short: ' + LAND_ORDERS_SHORT.length + ' characters');
+ok(withSituationOrders(withSituationOrders('sys', false, null, 'Linkb'), false, null, 'Linkb').split(LAND_ORDERS).length === 2 && !withSituationOrders(withSituationOrders('sys', false, null, 'Linkb')).includes(LAND_ORDERS), 'the swap keeps one line, and takes it out again');
+{const named = [...(LAND_ORDERS + ' ' + LAND_ORDERS_SHORT).matchAll(/\b(places|look|list_jobs|move_to|lead_to)\b/g)].map(m => m[1]); ok(named.length && named.every(n => TOOL_NAMES.includes(n)), 'every tool the line names exists')}
 const dups = a => a.filter((n, i) => a.indexOf(n) !== i);
 ok(!dups(Object.values(HERO_GROUPS).flat()).length && !dups(Object.values(DM_GROUPS).flat()).length, 'no tool is listed in two groups');
 ok(heroFull.length <= MAP_BUDGET_CHARS && dmMap.length <= MAP_BUDGET_CHARS, 'the maps stay inside the budget: hero ' + heroFull.length + ', DM ' + dmMap.length + ' of ' + MAP_BUDGET_CHARS + ' characters');

@@ -24,9 +24,10 @@
 import {W,H} from '../world/tiles.js';
 import {dist} from '../world/map.js';
 import {S} from './state.js';
+import {onWorld} from './kept.js';
 
 export const CELL=4,SLACK=1.5;
-const CW=Math.ceil(W/CELL)+1,CH=Math.ceil(H/CELL)+1; // +1 so a position exactly at W or H still has a cell
+let CW=Math.ceil(W/CELL)+1,CH=Math.ceil(H/CELL)+1; // +1 so a position exactly at W or H still has a cell
 
 export let USE_INDEX=true;
 export const setIndex=on=>{USE_INDEX=!!on};
@@ -43,7 +44,7 @@ const cy=y=>{const c=Math.floor(y/CELL);return c<0?0:c>=CH?CH-1:c};
 function grid(){const cells=[],n=new Int32Array(CW*CH),used=[];for(let i=0;i<CW*CH;i++)cells.push([]);
   return {cells,n,used,clear(){for(let k=0;k<used.length;k++)n[used[k]]=0;used.length=0},
     add(e){const i=cy(e.y)*CW+cx(e.x);if(!n[i])used.push(i);cells[i][n[i]++]=e}}}
-const HG=grid(),MG=grid(); // heroes and mobs, rebuilt at the top of every step
+let HG=grid(),MG=grid(); // heroes and mobs, rebuilt at the top of every step
 
 export function rebuild(){
   HG.clear();MG.clear();let nh=0,nm=0;
@@ -87,7 +88,9 @@ export const nearAll=(x,y,r,pred)=>nearHeroes(x,y,r,pred).concat(nearMobs(x,y,r,
 // in S.agents (dead ones too: callers keep all their own filters). heroesAround(x,y,r) then returns exactly the heroes a
 // walk over S.agents with within(a,{x,y},r) would accept, in S.agents order (id-ascending), using current positions;
 // cells are scanned SLACK beyond r all the same. Module-level scratch only, never on S.
-const SG=grid();let snapOn=false;
+let SG=grid(),snapOn=false;
+// Another map (#1013): another size, so new grids. They hold nothing but this step's scratch.
+onWorld(()=>{CW=Math.ceil(W/CELL)+1;CH=Math.ceil(H/CELL)+1;spatialStats.cells=CW*CH;HG=grid();MG=grid();SG=grid();snapOn=false},()=>({spatial:[CW,CH,spatialStats.cells,HG.n.length,MG.n.length,SG.n.length]}));
 export function snapHeroes(){SG.clear();for(const a of S.agents)SG.add(a);snapOn=true}
 export const dropSnap=()=>{snapOn=false};
 export function heroesAround(x,y,r){P.x=x;P.y=y;const out=[];

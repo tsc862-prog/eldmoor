@@ -7,11 +7,15 @@
 // dissolve on a death, a level gap over 3, or when the party heads home together;
 // a member pulled into the dungeon or a raid just leaves the party. A member jumped in a
 // duel stays: the others rally to them, then everyone pulls back (regroup) or heads home.
+// A company's party in a world with a host (keeps, #1048) is not a trip out: it is the company walking, so the road home does not end it.
+// Every walk to a town goes by a 'return' leg, so the old rule ended the party at any town on any map, and autopilot could leave before
+// muster formed a new one. Nor does it turn home as a body: going home is each agent's own order. Members with no order of their own walk
+// in to the town the leader stands in (comeIn). With no host (npm run sim, the seeded checks) a company keeps the old rule, so no hash moves.
 import {rnd} from '../core/rng.js';
 import {ZONES,zoneFor,zonePoint,dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
 import {homeOf} from '../data/races.js';
-import {S} from './state.js';
+import {S,foeOf} from './state.js';
 import {log} from './chronicle.js';
 import {MOBS} from '../data/mobs.js';
 import {maxHp,gainXp} from './heroes.js';
@@ -22,7 +26,11 @@ import {record} from './history.js';
 import {nearestHero} from './spatial.js';
 import {bondEvent} from './bonds.js';
 import {inSlots,partySlotted} from './company.js'; // the slotted company (#588)
+import {hasLinks,reflexMay} from './runlink.js';
 
+export const keeps=p=>p.company!=null&&hasLinks();
+// This party's followers walk in to a town: heading home together, or the company's leader stands in one.
+export const comingIn=p=>p.home||keeps(p)&&p.leader.state==='town';
 export const partyMates=a=>a.party?a.party.mem.filter(b=>b!==a&&b.state!=='dead'):[];
 const inField=b=>!(b.state==='town'||b.state==='dead'||b.state==='dungeon'||b.state==='raid'||b.state==='ghost');
 const loose=b=>b.state==='hunt'||b.state==='travel'||b.state==='follow';
@@ -37,7 +45,7 @@ export function steerClear(a,dt,moveTo){if(!a.party||a.party.leader!==a)return f
   if(!a.dest||!a.dest.away||dist(a.dest,foe)<=dist(a,foe)){a.dest=awayPoint(a,foe);a.dest.away=true}
   if(moveTo(a,a.dest.x,a.dest.y,dt,2.3))a.dest=null;return true}
 const afield=b=>b.state==='travel'||b.state==='hunt'||b.state==='fight'||b.state==='return'||b.state==='duel'||b.state==='assist';
-export function nearestFoe(a,r){return nearestHero(a.x,a.y,r,b=>b.fac!==a.fac&&afield(b))} // #730: no list built (sim/spatial.js)
+export function nearestFoe(a,r){return nearestHero(a.x,a.y,r,b=>foeOf(a,b)&&afield(b))} // #730: no list built (sim/spatial.js)
 export function awayPoint(a,foe){let best=null,bd=-1;for(let i=0;i<8;i++){const p=zonePoint(a.zone,a);const d=dist(p,foe);if(d>bd){bd=d;best=p}}return best}
 
 const names=(list)=>{const out=[];list.forEach((b,i)=>{out.push(b);if(i<list.length-2)out.push(', ');else if(i===list.length-2)out.push(' and ')});return out};
@@ -83,6 +91,10 @@ function rally(p,b){const foe=b.target;if(!foe)return;let n=0;
     g.regNext=g.state==='return'?'return':'hunt';g.state='assist';g.target=foe;g.dest=null;n++}
   p.brawl=true;if(n&&rnd()<.6)log(b,'’s party turns on ',foe,'.')}
 
+// A company's leader is in town: those with no order of their own come to them. A reflex plays the scripted town rules, which would send it out again.
+function comeIn(p){p.home=false;if(p.leader.state!=='town')return;
+  for(const b of p.mem)if(b!==p.leader&&loose(b)&&!(b.pq&&b.pq.length)&&!b.adv&&!reflexMay(b)){b.state='return';b.target=null;b.dest=null}}
+
 // Once per step: membership, leadership, skirmish rally and regroup, heading home, fight joining.
 export function partyTick(){
   for(let i=S.parties.length-1;i>=0;i--){const p=S.parties[i];
@@ -97,7 +109,8 @@ export function partyTick(){
       for(const b of p.mem)if(loose(b))regroup(b,foe)}
     // Heading home: everyone who is loose turns back; followers keep to the leader's side on the way.
     // The party ends as its members reach town (see leaveParty above).
-    if(p.mem.some(b=>b.state==='return'))p.home=true;
+    if(keeps(p))comeIn(p);
+    else if(p.mem.some(b=>b.state==='return'))p.home=true;
     if(p.home)for(const b of p.mem)if(b.state==='hunt'||b.state==='travel'||(b.state==='follow'&&!leaderOf(b))){b.state='return';b.target=null;b.dest=null}
     const f=p.mem.find(b=>b.state==='fight'&&b.target&&b.target.alive&&b===p.leader)||p.mem.find(b=>b.state==='fight'&&b.target&&b.target.alive);
     if(f){const m=f.target;for(const b of p.mem){if(b===f||!loose(b)||dist(b,f)>6||b.hp<maxHp(b)*.45)continue;b.state='fight';b.target=m;b.dest=null}}}}

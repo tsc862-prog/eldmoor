@@ -33,10 +33,10 @@
 //   presence(town) townsfolk greeting multiplier   attitudeOf(p,heroes) / attitudeDc(adv,at,heroes)
 import {worldFill} from '../world/words.js';
 import {clamp} from '../core/rng.js';
-import {keep} from './kept.js';
+import {keep,onWorld} from './kept.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
 import {solidAt,solidWhy,nearestOpen,standAt} from '../world/passable.js';
-import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,zoneAt,zoneFor,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,LVL_CAP,zoneAt,zoneFor,dist} from '../world/map.js';
 import {MOBS} from '../data/mobs.js';
 import {GOODS,QUEST_ITEMS,USES,EPICS,BOSS_EPICS,DG_EPICS,SLOTS} from '../data/items.js';
 import {addQuest,addUse,addGear,take,room,count} from './inv.js';
@@ -56,6 +56,7 @@ import {moveTo} from './heroes.js';
 import {clearLine} from './path.js';
 import {spawnMob} from './mobs.js';
 import {postHook,withdrawHook} from './dm.js';
+import {jobBar} from './jobbar.js';
 import {postSupply,withdrawSupply,openAt as supplyOpenAt,SUP} from './supply.js'; // goods jobs (#720): post_hook takes their names as tpl
 import {customFoe,spawnFoe} from './encounterbuilder.js';
 import {blockOf,NAMED_KITS,ROLES} from '../data/bestiary.js';
@@ -141,7 +142,7 @@ export function spotErr(p,o={}){
 // further out is refused, so nothing level-40 ever walks Thornvale.
 export function bandLvl(z,lvl){const [lo]=band(z),hi=bandHi(z);
   if(lvl<lo-3||lvl>hi+3)return {err:'level '+lvl+' is outside '+ZONES[z]+'’s band '+lo+'-'+(band(z)[1]===Infinity?'+':band(z)[1])};
-  return {lvl:clamp(lvl,lo,hi+2),clamped:lvl<lo||lvl>hi+2}}
+  const top=Math.min(hi+2,LVL_CAP);return {lvl:clamp(lvl,lo,top),clamped:lvl<lo||lvl>top}}
 
 // ---- the registry ----
 export const LEVERS={};
@@ -364,7 +365,10 @@ register({name:'post_hook',about:'Post a job on a town board: template, giver ro
     if(SUPPLY[p.tpl]){const j=postSupply(c,p.tpl,{...o,by:ctx&&ctx.by,src:p.src,reward:p.reward,for:p.forHero!=null?p.forHero:o.for});
       return {ok:true,effect:{hook:j.id,tpl:j.tpl,giver:j.giver?j.giver.name:null,zone:'any',wants:j.want.n+' '+j.want.id,pays:j.gold+'g'},ret:j}}
     if(p.reward!=='fair')o.data.payMul=REWARD[p.reward];
-    const h=postHook(c,p.tpl,p.src,o);return {ok:true,effect:{hook:h.id,tpl:h.tpl,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone]},ret:h}},
+    const h=postHook(c,p.tpl,p.src,o);
+    // the DM agent is told what the job asks (#1016): a company below it is turned away at the gate, so post it for later or pick another
+    const lows=ctx&&ctx.by==='dm-agent'?(S.companies||[]).filter(C=>C.hall===p.town).map(C=>Math.min(...C.ids.map(i=>(S.agents.find(x=>x.id===i)||{lvl:99}).lvl))):[],need=jobBar(h),short=lows.filter(l=>l<need);
+    return {ok:true,effect:{hook:h.id,tpl:h.tpl,giver:h.giver?h.giver.name:null,zone:h.zone==null?'any':ZONES[h.zone],...(ctx&&ctx.by==='dm-agent'?{needs_level:need}:{}),...(short.length?{warning:'This job asks for level '+need+' and a company of '+p.town+' is level '+Math.min(...short)+': the job-giver will turn it away until it grows. Do not offer it as their first move; post it for later or choose a template the board can give them now.'}:{})},ret:h}},
   describe:p=>p.tpl+' at '+p.town+(p.giver?' from the '+p.giver:'')});
 register({name:'withdraw_hook',about:'Take an open job down from a board.',params:{hook:{type:'id'}},limits:{perDay:60},
   check(p){const h=(S.adventures||[]).find(x=>x.id===p.hook)||(S.supply||[]).find(x=>x.id===p.hook);return !h?'no such hook':h.phase!=='open'?'hook #'+p.hook+' is already taken':null},
@@ -380,6 +384,7 @@ register({name:'withdraw_hook',about:'Take an open job down from a board.',param
 const livingHero=id=>{const a=S.agents.find(x=>x.id===id);return a&&a.kind==='hero'&&a.state!=='dead'&&a.state!=='ghost'?a:null};
 const FIGHT_STATES=['fight','duel','assist','raid'];
 const EPIC_NAMES=new Set([...EPICS.flat(),...BOSS_EPICS,...DG_EPICS]);
+onWorld(()=>{for(const n of EPICS.flat())EPIC_NAMES.add(n)},()=>({epicsUnnamed:EPICS.flat().filter(n=>!EPIC_NAMES.has(n))})); // another map (#1013): an epic stays an epic, so the set only grows
 const lc=v=>String(v||'').toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 // item text -> {kind:'quest'|'use'|'gear', id} or {err}
 function itemOf(text){const t=lc(text);if(!t)return {err:'item is required'};
@@ -533,7 +538,7 @@ function ecology(){
   for(const m of S.marks){const rec=recOf(m.lever);if(!rec)continue;
     if(m.kind==='danger'){const have=mobsOf(m.lever).filter(x=>x.alive).length;
       if(have<LK.DANGER_MOBS){const t=typeFor(m.z,m.lvl);if(t){const x=spawnMob(t),p=spotNear(m);if(p){x.x=x.home.x=x.spawn.x=p.x;x.y=x.home.y=x.spawn.y=p.y;x.home={...p};x.spawn={...p}}
-        x.lvl=clamp(m.lvl+Math.floor(r()*3)-1,band(m.z)[0],bandHi(m.z)+2);x.maxhp=25+x.lvl*16;x.hp=x.maxhp;x.lever=m.lever}}}
+        x.lvl=clamp(m.lvl+Math.floor(r()*3)-1,band(m.z)[0],Math.min(bandHi(m.z)+2,LVL_CAP));x.maxhp=25+x.lvl*16;x.hp=x.maxhp;x.lever=m.lever}}}
     else for(const x of S.mobs){if(!x.alive||x.gone||x.elite||x.named||x.adv!=null||x.lever!=null||MOBS[x.type].z!==m.z)continue;
       const d=dist(x.home,m);if(d>=m.r)continue;const k=(m.r+1)/Math.max(.1,d),q={x:m.x+(x.home.x-m.x)*k,y:m.y+(x.home.y-m.y)*k};
       if(d<.1||spotErr(q,{clear:.1})||zoneAt(q.x,q.y)!==m.z)continue;x.home={...q};x.spawn={...q};if(!x.target)x.dest={...q}}}

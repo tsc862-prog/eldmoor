@@ -73,7 +73,7 @@ export const EVENT_MAX = 5, EVENT_GAP = 120;
 export function dmSystemPrompt(st) {
   const F = st.fellowship;
   return [
-    'You are the Dungeon Master of Eldmoor, a small hardcore fantasy world that runs on its own: heroes of two factions quest, trade, feud, run a crypt and raid a wyrm, and die for good. ' +
+    (st.sides ? 'You are the Dungeon Master of Eldmoor, a small hardcore fantasy world that runs on its own: heroes quest, trade, run a crypt and raid a wyrm, and die for good. Concord and Warband are peoples and history, not sides; a company\'s enemies are the ones you bring. ' : 'You are the Dungeon Master of Eldmoor, a small hardcore fantasy world that runs on its own: heroes of two factions quest, trade, feud, run a crypt and raid a wyrm, and die for good. ') +
       (F ? `The story follows ${F.name}, a Fellowship of five (${F.members.filter(m => !m.empty).map(m => m.name + ' the ' + m.role).join(', ')}).` : 'No Fellowship rides yet; watch the world for a story worth telling.'),
     '',
     DM_JOB,
@@ -99,8 +99,10 @@ export function dmSystemPrompt(st) {
     DM_CALL_ORDERS,
     DM_NAME_ORDERS,
     DM_WHEN_ORDERS,
+    ...dmMapOrders(st),
     DM_BETWEEN_ORDERS,
     DM_RENOWN_ORDERS,
+    DM_ASK_ORDERS,
     DM_PENDING_ORDERS,
     '- Original world only: invent names in Eldmoor\'s own voice; never borrow names from other games or books.',
     '- In narrate, npc_say, whisper, dream and table_answer: ' + NO_WORDS.trim(),
@@ -108,6 +110,11 @@ export function dmSystemPrompt(st) {
     DM_EACH_TURN,
   ].join('\n');
 }
+// Several lands (#1013): only a campaign with a road to another map hears of them. dm_status campaign says so; one map, not a word.
+export const DM_MAP_ORDERS = '- This campaign runs on several lands joined by roads, and only the land the company stands on is live: survey, regions, near, npcs and hooks read that one; the others wait frozen. dm_status campaign says what is next along each road. You may prepare the next land while the company travels: notes_write plans that name it (your frames at the road read them), seed_rumour {about: a place over there} so they hear of it, and when {trigger: "enter_map", on: {map}, action, args} leaves a narrate, a person or a staged scene waiting at the road\'s end (its places are read when it fires, on that land; it waits up to 240 hours).';
+export const DM_EMPTY_LAND_ORDERS = '- In this world nobody else rides: a new land is empty until you fill it. When the company comes to one, its people, jobs and places are yours to make (place_person, summon_hero, post_hook, mark_place), for the company first.';
+export const dmMapOrders = st => st && st.campaign && (st.campaign.roads || []).some(r => r.open) ? [DM_MAP_ORDERS, ...(st.others ? [DM_EMPTY_LAND_ORDERS] : [])] : [];
+export const withDmMapOrders = (sys, st) => dmMapOrders(st).reduce((s, l) => s.includes(l) ? s : s + '\n' + l, String(sys || ''));
 // On stage (#1017, under the story-first direction of #1012). Live play: the seat was told it prepares and does not run scenes, and to
 // speak sparingly; in 13 turns it never spoke. It is the voice of the game now: every turn ends in something the company can hear.
 export const DM_JOB = 'You run this game for the company, and they should hear you: the table has a DM, and that is you. Between scenes you read what happened, keep your campaign notes and shape what comes next so they meet interesting choices, recurring faces and consequences of what they did; but the heart of the seat is telling it: what they see as they arrive, what the road and the weather do, who calls out to them.';
@@ -161,6 +168,9 @@ export const DM_MEMORY_ORDERS = '- Your notes are searchable: remember anything 
 // Campaign seed: the notes start from the world's campaign file (docs/campaigns/<world>.md).
 // What the DM sees of the companies' life (#558): hear first, then the views; survey before placing; world_standing for the wider turns.
 export const DM_SIGHT_ORDERS = '- Listen before you act: dm_status unheard counts the lines the companies said aloud since your last hear; read hear first (what they plan, fear, ask for, joke about), then the views. fellowship_view, companies_view and heroes_near show what members carry (quest items, potions, gold), the quests they hold and what they know (carries, quests, knows): build on those, do not hand them what they already hold or warn them of what they know. A quiet turn is: hear, then one line they can hear. Before you place anything, survey {near} gives roads, landmarks and legal x,y spots that mark_place, place_person and stage_scene accept; a refusal about the ground means survey. world_standing is one read of the wider world (guild focus, rivalries, the wyrm, the Crypt, prices, conditions, the top heroes) for the turns after the companies have been served. You hear only what is said aloud in the world, never a journal, memories or thoughts.';
+// Asking a company (#826): the world never does, the DM may. withDmAskOrders adds it to an older session's prompt.
+export const DM_ASK_ORDERS = '- The world never asks a company to the Crypt or a raid; they go when they choose to. You may ask, as a deliberate act: call_to {kind: crypt|raid, company, by, text, reason} has a person near the leader (or the narrator) put it to them in the game. A company votes, a hero alone answers aloud; the answer is theirs, a no stands for 2 game days, and you ask at most once a game day. Ask when it serves their story, not to fill their day; fellowship_needs and companies_needs tell you what gathers and how your last call went (last_call).';
+export const withDmAskOrders = sys => /\bcall_to \{kind: crypt\|raid/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_ASK_ORDERS;
 // Word in town and names for deeds (#637, #638): seed_rumour and bestow. withDmRenownOrders adds it to an older session's prompt.
 export const DM_RENOWN_ORDERS = '- While you are away, the town can still speak for you: seed_rumour {town or region, text, about, days, reason} gives the innkeeper, gate captain and bard word to pass on for 1-5 days, in their own words, to heroes who talk to them or read the gate board; about is the place, creature or person it points at (they learn of it). Use it to put a lead or a warning on a company’s road before you sleep. After a deed worth a song, bestow {hero, title, why, by} gives the hero a name ("Wightbane", "of the Ford"), proclaimed by a person near them or the narrator; one at a time, sparingly, never a number. A hero who refuses the name aloud keeps no other from you.';
 export const withDmRenownOrders = sys => /\bseed_rumour \{town or region/.test(String(sys || '')) ? sys : String(sys || '') + '\n' + DM_RENOWN_ORDERS;
@@ -181,7 +191,7 @@ export const speakNote = st => {const s = st && st.speak_to, y = st && st.your_l
   return n >= of ? ` Your narrate lines are spent today; end this turn with a person near them speaking (npc_say)${people ? ': ' + people : ''}.`
     : ` End this turn with something they can hear: narrate {near: "${s.near}", text} about ${s.where} at this hour (${y.narrate} lines used today)${people ? ', or npc_say from ' + people : ''}.`};
 export const dmTurnPrompt = (turns, st) => turns === 0
-  ? `You take the DM seat. Orient yourself: dm_status, hear, fellowship_view, notes_read, levers, read_timeline, regions, survey {near: "fellowship"}. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.${speakNote(st)}`
+  ? `You take the DM seat. Orient yourself: dm_status, hear, fellowship_view, notes_read, levers, read_timeline, regions, survey {near: "fellowship"}. Write your first notes (threads, characters, plans), then make at most two changes to the world if they serve the story.${st && st.others ? ' This world has no other heroes (dm_status others): peopling the roads is your job, for the companies first, and empty roads are a fair choice.' : ''}${speakNote(st)}`
   : `Day ${st.day}, ${st.time} (${st.part}). ${fellowNow(st)}${st.since_last_look ? `Since your last look: ${st.since_last_look.timeline} timeline events, ${st.since_last_look.dm_log} DM log entries.` : ''} Run the next stretch of the campaign, the Fellowship first.${heardNote(st)}${notesNow(st)}${speakNote(st)}`;
 // Each turn starts with the Fellowship (issue #165): the status line and the first needs, then the wider world only if nothing is pending for them.
 export const fellowNow = st => {const n = st && st.fellowship_needs; if (!n) return companiesNow(st); return `Fellowship first: ${n.summary} ${(n.items || []).slice(0, 3).join(' ')} ${n.quiet ? 'Nothing is pending for them, so the wider world may have a turn after you have given them something to ride toward.' : 'Settle what is pending for them before you touch the wider world.'} `.replace(/\s+/g, ' ').trim() + ' ' + companiesNow(st)};
@@ -595,7 +605,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     sess.rolled = true; log(`[dm] the seat changes mind (${was} -> ${rs.provider}): a new conversation; the notes, whens and DM log stay with the world${note ? '; ' + note : ''}`);
   }
   sess.runner = rs;
-  sess.system = withDmStageOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system)))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
+  sess.system = withDmMapOrders(sess.system, st0);
+  sess.system = withDmAskOrders(withDmStageOrders(withDmRenownOrders(withDmBetweenOrders(withDmWishOrders(withDmWhenOrders(withDmSightOrders(withDmCompanyOrders(withDmCallOrders(withDmEventOrders(withDmCampaignOrders(withDmFellowshipOrders(withDmMemoryOrders(sess.system))))))))))))); // well-formed calls (#388); searchable notes (#155) for a session that began before them
   sess.system = withToolMap(sess.system, 'dm', rs.provider === 'ollama'); // the tool map (#640), generated from dm-tools.js at each start
   const saveSess = () => saveDmSession(sess, {url: base});
   let spent = 0, ended = null, runIn = 0, runOut = 0, backoff = 0, lastEnd = 0;

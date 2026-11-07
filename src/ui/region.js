@@ -5,8 +5,10 @@
 import {cam} from '../render/draw.js';
 import {W,H} from '../world/tiles.js';
 import {zone,I,ZONES,zoneAt} from '../world/map.js';
+import {onWorld} from '../sim/kept.js';
 
 const boxes=[];
+onWorld(()=>{boxes.length=0;cam.region=null}); // another map (#1013): the same number is another land
 // Bounding box of a region in tiles {x,y,w,h} (centre x,y), from the zone grid; computed once per region.
 export function regionBox(i){if(boxes[i])return boxes[i];let x0=W,y0=H,x1=-1,y1=-1;
   for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(zone[I(x,y)]===i){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}

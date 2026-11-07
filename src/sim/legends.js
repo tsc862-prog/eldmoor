@@ -7,6 +7,7 @@ import {S} from './state.js';
 import {ZONES,zoneAt} from '../world/map.js';
 import {raceOf} from '../data/races.js';
 import {wasSlotted} from './company.js'; // the slotted company (#588)
+import {isAway,frozenHeroes} from './atlas.js';
 
 export const LEG_CAP=30,LEG_MIN=40,HOUR=60;
 const rank=(a,b)=>b.score-a.score||b.lvl-a.lvl||a.id-b.id;
@@ -48,8 +49,8 @@ export function legendsTick(dt){
       const z=zoneAt(a.x,a.y),lost=/^lost in (.+)$/.exec(o.cause);o.place=lost?lost[1]:(z>=0&&ZONES[z])||'the wilds'}
     if(!e){L.list.push(o);byId.set(o.id,o)}}
   // A living entry whose hero was recycled while dead: recover the end of the story from the graveyard.
-  for(const e of L.list){if(!e.alive||S.agents.some(a=>a.id===e.id))continue;
+  for(const e of L.list){if(!e.alive||S.agents.some(a=>a.id===e.id)||isAway(e.id))continue; // on a frozen map is not fallen (#1013)
     const f=S.fallen.find(x=>x.name===e.name&&x.fac===e.fac);
     e.alive=false;e.cause=f?f.cause:'fallen';e.diedAt=f?f.t:'';e.place=e.place||'the wilds'}
   L.list.sort(rank);if(L.list.length>LEG_CAP)L.list.length=LEG_CAP;
-  const keep=new Set(S.agents.map(a=>a.id));for(const id in L.tally)if(!keep.has(+id)&&!L.list.some(e=>e.id==id))delete L.tally[id]}
+  const keep=new Set([...S.agents,...frozenHeroes()].map(a=>a.id));for(const id in L.tally)if(!keep.has(+id)&&!L.list.some(e=>e.id==id))delete L.tally[id]}

@@ -14,7 +14,7 @@
 // inviteBrief only reads. inviteSeen writes the marks (a.nudge, lazy, saved with the hero) on the brief a runner reads after its wake
 // (sim/player-host.js), so the relay's after-turn brief for the behavior log spends nothing.
 // Sight and lore: only what stands in the hero's sight or earshot; a staged trap, being hidden, is never named.
-import {S} from './state.js';
+import {S,ownTown} from './state.js';
 import {CITY,LANDMARKS,dist,tileAt} from '../world/map.js';
 import {WALL,RIVER} from '../world/tiles.js';
 import {PROF_IDS,PROF,MAX_PROF} from '../data/professions.js';
@@ -48,7 +48,7 @@ const NO_FIT=new Set(['fight','duel','assist','raid','dungeon','downed','aid','g
 const inRect=(c,p,pad=0)=>p.x>=c.x0-pad&&p.x<=c.x1+1+pad&&p.y>=c.y0-pad&&p.y<=c.y1+1+pad;
 const cityAt=a=>CITY.find(c=>inRect(c,a,.5))||null;
 // The town whose trainers will teach this hero (learn_profession's own rule), or null.
-function trainerTown(a){if(a.state==='town')return homeOf(a);const c=cityAt(a);return c&&c.fac===a.fac?c:null}
+function trainerTown(a){if(a.state==='town')return homeOf(a);const c=cityAt(a);return c&&ownTown(c,a)?c:null}
 const since=(n,k)=>S.gameMin-(n&&n[k]!=null?n[k]:-1e9);
 
 // ---- trades ----
