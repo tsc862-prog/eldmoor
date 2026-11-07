@@ -264,3 +264,13 @@ export const TOWN_LOOK={
 
 // Fen mud (render/terrain.js): the LPC mud tile's rust red, colour for colour, as dark peat where the region is a fen.
 export const PEAT={'#482421':'#262016','#5b3026':'#33291c','#723e2a':'#433523','#7d4d35':'#4e3f29','#865e40':'#5c4b31'};
+
+// Dungeon mouths of their own (render/mouths.js): LPC ramps, light from the top left. dark: the way in, rim to depth.
+export const MOUTH={hi:'#fff4dc',lo:'#15110f',lip:'#cfc8b8',joint:'#1c1816',dark:['#3a302a','#241c1a','#150f10','#0a0709'],
+  salt:['#ece8de','#a8a296','#7c776c'],root:['#4a3020','#7a5a3a'],stones:['#8c8a80','#9e9a8e','#7a786e','#868476','#a6a294'],slab:'#a4a092',ashlar:'#9a96a0',cut:'#55525a',
+  turf:['#3e5a2e','#4e7a36'],wood:['#2a1c12','#5a3e28','#8f6236','#b98a5a'],charwood:['#16100c','#2c2018','#4a382a','#5e4a38'],iron:'#3a3a42',
+  moss:['#7aa04a','#4e7a3a','#4e7a62'],water:['#14302f','#2e6a66','#7ab8ae'],brick:['#5a3428','#6e4030','#4a2c22','#62382a'],char:['#120c0a'],ash:'#2e2826',
+  tread:'#a09c90',riser:'#4a463e',cut2:['#c8c0ae','#a8a090','#e8e2d2'],rail:'#5e5e66'};
+// The country round a town (render/countryside.js): fence and cart wood, hay, rope, fish, wicker, net floats.
+export const COUNTRY={wood:['#2a1c12','#5a3e28','#8f6236','#b98a5a'],hay:['#7a5a1e','#b08a32','#d8b44a','#f0d878'],thatch:['#6a4a1a','#8a6a2a'],rope:'#5a4026',
+  iron:'#3a3a42',fish:['#4a5560','#a8b4bc','#dce4e8'],wicker:['#3a2a18','#5a4228','#8a6a40','#b08a58'],float:'#c8402a',under:'#1a1410',foam:'#e8f4f2'};

@@ -28,6 +28,7 @@ import {pieceSpot,buildingArt,gateArt,gatePosts} from './townart.js';
 import {lookOf} from './townlook.js';
 import {townStyle} from '../data/townart.js';
 import {harbourEnts,harbourLight} from './harbour.js';
+import {countryEnts} from './countryside.js';
 import {onAssets,assetPixels} from './assets.js';
 import {trackSteps,drawFootprints} from './footprints.js';
 import {onWorld} from '../sim/kept.js';
@@ -135,7 +136,7 @@ export function lifeGround(ctx){drawFootprints(ctx)}
 export function lifeEnts(ents){
   critterEnts(ents);
   if(F.tpx<9)return;
-  harbourEnts(ents);
+  harbourEnts(ents);countryEnts(ents);
   for(let ci=0;ci<CITY.length;ci++){const c=CITY[ci];if(!near(c))continue;const L=layout(c,ci),h=F.hour;
     const shut=!!WET[skyAt(c.x0,c.y0)],mk=shut?0:ramp(h,7,8,17,18);
     for(const s of L.stalls){s.open=mk;ents.push(s)}
