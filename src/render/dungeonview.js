@@ -257,7 +257,7 @@ export function openDungeon(s){if(!root&&!build())return false;site=s||CRYPT;ope
   const ar=isArena(site);root.classList.toggle('raid',ar);root.setAttribute('aria-label',ar?'Raid view':'Dungeon view');cv.setAttribute('aria-label',ar?'Map of the lair and the raid':"Map of the dungeon's chambers");listEl.setAttribute('aria-label',ar?'Raiders':'Chambers');
   const scr=document.getElementById('screen');if(scr)scr.classList.add('dgopen');refreshDungeon();return true}
 export function closeDungeon(){open=false;hov.room=-1;hov.foe=null;hov.key=null;pin=-1;if(tipEl)tipEl.hidden=true;if(root)root.hidden=true;const scr=document.getElementById('screen');if(scr)scr.classList.remove('dgopen')}
-onWorld(()=>{if(open)closeDungeon();site=null;arenaSt=null;sumFor=null;sumN=-1}); // another map (#1013): what it showed is on the land left behind
+onWorld(()=>{if(open)closeDungeon();site=null;arenaSt=null;sumFor=null;sumN=-1;watches.clear();curs.clear()}); // another map (#1013): what it showed is on the land left behind
 export const dungeonOpen=()=>open;
 export const dungeonSite=()=>open?site:null;
 // The crypt whose mouth (its 3x3 rock patch, plus a little slack) is under tile (x, y).
