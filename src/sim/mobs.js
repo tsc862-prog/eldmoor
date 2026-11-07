@@ -57,7 +57,8 @@ export function spawnMob(type,E,opt={}){const M=MOBS[type],mate=M.pack&&!E?packM
   const ab=opt.abilities||B.abilities.slice();
   if(E){m.elite=true;m.name=E.name;m.title=E.title;const x=ELITE_EXTRA[E.name];if(x&&!ab.includes(x))ab.push(x)}
   if(opt.name)m.name=opt.name;if(opt.title)m.title=opt.title;
-  m.ab=ab;m.abcd={};if(opt.res)m.res=opt.res;if(opt.weak)m.weak=opt.weak;if(opt.xpMul!=null)m.xpMul=opt.xpMul;
+  m.ab=ab;m.abcd={};if(E&&E.ready)for(const id of E.ready)m.abcd[id]=0; // a map's elite may open with a trick ready (data/fauna.js)
+  if(opt.res)m.res=opt.res;if(opt.weak)m.weak=opt.weak;if(opt.xpMul!=null)m.xpMul=opt.xpMul;
   if(opt.add){m.add=true;m.parent=opt.parent;m.xpMul=.25}if(opt.special)m.special=true;
   m.hp=m.maxhp;m.hpl=m.hp;S.mobs.push(m);return m}
 export function spawnAll(){for(const t in COUNTS)for(let i=0;i<COUNTS[t];i++)spawnMob(t);

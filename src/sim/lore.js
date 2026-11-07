@@ -116,7 +116,7 @@ export function feared(a,m){const e=a.lore&&a.lore.c[keyOf(m)];if(!e)return fals
 // ---- learning from experience ----
 // The hero closes with a creature (watch() in sim/player.js, once per foe): its name, a truer measure, the place.
 export function engage(a,m){if(!learner(a)||!m||m.kind!=='mob')return;const e=sight(a,m);if(!e)return;if(a.loreFoe===m.id)return;a.loreFoe=m.id;
-  const first=!e.fought;e.fought=(e.fought||0)+1;e.name=1;seenLvl(e,m);if(first)ev(a,'You learn what you face: '+realName(m)+' ('+RANKS[rankOf(effLvl(m)-a.lvl)]+').')}
+  const first=!e.fought;e.fought=(e.fought||0)+1;e.name=1;seenLvl(e,m);if(first){const r=rankOf(effLvl(m)-a.lvl);ev(a,'You learn what you face: '+realName(m)+' ('+RANKS[r]+').'+(r>=LORE.FEAR?' flee() breaks off now.':''),r>=LORE.FEAR?2:undefined)}} // beyond the hero: a turn at once, with the way out (#934)
 export function slain(a,m){if(!learner(a)||!m)return;const e=entry(a,keyOf(m));e.killed=(e.killed||0)+1;e.name=1;seenLvl(e,m);where(e,m);if(e.fear)delete e.fear} // beaten since it wounded you: the fear is spent
 // A trick the creature used on the hero (sim/mobs.js): id is an ABILITIES key, or 'pack' when it called its kin.
 export function trick(a,m,id){if(!learner(a)||!m)return;const e=entry(a,keyOf(m));if(e.tricks.includes(id))return;e.tricks.push(id);
@@ -243,13 +243,18 @@ export function roadsLine(a){if(!learner(a)||!a.lore)return null;const P=a.lore.
 export function preyKey(a,name){const s=clean(name,60).toLowerCase().replace(/^(an?|the)\s+/,'');if(!s)return null;const L=loreOf(a);
   for(const key of Object.keys(L.c)){const e=L.c[key];if(!knowsName(e))continue;const n=keyName(key).toLowerCase(),p=keyPlural(key).toLowerCase();if(s===n||s===p||s===n.replace(/^the /,''))return key}
   return null}
-// hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear). The tool says "where
-// you stand" (#822): with no clear line (#794) it is not prey, and with no prey named neither is one in another region, or a level 3
-// hunter on the bank of the river walks round by the bridge to a Hoarfell creature it saw across the water. What comes at the hero always counts.
-export function pickPrey(a,cmd){const z=zoneAt(a.x,a.y),R=9*sightFor(a,z);let best=null,bs=1e9;
+// hunt: the nearest creature around that fits the order (a known kind, or anything this hero does not fear). Whatever is around means
+// around on the ground the hero hunts (#934): a creature of that ground, standing on it, with nothing between them. From Thornvale's
+// bank the snowfield is in plain sight, and a hero who took "the nearest thing" walked round by the bridge to a Tarn Wight. With no ground ordered it is the region the hero stands in (#822, #1023). Named prey
+// is the agent's choice and may stand anywhere it can be reached in a line; a creature already on the hero is always taken.
+const onGround=(m,gz)=>gz==null||zoneAt(m.x,m.y)===gz&&(!MOBS[m.type]||MOBS[m.type].z===gz);
+export function pickPrey(a,cmd){const R=9*sightFor(a,zoneAt(a.x,a.y)),gz=cmd&&cmd.ground!=null?cmd.ground:zoneAt(a.x,a.y);let best=null,bs=1e9;
   for(const m of nearMobs(a.x,a.y,R)){if(!m.alive||m.gone||m.hidden||(m.target&&m.target!==a)||held(m))continue; // held in a scene (#518)
-    if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(m.target!==a&&(feared(a,m)||zoneAt(m.x,m.y)!==z))continue;
-    const d=dist(a,m);if(d>R||(m.target!==a&&!clearLine(a,m)))continue;const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
+    const d=dist(a,m);if(d>R)continue;
+    if(m.target!==a){if(!clearLine(a,m))continue;
+      if(cmd&&cmd.prey){if(keyOf(m)!==cmd.prey)continue}else if(!onGround(m,gz)||feared(a,m))continue}
+    else if(cmd&&cmd.prey&&keyOf(m)!==cmd.prey)continue;
+    const s=d-(a.quest&&a.quest.type===m.type?4:0)-(m.target===a?6:0);if(s<bs){bs=s;best=m}}
   if(best)sight(a,best);return best}
 
 // ---- what people say (a townsperson's advice, the gate's rumour of a job) ----
