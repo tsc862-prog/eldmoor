@@ -5,7 +5,7 @@ metadata:
   type: project
 ---
 
-Table fights on a patch now grade like real time (#1056). All of it hangs on `sc.fp`, so seeded hashes hold; `npm run sim` reflex scenes keep the old rounds.
+True elites on a patch now grade like real time (#1056). All of it hangs on `sc.fe` (a true elite on a patch); every other scene plays as on main, so a seeded ELDMOOR_PATCH=all world that meets no elite ends hash-identical to main.
 
 **Why:** three things made elites soft: Defense counted twice (AC and dmgTaken), the plain heal was 25% max HP every round against real time's 3.5 s gap, and hero class moves come round in rounds about six times sooner than in seconds. A slow foe (cd 2) was also paid a full blow every round, the other way round.
 
@@ -15,3 +15,4 @@ Table fights on a patch now grade like real time (#1056). All of it hangs on `sc
 - Howl calling kin into the fight was tried and dropped: one L8 wolf took Greymane to 24% fights with a death. Elites do not call kin in real time either.
 - Potions soften both paths alike (2 Redroot each: Greymane L7 downs 3% real time, 6% Table). The rows were tuned with no potions; balance rows should say which they mean.
 - tablecheck pins `TR.ROUNDS_MAX`; the longer cap is only for `f.elite` on a patch, so ordinary test foes stay pinned. Related: [[table_rounds]], [[open_patch]].
+- Gating on `sc.fp` alone was the review blocker: it reached 337 hero duels and every rescue, and Fellowship deaths rose at 120 minutes while 60-minute runs showed nothing. Run 120 minutes, and use seeded pairs against main: same seed, same hash until the first elite, which beats comparing unseeded means.
