@@ -1078,7 +1078,7 @@ console.log('the DM prepares the table');
   ok(dv.openDungeon(CRYPT)&&!box().hidden&&box().parentNode===$('screen')&&$('screen').classList.contains('dgopen'),'dungeon view: opens over the map');
   ok(lis().length===n&&lis().every((li,i)=>li.textContent.includes(CRYPT.rooms[i].name.replace(/^the /i,''))),'dungeon view: shows the '+n+' chambers by name');
   ok(/Back to world/.test(box().querySelector('.dgback').textContent),'dungeon view: has Back to world');
-  const ci=Math.min(2,n-2),mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,4); // the room in progress, with one chamber after it, whatever the world's crypt has
+  const ci=Math.min(2,n-2),mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,4),rec0=S.dunRec;S.dunRec={}; // the room in progress, with one chamber after it, whatever the world's crypt has; these staged runs are not on the record
   CRYPT.group={phase:'inside',mem,tSite:true,crawl:{i:ci,rd:1,gap:0,foes:[{hp:1},{hp:0}],end:null}};
   let st=dv.refreshDungeon();
   ok(lis().slice(0,ci).every(li=>li.classList.contains('cleared'))&&lis()[ci].classList.contains('current')&&lis()[ci+1].classList.contains('unexplored'),'dungeon view: cleared rooms, the room in progress and fog read from the crawl');
@@ -1100,7 +1100,7 @@ console.log('the DM prepares the table');
   box().querySelector('.dgback').click();ok(box().hidden&&!dv.dungeonOpen()&&!$('screen').classList.contains('dgopen'),'dungeon view: Back to world closes it');
   const a=mem[0],was={state:a.state,hidden:a.hidden};a.state='dungeon';a.hidden=true;select(a);uiFast();const link=$('hero').querySelector('.dglink');
   ok(!!link,'dungeon view: the hero card of a hero inside has View inside');if(link){link.click();ok(dv.dungeonOpen(),'dungeon view: View inside opens it')}
-  dv.closeDungeon();a.state=was.state;a.hidden=was.hidden;CRYPT.group=keep;uiFast()}
+  dv.closeDungeon();a.state=was.state;a.hidden=was.hidden;CRYPT.group=keep;S.dunRec=rec0;uiFast()}
 // ---- the dungeon view (#85, slice 2): foes with HP, chamber detail on hover or click, history, the minimap's mark ----
 {const dv=await import('../src/render/dungeonview.js'),fx=await import('../src/render/dgfoes.js'),{CRYPT}=await import('../src/world/map.js'),{buildInterior}=await import('../src/world/interior.js');
   const S=sim.S,keep=CRYPT.group,n=CRYPT.rooms.length,mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,4);
@@ -1133,6 +1133,48 @@ console.log('the DM prepares the table');
   box().querySelector('.dghbtn').click();ok(box().querySelector('.dghist').hidden,'dungeon history: and closes it');
   dv.closeDungeon();ok(dv.dungeonSite()===null,'dungeon view: closed, the minimap has no mark');
   a.state=was;CRYPT.group=keep;uiFast()}
+// ---- the dungeon view (#976): strike DCs, what a clear pays, what a run took, the looted marks; an older save reads "not recorded" ----
+{const dv=await import('../src/render/dungeonview.js'),{CRYPT}=await import('../src/world/map.js'),{CRAWL}=await import('../src/sim/crawl.js'),{payClear}=await import('../src/sim/dungeon.js'),CY=await import('../src/sim/crypts.js');
+  const S=sim.S,keep=CRYPT.group,rec=S.dunRec,n=CRYPT.rooms.length,mem=S.agents.filter(a=>a.kind==='hero'&&a.state!=='dead').slice(0,4),kept=mem.map(a=>({a,gold:a.gold,state:a.state,hidden:a.hidden,x:a.x,y:a.y,epics:a.epics.slice(),goal:a.goal}));for(const a of mem)a.goal=null; // (an earlier section leaves a stub goal)
+  const box=()=>$('dungeon'),g=(i,extra)=>({fac:mem[0].fac,phase:'inside',name:'The Ember Road',mem,tSite:true,crawl:Object.assign({i,rd:0,gap:0,foes:null,end:null,lvl:6},extra)});
+  S.dunRec={};dv.initDungeonView();dv.openDungeon(CRYPT);
+  let st=dv.refreshDungeon(),d=dv.roomDetail(0,CRYPT,st);
+  ok(/A clear pays each member 25-45 gold/.test(d.pay)&&/Grave Dust x3/.test(d.pay)&&d.foes.every(t=>/DC \d+ \+ level\/2/.test(t)),'dungeon loot: before any clear the detail says what a clear pays, and the DC rule while no party sets the level ('+d.pay+' | '+d.foes[0]+')');
+  // a crawl: the DCs as rolled, no mark while it runs
+  const foes=[{type:'shambler',name:'Crypt Shambler',hp:2,hits:3,atk:1,lvl:8},{type:'shambler',name:'Crypt Shambler',hp:1,hits:3,atk:1,lvl:9}];
+  CRYPT.group=g(1,{foes,rd:1});dv.trackCrawl();st=dv.refreshDungeon();d=dv.roomDetail(1,CRYPT,st);
+  ok(d.foes[0].includes('DC '+(CRAWL.DC+4))&&d.foes[1].includes('DC '+(CRAWL.DC+4)),'dungeon loot: a live foe shows its strike DC as the crawl rolls it ('+d.foes.join(' | ')+')');
+  ok(!st.looted&&!st.rooms.some(r=>r.looted),'dungeon loot: no looted mark while the run is in progress');
+  d=dv.roomDetail(0,CRYPT,st);ok(d.foes.every(t=>new RegExp('DC '+(CRAWL.DC+Math.floor((6+(CRYPT.rooms[0].lvl||0))/2))+'$').test(t)),'dungeon loot: a chamber behind them reads its DC from the party\'s level ('+d.foes[0]+')');
+  ok(!dv.historyOf(CRYPT)[0].lines.some(t=>/took|taken/i.test(t)),'dungeon loot: a run in progress has no Took line yet');
+  // a withdrawal: nothing taken, nothing looted
+  CRYPT.group.crawl.end='retreat';dv.trackCrawl();CRYPT.group=null;CY.cryptRun(CRYPT,'withdrawn');dv.trackCrawl();st=dv.refreshDungeon();
+  ok(dv.historyOf(CRYPT)[0].lines.includes('Nothing taken'),'dungeon loot: a withdrawal took nothing ('+dv.historyOf(CRYPT)[0].lines.join(' / ')+')');
+  ok(!st.looted,'dungeon loot: a withdrawal marks no chamber looted');
+  // a clear: the real payout and record
+  CRYPT.group=g(n-1,{foes,rd:0});dv.trackCrawl();CRYPT.group.crawl.end='clear';dv.trackCrawl();st=dv.refreshDungeon();ok(!st.looted,'dungeon loot: not looted until the group has left');
+  payClear(CRYPT.group,.1);CY.cryptRun(CRYPT,'clears');CRYPT.group=null;dv.trackCrawl();st=dv.refreshDungeon();const P=S.dunRec[CRYPT.name].paid;
+  ok(P&&P.gold>=25*mem.length&&P.gold<=45*mem.length&&P.goods['Grave Dust']>0&&P.by==='The Ember Road'&&P.run===S.dunRec[CRYPT.name].runs,'dungeon loot: the clear is on the run record ('+JSON.stringify(P)+')');
+  const took=dv.historyOf(CRYPT)[0].lines.find(t=>/^Took: /.test(t));
+  ok(took&&took.includes(P.gold+' gold')&&took.includes('Grave Dust x'+P.goods['Grave Dust']),'dungeon loot: the history names what it took ('+took+')');
+  ok(st.looted&&st.looted.length===n&&st.rooms.every(r=>r.looted&&r.state==='cleared'),'dungeon loot: every chamber is looted after the clear');
+  ok(/looted/.test(box().querySelector('.dgroom').title),'dungeon loot: the chamber list says so too');
+  d=dv.roomDetail(0,CRYPT,st);ok(d.stateText==='Cleared · looted'&&d.pay.startsWith('Last clear, day ')&&d.pay.includes('The Ember Road')&&d.pay.includes(P.gold+' gold'),'dungeon loot: the detail shows the clear payout ('+d.stateText+'; '+d.pay+')');
+  box().querySelectorAll('li')[0].click();ok(/Clear payout/.test(box().querySelector('.dgpin').textContent)&&box().querySelector('.dgpin').textContent.includes(P.gold+' gold'),'dungeon loot: the pinned chamber shows it');box().querySelectorAll('li')[0].click();
+  // the next run clears the marks; turned back, the record's clear stays but no chamber reads looted
+  CRYPT.group=g(0,{foes,rd:0});dv.trackCrawl();st=dv.refreshDungeon();ok(!st.looted,'dungeon loot: the next run in progress shows no mark');
+  CRYPT.group.crawl.end='retreat';dv.trackCrawl();CRYPT.group=null;CY.cryptRun(CRYPT,'withdrawn');dv.trackCrawl();st=dv.refreshDungeon();ok(!st.looted&&/Last clear/.test(dv.roomDetail(0,CRYPT,st).pay),'dungeon loot: turned back afterwards, nothing reads looted and the last clear is still known');
+  // a background group's clear the page never tracked, and a page reloaded after a clear: the record alone
+  CY.cryptPaid(CRYPT,Object.assign(CY.paidNew('A Concord group'),{gold:150}));CY.cryptRun(CRYPT,'clears');st=dv.refreshDungeon();
+  ok(st.looted&&/A Concord group cleared every chamber/.test(st.status),'dungeon loot: the record alone marks a clear ('+st.status+')');
+  ok(dv.historyOf(CRYPT).some(h=>h.title.includes('A Concord group')&&h.lines[0]==='Took: 150 gold'),'dungeon loot: and the history shows it');
+  // an older save: clears on the record, none of what they paid
+  S.dunRec={[CRYPT.name]:{runs:12,clears:9,wipes:3,driven:0,withdrawn:0,lost:1}};st=dv.refreshDungeon();
+  ok(/Last clear: not recorded/.test(dv.roomDetail(0,CRYPT,st).pay),'dungeon loot: an older save reads not recorded in the detail, not as nothing taken');
+  ok(dv.historyOf(CRYPT).some(h=>h.lines.includes('Took: not recorded')&&/Cleared \d+ times?/.test(h.outcome)),'dungeon loot: and in the history');
+  CRYPT.group=g(n-1,{foes});dv.trackCrawl();CRYPT.group.crawl.end='clear';dv.trackCrawl();CRYPT.group=null;dv.trackCrawl();
+  ok(dv.historyOf(CRYPT)[0].lines.includes('Took: not recorded'),'dungeon loot: a clear with no record reads not recorded');
+  dv.closeDungeon();for(const k of kept){k.a.gold=k.gold;k.a.state=k.state;k.a.hidden=k.hidden;k.a.x=k.x;k.a.y=k.y;k.a.epics=k.epics;k.a.goal=k.goal}CRYPT.group=keep;S.dunRec=rec;uiFast()}
 // ---- the crawl as it is played (#742): named spots per chamber, members on the spot their act names, foes at the den, beats ----
 {const dv=await import('../src/render/dungeonview.js'),cv=await import('../src/render/crawlview.js'),RG=await import('../src/sim/roomgrid.js'),{CRYPT}=await import('../src/world/map.js'),{buildInterior,IT}=await import('../src/world/interior.js'),{TABLE}=await import('../src/sim/table.js');
   const S=sim.S,keep=CRYPT.group,keepT=S.table,m=buildInterior(CRYPT),walk=t=>t===IT.FLOOR||t===IT.WATER||t===IT.DAIS||t===IT.DOOR;
