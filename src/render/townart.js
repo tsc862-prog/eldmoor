@@ -10,11 +10,12 @@ import {U,TILE,ART} from './tile.js';
 import {CITY,LANDMARKS} from '../world/map.js';
 import {outsideTown,townRing} from '../world/gen.js';
 import {FAC} from '../data/factions.js';
-import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle} from '../data/townart.js';
+import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle,townLookId} from '../data/townart.js';
 import {assetPixels,assetEntry,onAssets} from './assets.js';
 import {drawHouse,drawCryptMouth,sketchPiece,plainHouse} from './pieceart.js';
 import {FLAT,TOWN,TOWN_GROUND} from './palette.js';
 import {onWorld} from '../sim/kept.js';
+import {lookOf,lookImage,moveColour,wellArt} from './townlook.js';
 
 // Hook table (artcheck: every id here is in the manifest and every manifest entry hooked to this module is here). A piece
 // is 'building:<style>-<piece>', but the straight wall is a seamless patch generated like a ground tile ('tile:<style>-wall').
@@ -47,11 +48,15 @@ const lpcId=(c,b)=>`building:lpc-${townStyle(c)}-${b.kit||b.piece}`;
 const ownShape=b=>!!b.kit&&b.kit!==b.piece;
 function lpcFits(c,b){const e=assetEntry(lpcId(c,b));if(!e||!e.foot||!e.door)return false;
   return e.foot[0]===b.box[2]&&e.foot[1]===b.box[3]&&e.door[0]===b.door[0]-b.box[0]&&e.door[1]===b.door[1]-b.box[1]}
-const lpcImage=(c,b)=>lpcFits(c,b)?pieceImage(lpcId(c,b)):null;
+// A cut piece of town c in the town's own look (render/townlook.js), else as cut.
+export function townImage(c,id){const L=lookOf(c);return L&&!c.wall?lookImage(id,assetPixels(id),L,townLookId(c)):pieceImage(id)}
+function lpcImage(c,b){if(!lpcFits(c,b))return null;const L=lookOf(c);
+  if(L&&L.centre==='well'&&b.kit==='fountain'&&!c.wall){const w=wellArt(townLookId(c),L,b.box[2],b.box[3],TILE);if(w)return w} // the look's own centrepiece
+  return townImage(c,lpcId(c,b))}
 // Ask for every cut building at once: each one that arrives repaints the chunks, so they all come with the first paint and
 // never as a hitch when the camera first reaches another town.
 let lpcAsked=false;onAssets(id=>{if(id===null)lpcAsked=false});
-function lpcAsk(){if(lpcAsked)return;lpcAsked=true;for(const c of CITY){for(const b of c.buildings||[])lpcImage(c,b);for(const k of WALL_KEYS)pieceImage(wallId(c,k));if(c.ground)streetImage(c)}}
+function lpcAsk(){if(lpcAsked)return;lpcAsked=true;for(const c of CITY){for(const b of c.buildings||[])lpcImage(c,b);for(const k of WALL_KEYS)townImage(c,wallId(c,k));if(c.ground)streetImage(c)}}
 const imgH=img=>(img.h||img.height)/TILE;
 const standBox=(b,img)=>{const h=imgH(img);return [b.box[0],b.box[1]+b.box[3]-h,b.box[2],h]};
 // Where a cut building's chimney or flag stands, in world units, or null (no such image loaded): the town life puts its smoke
@@ -70,7 +75,7 @@ export function buildingArt(c,b){const img=lpcImage(c,b);return img?{img,box:sta
 // A spec town may name another set than its style's (`wall`, 'palisade').
 const WALL_KEYS=['plaza','wall-n','wall-e','wall-s','wall-w','tower','pier','pier-tall'];
 const wallId=(c,k)=>`${k==='plaza'||k.startsWith('wall')?'tile':'building'}:lpc-${c.wall||townStyle(c)}-${k}`;
-function wallSet(c){const o={};for(const k of WALL_KEYS){const i=pieceImage(wallId(c,k));if(!i)return null;o[k]=i}return o}
+function wallSet(c){const o={};for(const k of WALL_KEYS){const i=townImage(c,wallId(c,k));if(!i)return null;o[k]=i}return o}
 const SIDES='nesw';
 const boxOver=(a,b)=>a[0]<b[0]+b[2]&&b[0]<a[0]+a[2]&&a[1]<b[1]+b[3]&&b[1]<a[1]+a[3];
 const iw=i=>i.w||i.width,ih=i=>i.h||i.height;
@@ -94,7 +99,7 @@ const GATE_RISE=2; // whole tiles a north or south gatehouse stands over the wal
 function banner(R,x,y,f){R(x,y,14,1,'#14101c');R(x,y+1,14,1,'#a8804a');R(x+1,y+2,12,18,'#14101c');R(x+2,y+2,10,17,f.color);R(x+2,y+2,10,1,f.dark);R(x+2,y+18,10,1,f.dark);R(x+6,y+6,2,8,f.dark);R(x+4,y+9,6,2,f.dark);for(let i=0;i<3;i++)R(x+2+i*4,y+19,2,2,f.color)}
 export function gateArt(c){if(gateC.has(c))return gateC.get(c);const g=c.gateTiles,side=c.gateSide||'E',along=side==='E'||side==='W',set=c.wall||townStyle(c);
   if(g.length!==2||!wallSet(c))return null; // not cached: the set may still arrive
-  const id=k=>`building:lpc-${set}-${k}`,raw=pieceImage(id(along?'gate-ew':'gate-ns')),back=along?null:pieceImage(id('gate-ns-back'));if(!raw||(!along&&!back))return null;
+  const id=k=>`building:lpc-${set}-${k}`,raw=townImage(c,id(along?'gate-ew':'gate-ns')),back=along?null:townImage(c,id('gate-ns-back'));if(!raw||(!along&&!back))return null;
   const xs=g.map(v=>v[0]),ys=g.map(v=>v[1]),x=Math.min(...xs),y=Math.min(...ys),w=iw(raw)/TILE,h=ih(raw)/TILE,box=along?[x+.5-w/2,y-2,w,h]:[x+1-w/2,y-GATE_RISE,w,h];
   let front=raw;if(typeof document!=='undefined'){front=document.createElement('canvas');front.width=iw(raw);front.height=ih(raw);const q=front.getContext('2d');q.drawImage(raw,0,0);const R=(a,b,w2,h2,k)=>{q.fillStyle=k;q.fillRect(a,b,w2,h2)},f=FAC[c.fac];
     if(along)banner(R,iw(raw)/2-7,ih(raw)-46,f);else{banner(R,14,34,f);banner(R,iw(raw)-28,34,f)}}
@@ -122,8 +127,11 @@ function townShadow(c){let R=shadowC.get(c);if(R)return R;
     sweep([x,y+top,w,h-top],b.piece==='board'?SWEEP.low:SWEEP.building)}
   R=[];const k=U/TILE;for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!m[y*W+x])continue;let e=x;while(e<W&&m[y*W+e])e++;R.push([x0*U+x*k,y0*U+y*k,(e-x)*k,k]);x=e}
   shadowC.set(c,R);return R}
+// The town's paving colours in its look (kerbs, sill).
+const groundC=new Map();
+function groundOf(c){const P=TOWN_GROUND[townStyle(c)],L=lookOf(c);if(!L||c.wall)return P;const k=townLookId(c)+'|'+townStyle(c);let g=groundC.get(k);if(!g){g={...P,plaza:P.plaza.map(h=>moveColour(h,L))};groundC.set(k,g)}return g}
 // A stone sill across the gate where the road meets the paving, on the wall's outer edge and its inner one.
-function sill(ctx,c){const g=c.gateTiles,side=c.gateSide||'E',P=TOWN_GROUND[townStyle(c)],a=U/TILE,along=side==='E'||side==='W';
+function sill(ctx,c){const g=c.gateTiles,side=c.gateSide||'E',P=groundOf(c),a=U/TILE,along=side==='E'||side==='W';
   const x=Math.min(...g.map(v=>v[0]))*U,y=Math.min(...g.map(v=>v[1]))*U,n=g.length*U;
   const bar=(at,w,col)=>{ctx.fillStyle=col;if(along)ctx.fillRect(x+at,y,w,n);else ctx.fillRect(x,y+at,n,w)};
   const far=side==='E'||side==='S'?U-5*a:0,near=side==='E'||side==='S'?0:U-2*a;
@@ -131,15 +139,15 @@ function sill(ctx,c){const g=c.gateTiles,side=c.gateSide||'E',P=TOWN_GROUND[town
 // A plan's streets (`ground`) stay the road they are, so the paving reads as yards between them. A palisade town is decked throughout.
 const lane=(c,x,y)=>!c.wall&&(c.ground||[]).some(([dx,dy,w,h])=>x>=c.x0+dx&&x<c.x0+dx+w&&y>=c.y0+dy&&y<c.y0+dy+h);
 // A stone edge where a paved tile meets a street, two art pixels, its joint on the street side.
-function kerb(ctx,c,x,y){const P=TOWN_GROUND[townStyle(c)].plaza,a=U/TILE,X=x*U,Y=y*U,run=(s,d,fn)=>{if(!lane(c,s,d))return;ctx.fillStyle=P[3];fn(2*a);ctx.fillStyle=P[0];fn(a)};
+function kerb(ctx,c,x,y){const P=groundOf(c).plaza,a=U/TILE,X=x*U,Y=y*U,run=(s,d,fn)=>{if(!lane(c,s,d))return;ctx.fillStyle=P[3];fn(2*a);ctx.fillStyle=P[0];fn(a)};
   run(x,y-1,t=>ctx.fillRect(X,Y,U,t));run(x-1,y,t=>ctx.fillRect(X,Y,t,U));run(x,y+1,t=>ctx.fillRect(X,Y+U-t,U,t));run(x+1,y,t=>ctx.fillRect(X+U-t,Y,t,U))}
 // A street's own cut, where one is loaded: the road tile is left under it otherwise, with square corners.
-const streetImage=c=>c.wall||!c.ground?null:pieceImage(`tile:lpc-${townStyle(c)}-street`);
+const streetImage=c=>c.wall||!c.ground?null:townImage(c,`tile:lpc-${townStyle(c)}-street`);
 const paved=(c,x,y)=>x>c.x0&&x<c.x1&&y>c.y0&&y<c.y1&&!townRing(c,x,y)&&!outsideTown(c,x,y)&&!lane(c,x,y);
 // Where street and paving turn, the kerb turns on an arc: a paved tile with street on two sides has that corner rounded off, a street
 // tile with paving on two sides has its corner filled. All inside the tile, so chunks can paint it alone. Radius in art pixels.
 const CURVE=7;
-function curves(ctx,c,plaza,street,x,y){const onLane=lane(c,x,y),P=TOWN_GROUND[townStyle(c)].plaza,a=U/TILE,r=CURVE,fill=onLane?plaza:street;
+function curves(ctx,c,plaza,street,x,y){const onLane=lane(c,x,y),P=groundOf(c).plaza,a=U/TILE,r=CURVE,fill=onLane?plaza:street;
   for(const sy of [-1,1])for(const sx of [-1,1]){if(onLane?!(paved(c,x+sx,y)&&paved(c,x,y+sy)):!(lane(c,x+sx,y)&&lane(c,x,y+sy)))continue;
     for(let j=0;j<r;j++)for(let i=0;i<r;i++){const d=Math.hypot(i+.5-r,j+.5-r),px=sx<0?i:TILE-1-i,py=sy<0?j:TILE-1-j,X=x*U+px*a,Y=y*U+py*a;
       if(d>(onLane?r+2:r)){const q=x*TILE+px,s=y*TILE+py;ctx.drawImage(fill,q%iw(fill),s%ih(fill),1,1,X,Y,a,a);continue}

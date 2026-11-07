@@ -128,6 +128,8 @@ const gC=new Map();
 export function sceneGround(t,tx,ty){if(!NOTE)return t;if(t===FLOWER)return G;
   if(t===RIVER||t===BRIDGE||(t===ROAD&&data().open[ty*W+tx])){const k=ty*W+tx;let g=gC.get(k);if(g===undefined){g=dryGround(tx,ty);gC.set(k,g)}return g}
   return t}
+// The region's tone at tile (tx,ty): 0 none, 1 meadow, 2 heath, 3 woods, 4 ash (WASH); terrain.js gives a wood its own kinds of tree.
+export const sceneWash=(tx,ty)=>NOTE?data().wash[ty*W+tx]:0;
 export const treeFelled=(tx,ty)=>!!NOTE&&!!data().felled[ty*W+tx];
 // The ground a water tile's dry edge is drawn with: the nearest plain ground round it.
 const GROUNDS=new Set([G,FLOWER,SGRASS,MUD,SWAMP,ROCK,SNOW,ICE]);
@@ -151,7 +153,10 @@ export const soilRim={m:1,other:-1};
 export function soilAt(tx,ty,ax,ay){if(!NOTE)return -1;const d=data(),L=d.soft[ty*W+tx];if(!L)return -1;
   const x0=tx+(ax+.5)/TILE,y0=ty+(ay+.5)/TILE,x=x0+WARP(x0,y0,267),y=y0+WARP(x0,y0,269),n=(vnoise(x*2.3,y*2.3,261)-.5)*.14;let b=-1,bv=-9,o=-1,ov=-9;
   for(let i=0;i<L.length;i++){const v=at(d.mask.get(L[i]),x,y)+(i&1?n:-n);if(v>bv){o=b;ov=bv;b=L[i];bv=v}else if(v>ov){o=L[i];ov=v}}
+  if(o>=0&&bv-ov<SOFT_M&&SOFT.has(b)&&SOFT.has(o)&&(b===MUD||o===MUD)&&hash((tx*TILE+ax)>>1,(ty*TILE+ay)>>1,263)<.5*(1-(bv-ov)/SOFT_M)){const q=b;b=o;o=q} // a stippled margin, two art pixels a grain: mud and grass give way to each other
   soilRim.m=bv-ov;soilRim.other=o;return b}
+// Grounds whose border is a soft stipple instead of a line (mud against grass or fen grass), and how wide in mask units.
+const SOFT=new Set([MUD,SGRASS,G]),SOFT_M=.1;
 // The border's own line: a lit lip and a shadow, by what meets what. c: the plain colour of kind k there.
 export function soilEdge(c,k,tx,ty,ax,ay){const m=soilRim.m,o=soilRim.other,X=tx*TILE+ax,Y=ty*TILE+ay,h=hash(X,Y,265);if(m>.14)return c;
   if(k===ICE)return m<.05?mix(c,'#e4f2f8',.7):m<.1?mix(c,'#b4d8e6',.42):c; // the pool's frozen margin
@@ -160,6 +165,7 @@ export function soilEdge(c,k,tx,ty,ax,ay){const m=soilRim.m,o=soilRim.other,X=tx
   if(o===LAVA)return m<.07?mix(c,'#17100f',.86):m<.13?mix(c,'#2a1c18',.56):c;
   if(k===SWAMP)return m<.05?mix(c,'#141c14',.6):c;
   if(o===SWAMP)return m<.06?mix(c,'#26301e',.5):c;
+  if(k===MUD||o===MUD)return c; // mud's border is the stipple of soilAt, no line
   if(m<.035&&h>.4)return mix(c,'#000000',.14);
   return c}
 
@@ -211,20 +217,38 @@ function fissure(c,x,y,s){let dx=hash(x|0,y|0,s)>.5?1:-1;const n=7+(hash(x|0,y|0
     x+=1;if(hash(i,x|0,s+2)>.6)y+=dx*.5;if(hash(i,y|0,s+3)>.85)dx=-dx}}
 // What lies on open ground, by the region's tone. h values are the tile's own hashes.
 function scatter(c,tx,ty,t,w,d){const X=tx*U,Y=ty*U,h=hash(tx,ty,801),o=hash(tx,ty,802),ox=hash(tx,ty,803)*10-2,oy=hash(tx,ty,804)*10-2;
+  if(w===3&&t===TREE){if(((tx+ty)&1)&&asset('prop:canopy-meadow-1')){if(h<.45)bush(c,X+4+ox*.5,Y+12,tx,ty);else if(h<.6)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.72)fallen(c,X+ox-4,Y+9+o*3,o<.5);else if(h<.8)pc(c,'stump',X+ox,Y+oy+4)}return} // undergrowth between the whole trees of a wood
   if(w===1||w===2||w===3){if(t!==G&&t!==FLOWER)return;
     const f=vnoise(tx/4.5,ty/4.5,805);
     if(t===FLOWER||(w!==3&&f>.6&&o<.62)){const pick=vnoise(tx/9,ty/9,807)*1.6+o*.5;bloom(c,X+8,Y+8,FLOWERS[w===2?(pick>.9?3:0):Math.min(3,pick*2.2|0)],tx,ty,3+(h*4|0));if(t===FLOWER)return}
     if(w===1){if(h<.13)pc(c,'tuftGS',X+ox,Y+oy);else if(h<.18)pc(c,'tuftLS',X+ox,Y+oy);else if(h<.195)pc(c,'tuftG',X+ox-4,Y+oy-4);else if(h<.21)pc(c,'pebTanS',X+ox-2,Y+oy);else if(h<.235)pc(c,'blades',X+ox-6,Y+oy-6)}
     else if(w===2){if(h<.11)pc(c,'tuftBS',X+ox,Y+oy);else if(h<.2)pc(c,'tuftLS',X+ox,Y+oy);else if(h<.215)pc(c,'tuftB',X+ox-4,Y+oy-4);else if(h<.27)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.29)pc(c,'blades',X+ox-6,Y+oy-6)}
-    else{if(h<.1)pc(c,'tuftDS',X+ox,Y+oy);else if(h<.125)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.15)pc(c,'stump',X+ox,Y+oy+4);else if(h<.18)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.22)pc(c,'blades',X+ox-6,Y+oy-6)}
+    else{if(h<.1)pc(c,'tuftDS',X+ox,Y+oy);else if(h<.125)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.15)pc(c,'stump',X+ox,Y+oy+4);else if(h<.18)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.22)pc(c,'blades',X+ox-6,Y+oy-6);else if(h<.27)bush(c,X+4+ox*.5,Y+10+oy*.3,tx,ty);else if(h<.3)fallen(c,X+ox-4,Y+8+oy*.4,o<.5)}
     return}
   if(w===4&&t===ROCK){
     if(h<.08)pc(c,'pebDarkS',X+ox-2,Y+oy);else if(h<.1)pc(c,'pebDark',X+ox-4,Y+oy-4);else if(h<.2)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.27)pc(c,'pebTanS',X+ox-2,Y+oy);
     else if(h<.335)fissure(c,X+ox,Y+oy+2,811);else if(h<.36)pc(c,'stumpChar',X+ox,Y+oy+4);else if(h<.385)pc(c,'tuftBS',X+ox,Y+oy);
     else if(h<.397)pc(c,'tarPool',X+ox-4,Y+oy-4);else if(h<.406)pc(c,'skull',X+ox+2,Y+oy+4);else if(h<.42)pc(c,'femur',X+ox,Y+oy+6);else if(h<.426)foot(c,'cairn',X+8,Y+15);return}
+  if(t===SWAMP){const edge=tt(tx-1,ty)!==SWAMP||tt(tx+1,ty)!==SWAMP||tt(tx,ty-1)!==SWAMP||tt(tx,ty+1)!==SWAMP; // fen water: reeds along its margins, pads and a sheen on the open water
+    if(edge){if(h<.7)reeds(c,X+ox+2,Y+oy+6,tx,ty);if(o<.35)reeds(c,X+12-ox,Y+14-oy*.5,ty,tx)}
+    else if(h<.2)pc(c,'lily',X+ox,Y+oy+2);else if(h<.3){rect(c,snap(X+ox),snap(Y+oy+4),4,.5,'#48705e');rect(c,snap(X+ox+2),snap(Y+oy+5),3,.5,'#3a5e50')}else if(h<.36)reeds(c,X+ox+3,Y+oy+6,tx,ty,4);
+    return}
   if(t===SGRASS||t===MUD){if(h<.12)pc(c,'tuftDS',X+ox,Y+oy);else if(h<.16)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.19&&t===MUD)pc(c,'pebTanS',X+ox-2,Y+oy);return}
   if(t===SNOW){if(h<.05)pc(c,'pebWhiteS',X+ox-2,Y+oy);else if(h<.07)pc(c,'pebGreyS',X+ox-2,Y+oy)}}
 
+// A clump of reeds standing with its foot at world (x,y): n stalks of half a unit, some with a cattail head, on a dark root.
+const REED=['#4e6a2c','#6a8038','#8a9a4a','#5a6a30'];
+function reeds(c,x,y,a,b,n=7){rect(c,snap(x-1.5),snap(y),4,.5,'#1e2618');for(let i=0;i<n;i++){const h=hash(a,b,861+i),px=snap(x-1.5+i*.5+(h-.5)),tall=4+hash(a,b,871+i)*5,lean=hash(a,b,881+i)>.7?.5:0;
+    rect(c,px,snap(y-tall),.5,tall,REED[i&3]);if(lean)rect(c,px+lean,snap(y-tall-.5),.5,1,REED[2]);if(h<.3)rect(c,px,snap(y-tall+.5),.5,1.5,'#4a2e1c')}}
+// A low bush standing with its foot at world (x,y): three or four leafy domes, lit from the top left, on a shadow.
+const BUSH=[['#1c3a1e','#2e5a2a','#4a7a34','#6a9a40'],['#22381c','#3a5a26','#5a7a30','#7e9a3e'],['#1e3424','#2c5034','#466e40','#62904a']];
+function bush(c,x,y,a,b){const P=BUSH[(hash(a,b,891)*3)|0],n=3+(hash(a,b,892)>.5?1:0);rect(c,snap(x-5),snap(y-1),11,1.5,'#14101c40');
+  for(let i=0;i<n;i++){const cx=x-3.5+i*(7/(n-1))+(hash(a,b,893+i)-.5),r=2.2+hash(a,b,897+i)*1.4,cy=y-r-.5-(i===1||i===2?1:0);
+    for(let j=-r;j<=r;j+=.5)for(let k=-r;k<=r;k+=.5){const d=Math.hypot(k,j)/r;if(d>1)continue;const lit=-(k+j)/r;rect(c,snap(cx+k),snap(cy+j),.5,.5,d>.86?P[0]:lit>.55?P[3]:lit>-.1?P[2]:P[1])}}}
+// A fallen log lying along x from world (x,y), its cut end toward the viewer's left or right.
+function fallen(c,x,y,left){const L=10;rect(c,snap(x+.5),snap(y+2.5),L,1,'#14101c40');rect(c,snap(x),snap(y-.5),L,3.5,'#1a1210');rect(c,snap(x),snap(y),L,2.5,'#5a3e28');rect(c,snap(x),snap(y),L,.5,'#7a5a3a');rect(c,snap(x),snap(y+2),L,.5,'#3a281a');
+  for(let i=1.5;i<L-1;i+=2.5)rect(c,snap(x+i),snap(y+.5),.5,1.5,'#3a281a');rect(c,snap(x+3),snap(y-.5),2,.5,'#4a7a34');
+  const ex=left?x-.5:x+L-2;rect(c,snap(ex),snap(y-.5),2.5,3.5,'#1a1210');rect(c,snap(ex+.5),snap(y),1.5,2.5,'#b08a5a');rect(c,snap(ex+1),snap(y+1),.5,.5,'#7a5a3a')}
 // The water's own furniture and the fringe of its banks.
 function riverside(c,tx,ty,t,d){const X=tx*U,Y=ty*U,h=hash(tx,ty,821),o=hash(tx,ty,822),z=REGIONS[zone[I(tx,ty)]],b=z&&z.biome,ox=o*8;
   if(t===RIVER){const cen=at(d.water,tx+.5,ty+.5);if(cen<.6||!solid[I(tx,ty)])return;
