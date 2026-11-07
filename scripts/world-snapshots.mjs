@@ -9,4 +9,5 @@ export const SNAPSHOTS = {
   vale:     {zone: '258a7280', tiles: 'ca3628f2', minSpawn: 150},
   hollin:   {zone: '7bfcd86f', tiles: 'f2e0d16a', minSpawn: 150},
   wendmouth: {zone: 'ccc10dc1', tiles: 'dd4e6959', minSpawn: 150},
+  hawkwold: {zone: '47133cab', tiles: '972e7b13', minSpawn: 150},
 };

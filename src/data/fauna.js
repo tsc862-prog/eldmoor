@@ -49,6 +49,19 @@ export const FAUNA={
     {n:4,sp:'wolf',pack:2,name:'Heath Wolf',pl:'Heath Wolves',lv:[7,8],loot:'Heath Pelt',q:'Wolves on the Heath'},
     {n:3,sp:'boar',pack:3,name:'Crag Boar',pl:'Crag Boars',lv:[8,9],loot:'Crag Tusk',q:'Tusks from the Crags'},
     {n:2,sp:'rimehound',pack:2,name:'Windhound',pl:'Windhounds',lv:[9,10],loot:'Gale Sinew',q:'Windhounds on the Ridge'}]},
+  // The Hawkwold (#1013 slice 7c): the Vale's upland creatures at this chapter's levels, under Hollin's rule: small groups, far apart. Levels stay inside each band; one elite on the map, Greymane on the wold. Names are this chapter's own.
+  foldlands: {tier:1,count:4,roadMinX:999,goods:[['Fold Pelt',15],['Furze Tusk',17],['Cairn Silk',19]],species:[
+    {n:4,sp:'wolf',pack:2,name:'Fold Wolf',pl:'Fold Wolves',lv:[6,7],loot:'Fold Pelt',q:'Wolves at the Folds'},
+    {n:4,sp:'boar',pack:2,name:'Furze Boar',pl:'Furze Boars',lv:[7,8],loot:'Furze Tusk',q:'Tusks from the Furze'},
+    {n:3,sp:'spider',pack:3,name:'Cairn Spinner',pl:'Cairn Spinners',lv:[7,8],loot:'Cairn Silk',q:'Spinners at the Cairn'}]},
+  hawkrise:  {tier:1,count:4,roadMinX:999,goods:[['Wold Pelt',21],['Tor Tusk',24],['Ridge Sinew',27]],elite:{name:'Greymane',title:'the Pack-Father of the Hawkwold',base:'wolf',fixLvl:11},species:[
+    {n:5,sp:'wolf',pack:2,name:'Wold Stalker',pl:'Wold Stalkers',lv:[8,9],loot:'Wold Pelt',q:'Stalkers on the Wold'},
+    {n:3,sp:'boar',pack:3,name:'Tor Boar',pl:'Tor Boars',lv:[8,9],loot:'Tor Tusk',q:'Tusks from the Tors'},
+    {n:2,sp:'rimehound',pack:2,name:'Ridgehound',pl:'Ridgehounds',lv:[9,10],loot:'Ridge Sinew',q:'Ridgehounds on the Wold'}]},
+  hornmoor:  {tier:1,count:4,roadMinX:999,goods:[['Horn Pelt',26],['Scarp Tusk',29],['Hold Sinew',33]],species:[
+    {n:5,sp:'wolf',pack:2,name:'Horn Wolf',pl:'Horn Wolves',lv:[9,10],loot:'Horn Pelt',q:'Wolves on the Moor'},
+    {n:3,sp:'boar',pack:3,name:'Scarp Boar',pl:'Scarp Boars',lv:[10,11],loot:'Scarp Tusk',q:'Tusks from the Scarp'},
+    {n:2,sp:'rimehound',pack:2,name:'Horn Hound',pl:'Horn Hounds',lv:[10,11],loot:'Hold Sinew',q:'Hounds of the Hold'}]},
   // The Wending Vale (epic #940, slice D): each region has its own creatures, levels, names and trade goods. Entries are objects
   // {n: how many live (#988: thinned to about half, in uneven groups), sp: stock species (its sprite and stat block), name, pl, lv, loot, q}. Only species the LPC creature slice draws (wolf, boar,
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the

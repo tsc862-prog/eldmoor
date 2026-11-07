@@ -542,7 +542,7 @@ const QUARRY_CAPTAIN='The quarry on Crowfell shut before my time, and the cellar
 // No faction gating (#1012): sides are lore here, so any company may rest in Oldstead, and no other side walks this map. No raid, no great dungeon, nothing above level 5; one small dungeon up on the fell for a company past its first delve.
 export const HOLLIN={
   name:'The Hollin Reach',
-  blurb:'One small walled town, a long road through fields and a wood, an old quarry up on the fell, and a river nobody crosses. Where a company begins; the Drovers\' Road runs north to the sea at the Wendmouth, and the Fell Road east past the last milestone, to lands not yet seen.',
+  blurb:'One small walled town, a long road through fields and a wood, an old quarry up on the fell, and a river nobody crosses. Where a company begins; the Drovers\' Road runs north to the sea at the Wendmouth, and the Fell Road east up onto the Hawkwold.',
   size:{w:118,h:64},
   seeds:{terrain:61,detail:83},
   sides:'lore',
@@ -589,7 +589,7 @@ export const HOLLIN={
   },
   exits:[
     {id:'north',name:'the Drovers\' Road',to:{map:'wendmouth',exit:'south'},edge:{side:'N',from:66,to:69}},
-    {id:'east',name:'the Fell Road',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:17,to:20}},
+    {id:'east',name:'the Fell Road',to:{map:'hawkwold',exit:'west'},edge:{side:'E',from:17,to:20}},
   ],
   roads:[
     {from:'Oldstead',to:'crossways'},
@@ -704,11 +704,101 @@ export const WENDMOUTH={
   labels:[['WENDMOUTH',78,56],['SALLOWFEN',112,60],['GULLHEAD',100,6],['GULLSTRAND',53,15.2],['STILTMERE',127.5,36.2]],
 };
 
+// The Herders' Cairn's chambers: a small barrow on a ridge above the sheepwalks. Shepherd Wick and his dogs, as the Vale's first delve told them, pitched like the Vale's small delves at a level 6 company.
+const HERDERS_CAIRN_ROOMS=[
+  {id:'dogs',name:'The Dog Run',frame:'Bones of the herd-dogs rattle up from the straw of the cairn passage and come at you low.',
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.225,rounds:2},
+  {id:'fold',name:'The Fold Chamber',frame:'Two old herdsmen rise from their niches, still holding their crooks, and put themselves between you and the lower fold.',
+    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.28,rounds:2},
+  {id:'last',name:'The Last Fold',frame:'One bell still rings here. The thing that wears it turns slowly, counting a flock that is not there.',
+    foes:[{type:'shambler',n:1,name:'Shepherd Wick',hits:4,atk:1.5},{type:'tombskit',n:1,hits:1}],lvl:1,hit:.36,rounds:2,boss:true},
+];
+
+// ---- The Hawkwold: the third chapter (#1013 slice 7c, levels 6-11) ----
+// A company comes up the Fell Road from the Hollin Reach onto the sheepwalks of the Foldlands, with the Wend a stream running west to east across the middle of the map.
+// North of it the road climbs to Hawkstead on its terraces and on past the Kestrel Barrow; south of it, a long way east, stands the hold at Hornridge; one bridge joins them.
+// The Vale's towns and rooms, Hollin's density: two towns a long walk apart, thin creatures, nothing near a wall. The Hawk Road runs on past the Barrow; it is not open yet.
+export const HAWKWOLD={
+  name:'The Hawkwold',
+  blurb:"High open country above the Wend: sheepwalks and a herders' cairn in the west, a falconers' town on its terraces, a barrow in the hills, and across a bridge a hold on a long slope. Come up the Fell Road from the Hollin Reach, at about level 6 or 7.",
+  size:{w:150,h:66},
+  seeds:{terrain:71,detail:97},
+  sides:'lore',
+  chapter:true,
+  ladder:{step:2},
+  curves:{
+    // The Wend: a stream here, west to east across the middle, wandering a little.
+    river:{axis:'x',base:31,sin:[[44,3.5,.4],[11,1.3,1]]},
+    fold:{axis:'y',base:50,noise:{seed:23,scale:6,amp:6,slice:2.1}},    // the Foldlands' east edge
+    horn:{axis:'y',base:92,noise:{seed:29,scale:6,amp:6,slice:3.7}},    // Hornmoor's west edge, on the south bank
+  },
+  regions:[
+    {id:'foldlands',name:'Foldlands',band:[6,8],biome:'lea',mask:{kind:'all'}},
+    {id:'hawkrise',name:'Hawkwold',band:[7,10],biome:'highland',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'fold'},{kind:'north-of-curve',curve:'river'}]}},
+    {id:'hornmoor',name:'Hornmoor',band:[8,11],biome:'highland',
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'horn'},{kind:'south-of-curve',curve:'river'}]}},
+  ],
+  river:{curve:'river',width:2},
+  scenery:{
+    wash:{foldlands:'meadow',hawkrise:'heath',hornmoor:'heath'},
+    dress:{'The Kestrel Barrow':'barrow',"The Herders' Cairn":'barrow'},
+    bridges:{'100,32':'stone'},
+    fields:[[44,26,8,3,'wheat'],[53,27,7,3,'plough'],[8,36,9,4,'cabbage'],[12,42,8,3,'wheat'],[28,48,9,3,'plough'],[108,25,7,3,'wheat'],[104,48,8,3,'plough']],
+  },
+  towns:[
+    // Hawkstead, as the Vale built it: a ridge town on terraces; the chapel on the hall's shoulder, a stair up the middle with the notice board at its head, cottages under the second terrace.
+    {name:'Hawkstead',fac:0,x0:54,y0:9,w:19,h:13,gate:'E',gateAt:5,race:'tarrow',spots:{square:[15.5,8.1]},grave:[16.5,8.6],notch:[[16,11,3,2]],clear:3,homes:[[1.5,11.5],[13.5,11.5]],
+      torches:[[17.5,4.5],[17.5,7.5],[5,6],[11,6],[14,8],[6,11]],
+      buildings:townPlan(54,9,[['smithy-great',1,7],['auction-great',8,1],['hall-great',1,1],['chapel-hill',14,1],['inn-great',5,7],['board',14,7],['house-tall',11,7]]),
+      ground:[[1,6,17,1],[8,5,10,1],[1,11,14,1]]},
+    // Hornridge, as the Vale built it: a hold on a long slope, the gate at the top and two terraces down to the inn.
+    {name:'Hornridge',fac:1,x0:124,y0:44,w:21,h:13,gate:'N',gateAt:5,race:'thornhide',spots:{square:[19.5,8.1]},grave:[19.5,9.6],notch:[[19,0,2,4]],clear:3,homes:[[1.5,11.5],[19,11.5]],
+      torches:[[4,1],[8,1],[5,6],[12,6],[17,6],[10,11]],
+      buildings:townPlan(124,44,[['auction-great',4,7],['smithy-great',1,1],['hall-great',7,1],['chapel-hill',14,1],['inn-great',10,7],['board',19,5],['house-tall',1,7],['house-tall',16,7]]),
+      ground:[[5,1,2,5],[1,6,19,1],[1,5,6,1],[1,11,19,1]]},
+  ],
+  landmarks:[
+    // The first dungeon up the road: a grassed herders' cairn on a ridge, at the end of its own spur off the Fell Road. entry: the level a background group first goes down.
+    {kind:'crypt',name:"The Herders' Cairn",boss:'Shepherd Wick',x:30.5,y:6.1,mouth:{x0:29,y0:4,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:HERDERS_CAIRN_ROOMS,entry:6},
+    // The falconer-lord's barrow, in the hills east of Hawkstead.
+    {kind:'crypt',name:'The Kestrel Barrow',boss:'Lord Merrin Hawkwright',x:122.5,y:13.1,mouth:{x0:121,y0:11,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.5,rooms:VALE_KESTREL_ROOMS,entry:7},
+  ],
+  points:{
+    foldCross:[38,22],             // where the Fell Road parts: north to the cairn, east to Hawkstead
+    foldBend:[34,13],              // the cairn spur keeps to the ridge
+    cairnEnd:[31,9],               // the spur's end, under the cairn's mouth
+    townSouth:[62,25],             // the Hawkstead road passes south of its wall to the east gate
+    fordN:[100,27],fordS:[100,37],   // the Wend Bridge: the one way over the stream on this map
+    barrowFoot:[114,17],           // where the Hawk Road passes the Barrow's turning
+    barrowEnd:[122,16],            // the turning's end, under the Barrow's door
+  },
+  exits:[
+    {id:'west',name:'the Fell Road',to:{map:'hollin',exit:'east'},edge:{side:'W',from:20,to:23}},
+    {id:'east',name:'the Hawk Road',to:{map:null,heard:'lands not yet seen'},edge:{side:'E',from:22,to:25}},
+  ],
+  roads:[
+    {from:'west',to:'foldCross'},
+    {from:'foldCross',via:['foldBend'],to:'cairnEnd'},
+    {from:'foldCross',via:['townSouth'],to:'Hawkstead'},
+    {from:'Hawkstead',via:['barrowFoot'],to:'east'},
+    {from:'barrowFoot',to:'barrowEnd'},
+    {from:'Hawkstead',to:'fordN'},
+    {from:'fordN',to:'fordS'},{from:'Hornridge',to:'fordS'},
+  ],
+  roadClear:[1,3],
+  glades:[[30.5,8,4.5],[122.5,15,4.5],[5,21.5,6],[100,27,3.5],[100,37,3.5]], // the two mouths, the road's end where a company comes in from the Hollin Reach, and the bridge's banks
+  lights:{townTorches:[[10.5,3.4]]},
+  spawn:{townPad:[12,10],nearest:30}, // nothing hunts within a dozen tiles of a wall
+  nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{foldlands:{herb:6,ore:1,hide:5,fish:3},hawkrise:{herb:3,ore:6,hide:4,fish:2},hornmoor:{herb:3,ore:6,hide:4,fish:1}}},
+  labels:[['FOLDLANDS',20,40],['HAWKWOLD',96,10],['HORNMOOR',108,56],['HAWKSTEAD',63.5,7.2],['HORNRIDGE',134.5,42.2]],
+};
+
 // ---- choosing the world ----
 // `?world=stepping` in the browser, ELDMOOR_WORLD=stepping in Node (or globalThis.ELDMOOR_WORLD
 // set before the first import, for tests); default eldmoor. Everything that needs the map size
 // or the spec goes through ACTIVE_SPEC / WORLD_ID so the choice is made exactly once.
-export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH};
+export const WORLDS={eldmoor:ELDMOOR,stepping:STEPPING,vale:VALE,hollin:HOLLIN,wendmouth:WENDMOUTH,hawkwold:HAWKWOLD};
 function pickWorld(){
   let id=null;
   try{if(typeof location!=='undefined'&&location.search)id=new URLSearchParams(location.search).get('world')}catch(e){}
