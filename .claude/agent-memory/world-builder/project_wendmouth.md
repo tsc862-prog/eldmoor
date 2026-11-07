@@ -19,3 +19,5 @@ metadata:
 - Don't edit src while a Vite shot run is going: the reload blanks the page mid-run.
 - Vite's cache defaults to node_modules/.vite, through the junction into E:/eldmoor. Give a worktree Vite its own `cacheDir`.
 - Hollin's XP plateau holds companies at level 6-7 by minute 60; the Wendmouth pays full XP at 6 and its plateau sits at 11-12.
+- Balance review on #1044: on a crawl, `hit` hardly moves "driven back" (Den at L6: 38% old, 41% after a 10% cut, 100 crawls each); `rounds` does (one more in every room 3%, one more in the middle room only 14%). Measure a dungeon with forced crawls: a company goes to its nearest dungeon, so a sim sends few to the far one.
+- A staged fight must be proven to have happened: a L6 hunter ignores a L10 elite, and with the Table on a reflex fight resolves in one step. Log the lowest HP and whether the foe was hurt.
