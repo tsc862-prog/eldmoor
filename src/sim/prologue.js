@@ -16,7 +16,7 @@
 // only when it differs. Nothing here rolls the gameplay dice except the crawl itself.
 //
 // State (plain data, saved with the world):
-//   C.prologue {row, site, phase:'intro'|'descend'|'below'|'out', town, ids?, end?:'clear'|'left'|'off'}   gone when the delve is over
+//   C.prologue {row, site, phase:'intro'|'descend'|'below'|'out', town, d (tiles gate to mouth, for the words), ids?, end?:'clear'|'left'|'off'}   gone when the delve is over
 //   q.pro      on an opening in S.opening.queue: this opening has been looked at, so nothing is raised twice
 //   site.prologue  the row's id: its ruin stays on the map; site.xp its share of a site's XP; its loot is plain and it has no epic
 import {CITY,zoneAt} from '../world/map.js';
@@ -25,7 +25,7 @@ import {onMainLand,nearestOpen} from '../world/passable.js';
 import {clearLine} from './path.js';
 import {hash} from '../core/rng.js';
 import {homeOf} from '../data/races.js';
-import {PROLOGUES,PROLOGUE_DEFAULT} from '../data/prologues.js';
+import {PROLOGUES,PROLOGUE_DEFAULT,WALKS} from '../data/prologues.js';
 import {SITE_THEMES} from '../data/sites.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
@@ -50,7 +50,9 @@ const living=a=>!!a&&a.kind==='hero'&&a.state!=='dead';
 const memOf=C=>(C===slotted()?slotHeroes(C):members(C).filter(a=>!a.hire)).filter(living);
 const names=L=>L.length<2?L.join(''):L.slice(0,-1).join(', ')+' and '+L[L.length-1];
 const rowOf=id=>PROLOGUES.find(r=>r.id===id)||null;
-const fill=(t,P)=>String(t).replace(/\{town\}/g,P.town).replace(/\{crypt\}/g,cryptName());
+// The walk in words, from tiles gate to mouth (data/prologues.js WALKS). No distance (a save from before it was kept): the short walk.
+export const walkWords=d=>{const w=WALKS.find(x=>!(d>x.upto))||WALKS[WALKS.length-1];return w.say};
+const fill=(t,P)=>String(t).replace(/\{walk\}/g,walkWords(P.d)).replace(/\{town\}/g,P.town).replace(/\{crypt\}/g,cryptName());
 const cap=t=>t.charAt(0).toUpperCase()+t.slice(1);
 const words=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&p.t||'').join('');
 
@@ -81,8 +83,9 @@ function placeAtMouth(s,L){const p={x:s.x,y:s.y+1.5},T=SITE_THEMES[s.theme],at=m
   L.forEach((a,i)=>{Object.assign(a,at[i],{state:'hunt',zone:s.region,dest:null,target:null,moving:false});found(a,s.name,T.mouth,s.place)})}
 function begin(C){const L=memOf(C);if(L.length<2||L.some(a=>a.lvl>PRO.MAX_LVL)||!tableOn()||!companyAtTable(C))return false;
   const town=C.hall||homeOf(L[0]).name,c=CITY.find(x=>x.name===town)||homeOf(L[0]),row=pickRow(town,C.fac),at=row&&mouthNear(c);if(!at)return false;
-  const s=raise(row,at);placeAtMouth(s,L);C.prologue={row:row.id,site:s.id,phase:'intro',town};
-  log(gd(C.name||L[0].name+'\'s company'),' stands at the mouth of ',siteTag(s),', a short walk from ',gd(town),'.');return true}
+  const g=c.gate||c.qg,d=Math.round(Math.hypot(at.x-g.x,at.y-g.y));
+  const s=raise(row,at);placeAtMouth(s,L);C.prologue={row:row.id,site:s.id,phase:'intro',town,d};
+  log(gd(C.name||L[0].name+'\'s company'),' stands at the mouth of ',siteTag(s),', ',walkWords(d),' from ',gd(town),'.');return true}
 // Every opening still to come that may have one. Called as the DM's prep begins, so the DM reads the place, and by sessionTick
 // for a world with no prep. An opening is looked at once.
 export function readyPrologues(){const O=S.opening;if(!O||!O.queue||!hasLinks()||!prologueOn())return;
@@ -93,7 +96,7 @@ const where=C=>{const s=siteById(C.prologue.site);return s?s.name:'the mouth'};
 const frame=(C,here,ld,oaths)=>{const P=C.prologue,row=rowOf(P.row);
   return [fill(row.scenario,P)+' ',gd(C.name||'The company'),': '+names(here.map(a=>a.name))+'. ',ld?ld.name+' stands in front. ':'',oaths.length?oaths.join('; ')+'. ':'']};
 const about=C=>{const P=C.prologue,row=rowOf(P.row),n=campaignNotes('prologue');
-  return ' This is the first delve: they stand at the mouth of '+where(C)+', a short walk from '+P.town+', and go down when the introductions are done. Behind it (yours alone): '+row.dm+(n?' Your campaign says: '+n:'')};
+  return ' This is the first delve: they stand at the mouth of '+where(C)+', '+walkWords(P.d)+' from '+P.town+', and go down when the introductions are done. Behind it (yours alone): '+row.dm+(n?' Your campaign says: '+n:'')};
 const fillLine=(C,sc)=>{const L=rowOf(C.prologue.row).fill;return L[Math.floor(hash(sc.id|0,7,922)*L.length)%L.length]};
 const ahead=C=>'Below them: '+where(C)+'.';
 const introduced=C=>{C.prologue.phase='descend'};
