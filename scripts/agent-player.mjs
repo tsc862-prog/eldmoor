@@ -101,7 +101,7 @@ export function systemPrompt(st) {
     '- Speak (say) sparingly and in character. Be fair to the world: this is a story, not a speedrun.',
     '- End every turn with one short sentence of narration in the third person about what you did and why.',
     '- Write, narrate and speak only in English.',
-    ordersFor(ORDERS_FULL, st.sides),
+    ordersFor(ORDERS_FULL, st.sides, st.land),
   ].filter(s => s !== null).join('\n');
 }
 
@@ -284,13 +284,13 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (note) console.log('[agent] ' + note);
   if (inheritRunner(sess, pick.hero && pick.hero.succeeds)) console.log(`[agent] plays with the runner settings of the hero whose place it took (#${pick.hero.succeeds}): ${sess.runner.provider} ${sess.runner.model || ''}`); // #452
   sess.system = withTownOrders(withKnowledgeOrders(withMemoryOrders(sess.system))); // memories (#155), learning the world (#188) for a session that began before them
-  sess.system = withSituationOrders(sess.system, false, st.sides); // situations (#531); the local variant is set once the runner's provider is known
+  sess.system = withSituationOrders(sess.system, false, st.sides, st.land); // situations (#531); the local variant is set once the runner's provider is known
   const SESSION_FILE = sessionPath(heroId);
   // This hero's runner settings (sess.runner): flags, then what the hero used last time, then defaults.
   const {runner: rs} = runnerSettings(sess, {provider: opt('provider', null), model: opt('model', null), effort: opt('effort', null)},
     {provider: env.AGENT_PROVIDER || DEFAULT_PROVIDER, model: env.AGENT_MODEL || DEFAULT_AGENT_MODEL, effort: env.AGENT_EFFORT || 'medium'});
   if (!RUNNER_PROVIDERS.includes(rs.provider)) {console.error(`[agent] ${st.name} is set to provider "${rs.provider}", which has no agent runner yet. Use --provider anthropic, ollama, openai, huggingface or google.`); await release(); process.exit(1)}
-  sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides); // the short variant for a local model (#531)
+  sess.system = withSituationOrders(sess.system, rs.provider === 'ollama', st.sides, st.land); // the short variant for a local model (#531)
   if (rs.provider === 'ollama') {
     // A local model plays (issue #97 part 2): the small tool loop in scripts/local-agent.mjs; no key, no cost.
     if (!opt('model', null) && rs.model && /^claude-/.test(rs.model)) rs.model = null;

@@ -170,6 +170,8 @@ export const sightNote = b => b && typeof b.insight === 'string' && b.insight ? 
 // The gambit hold (brief.hold, #630): the world waits for this hero's next acting call.
 // Session zero held for members out of range (brief.gather, #771).
 export const gatherNote = b => b && typeof b.gather === 'string' && b.gather ? `\nSESSION ZERO: ${b.gather.slice(0, 200)}` : '';
+// A road off the map held by something (brief.crossing_waits, #1013).
+export const crossingNote = b => b && typeof b.crossing_waits === 'string' && b.crossing_waits ? `\nTHE ROAD: ${b.crossing_waits.slice(0, 200)}` : '';
 export const holdNote = b => b && typeof b.hold === 'string' && b.hold ? `\nTHE WORLD IS HELD FOR YOU by your rule (${b.hold.slice(0, 160)}): nothing moves until you act (any acting tool), at most 2 minutes. Look, then act.` : '';
 export const woundNote = b => b && typeof b.wounds === 'string' && b.wounds ? `\n${b.wounds.slice(0, 320)}.` : ''; // a lasting wound (brief.wounds, #656)
 // One rare line naming a tool that fits here (brief.invite, src/sim/invite.js, #872, #864): absent on most turns.
@@ -193,7 +195,7 @@ What you know of the roads: ${b.roads.slice(0, 300)} (lore and places tell more;
 export const wayNote = b => b && typeof b.way === 'string' && b.way ? `\nYour way: ${b.way.slice(0, 120)}.` : '';
 export function memoryNote(b) {
   const m = b && Array.isArray(b.memories) ? b.memories : [];
-  return gatherNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + (b && b.growth ? `
+  return gatherNote(b) + crossingNote(b) + personaNote(b) + woundNote(b) + oathNote(b) + (b && b.growth ? `
 ${b.growth}` : '') + askedNote(b) + aimNote(b) + wayNote(b) + roadsNote(b) + questNote(b) + hallNote(b) + companyNote(b) + followNote(b) + (m.length ? `
 Your memories that may matter now: ${m.map(x => `#${x.id} "${String(x.title || '').slice(0, 80)}"`).join(', ')} (recall {id} to read one).` : '');
 }

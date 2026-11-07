@@ -10,8 +10,8 @@
 // What's new (#664): the patch notes (docs/patchnotes/*.md, a Vite ?raw glob handed over by main.js through provideNotes)
 // that this viewer has not read, newest first: three expanded, the rest behind a "more" fold, a NEW badge until read
 // (Got it, or any choice that leaves the title). Read notes are kept per viewer in localStorage with the build's commit.
-import {WORLD_ID} from '../world/map.js';
-import {WORLDS} from '../world/spec.js';
+import {WORLD_ID,MAP_ID} from '../world/map.js';
+import {WORLDS,MAPS} from '../world/spec.js';
 import {FAC} from '../data/factions.js';
 import {heroSprite,outlined} from '../render/sprites.js';
 import {saveSummary,exportStored,importFile,takeSkipTitle,hasPending,afterReset} from './save.js';
@@ -23,7 +23,7 @@ import {worldFacts,worldPreview} from '../render/worldpreview.js';
 const HELP_URL='https://github.com/tsc862-prog/eldmoor#readme';
 const DEFAULT_FIVE=['Warrior','Priest','Mage','Hunter','Rogue'];
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
-const worldName=id=>(WORLDS[id]&&WORLDS[id].name)||id;
+const worldName=id=>(MAPS[id]&&MAPS[id].name)||id;
 const hhmm=m=>String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
 
 export function titleWanted(search){const q=new URLSearchParams(search!=null?search:(typeof location!=='undefined'&&location.search)||'');
@@ -37,7 +37,7 @@ export function ago(at,now=Date.now()){if(!at)return '';const s=Math.max(0,(now-
   try{return new Date(at).toLocaleDateString()}catch(e){return ''}}
 
 // The one line under Continue: world, day and time, the Fellowship and its levels, when it was saved.
-export function saveLine(sum,id=WORLD_ID){if(!sum)return '';const parts=[worldName(id)+' · Day '+sum.day+', '+hhmm(sum.min)];
+export function saveLine(sum,id=WORLD_ID){if(!sum)return '';const parts=[worldName(sum.map||id)+' · Day '+sum.day+', '+hhmm(sum.min)];
   const F=sum.fellowship;
   if(F&&F.members.length)parts.push((F.name?F.name+': ':'')+F.members.map(m=>m.name+' '+(m.dead?'(fallen)':m.lvl)).join(', '));
   else parts.push(sum.heroes+' heroes, no Fellowship');
@@ -104,7 +104,7 @@ function paintRelay(){if(!root)return;const n=root.querySelector('.trelay');if(!
 
 function render(){const page=el('div','tpage'),sum=st.sum;
   page.append(art(sum),el('h1','ttl','Eldmoor'),el('div','tsub','A hardcore 8-bit world played by AI heroes. You watch the Fellowship’s story.'));
-  const cur=el('div','tcur');cur.append('Playing on ',el('b',null,worldName(WORLD_ID)));page.append(cur);
+  const here=sum&&sum.map||MAP_ID,cur=el('div','tcur');cur.append('Playing on ',el('b',null,worldName(here)));if(here!==WORLD_ID)cur.append(', on the road from '+worldName(WORLD_ID));page.append(cur); // the map the company stands on (#1013), which the save knows before any world is built
   page.append(mapRow());
   const menu=el('div','tmenu');
   if(sum&&!sum.stale){const c=btn('Continue','continue','primary');c.setAttribute('aria-describedby','tsaveline');menu.append(c);

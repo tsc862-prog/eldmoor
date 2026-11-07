@@ -14,6 +14,7 @@ import {TOWN_STYLES,TOWN_PIECES,WALL_PIECES,townStyle} from '../data/townart.js'
 import {assetPixels,assetEntry,onAssets} from './assets.js';
 import {drawHouse,drawCryptMouth,sketchPiece,plainHouse} from './pieceart.js';
 import {FLAT,TOWN,TOWN_GROUND} from './palette.js';
+import {onWorld} from '../sim/kept.js';
 
 // Hook table (artcheck: every id here is in the manifest and every manifest entry hooked to this module is here). A piece
 // is 'building:<style>-<piece>', but the straight wall is a seamless patch generated like a ground tile ('tile:<style>-wall').
@@ -166,6 +167,7 @@ function cutBanners(ctx,c,x0,y0,x1,y1,R){if(gateArt(c))return;const f=FAC[c.fac]
 const SIDE_ROT={N:0,E:1,S:2,W:3};
 // The pieces of town c in drawing order: walls, gate, buildings (back to front). Each {id, box:[x,y,w,h] tiles, rot}.
 const planC=new Map();
+onWorld(()=>{gateC.clear();shadowC.clear();planC.clear()}); // another map (#1013): keyed by its town records
 export function townPlan(c){let P=planC.get(c);if(P)return P;P=[];const st=townStyle(c),id=p=>pieceId(st,p);
   const gate=new Set(c.gateTiles.map(([x,y])=>x+','+y));
   for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++){
