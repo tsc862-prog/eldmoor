@@ -150,6 +150,13 @@ export function foeTargets(sc,f,L){const P=sc.fp,key=keyOf(P,f),F=fieldOf(sc),me
 export function blowMods(sc,f,t){const P=sc.fp,key=keyOf(P,f),F=fieldOf(sc),shot=!adj(P.pos[key],P.pos[t.id]),guard=P.guard.includes(t.id);
   return {adj:(shot&&inCover(F,t.id)?-GEO.COVER:0)+(!guard&&guardOf(F,t.id)?GEO.GUARD_PEN:0),mul:guard?GEO.GUARD_CUT:1}}
 export const closed=sc=>{sc.fp.st.closes++};
+// One more foe in the fight (#1056): kin hatched or called, on the nearest free tile to where the world had it.
+export function patchJoin(sc,m,nameOf){const P=sc.fp,G=patchGrid(P),key='f'+m.id;if(P.foes.some(r=>r.key===key))return;const used=new Set(Object.values(P.pos).map(p=>p.y*P.w+p.x)),t=nearFree(G,used,cl(Math.floor(m.x)-P.ox,0,P.w-1),cl(Math.floor(m.y)-P.oy,0,P.h-1));
+  P.foes.push({key,kind:'mob',id:m.id,name:nameOf(m)});P.pos[key]={x:t.x,y:t.y};put(P,m,t)}
+// A blow that hurls: t is driven up to n tiles straight away from f, stopping at anything solid or anyone standing. Returns the tiles it went.
+export function shove(sc,f,t,n){const P=sc.fp,q=P.pos[keyOf(P,f)],G=patchGrid(P);let p=P.pos[t.id],k=0;if(!p||!q)return 0;const taken=new Set(Object.values(P.pos).map(v=>v.y*P.w+v.x)),dx=Math.sign(p.x-q.x),dy=Math.sign(p.y-q.y);
+  for(;k<n&&(dx||dy);k++){const x=p.x+dx,y=p.y+dy,i=y*P.w+x;if(x<0||y<0||x>=P.w||y>=P.h||!G.ok[i]||taken.has(i))break;p={x,y}}
+  if(k){P.pos[t.id]=p;put(P,t,p)}return k}
 // The free blows owed: [{f, t}], those a guard covers (by the tile left or the tile reached) let off.
 export function freeOwed(sc){const P=sc.fp,L=P.free.splice(0);if(!L.length)return [];const F=fieldOf(sc),out=[];
   for(const e of L){const r=P.foes.find(x=>x.key===e.foe),f=r&&foeEnt(r),t=byId(e.id);if(!up(f)||!t||t.state==='dead'||isDown(t))continue;if(guardOf(F,t.id,{x:e.x,y:e.y})||guardOf(F,t.id,{x:e.tx,y:e.ty}))continue;P.st.free++;out.push({f,t})}
