@@ -439,7 +439,7 @@ const lt = act(D2, 'remember', {title: 'To whoever comes next', text: 'Trust the
 const lp = act(D2, 'pin', {id: lt.remembered.id}); ok(lp.ok && /letter/.test(lp.note || ''), 'pin a note tagged "letter": sealed for the Fellowship');
 HE.fall(D2, 'a test of the hardcore rule'); run(2);
 // a world with runner links (the relay section above) refills the seat through an arrival scene at the next town or camp (#452): bring them home
-for (let k = 0; k < 60 * 60 && SLT.slotted().slots[slot] == null; k++) {if (SLT.slotted().arrivals && !S.table) for (const x of S.agents.filter(b => SLT.inSlots(b) && b.state !== 'dead')) {const g = homeOf(x).gate; x.state = 'town'; x.townStep = 1; x.x = g.x - 1; x.y = g.y; x.hidden = false} step(1 / 60)}
+for (let k = 0; k < 60 * 60 && SLT.slotted().slots[slot] == null; k++) {if (SLT.slotted().arrivals && !S.table) for (const x of S.agents.filter(b => SLT.inSlots(b) && b.state !== 'dead')) {const g = homeOf(x).gate; x.state = 'town'; x.townStep = 1; x.x = g.x - 1; x.y = g.y; x.hidden = false; x.pq = []} step(1 / 60)} // no order left: a walk home under way would put the leader back on the road each step, and a company's leader stays its leader now (#1048)
 while (S.table) step(1 / 60);
 const nh = S.agents.find(x => x.id === SLT.slotted().slots[slot]);
 ok(nh && nh !== D2 && nh.player, `${D2.name} fell; ${nh && nh.name} takes the place, agent-played`);
