@@ -1250,6 +1250,7 @@ console.log('the DM prepares the table');
   ok(sv.sceneOpen()&&sv.sceneMode()==='outdoor'&&!box().hidden&&box().classList.contains('scout')&&$('screen').classList.contains('scopen'),'scene maps: an ambush opens the terrain cut over the world');
   ok(!!cut&&cut.foes.includes(wild)&&mem.every(a=>cut.members.includes(a))&&Math.abs(cut.cx-m0.x)<cut.w/2&&Math.abs(cut.cy-m0.y)<cut.h/2,'scene maps: the cut frames the members where they stand and the foe ('+(cut?Math.round(cut.w)+'x'+Math.round(cut.h)+' tiles':'none')+')'+(cut&&mem.every(a=>cut.members.includes(a))&&cut.foes.includes(wild)?'':' -- saw foe '+wild.name+' '+wild.state+' hidden='+wild.hidden+' alive='+wild.alive+' at '+Math.round(wild.x)+','+Math.round(wild.y)+', members in cut '+(cut?cut.members.length:0)+'/'+mem.length+', foes '+(cut?cut.foes.length:0)));
   ok([...box().querySelectorAll('li')].some(li=>li.textContent===wild.name)&&/to act|acts/.test(box().querySelector('.dgname').textContent)&&!/AMBUSH/i.test(box().querySelector('.dgname').textContent),'scene maps: the bar says whose turn it is (not the title) and who is in it ('+box().querySelector('.dgname').textContent+')');
+  {const all=[...mem,wild],at=all.map(e=>e.y);all.forEach((e,i)=>{e.y=.6+i*.3});const c=sv.sceneCut();ok(!!c&&c.cy-c.h/2>=0&&!c.edge&&c.members.length===mem.length&&all.every(e=>e.y>=c.cy-c.h/2&&e.y<=c.cy+c.h/2),'scene maps: at the map's edge (a road's end) the cut frames the land and still holds everyone, not what lies past the last row');all.forEach((e,i)=>{e.y=at[i]})}
   box().querySelector('.dgback').click();sv.sceneTick(FOL);
   ok(!sv.sceneOpen()&&box().hidden&&!$('screen').classList.contains('scopen'),'scene maps: Back to world closes it, and it stays closed for that scene');
   sv.openSceneView();ok(sv.sceneOpen(),'scene maps: it opens again by hand');S.table=null;sv.sceneTick(FOL);
@@ -1826,6 +1827,7 @@ console.log('map switch');
   ok(!!co,'a company to take the road');renderRoad();ok(bar()&&bar().hidden,'with no road named the bar stays hidden');
   const R0=co.road;co.road={exit:'x',by:co.ids[0],at:1,hold:{k:'far',text:'The road waits: Ann is out of shouting range.',away:[],since:1}};renderRoad();
   ok(!bar().hidden&&/The road waits: Ann/.test(bar().textContent),'the bar reads crossingView(): what the road waits on: '+bar().textContent);ok(crossingView().waits===co.road.hold.text,'the same words as the DM sees');
+  {const t=$('tbanner'),par=bar().parentNode,h=t.hidden,l=t.offsetLeft,w=par.clientWidth;t.hidden=false;t.offsetLeft=900;par.clientWidth=1200;renderRoad();ok(bar().hidden,'another scene with its banner docked beside the map: the bar goes, not under it');t.hidden=h;t.offsetLeft=l;par.clientWidth=w;renderRoad();ok(!bar().hidden,'and comes back with the banner gone')}
   co.road.phase='table';renderRoad();ok(bar().hidden,'at the table the Table banner says it');delete co.road;if(R0)co.road=R0;renderRoad();ok(bar().hidden,'the road dropped: the bar goes');
   // a hero of the land left behind, a region picked, the cinema view open
   const off=S.agents.find(a=>a.state!=='dead'&&!co.ids.includes(a.id)&&a.company==null);select(off);
