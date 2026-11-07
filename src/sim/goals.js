@@ -114,13 +114,15 @@ function rollGoal(a,tier,bias){
 // An agent hero's next goal is rolled like anyone's (the world's dice stay the same) and read by nobody: it swears its own (#800).
 function next(a,tier){const g=rollGoal(a,tier,null);bump(stats().rolled,g.type);a.goal=g;if(a.player){g.offered=true;g.aside=true}return g}
 
+// The completion line: {zone} is a region name, never the goal's region index (#1011).
+export const doneLine=g=>fill(GOAL_DONE[g.type],typeof g.zone==='number'?{...g,zone:ZONES[g.zone]}:g);
 function complete(a){const g=a.goal;g.done=true;const up=Math.min(TIERS.length-1,g.tier+1);
   if(g.offered){next(a,up);return} // a thread that came true unsworn: no oath was kept, so none is spoken of (#800)
   oathDone(a,g,'done');bump(stats().done,g.type);moment(a,'oath',g.text); // reflection moment (#179): agent heroes only
   const n=next(a,up);
-  if(a.player){oathKept(a,g);if(!(g.sworn&&g.sworn.words)){if(g.tier>=2)timeline('oath',a,' kept a high oath: '+lc(g.text)+'.');log(a,fill(GOAL_DONE[g.type],g))}return}
+  if(a.player){oathKept(a,g);if(!(g.sworn&&g.sworn.words)){if(g.tier>=2)timeline('oath',a,' kept a high oath: '+lc(g.text)+'.');log(a,doneLine(g))}return}
   if(g.tier>=2)timeline('oath',a,' kept a high oath: '+lc(g.text)+'.');
-  log(a,fill(GOAL_DONE[g.type],g),' A new oath: ',lc(n.text),'.')}
+  log(a,doneLine(g),' A new oath: ',lc(n.text),'.')}
 
 // The target died before the oath could be kept: re-roll at the same tier.
 function voided(a){const g=a.goal;stats().moot++;if(!g.offered)oathDone(a,g,'expired');const n=next(a,g.tier),said=rnd()<.5;

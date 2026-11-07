@@ -342,7 +342,7 @@ export function createRenderer(cv,screenEl){
     flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;ph(5);
     const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
     if(whole)drawWholeMap(ctx,cam,blink);
-    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null);
+    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null,!!cin);
       for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)&&!(onPatch&&HIT_NUM.test(p.txt))){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
     if(mini&&!cin)mini.draw(S);if(cin)cin.paint(ctx,cv.width,cv.height);ph(6);
