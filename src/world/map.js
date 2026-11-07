@@ -31,9 +31,11 @@ export let NODES,nodeById,nodesIn,nodeNear;
 export let MAP_ID=WORLD_ID;
 // The highest level anything may be on this map: a chapter map (spec.chapter, #1013) ends at its top band; every other map has no such line.
 export let LVL_CAP=Infinity;
+// The level a company that begins on this map begins at (sim/opening.js): a chapter map's bottom band, since nothing there would leave a level 1 hero alive. 1 everywhere else.
+export let LVL_FLOOR=1;
 function bind(W){
   ({tiles,zone,I,ZONES,REGIONS,CITY,LANDMARKS,LAIR,CRYPT,CRYPTS,ZPTS,LIGHTS,LABELS,zoneFor,zoneAt,tileAt,zonePoint,road,OUTPOSTS,solid,land,mainLand}=W);
-  EXITS=W.EXITS;LVL_CAP=W.chapter?Math.max(...W.REGIONS.map(r=>r.band[1])):Infinity;
+  EXITS=W.EXITS;LVL_CAP=W.chapter?Math.max(...W.REGIONS.map(r=>r.band[1])):Infinity;LVL_FLOOR=W.chapter?Math.min(...W.REGIONS.map(r=>r.band[0])):1;
   riverX=W.curves.river;z2X=W.curves.passEdge;hoarY=W.curves.frostEdge;
   NODES=W.NODES;({nodeById,nodesIn,nodeNear}=indexNodes(NODES,W.w,W.h));
 }

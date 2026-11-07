@@ -17,7 +17,7 @@ const {init, step, S, snapshot, restore, setRunnerLinks, defaultSetup, cleanSetu
 const SLT = await import('../src/sim/company.js');
 const T = await import('../src/sim/table.js');
 const {PROLOGUES, PROLOGUE_DEFAULT} = await import('../src/data/prologues.js');
-const {CITY, ZONES, REGIONS, EXITS, zoneAt} = await import('../src/world/map.js');
+const {CITY, ZONES, REGIONS, EXITS, LVL_FLOOR, zoneAt} = await import('../src/world/map.js');
 const {WORLDS} = await import('../src/world/spec.js');
 const {mouthNear, PRO} = await import('../src/sim/prologue.js');
 const {clearLine} = await import('../src/sim/path.js');
@@ -59,13 +59,23 @@ for (const r of PROLOGUES) {
   ok(r.rooms.length >= 3 && r.rooms[r.rooms.length - 1].boss, r.id + ': rooms end at a keeper');
   ok(r.rooms.every(m => m.foes.every(f => species(f.type))), r.id + ': every foe is a bestiary species');
   ok(r.loot.goods.every(g => GOODS[g]), r.id + ': goods are real');
-  const onChapter = Object.values(WORLDS).some(w => w.chapter && (w.towns || []).some(t => (r.towns || []).includes(t.name))); // a chapter map has no great dungeon to warn of: its closing looks to the roads out (#1013)
+  const onChapter = Object.values(WORLDS).some(w => w.chapter && Math.min(...w.regions.map(g => g.band[0])) <= PRO.MAX_LVL && (w.towns || []).some(t => (r.towns || []).includes(t.name))); // a chapter map that opens a company has no great dungeon to warn of: its closing looks to the roads out (#1013)
   ok(onChapter ? !/\{crypt\}/.test(r.closing.clear + r.closing.left) : r.closing.clear.includes('{crypt}') && r.closing.left.includes('{crypt}'), r.id + ': the closing keeps the warning');
 }
 for (const c of CITY) ok(pickRow(c.name, c.fac, new Set()), 'every town has a row: ' + c.name);
 for (const r of PROLOGUES) if (r.towns) {const other = CITY.find(c => c.fac === r.fac && !r.towns.includes(c.name)); if (other) ok(pickRow(other.name, r.fac, new Set()) !== r, 'a town row stays its town\'s')}
 ok(pickRow('Nowhere', 0, new Set()).towns === undefined, 'another hall takes the faction\'s any-town row first');
 ok(pickRow(CITY[0].name, CITY[0].fac, new Set(PROLOGUES.filter(r => r.towns && r.towns.includes(CITY[0].name)).map(r => r.id))).fac === CITY[0].fac, 'a taken hall row falls back to the faction\'s');
+
+// ---- a chapter map above a green blade's levels (#1013): a company that begins there begins at its bottom band, in its hall, with session zero and no first delve ----
+if (LVL_FLOOR > PRO.MAX_LVL) {
+  world(); const F = SLT.slotted(), L = SLT.slotHeroes(F), hall = CITY.find(c => c.name === F.hall);
+  ok(L.every(a => a.lvl === LVL_FLOOR), 'the company begins at the bottom band: level ' + L.map(a => a.lvl).join(','));
+  ok(L.every(a => a.x >= hall.x0 && a.x <= hall.x1 && a.y >= hall.y0 && a.y <= hall.y1), 'and stands in its hall');
+  ok(until(() => kindOpen('opening'), 2000), 'session zero opens');
+  ok(!F.prologue && !(S.sites && S.sites.list.some(x => x.prologue)), 'with no first delve: the map keeps its dungeons as places');
+  setRunnerLinks(null); console.log(fails ? `prologuecheck: ${fails} of ${n} failed` : `prologuecheck: ok (${n}, no first delve on this map)`); process.exit(fails ? 1 : 0);
+}
 
 // ---- the flow ----
 { world(); const F = SLT.slotted(), hall = F.hall; ok(prologueOn(), 'a setup world on the default is on'); ok(S.setup.prologue === undefined, 'the default stores nothing');
@@ -163,7 +173,7 @@ if (closed.length) {
     for (const [w, x] of [['move_to', r], ['move_to in other words', r2], ['lead_to', r3]]) ok(x && x.ok === false && /not yet open/.test(JSON.stringify(x)), w + ' ' + e.name + ' is refused in words: ' + JSON.stringify(x).slice(0, 90));
   }
   ok(ld.lore && closed.every(e => ld.lore.p[e.name]), 'heroes have heard of the roads out');
-  const dm = (setDmSeat(true), dmAct('regions', {})); ok(dm.roads_out && dm.roads_out.length === closed.length && dm.roads_out.every(r => r.open === false), 'the DM sees them, closed');
+  const dm = (setDmSeat(true), dmAct('regions', {})); ok(dm.roads_out && dm.roads_out.filter(r => r.open === false).length === closed.length && dm.roads_out.length === EXITS.length, 'the DM sees every road off the map, these closed');
   init({}); ok(new Set(S.agents.map(a => a.fac)).size === 1 && S.agents.every(a => a.fac === CITY[0].fac), 'no other side walks this map');
   ok(S.agents.every(a => a.lvl <= LVL_CAP) && S.mobs.every(m => m.lvl <= LVL_CAP), 'nobody starts above the map\'s top band, and no creature stands there');
 }

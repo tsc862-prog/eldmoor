@@ -151,6 +151,8 @@ const aimA = await post('/play/call', {hero: A.id, tool: 'intent', args: {goal: 
 ok(aimA.ok, 'A stated an aim (#535)');
 // C's agent keeps it in town on purpose (#466: a silent member's autopilot now walks out of town to hunt, so a stuck member
 // is one whose agent keeps acting without going anywhere): every game hour its runner orders a rest in town.
+// With a host the company stays a party and a member with no order follows its leader out of town (#1048), so C has split off for the whole run.
+await post('/play/call', {hero: Cm.id, tool: 'leave_party', args: {}, runner: 'mock-C'}); Cm.splitUntil = S.gameMin + 1e6;
 const runHeld = async s => {for (let t = 0; t < s; t += 10) {const r = await post('/play/call', {hero: Cm.id, tool: 'rest', args: {minutes: 60}, runner: 'mock-C'}); if (r.ok === false && !/camp|cannot rest/i.test(r.error || '')) console.log('  .. C rest refused: ' + r.error); run(Math.min(10, s - t))}};
 await runHeld(30); // 3 game hours: C and D sit in town
 T.TABLE.mode = 'auto';
