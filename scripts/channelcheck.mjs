@@ -18,6 +18,7 @@
 //            earshot; party chat reaches every member
 //   relay    a claimed hero answers only its runner; heroes have no DM tools and the DM no hero
 //            tools; one runner never holds a hero and the DM seat; /play/health carries no text
+//   crossing (issue #1013) a hold at a road, the leaving and the far side: the DM's calls carry its plans, no hero text does (crossingcheck --channel)
 //   memories (issue #155) remember, recall (word, tag, about, id), update_memory, forget, pin, the state
 //            header's notes, the caps (200 notes, 600 characters, archive, pins, writes a day), the letter a
 //            fallen member leaves (and nothing else of theirs), the Markdown mirror, snapshot -> restore, and
@@ -545,6 +546,9 @@ act(C1, 'forget', {id: id1});
   const view = keep('party_read after a call', act(L, 'party_read'));
   ok(view.ok !== false && !/\bDM\b|dungeon master/i.test(JSON.stringify(view)), 'what the party reads never says who sent it');
   T.TABLE.mode = tm; for (const [b, h] of hp) b.hp = h}
+// The crossing (#1013): a child on the linked fixtures plants DM notes, plans, a watch and a when's reason, plays a hold, the leaving and the far side with the DM at the table, and hunts them in every hero-side text.
+{const {spawnSync} = await import('node:child_process'), r = spawnSync(process.execPath, ['scripts/crossingcheck.mjs', '--channel'], {env: {...process.env, ELDMOOR_WORLD: 'testlinka'}, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+  process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000)); ok(r.status === 0, 'the crossing\'s texts carry nothing of another seat')}
 console.log('the verdict');
 const L = leaks();
 ok(Object.keys(SECRETS).length >= 20, `${Object.keys(SECRETS).length} secrets planted`);
