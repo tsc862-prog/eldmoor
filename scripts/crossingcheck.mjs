@@ -474,8 +474,8 @@ if (mode === '--real') { // the first real road, on the real maps: a company of 
     ok(!e && b.gold >= g0 - 20 && mem.every(a => a.state !== 'dead'), 'a town visit in ' + g.name + ' plays a minute with the quests parked' + (e || ''));
     delete F.camp; for (const a of mem) {a.x = g.gate.x; a.y = g.gate.y - 3; a.state = 'town'; a.pq = []} const r = act(lead, 'list_jobs'); ok(!r.error, 'the board reads' + (r.error ? ': ' + r.error : '')); ok(!reads(lead), 'and so does everything else')}
   {const up = M.EXITS.find(e => e.to.map == null), r = act(lead, 'move_to', {target: up.name}); ok(r.ok === false && /not yet open/.test(JSON.stringify(r)) && !F.road, up.name + ' is closed in words: ' + (r.error || '').slice(0, 80))}
-  // the walk: a day's road, town to town. Nothing bites, so this measures the road.
-  {const [A, B] = M.CITY; calm(); lead.x = A.gate.x; lead.y = A.gate.y; lead.state = 'hunt'; lead.pq = []; lead.dest = null; let on = 0, t = S.gameMin; const r = act(lead, 'move_to', {target: B.name}); steps(2);
+  // the walk, town to town, setting out at dawn (a company camps at dusk). Nothing bites, so this measures the road.
+  {const [A, B] = M.CITY; calm(); S.gameMin = (Math.floor(S.gameMin / 1440) + 1) * 1440 + 360; delete F.camp; lead.x = A.gate.x; lead.y = A.gate.y; lead.state = 'hunt'; lead.pq = []; lead.dest = null; let on = 0, t = S.gameMin; const r = act(lead, 'move_to', {target: B.name}); steps(2);
     const walked = until(() => {if (lead.moving) on += S.gameMin - t; t = S.gameMin; return Math.hypot(lead.x - B.gate.x, lead.y - B.gate.y) < 3}, 60 * 900), min = Math.round(on); ok(r.ok && walked && min >= 200, A.name + ' to ' + B.name + ': ' + r.route?.tiles + ' tiles, ' + min + ' game minutes on the move')}
   console.log('home again');
   calm(); for (const a of mem) {a.pq = []; a.state = 'hunt'} at(mem); act(lead, 'move_to', {target: exit().name}); ok(opened(F, 'crossing'), 'the road home opens'); ok(/walked it before/.test(X.tableView(b).frame), 'and they know it'); answers(F, 'go');
