@@ -21,7 +21,7 @@
 //   site.prologue  the row's id: its ruin stays on the map; site.xp its share of a site's XP; its loot is plain and it has no epic
 import {CITY,zoneAt} from '../world/map.js';
 import {cryptName} from './crypts.js';
-import {onMainLand} from '../world/passable.js';
+import {onMainLand,nearestOpen} from '../world/passable.js';
 import {clearLine} from './path.js';
 import {hash} from '../core/rng.js';
 import {homeOf} from '../data/races.js';
@@ -67,6 +67,7 @@ export function pickRow(town,fac,taken=used()){const free=PROLOGUES.filter(r=>!t
 // It stays in the gate's own region (a new town beside a river or a higher band must not put a green company in the next land) and in
 // a clear walk of the gate (#721's towns: Murkstead's nearest ground lay across the Greywater, Brinereach's in Sedgewater).
 export function mouthNear(c){const g=c.gate||c.qg;if(!g)return null;const gz=zoneAt(g.x,g.y);
+  if(c.delve)return {x:c.delve.x,y:c.delve.y,z:zoneAt(c.delve.x,c.delve.y)}; // a town whose spec stands its delve at a road's end (#1013); worldcheck holds that spot to the road and open ground
   for(const n of [16,64])for(let d=SITE.TOWN_GAP+1;d<=SITE.TOWN_GAP+PRO.FAR;d++)for(let k=0;k<n;k++){const ang=k*2*Math.PI/n,q={x:Math.floor(g.x+Math.cos(ang)*d)+.5,y:Math.floor(g.y+Math.sin(ang)*d)+.5}; // a second, finer look for a town the sixteen rays miss
     if(q.x<1||q.y<1)continue;const z=zoneAt(q.x,q.y);if(z!=null&&z===gz&&!siteSpotErr(q,z)&&onMainLand(q.x,q.y)&&clearLine(g,q))return {...q,z}}
   return null}
@@ -75,8 +76,12 @@ function raise(row,at){const X=ensureSites(),T=SITE_THEMES[row.theme],born=Math.
     boss:row.boss,bossTitle:'',epic:null,rooms:JSON.parse(JSON.stringify(row.rooms)),loot:{...row.loot,goods:row.loot.goods.slice()},grow:0,found:{at:born,by:'the company'},runs:0,cleared:null,group:null,prologue:row.id,xp:row.xp};
   const pl={id:++S.uid,kind:'site',theme:row.theme,name:row.name,x:at.x,y:at.y,z:at.z,born,until:null,lever:null,site:s.id};
   (S.places||(S.places=[])).push(pl);s.place=pl.id;X.list.push(s);X.stats.made++;return s}
-function placeAtMouth(s,L){const p={x:s.x,y:s.y+1.5},T=SITE_THEMES[s.theme];
-  L.forEach((a,i)=>{Object.assign(a,spreadAt(p,i,L.length),{state:'hunt',zone:s.region,dest:null,target:null,moving:false});found(a,s.name,T.mouth,s.place)})}
+// Everyone on the mouth's side of whatever runs beside it (#965): a spread spot in water is moved to the nearest open tile, which may be the far bank.
+// A spot with no clear line from the mouth itself (the ground in front of it may be solid) is swapped for the nearest free one that has it.
+function mouthSpots(m,p,n){const out=Array.from({length:n},(_,i)=>spreadAt(p,i,n)),free=t=>clearLine(m,t)&&!out.some(o=>Math.hypot(o.x-t.x,o.y-t.y)<1.2);
+  return out.map((q,i)=>clearLine(m,q)?q:out[i]=nearestOpen(m.x,m.y,5,free)||{x:m.x,y:m.y})}
+function placeAtMouth(s,L){const p={x:s.x,y:s.y+1.5},T=SITE_THEMES[s.theme],at=mouthSpots(s,p,L.length);
+  L.forEach((a,i)=>{Object.assign(a,at[i],{state:'hunt',zone:s.region,dest:null,target:null,moving:false});found(a,s.name,T.mouth,s.place)})}
 function begin(C){const L=memOf(C);if(L.length<2||L.some(a=>a.lvl>PRO.MAX_LVL)||!tableOn()||!companyAtTable(C))return false;
   const town=C.hall||homeOf(L[0]).name,c=CITY.find(x=>x.name===town)||homeOf(L[0]),row=pickRow(town,C.fac),at=row&&mouthNear(c);if(!at)return false;
   const g=c.gate||c.qg,d=Math.round(Math.hypot(at.x-g.x,at.y-g.y));

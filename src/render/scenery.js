@@ -14,15 +14,16 @@
 import {hash,vnoise} from '../core/rng.js';
 import {U,ART,TILE} from './tile.js';
 import {W,H,G,TREE,ROCK,LAVA,ROAD,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE,MUD,SWAMP,PEAK} from '../world/tiles.js';
-import {tiles,zone,I,CITY,LANDMARKS,REGIONS,OUTPOSTS,solid} from '../world/map.js';
-import {ACTIVE_SPEC} from '../world/spec.js';
+import {tiles,zone,I,CITY,LANDMARKS,REGIONS,OUTPOSTS,solid,MAP_ID} from '../world/map.js';
+import {ACTIVE_SPEC,MAPS} from '../world/spec.js';
+import {onWorld} from '../sim/kept.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {outsideTown} from '../world/gen.js';
 import {ATLAS} from './sceneryatlas.js';
 
 export const ASSET_SCENERY={'prop:scenery':TREE}; // hook table (artcheck): the sheet of pieces; no piece, no procedural stand-in
-const NOTE=ACTIVE_SPEC.scenery||null;
-export const sceneryOn=!!NOTE;
+let NOTE=ACTIVE_SPEC.scenery||null;
+export let sceneryOn=!!NOTE;
 const SHEET='prop:scenery';
 
 // ---- colours ----
@@ -34,7 +35,7 @@ function mix(a,b,k){const q=(k*32)|0;let m=mixC.get(b+q);if(!m){m=new Map();mixC
   const A=rgbOf(a),B=rgbOf(b),t=q/32;r='#'+hx(A[0]+(B[0]-A[0])*t)+hx(A[1]+(B[1]-A[1])*t)+hx(A[2]+(B[2]-A[2])*t);m.set(a,r);return r}
 
 // ---- fields over the map, four samples a tile ----
-const R=4,FW=W*R,FH=H*R;
+const R=4;let FW=W*R,FH=H*R;
 function field(test,rad,passes=2){let a=new Float32Array(FW*FH),b=new Float32Array(FW*FH);
   for(let j=0;j<FH;j++)for(let i=0;i<FW;i++)a[j*FW+i]=test(i/R|0,j/R|0)?1:0;
   const n=rad*2+1;for(let p=0;p<passes;p++){
@@ -325,3 +326,6 @@ export function paintScenery(c,x0,y0,x1,y1){if(!NOTE||!sheetImg())return;const d
   const dr=NOTE.dress||{};for(const L of LANDMARKS){const kind=dr[L.name];if(!kind)continue;
     if(kind==='lair'){const r=(L.r||5)+7;if(hit(L.x-r,L.y-r,L.x+r,L.y+r,x0,y0,x1,y1))dressLair(c,L,x0,y0,x1,y1)}
     else if(L.mouth&&hit(L.mouth.x0-5,L.mouth.y0-5,L.mouth.x1+6,L.mouth.y1+6,x0,y0,x1,y1))dressMouth(c,L,kind)}}
+// Another map (#1013): its own note, its own fields. data() works them out again on first use, which roadfade.js does in the dark.
+onWorld(()=>{NOTE=MAPS[MAP_ID].scenery||null;sceneryOn=!!NOTE;FW=W*R;FH=H*R;D=null;gC.clear();floorC.clear()},()=>({sceneryOn,sceneryField:[FW,FH]}));
+export const warmScenery=()=>{if(NOTE)data()};

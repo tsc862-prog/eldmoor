@@ -28,6 +28,8 @@ export const ELITES=[
   {name:'Scoriath',title:'the Drake of the High Pass',base:'drake',lvl:17,scale:2.2,hit:1.5},
   {name:'Ulfryn Coldmarrow',title:'the Tarn-King',base:'wight',lvl:22,scale:2.2,hit:1.5},
 ];
+// The elite of a zone. A map may leave a region without one (data/fauna.js sets ECO.eliteZ): its rows then stand packed and say their own zone, so ELITES stays a plain list for everyone who walks it.
+export const eliteOf=z=>ECO.eliteZ?ELITES.find(E=>E.z===z)||null:ELITES[z];
 // Ecology knobs. cap: zone population ceiling as a multiple of the COUNTS total. emptyAfter: game
 // minutes without a hero in the zone before it counts as unhunted. tick: real seconds between
 // growth/drift passes. drift: tiles a mob's home slides toward the nearest road per tick while the

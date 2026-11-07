@@ -5,8 +5,9 @@
 // Crates, barrels, posts, torches and the deck are the pieces of the scenery sheet, each with a plain stand-in when it is not loaded; the boats and the net are drawn here, in the LPC
 // ramps (light from the top left, dark outline).
 import {RIVER,BRIDGE,ROAD,TREE} from '../world/tiles.js';
-import {tiles,I,CITY} from '../world/map.js';
-import {ACTIVE_SPEC} from '../world/spec.js';
+import {tiles,I,CITY,MAP_ID} from '../world/map.js';
+import {MAPS} from '../world/spec.js';
+import {onWorld} from '../sim/kept.js';
 import {hash} from '../core/rng.js';
 import {U,ART} from './tile.js';
 import {FAC} from '../data/factions.js';
@@ -21,7 +22,7 @@ const LINE=MARK.outline||'#14101c',{hull:HULL,inner:INNER,rim:RIM,sail:SAIL,net:
 // Where each harbour's quay lies: a list of columns {x, top, water}, the rows from `top` down to the row of `water`.
 let plans=null;
 function column(x,from,to){let y=from;while(y<=to&&tiles[I(x,y)]===ROAD)y++;const top=y;while(y<=to&&tiles[I(x,y)]!==RIVER&&tiles[I(x,y)]!==BRIDGE){if(tiles[I(x,y)]===TREE)return null;y++}return y>to?null:{x,top,water:y}}
-function plan(){if(plans)return plans;plans=[];(ACTIVE_SPEC.towns||[]).forEach((t,i)=>{const c=CITY[i];if(!c)return;
+function plan(){if(plans)return plans;plans=[];(MAPS[MAP_ID].towns||[]).forEach((t,i)=>{const c=CITY[i];if(!c)return;
   for(const [dx,dy,w,h] of t.pier||[]){if(h<=w)continue;const x0=c.x0+dx,x1=x0+w-1,y0=c.y0+dy,y1=y0+h-1,cols=[],east=[],west=[];
     for(let x=x0;x<=x1;x++){const q=column(x,y0,y1);if(q)cols.push(q)}
     for(const [out,step,first] of [[east,1,x1+1],[west,-1,x0-1]])for(let n=0,x=first;n<REACH;n++,x+=step){const q=column(x,y0,y1);if(!q)break;if(n)q.top=Math.max(q.top,out[0].top);else q.first=true;cols.push(q);out.push(q)} // the quay keeps to the line of the street behind it
@@ -30,6 +31,7 @@ function plan(){if(plans)return plans;plans=[];(ACTIVE_SPEC.towns||[]).forEach((
 
 // What of the water's tiles the planks lie over, for those who paint on water (water.js glints and foam, sheen.js): a tile's top rows on its water row.
 let over=null;
+onWorld(()=>{plans=over=null}); // another map (#1013)
 export const quayOver=(x,y)=>{if(!over){over=new Set();for(const P of plan())for(const q of P.cols)for(let r=q.top;r<=q.water;r++)over.add(quayKey(q.x,r))}return over.has(quayKey(x,y))};
 const quayKey=(x,y)=>y*4096+x;
 export const quayLip=()=>{const r=[];for(const P of plan())for(const q of P.cols)if(tiles[I(q.x,q.water)]!==BRIDGE)r.push([q.x,q.water,LIP+.3]);return r};

@@ -5,7 +5,7 @@ import {homeOf,raceOf} from '../data/races.js';
 import {CLSN} from '../data/classes.js';
 import {S,newWorldId,resetS} from './state.js';
 import {GOODS} from '../data/items.js';
-import {CRYPTS,ZONES,zoneAt} from '../world/map.js';
+import {CITY,CRYPTS,ZONES,zoneAt} from '../world/map.js';
 import {lairRegion} from './lair.js';
 import {ACTIVE_SPEC} from '../world/spec.js';
 import {reserveNames} from '../data/races.js';
@@ -83,6 +83,7 @@ export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
 export {actionLog,fightSummary,fights} from './actlog.js'; // action log (recording only)
 export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
+export {switchMap} from './mappack.js'; // leave the live map for another (#1013)
 export {enableBrain,disableBrain,brainStatus,setRunnerMind} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
 export {foundSlots,autoPick,disbandSlots,slotMembers,slotHeroes,setSlotMinds,slotted} from './company.js'; // the five places (#588)
@@ -121,7 +122,7 @@ export function init(o={}){resetWorld();
   if(seeded)seedRng(o.setup.seed); // the same setup and seed build the same world (sim/setup.js, #133)
   const none=othersStart(o)==='none',lore=sidesStart(o)==='lore';if(none||lore)S.setup={...(none?{others:'none'}:{}),...(lore?{sides:'lore'}:{})}; // no background heroes (#780): the opening makes only the setup's; sides as lore (#1025)
   spawnAll();
-  if(!none)for(let f=0;f<2;f++)for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5);
+  if(!none)for(let f=0;f<2;f++)if(CITY.some(c=>c.fac===f))for(let i=0;i<14;i++)makeHero(f,CLSN[i%CLSN.length],null,i*.6+rnd()*1.5); // a side with no town on this map has no heroes on it (#1013)
   try{opening(o)}finally{if(seeded)seedRng(null)}
   if(none)S.setup={...S.setup,others:'none'}; // the opening writes its own record of the setup
   if(lore)S.setup={...S.setup,sides:'lore'};
@@ -138,9 +139,13 @@ import {outpostsTick} from './outposts.js';
 import {pathTick} from './path.js';
 import {trafficTick} from './traffic.js'; // carts, travellers and guard patrols on the roads (#796)
 import {onWorld} from './kept.js';
+import {crossingTick} from './crossing.js'; // a company takes a road off the map (#1013)
+export {cross} from './crossing.js';
+export {crossingView} from './atlas.js';
 export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
   if(holdTick(dt)){updFx(dt);return} // a gambit hold stops the clock until the agent acts (#630)
   if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
+  crossingTick(); // before anything reads the map: a crossing swaps it (no-op without a road named)
   S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
