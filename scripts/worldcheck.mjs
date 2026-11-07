@@ -163,6 +163,9 @@ for (const [id, spec] of Object.entries(WORLDS)) {
   const names = [...w.CITY.map(c => c.name), ...w.LANDMARKS.map(l => l.name), ...w.ZONES]; if (new Set(names).size !== names.length) {console.error(`FAIL: ${tag} repeats a place name`); fail++}
   for (const b of restFaults(id, spec)) {console.error('FAIL: ' + b); fail++}
   if (spec.river && spec.river.closed && (w.fords.length || w.tiles.includes(BRIDGE))) {console.error(`FAIL: ${tag}: a closed river has a crossing`); fail++}
+  // a group gathers at a dungeon's mouth within 2.4 tiles of its point (dungeon.js): open main land must lie that close, or groups gather and dissolve (#1054, the Kestrel Barrow stood in rock)
+  for (const l of dungeons) {let near = false; for (let dy = -3; dy <= 3 && !near; dy++) for (let dx = -3; dx <= 3; dx++) {const tx = Math.floor(l.x) + dx, ty = Math.floor(l.y) + dy; if (tx < 0 || ty < 0 || tx >= w.w || ty >= w.h) continue; if (Math.hypot(tx + .5 - l.x, ty + .5 - l.y) < 2.2 && !w.solid[w.I(tx, ty)] && onMain(tx + .5, ty + .5)) {near = true; break}}
+    if (!near) {console.error(`FAIL: ${tag} ${l.name}'s mouth has no open ground within the gather distance`); fail++}}
   // a town's own delve (#1013): on the map's main land, on open ground, with a road ending beside it that joins the gate, in a band a green company can stand
   for (const c of w.CITY) if (c.delve) {const dx = Math.floor(c.delve.x), dy = Math.floor(c.delve.y), band = w.REGIONS[w.zoneAt(c.delve.x, c.delve.y)].band;
     if (!onMain(c.delve.x, c.delve.y) || w.solid[w.I(dx, dy)] || w.solid[w.I(dx, dy + 1)]) {console.error(`FAIL: ${tag} ${c.name}'s delve does not stand on open main land`); fail++}
