@@ -7,6 +7,7 @@
 import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS, MAPS, TESTLINK, TESTBARE, TOWN_KIT} from '../src/world/spec.js';
 import {buildWorld} from '../src/world/gen.js';
 import {RACES} from '../src/data/races.js';
+import {FAC} from '../src/data/factions.js';
 import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
 
 import {SNAPSHOTS} from './world-snapshots.mjs'; // FNV-1a hashes of every world's zone and tile arrays, one table
@@ -87,6 +88,12 @@ function ladderBreaks(w, step) {
       const up = w.REGIONS[b].band[0] - w.REGIONS[a].band[0]; if (up > step) out.push({town: c.name, from: w.REGIONS[a].name, to: w.REGIONS[b].name, up})}}
   return {breaks: out, adj};
 }
+function restFaults(id, spec) {
+  const towns = spec.towns || [], out = [];
+  if (!towns.length) out.push(id + ' has no town to rest in');
+  else if (spec.sides !== 'lore') for (let f = 0; f < FAC.length; f++) if (!towns.some(t => t.fac === f)) out.push(id + ' has no town the ' + FAC[f].name + ' may rest in (give it one, or set sides: lore)');
+  return out;
+}
 for (const [id, spec] of Object.entries(WORLDS)) {
   const w = buildWorld(spec), tag = id + ' (' + w.name + ')', snap = SNAPSHOTS[id];
   if (id !== 'eldmoor') report(spec); // Eldmoor was reported above
@@ -152,8 +159,25 @@ for (const [id, spec] of Object.entries(WORLDS)) {
     if (!reach) {console.error(`FAIL: ${tag} landmark ${l.name} cannot be reached over open ground`); fail++}}
   for (const o of w.OUTPOSTS) if (!onMain(o.x, o.y)) {console.error(`FAIL: ${tag} outpost ${o.name} is not on the main land`); fail++}
   if (spec.river) {let open = 0; for (const i of w.fords) open++; console.log(`  ${id} river crossings: ${new Set(w.ROUTES.flat().filter(([x, y]) => w.tiles[w.I(x, y)] === BRIDGE).map(([x]) => Math.round(x / 4))).size} bridge span(s), ${(spec.river.fords || []).length} ford(s), ${open} open ford tiles`)}
-  const dungeons = w.LANDMARKS.filter(l => l.kind === 'crypt'); if (spec.ladder && !dungeons.some(l => (l.rooms || []).length >= 5)) {console.error(`FAIL: ${tag} has no great dungeon (5+ rooms)`); fail++}
+  const dungeons = w.LANDMARKS.filter(l => l.kind === 'crypt'); if (spec.ladder && !spec.chapter && !dungeons.some(l => (l.rooms || []).length >= 5)) {console.error(`FAIL: ${tag} has no great dungeon (5+ rooms)`); fail++}
   const names = [...w.CITY.map(c => c.name), ...w.LANDMARKS.map(l => l.name), ...w.ZONES]; if (new Set(names).size !== names.length) {console.error(`FAIL: ${tag} repeats a place name`); fail++}
+  for (const b of restFaults(id, spec)) {console.error('FAIL: ' + b); fail++}
+  if (spec.river && spec.river.closed && (w.fords.length || w.tiles.includes(BRIDGE))) {console.error(`FAIL: ${tag}: a closed river has a crossing`); fail++}
+  // a town's own delve (#1013): on the map's main land, on open ground, with a road ending beside it that joins the gate, in a band a green company can stand
+  for (const c of w.CITY) if (c.delve) {const dx = Math.floor(c.delve.x), dy = Math.floor(c.delve.y), band = w.REGIONS[w.zoneAt(c.delve.x, c.delve.y)].band;
+    if (!onMain(c.delve.x, c.delve.y) || w.solid[w.I(dx, dy)] || w.solid[w.I(dx, dy + 1)]) {console.error(`FAIL: ${tag} ${c.name}'s delve does not stand on open main land`); fail++}
+    let end = null; for (let j = -3; j <= 3 && !end; j++) for (let i = -3; i <= 3; i++) if (w.tiles[w.I(dx + i, dy + j)] === ROAD) {end = [dx + i, dy + j]; break}
+    const gx = Math.floor(c.gate.x), gy = Math.floor(c.gate.y); let g0 = null; for (let r = 0; r <= 3 && !g0; r++) for (let j = -r; j <= r && !g0; j++) for (let i = -r; i <= r; i++) if (w.tiles[w.I(gx + i, gy + j)] === ROAD) {g0 = [gx + i, gy + j]; break}
+    if (!end || !g0 || !roadConnected(w, g0, end)) {console.error(`FAIL: ${tag} no road runs from ${c.name}'s gate to its delve`); fail++}
+    if (band[0] > 3) {console.error(`FAIL: ${tag} ${c.name}'s delve stands in a band above a green company`); fail++}
+    console.log(`  ${id} delve: ${c.name}'s stands ${Math.round(Math.hypot(c.delve.x - c.gate.x, c.delve.y - c.gate.y))} tiles from the gate, at a road's end`)}
+}
+// every canon map has a town a company can rest in (#1013 review point 3): any company of any people, wherever it comes from. A map with sides as lore opens every
+// town to everyone, so one town will do; otherwise each faction needs a town of its own, because homeOf ends in the first town of the map and ownTown would shut it out.
+{
+  const bad = restFaults('hollin', {...WORLDS.hollin, sides: undefined}), none = restFaults('x', {name: 'x', towns: [], sides: 'lore'});
+  if (!bad.length || !none.length) {console.error('FAIL: the rest check missed a doctored map'); fail++}
+  console.log('  rest: every map of WORLDS has a town each company may rest in');
 }
 // ---- linked maps (#1013 slice 1a): exits are data on every map of MAPS (the worlds and the TESTLINK fixtures) ----
 // Each exit stands on walkable road (a road or bridge tile at its spot, on an edge exit all of its stretch), is joined to a town by
@@ -167,11 +191,15 @@ function exitFaults(maps) {
     if (new Set(ids).size !== ids.length) bad.push(id + ' repeats an exit id');
     for (const e of w.EXITS) {
       const tag = id + ' exit ' + e.id;
-      if (!e.name || !e.to || !e.to.map || !e.to.exit) {bad.push(tag + ' needs a name and a destination {map, exit}'); continue}
+      const open = e.to && e.to.map == null; // to:{map:null, heard}: a road whose far side is not built, refused in words in play (sim/roads.js)
+      if (open && (!e.name || !e.to.heard)) {bad.push(tag + ' goes nowhere yet: it needs a name and the words `heard`'); continue}
+      if (open && maps[id].final) {bad.push(tag + ' goes nowhere, on a map marked final'); continue}
+      if (!open && (!e.name || !e.to || !e.to.map || !e.to.exit)) {bad.push(tag + ' needs a name and a destination {map, exit}'); continue}
       const cells = e.edge ? Array.from({length: e.edge.to - e.edge.from + 1}, (_, k) => e.edge.side === 'N' ? [e.edge.from + k, 0] : e.edge.side === 'S' ? [e.edge.from + k, w.h - 1] : e.edge.side === 'W' ? [0, e.edge.from + k] : [w.w - 1, e.edge.from + k]) : [[Math.floor(e.x), Math.floor(e.y)]];
       for (const [x, y] of cells) {const t = w.tiles[w.I(x, y)]; if (t !== ROAD && t !== BRIDGE) {bad.push(tag + ' does not stand on road at ' + x + ',' + y); break}}
       const cx = Math.min(w.w - 1, Math.floor(e.x)), cy = Math.min(w.h - 1, Math.floor(e.y));
       if (!w.CITY.some(c => roadConnected(w, [Math.floor(c.gate.x), Math.floor(c.gate.y)], [cx, cy]))) bad.push(tag + ' is not joined to a town by road');
+      if (open) continue;
       const far = built[e.to.map]; if (!far) {bad.push(tag + ' leads to a map that does not exist: ' + e.to.map); continue}
       const back = far.EXITS.find(f => f.id === e.to.exit);
       if (!back) bad.push(tag + ' leads to ' + e.to.map + ' exit ' + e.to.exit + ', which does not exist');
@@ -191,6 +219,8 @@ function exitFaults(maps) {
     {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: 'testlinkb', exit: 'nope'}}]}},
     {...MAPS, testlinkb: {...b, exits: [{...b.exits[0], to: {map: 'testlinka', exit: 'zzz'}}]}},
     {...MAPS, testlinka: {...a, roads: [], exits: [{...a.exits[0], edge: undefined, at: {x: 20.5, y: 5.5, r: 2}}]}},
+    {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: null}}]}},
+    {...MAPS, testlinka: {...a, final: true, exits: [{...a.exits[0], to: {map: null, heard: 'lands not yet seen'}}]}},
   ];
   doctored.forEach((m, i) => {if (!exitFaults(m).length) {console.error('FAIL: the exit check missed doctored case ' + (i + 1)); fail++}});
   // setWorld swaps every live binding and the size, and back (single-map worlds never call it)

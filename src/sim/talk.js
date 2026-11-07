@@ -30,7 +30,7 @@ import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,zoneFor,dist} from '../world/map.
 import {cryptIf,cryptTitle} from './crypts.js';
 import {FAC} from '../data/factions.js';
 import {USES,SLOTS} from '../data/items.js';
-import {ELITES} from '../data/mobs.js';
+import {eliteOf} from '../data/mobs.js';
 import {ADVENTURES} from '../data/adventures.js';
 import {homeOf} from '../data/races.js';
 import {ROLE_TALK,DEFAULT_TALK,ROLE_JOB,ROLE_STOCK,DEFAULT_STOCK,TALK_LINES} from '../data/talk-lines.js';
@@ -345,7 +345,7 @@ function knows(p,a){const out=[],z=Number.isFinite(p.x)?zoneAt(p.x,p.y):null;
   for(const cnd of S.conditions||[])out.push({text:cnd.kind+' over '+ZONES[cnd.z]+'.',where:ZONES[cnd.z]});
   for(const q of S.places||[])out.push({text:'There is '+q.name+' out in '+ZONES[q.z]+', at '+Math.round(q.x)+','+Math.round(q.y)+'.',where:ZONES[q.z]});
   if(a){const w=npcWarning(a);if(w)out.push({text:w,warn:true})}
-  if(a){const hz=huntZone(a),E=ELITES[hz];if(E&&E.name)out.push({text:'They say '+E.name+' prowls '+ZONES[hz]+'. Few who meet it come home whole.',where:ZONES[hz]})}
+  if(a){const hz=huntZone(a),E=eliteOf(hz);if(E&&E.name)out.push({text:'They say '+E.name+' prowls '+ZONES[hz]+'. Few who meet it come home whole.',where:ZONES[hz]})}
   if(z!=null&&z>=0)out.sort((x,y)=>(y.where===ZONES[z])-(x.where===ZONES[z]));
   out.sort((x,y)=>(y.warn?1:0)-(x.warn?1:0)); // a warning to a green blade comes first (#188)
   return out.slice(0,5)}

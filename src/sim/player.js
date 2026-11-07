@@ -27,6 +27,7 @@
 // Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
 import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
+import {closedRoad,roadEndAt,roadWords} from './roads.js';
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
 import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,CRYPTS,ZPTS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
@@ -629,8 +630,11 @@ function zoneNear(z,from){if(zoneAt(from.x,from.y)===z)return {x:from.x,y:from.y
 function groundHere(a,max){const r=sightOf(a),scan=groundScan(a,Math.round(r));return {r,scan,lines:groundLines(scan,{max,region:c=>c.region&&knowsPlace(a,c.region)?c.region:null})}}
 function plan(a,target){const raw=clean(target,60),t0=raw.toLowerCase().trim();
   if(!t0)return {error:'Say where to go.'};
-  for(const v of placeVariants(a,t0)){const r=planOne(a,v.t,v.town);if(r){if(v.note&&!r.error)r.note=v.note;return r}}
+  {const e=closedRoad(t0);if(e)return {error:roadWords(e)}} // a road with no far side yet (sim/roads.js, #1013)
+  for(const v of placeVariants(a,t0)){const r=planOne(a,v.t,v.town);if(r){if(v.note&&!r.error)r.note=v.note;return roadEnd(r)}}
   return placeFallback(a,t0,raw)||{error:unknownPlace(a,t0,raw)}}
+// A walk that ends where a closed road leaves the map is walked; the hero is told there is nothing past it.
+function roadEnd(r){const L=r.legs&&r.legs[r.legs.length-1],e=L&&!r.error?roadEndAt(L):null;if(e)r.note=(r.note?r.note+' ':'')+roadWords(e);return r}
 const SPOT_WORDS={blacksmith:'smith',smithy:'smith',forge:'smith',armorer:'smith',armourer:'smith',tanner:'smith',tavern:'inn',innkeeper:'inn',temple:'chapel',church:'chapel',shrine:'chapel',plaza:'square',gates:'gate','town gate':'gate','main gate':'gate','city gate':'gate',auctioneer:'auction house'};
 const TOWN_SPOTS=['gate','inn','smith','chapel','square','auction house','quest giver'];
 const spotWord=x=>{x=x.trim().replace(/^the\s+/,'');return SPOT_WORDS[x]||(/^(?:town|market|main|village|city)?\s*square$/.test(x)?'square':x)};
