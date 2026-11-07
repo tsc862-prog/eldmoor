@@ -32,6 +32,7 @@ const fresh=()=>({
   followId:null,  // the company the watcher follows (null = the first)
 });
 export const S=fresh();
+export const freshValue=k=>k==='boss'?undefined:fresh()[k]; // what a new world holds under a key of S (the pack empties a map's keys, #1013); the boss is the map's own, by the hook below
 onWorld(()=>{S.boss=freshBoss()},()=>({bossAt:[S.boss.x,S.boss.y,S.boss.alive]})); // the map's own boss; a new object, so whatever kept the old map's record (a pack, #1013) keeps it whole
 // Back to a brand-new world's state, in place (every module keeps its S and its arrays): init() calls it first (#507).
 export function resetS(){const f=fresh();
@@ -42,7 +43,7 @@ export function resetS(){const f=fresh();
     else S[k]=v}}
 
 // Save-file format version (sim/save.js). Bump it and add a migration there when the shape of S changes.
-export const SAVE_VERSION=7;
+export const SAVE_VERSION=8;
 // A fresh world instance id. Deliberately not from the seeded rng or Math.random (a stubbed Math.random must not shift), so a seeded world keeps its dice.
 export const newWorldId=()=>'w'+Date.now().toString(36)+[...globalThis.crypto.getRandomValues(new Uint8Array(5))].map(b=>b.toString(36).padStart(2,'0')).join('').slice(0,6);
 // The world setting others (#780): 'none' = no background heroes, only the setup's and whoever the DM summons. S.setup holds it, so a load keeps it.
