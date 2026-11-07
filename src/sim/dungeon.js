@@ -47,7 +47,7 @@ export const clearXp=a=>250+a.lvl*20;
 export const CLEAR_PAY={gold:25,up:20,good:'Grave Dust',goods:3,use:'Marrowmend Tonic',uses:1,epic:.25}; // each member's share (the dungeon view reads it too, #976)
 export function payClear(g,perRoom){const D=cryptOfGroup(g),K=CLEAR_PAY,co=g.mem.map(companyOf).find(Boolean),P=paidNew(g.name||(co&&co.name)||tagOf(g.guild,g.fac).t); // P: what this clear paid, on the dungeon's row
   for(const a of g.mem)record(a,'Cleared ',{t:D.name,c:'gd'},' and destroyed ',{t:D.boss,c:'gd'},'.');
-  for(const a of g.mem){gainXp(a,perRoom?Math.round(clearXp(a)*perRoom):clearXp(a));const coin=K.gold+ri(0,K.up);a.gold+=coin;P.gold+=coin;a.kills+=ri(8,14);paidGood(P,K.good,addGood(a,K.good,K.goods));paidGood(P,K.use,addUse(a,K.use,K.uses));
+  for(const a of g.mem){gainXp(a,Math.round(clearXp(a)*(perRoom||1)*(D.xp!=null?D.xp:1)));const coin=K.gold+ri(0,K.up);a.gold+=coin;P.gold+=coin;a.kills+=ri(8,14);paidGood(P,K.good,addGood(a,K.good,K.goods));paidGood(P,K.use,addUse(a,K.use,K.uses));
     if(rnd()<K.epic){const name=pickA(DG_EPICS);getEpic(a,name,D.boss);P.items.push({name,who:a.name})}goalEvent(a,'crypt',D.name);goHome(a)}
   cryptPaid(D,P)}
 // One die, like pickA: with every weight 1 it returns exactly pickA's choice.
@@ -59,7 +59,8 @@ export function dungeonCheck(dt){for(const D of CRYPTS)checkCrypt(D,dt)}
 function checkCrypt(D,dt){const agents=S.agents;
   const g=D.group;
   if(!g){if(cryptHold(D))return; // a company's own vote holds the dungeon (reserved, or waiting with the cooldown waived)
-    D.cd-=dt;if(D.cd>0)return;D.cd=20+rnd()*25;
+    D.cd-=dt;if(D.cd>0)return;D.cd=(D.gap!=null?D.gap:20)+rnd()*(D.span!=null?D.span:25); // gap and span: a spec dungeon may rest longer between musters (the Quarry Cellars, #1013)
+   
     const f=ri(0,1);const pool=agents.filter(a=>a.fac===f&&(a.lvl>=entryOf(D)||companyOf(a))&&!a.raid&&(a.player||!wounded(a))&&['hunt','travel','town','return'].includes(a.state)&&calledTo(a,D)&&inMuster(a,'crypt')&&brainOk(a,'crypt'));
     const cands=livingGuilds().filter(x=>x.fac===f&&pool.filter(a=>a.guild===x).length>=3),gu=cands.length?pickW(cands,cryptWeight):null; // none: the unguilded mixed pool below; a Delve guild (sim/guildfocus.js) weighs more
     let mem=pool.filter(a=>gu&&a.guild===gu).sort((x,y)=>(cryptPull(y)-cryptPull(x))||(y.lvl-x.lvl)).slice(0,5); // oath-bound (crypt heirloom, delve) first
