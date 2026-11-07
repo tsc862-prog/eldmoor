@@ -6,7 +6,7 @@
 //   3. `npm run agent` end to end on a headless world: `ctx` on the turn line, a roll at the roll point, the old file in old/, the new
 //      session told to read its journal, standing orders and persona block and claim unchanged; held back while a scene is open.
 //   4. `npm run fellowship`: every member rolls, the run record counts it. 5. `npm run dm`: the DM rolls at its own point and re-reads
-//      its notes. 2b. A wait with turn_over ends the turn with no further model call, through the real /mcp route (#868). 2c. Lazy tools (#808): the schemas of
+//      its notes. 1b. The recap a fresh session carries (#808). 2d. `/compact` between turns on the real CLI, the option the recap was weighed against. 2b. A wait with turn_over ends the turn with no further model call, through the real /mcp route (#868). 2c. Lazy tools (#808): the schemas of
 //      the cold tools leave the prompt, a deferred tool is found and called, and how much the prompt shrinks; the runners with the switch on and off. 6. A "fresh" line on stdin rolls at the next safe moment. 7. AGENT_HEAR_WAKE_MIN. 8. The report's context table.
 // Sessions go to a temporary folder (AGENT_LOGS, CLAUDE_CONFIG_DIR), never to logs/agents/ or the owner's ~/.claude.
 import {mkTmp} from './tmp.mjs';
@@ -18,6 +18,7 @@ import {join, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {query} from '@anthropic-ai/claude-agent-sdk';
 import {ROLL, rollPoint, compactWindow, compactThreshold, withCompactWindow, ctxOf, ctxText, rollDue, rollSession, askFresh} from './session-roll.mjs';
+import {RECAP, noteTurn, recapNote, recapOn} from './session-recap.mjs';
 import {paceSettings} from './pacing.mjs';
 import {ctxSection, toolLoadSection, compareMinds} from './mind-compare.mjs';
 
@@ -58,6 +59,27 @@ ok(ctxText(212345) === 'ctx 212k' && ctxText(null) === 'ctx ?', 'the turn line s
   rollSession(L, () => null); ok(L.local.history.length === 0 && L.local.mode === 'tools' && rollDue(L, 0) === null, 'its history is emptied, once');
 }
 
+// What a hero keeps across a roll (#808): the runner's own copy of what this session saw, no model call
+console.log('the recap of a fresh session');
+{
+  const s = {sessionId: 's1', heroId: 7, turns: 9};
+  ok(recapNote(s, {heard: []}) === '' && recapNote(null, null) === '', 'nothing seen, nothing carried');
+  const at = t => '08:' + String(t).padStart(2, '0');
+  for (let t = 0; t < 14; t++) noteTurn(s, {clock: 'Day 2 09:00', heard: [at(t) + ' Kerin [party]: line ' + t, at(t) + ' (you) [party]: my answer ' + t]}, t % 2 ? 'I held the east road, turn ' + t + '.' : '');
+  const r = recapNote(s, {heard: ['08:13 Kerin [party]: line 13']});
+  ok(s.recap.lines.length === RECAP.LINES && !s.recap.lines.includes('08:00 Kerin [party]: line 0'), `the ring keeps the last ${RECAP.LINES} lines heard, its own marked, once each`);
+  ok(/08:13 \(you\) \[party\]: my answer 13/.test(r) && /08:05 Kerin \[party\]: line 5/.test(r), 'the recap carries who said what, in the words the header showed');
+  ok(!r.includes('08:13 Kerin'), 'a line in the header of the same prompt is not said twice');
+  ok(/You: .*I held the east road, turn 13\./.test(r) && s.recap.did.length === RECAP.DID, `and how its last ${RECAP.DID} turns closed`);
+  ok(/it is past, not news/.test(r), 'and says it is memory, not something happening now');
+  const big = {}; for (let t = 0; t < 40; t++) noteTurn(big, {clock: 'Day 3 12:00', heard: [t + ' ' + 'x'.repeat(130)]}, t + ' ' + 'y'.repeat(400));
+  const b = recapNote(big, {heard: []});
+  ok(b.length <= RECAP.MAX && b.includes('39 xxx') && !b.includes('\n16 xxx') && big.recap.did.every(d => d.text.length <= RECAP.NARR), `it stays under ${RECAP.MAX} characters (${b.length}), the newest talk kept`);
+  const k = {sessionId: 'a', ctx: 90000, recap: {lines: ['x'], did: []}}; rollSession(k, () => null);
+  ok(k.recap.lines[0] === 'x' && recapNote(k, {}).includes('x'), 'a roll keeps the ring on the session');
+  ok(recapOn({}) && !recapOn({SESSION_RECAP: '0'}), 'SESSION_RECAP=0 turns it off');
+}
+
 // A save while someone has the file open (Windows refuses the rename): retried, never fatal. The poll in section 3 found this as a crash.
 {
   const {saveSession, sessionPath} = await import('./agent-sessions.mjs'), logs = join(tmp, 'lockcheck');
@@ -86,7 +108,7 @@ function mockApi() {
       m.calls.push({n: m.calls.length + 1, sys, chars: text.length, msgs: j.messages.length, tool: !!tool, isResult, userText, model: j.model, sent: toolsIn.map(t => t.name), loaded: loaded.map(t => t.name), toolChars: JSON.stringify(loaded).length, text, result: j.messages.slice(-3).flatMap(x => Array.isArray(x.content) ? x.content : []).filter(x => x.type === 'tool_result')});
       if (m.refuse && toolsIn.some(t => t.defer_loading)) {m.refused = (m.refused || 0) + 1; res.writeHead(400, {'content-type': 'application/json'}); return res.end('{"type":"error","error":{"type":"invalid_request_error","message":"tools.1: defer_loading is not supported on this model"}}')}
       const planned = !summary && toolsIn.length && m.plan && m.plan.length ? m.plan.shift() : null; // a scripted call, in order, before the mock's usual ones
-      const content = planned ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: planned.name, input: planned.input || {}}] : tool && !isResult && !summary ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: tool, input: {}}] : [{type: 'text', text: 'The road goes on.'}];
+      const content = planned ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: planned.name, input: planned.input || {}}] : tool && !isResult && !summary ? [{type: 'tool_use', id: 'toolu_' + m.calls.length, name: tool, input: {}}] : [{type: 'text', text: m.say ? m.say(sys) : 'The road goes on.'}];
       const usage = {input_tokens: 5, cache_read_input_tokens: m.ctx(m.calls[m.calls.length - 1]), cache_creation_input_tokens: 100, output_tokens: 7};
       const msg = {id: 'msg_' + m.calls.length, type: 'message', role: 'assistant', model: j.model, content: [], stop_reason: null, stop_sequence: null, usage}, stop = content[0].type === 'tool_use' ? 'tool_use' : 'end_turn';
       if (!j.stream) {res.writeHead(200, {'content-type': 'application/json'}); return res.end(JSON.stringify({...msg, content, stop_reason: stop}))}
@@ -129,6 +151,13 @@ async function cliTurn(env, prompt, resume, seen) {
   const after = api.calls[api.calls.length - 1];
   ok(api.calls.length > before && api.calls[0].sys.includes('You keep the road.') && after.sys.includes('You keep the road.') && after.sys.length === api.calls[0].sys.length, 'the standing orders survive a compaction unchanged');
   ok(seen.boundary && seen.boundary.post_tokens < 20000, 'and the conversation shrinks to a summary');
+  // 2d. /compact between turns (#808), the option the recap was weighed against: it works, as one more model call on the whole session
+  const asked = {}, n0 = api.calls.length; api.ctx = () => 80000;
+  id = await cliTurn(env, '/compact Keep who said what and what was promised.', id, asked);
+  ok(asked.boundary && asked.boundary.trigger === 'manual', `/compact through query() compacts between turns: ${asked.boundary && asked.boundary.pre_tokens} -> ${asked.boundary && asked.boundary.post_tokens} tokens`);
+  ok(api.calls.length - n0 >= 1 && api.calls[n0].msgs >= 2, 'for at least one model call that reads the whole session, where a recap needs none');
+  await cliTurn(env, 'after the compact', id, asked);
+  ok(api.calls[api.calls.length - 1].sys.length === api.calls[0].sys.length && /The road goes on/.test(api.calls[api.calls.length - 1].text), 'the next turn resumes on the summary, standing orders unchanged');
 }
 
 // ---------------------------------------------------------------- 2b. the real CLI ends a turn at the table (#868)
@@ -286,6 +315,8 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   const fresh = await until(() => api.calls.slice(since).find(c => c.tool && !c.isResult && c.msgs <= 2)); // the line comes just before the call
   ok(fresh && /journal_read/.test(fresh.userText), 'the new session starts small and is told to read its journal');
   ok(fresh && fresh.sys.includes(orders.slice(0, 200)), 'with its standing orders');
+  ok(fresh && /What you recall from just before/.test(fresh.userText) && /You: .*The road goes on\./.test(fresh.userText), 'and carries a recap of its last turns (#808)');
+  ok(/\[session recap: \d+ chars\]/.test(run.out()) && api.calls.slice(since).filter(c => /What you recall from just before/.test(c.userText) && c.msgs <= 2).length >= 1, 'in the first prompt of the fresh session, no model call of its own');
   const h = await health(WORLD), me = h.heroes.find(x => x.id === hero.id); ok(me && me.link !== 'none', `the claim held through the roll (link ${me && me.link})`);
   ok(await until(() => {const s = readSess(hero.id); return s && s.ctx === 26105}), 'and the next turns report the small size');
   await run.done;
@@ -295,6 +326,7 @@ const hero = (await health(WORLD)).heroes[0], px = await proxy(WORLD);
   const lines = jsonl('turns.jsonl');
   ok(await until(() => jsonl('world.jsonl').some(w => w.ctx && Object.values(w.ctx).some(Number.isFinite)), 20000), 'the world digest carries each seat\'s size');
   ok(lines.some(t => t.ctx === 85105) && lines.some(t => (t.flags || []).includes('session-rolled')), `the behavior turn lines carry ctx and the roll (${lines.length} lines)`);
+  ok(lines.some(t => (t.flags || []).includes('session-rolled') && (t.flags || []).includes('session-recap')), 'and the recap');
 }
 // A resume after an update: a long session with no size kept rolls before it is paid for.
 {
@@ -371,6 +403,7 @@ console.log('npm run fellowship on a headless Fellowship');
   const fport = port + 601, FW = `http://127.0.0.1:${fport}`;
   const fw = start(['scripts/play-headless.mjs', '--fellowship', '--no-relay', '--port', String(fport), '--quiet', '--speed', '1', '--world', join(tmp, 'fworld.json')], {wait: /^\[play\] headless world at /m});
   await fw.until; api.ctx = () => 85000; api.calls.length = 0;
+  const names = (await health(FW)).heroes.map(x => x.name), whose = sys => names.find(n => sys.includes('You are ' + n + ',')) || '?'; api.say = sys => `Word of ${whose(sys)}.`; // each member closes its turns in its own words
   const run = start(['scripts/fellowship.mjs', '--url', FW, '--env', join(envDir, '.env'), '--max-turns', '2', '--min-gap', '0', '--heartbeat', '5', '--budget', '1', '--provider', 'anthropic', '--model', 'claude-haiku-5-5']);
   await run.done;
   const rolled = (run.out().match(/\[session rolled: 85k tokens\]/g) || []).length, turns = (run.out().match(/\| ctx 85k \| turn \$/g) || []).length;
@@ -380,6 +413,10 @@ console.log('npm run fellowship on a headless Fellowship');
   ok(rec && rec.members.reduce((t, m) => t + (m.rolls || 0), 0) === rolled, `the run record counts the rolls (${rec && rec.members.map(m => m.rolls).join(', ')})`);
   ok(rec && rec.members.some(m => m.ctx != null), 'and the last size');
   ok(oldFiles().length >= 1 + rolled, 'each member\'s old file lies in old/');
+  api.say = null;
+  const firsts = api.calls.filter(c => c.tool && /What you recall from just before/.test(c.userText));
+  ok(firsts.length >= 1 && firsts.length <= rolled * 2, `a rolled member's fresh prompt carries its recap (${firsts.length})`);
+  ok(firsts.every(c => c.userText.includes(`Word of ${whose(c.sys)}.`) && names.every(n => n === whose(c.sys) || !c.userText.includes(`Word of ${n}.`))), 'its own words and no other member\'s');
   // Lazy tools for a company runner (#808)
   api.ctx = () => 26000; api.calls.length = 0;
   const lazyRun = start(['scripts/fellowship.mjs', '--url', FW, '--env', join(envDir, '.env'), '--max-turns', '1', '--min-gap', '0', '--heartbeat', '5', '--budget', '1', '--provider', 'anthropic', '--model', 'claude-haiku-5-5'], {env: {...childEnv, AGENT_LAZY_TOOLS: '1'}});

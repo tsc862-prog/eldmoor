@@ -98,14 +98,14 @@ export function exitNamed(text,knows=()=>true){const r=roadOf(text,knows);return
 
 // What the crossing waits on, C.road (sim/crossing.js). Only the leader's own words make one: an order or an aim that names the road, as
 // it is given, so autopilot carrying an old aim and a company hunting near the map's edge never open the scene (the review's first point).
-// {exit, by, at, aim?}: by the leader, aim the number of the aim that named it (an order has none). A plain command elsewhere ends an
+// {exit, by, at, aim?, walk?}: by the leader, aim the number of the aim that named it (an order has none), walk the label of the order's walk. A plain command elsewhere ends an
 // order's road, not an aim's: the aim still says where they are going. A new aim that names no road ends either.
 const ROAD_ORDERS=new Set(['move_to','lead_to','hunt','follow','rest','go_crypt','join_raid','enter_site','take_adventure']);
 export function roadWord(a,C,ld,tool,args,r,knows=()=>true){if(!EXITS.length||!C||a!==ld||r&&r.dropped)return;const aim=tool==='intent';if(!aim&&!ROAD_ORDERS.has(tool))return;
   if(aim&&!args)return;const R=C.road;if(R&&R.phase)return; // at the table, or the vote taken: the road is settled there
   if(aim&&args.goal==null&&!args.done)return; // the tool's read
-  const text=aim?args.goal:tool==='move_to'||tool==='lead_to'?args&&args.target:null,w=text?roadOf(text,knows):null,e=w&&w.e;
-  if(e&&exitOpen(e)){C.road={exit:e.id,by:a.id,at:Math.round(S.gameMin),...(w.bound?{bound:w.bound}:{}),...(aim&&a.intent?{aim:a.intent.n}:{})};return}
+  const text=aim?args.goal:tool==='move_to'||tool==='lead_to'?args&&args.target:null,w=text?roadOf(text,knows):null,e=w&&w.e,q=!aim&&a.pq&&a.pq[0];
+  if(e&&exitOpen(e)){C.road={exit:e.id,by:a.id,at:Math.round(S.gameMin),...(w.bound?{bound:w.bound}:{}),...(aim&&a.intent?{aim:a.intent.n}:{}),...(q&&q.label?{walk:q.label}:{})};return}
   if(R&&(aim||R.aim==null))delete C.road}
 // An aim's road holds while that aim does; arriving ends an aim, so only its time running out takes the road with it.
 export function roadHolds(R,ld){if(R.aim==null)return true;const I=ld.intent;return !!I&&I.n===R.aim&&!(I.done&&I.untilAt!=null&&S.gameMin>=I.untilAt)}
