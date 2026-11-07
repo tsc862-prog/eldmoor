@@ -23,6 +23,19 @@ export const FAUNA={
   linkmead:  {tier:0,species:['wolf','boar'],count:3,roadMinX:0,elite:'Hollowfang'}, // the TESTLINK fixtures (spec.js), so a crossing check spawns on them
   baremead:  {tier:0,species:['wolf','boar'],count:4,roadMinX:0,elite:'Hollowfang'}, // the TESTBARE fixture (spec.js): no lair, no dungeon
   barefell:  {tier:0,species:['wolf','spider'],count:4,roadMinX:0,elite:'Hollowfang'},
+  // The Hollin Reach (#1013 slice 7a): levels stay inside each band, one elite on the map. Thin by the owner's word: creatures in small groups (pack) far apart, long stretches of empty country. goods: this map's own trade goods (priced at the
+  // bottom of the ladder, registered at build like VALE_GOODS). roadMinX 999: no road here draws a wanderer toward the gate.
+  hollinlea: {tier:0,count:6,roadMinX:999,goods:[['Hedge Pelt',4],['Furrow Tusk',5]],species:[
+    {sp:'wolf',pack:2,name:'Hedge Wolf',pl:'Hedge Wolves',lv:[1,2],loot:'Hedge Pelt',q:'Wolves in the Hedgerows'},
+    {sp:'boar',pack:2,name:'Furrow Boar',pl:'Furrow Boars',lv:[2,3],loot:'Furrow Tusk',q:'Tusks from the Furrows'}]},
+  withywood: {tier:0,count:3,roadMinX:999,goods:[['Withy Silk',6],['Briar Tusk',7],['Underwood Pelt',8]],species:[
+    {sp:'spider',pack:3,name:'Withy Weaver',pl:'Withy Weavers',lv:[2,3],loot:'Withy Silk',q:'Sweep the Withies'},
+    {sp:'boar',pack:3,name:'Briar Boar',pl:'Briar Boars',lv:[3,4],loot:'Briar Tusk',q:'Tusks from the Briars'},
+    {sp:'wolf',pack:3,name:'Underwood Wolf',pl:'Underwood Wolves',lv:[3,4],loot:'Underwood Pelt',q:'Wolves under the Withies'}]},
+  crowfell:  {tier:0,count:3,roadMinX:999,goods:[['Fell Pelt',9],['Scree Tusk',10],['Crag Silk',11]],elite:{name:'Old Crookjaw',title:'the Terror of Crowfell',base:'wolf',fixLvl:5},species:[
+    {sp:'wolf',pack:3,name:'Fell Wolf',pl:'Fell Wolves',lv:[3,4],loot:'Fell Pelt',q:'Wolves on the Fell'},
+    {sp:'boar',pack:3,name:'Scree Boar',pl:'Scree Boars',lv:[4,5],loot:'Scree Tusk',q:'Tusks from the Scree'},
+    {sp:'spider',pack:3,name:'Crag Spinner',pl:'Crag Spinners',lv:[4,5],loot:'Crag Silk',q:'Spinners in the Crags'}]},
   // The Wending Vale (epic #940, slice D): each region has its own creatures, levels, names and trade goods. Entries are objects
   // {sp: stock species (its sprite and stat block), name, pl, lv, loot, q}. Only species the LPC creature slice draws (wolf, boar,
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the
@@ -68,13 +81,13 @@ let rewritten=false; // the tables hold a world's rows, not the stock
 
 export function applyFauna(regions){
   if(!regions.some(r=>FAUNA[r.id])){
-    if(rewritten){put(MOBS,STOCK.mobs);put(COUNTS,STOCK.counts);ELITES.length=0;ELITES.push(...STOCK.elites);EPICS.length=0;EPICS.push(...STOCK.epics);ECO.roadMinX=STOCK.roadMinX;rewritten=false}
+    if(rewritten){ECO.eliteZ=false;put(MOBS,STOCK.mobs);put(COUNTS,STOCK.counts);ELITES.length=0;ELITES.push(...STOCK.elites);EPICS.length=0;EPICS.push(...STOCK.epics);ECO.roadMinX=STOCK.roadMinX;rewritten=false}
     return false}
   rewritten=true;
   const stock=STOCK.mobs,stockElites=STOCK.elites,stockEpics=STOCK.epics;
   for(const k of Object.keys(MOBS))delete MOBS[k];
   for(const k of Object.keys(COUNTS))delete COUNTS[k];
-  ELITES.length=0;EPICS.length=0;ECO.roadMinX=[];
+  ELITES.length=0;EPICS.length=0;ECO.roadMinX=[];ECO.eliteZ=regions.some(r=>!FAUNA[r.id].elite); // a region with no elite: mobs.js eliteOf
   regions.forEach((r,z)=>{
     const F=FAUNA[r.id];if(!F)throw new Error('fauna: no entry for region '+r.id);
     const [a,b]=r.band,hi=Number.isFinite(b)?b:a+4,n=F.species.length;
@@ -83,8 +96,9 @@ export function applyFauna(regions){
       const lo=Math.round(a+i*(hi-a-2)/Math.max(1,n-1)),key=sp+'@'+z;
       MOBS[key]={...stock[sp],z,lv:[lo,Math.min(hi,lo+3)]};COUNTS[key]=F.count});
     const E=typeof F.elite==='string'?stockElites.find(e=>e.name===F.elite):F.elite;
-    ELITES.push({...E,...(E.title?{title:E.title.replace(/ of (Thornvale|Mirefen|Cinderpass|Hoarfell)$/,' of '+r.name)}:{}),base:(E.base||'wolf')+'@'+z,lvl:E.fixLvl||Math.min(hi+2,24),scale:E.scale||2.2,hit:E.hit||1.5});
+    if(E)ELITES.push({...E,z,...(E.title?{title:E.title.replace(/ of (Thornvale|Mirefen|Cinderpass|Hoarfell)$/,' of '+r.name)}:{}),base:(E.base||'wolf')+'@'+z,lvl:E.fixLvl||Math.min(hi+2,24),scale:E.scale||2.2,hit:E.hit||1.5});
     EPICS.push(stockEpics[F.tier]);
     ECO.roadMinX.push(F.roadMinX||0)});
-  if(regions.some(r=>FAUNA[r.id]&&FAUNA[r.id].species.some(x=>typeof x==='object')))for(const [n,base] of VALE_GOODS)if(!GOODS[n]){GOODS[n]={base,supply:8,prev:0};GOODS[n].prev=price(n)}
+  if(regions.some(r=>FAUNA[r.id]&&!FAUNA[r.id].goods&&FAUNA[r.id].species.some(x=>typeof x==='object')))for(const [n,base] of VALE_GOODS)if(!GOODS[n]){GOODS[n]={base,supply:8,prev:0};GOODS[n].prev=price(n)}
+  for(const r of regions)for(const [n,base] of FAUNA[r.id].goods||[])if(!GOODS[n]){GOODS[n]={base,supply:8,prev:0};GOODS[n].prev=price(n)}
   return true}

@@ -25,6 +25,7 @@
 //                     and once the runner reported: turn (its number), model, provider, cost, seconds, tokensIn, tokensOut}
 //   The turn record is the DM's own data for the watcher's DM tab: no hero tool, prompt or snapshot reads it (issue #123).
 import {S,clockStr,dayNo,noOthers,loreSides} from './state.js';
+import {closedRoads} from './roads.js';
 import {swornOf,threadOf,threadText} from './oath.js'; // what a hero swore aloud, and the thread only offered (#800)
 import {ZONES,REGIONS,CITY,ZPTS,LANDMARKS,MAP_ID,WORLD_ID,zoneAt,dist} from '../world/map.js';
 import {campaignMaps,crossingView} from './atlas.js';
@@ -401,7 +402,8 @@ function regionsRead(){const mobs=new Array(ZONES.length).fill(0),heroes=new Arr
       ...(cond.length?{condition:cond.map(c=>c.kind+' '+c.str+' ('+Math.max(0,Math.round((c.until-S.gameMin)/60))+'h left)')}:{}),
       ...(marks.length?{areas:marks.map(m=>m.kind+' at '+Math.round(m.x)+','+Math.round(m.y)+' r'+m.r)}:{}),
       ...(pl.length?{places:pl.map(p=>({id:p.id,kind:p.kind,name:p.name,at:Math.round(p.x)+','+Math.round(p.y)}))}:{})}}),
-    towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]}))}}
+    towns:CITY.map(c=>({name:c.name,faction:facName(c.fac),gate:Math.round(c.gate.x)+','+Math.round(c.gate.y),region:ZONES[zoneAt(c.gate.x,c.gate.y)]})),
+    ...(closedRoads().length?{roads_out:closedRoads().map(e=>({name:e.name,at:Math.round(e.x)+','+Math.round(e.y),toward:e.to.heard,open:false}))}:{})}}
 
 function hooksRead(town,region){const Q=readScope('hooks',town,region);if(Q.err)return {ok:false,error:Q.err};
   const A=(S.adventures||[]).filter(v=>!Q.label||Q.towns.includes(v.town)||(Q.z!=null&&v.zone===Q.z)),hn=id=>{const b=S.agents.find(x=>x.id===id);return b?b.name:'#'+id};

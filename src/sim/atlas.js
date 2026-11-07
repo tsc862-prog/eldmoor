@@ -58,11 +58,10 @@ export const isAway=id=>!!S.maps&&frozenHeroes().some(a=>a.id==id);
 export const awayIn=g=>S.maps?frozenHeroes().filter(a=>a.guild===g&&a.state!=='dead').length:0;
 
 // ---- the roads between maps (#1013 slice 3) ----
-// Exits are data (spec.exits, EXITS); a road with no map behind it is closed. A place "beyond" a road is what its far map is known by.
+// Exits are data (spec.exits, EXITS); a road with no map behind it is closed (sim/roads.js says so in words). A place "beyond" a road is what its far map is known by.
 export const exitById=id=>EXITS.find(e=>e.id===id)||null;
 export const exitOpen=e=>!!(e&&e.to&&e.to.map&&MAPS[e.to.map]);
 export const mapName=id=>MAPS[id]&&MAPS[id].name||id;
-export const closedRoad=e=>e.name.charAt(0).toUpperCase()+e.name.slice(1)+' runs on past the last milestone. Nobody here has walked it, and the way is not yet open.';
 export function beyond(e){const m=exitOpen(e)?MAPS[e.to.map]:null;if(!m)return [];
   return [m.name,...(m.towns||[]).map(t=>t.name),...(m.regions||[]).map(r=>r.name),...(m.landmarks||[]).map(l=>l.name)].filter(Boolean)}
 const folded=s=>String(s==null?'':s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim().replace(/^the /,'');

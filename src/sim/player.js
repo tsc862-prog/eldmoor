@@ -27,10 +27,11 @@
 // Everything on the hero is plain data and saves with the world: a.player, a.pq, a.journal, a.tiers (#153), a.memories (#155),
 // a.playLog (recent tool calls), a.playEv (events), a.playNarr (the runner's narration).
 import {roadLook} from './traffic.js'; // who is on the road in sight (#796)
+import {closedRoad,roadEndAt,roadWords} from './roads.js';
 import {W,H} from '../world/tiles.js';
 import {outpostsView} from './outposts.js';
 import {OUTPOSTS,CITY,ZONES,REGIONS,LANDMARKS,CRYPT,CRYPTS,ZPTS,EXITS,zoneAt,zoneFor,zonePoint,dist} from '../world/map.js';
-import {exitNamed,exitOpen,closedRoad,roadWord} from './atlas.js'; // the roads off the map (#1013)
+import {exitNamed,exitOpen,roadWord} from './atlas.js'; // the roads off the map (#1013)
 import {cryptOfHero,cryptOfCtx,cryptCtx,cryptByWord,cryptInWords,cryptNearest,heroCryptName,cryptTitle,cryptIf,hasCrypt,NO_CRYPT} from './crypts.js';
 import {hasLair,NO_LAIR} from './lair.js';
 import {homeOf,raceOf} from '../data/races.js';
@@ -622,10 +623,13 @@ const enemyNear=(a,p,r=12)=>!loreSides()&&CITY.some(c=>c.fac!==a.fac&&(dist(p,c.
 // Only places this hero knows are ever named back to it (#188).
 function plan(a,target){const raw=clean(target,60),t0=raw.toLowerCase().trim();
   if(!t0)return {error:'Say where to go.'};
-  for(const v of placeVariants(a,t0)){const r=planOne(a,v.t,v.town);if(r){if(v.note&&!r.error)r.note=v.note;return r}}
+  {const e=closedRoad(t0);if(e)return {error:roadWords(e)}} // a road with no far side yet (sim/roads.js, #1013)
+  for(const v of placeVariants(a,t0)){const r=planOne(a,v.t,v.town);if(r){if(v.note&&!r.error)r.note=v.note;return roadEnd(r)}}
   return exitPlan(a,t0)||placeFallback(a,t0,raw)||{error:unknownPlace(a,t0,raw)}}
-// A road off this map (#1013): its name, or a place beyond it the hero has heard of. It walks there; the leader's arrival puts it to the company.
-function exitPlan(a,t){const e=exitNamed(t,n=>knowsPlace(a,n));if(!e)return null;if(!exitOpen(e))return {error:closedRoad(e)};
+// A walk that ends where a closed road leaves the map is walked; the hero is told there is nothing past it.
+function roadEnd(r){const L=r.legs&&r.legs[r.legs.length-1],e=L&&!r.error?roadEndAt(L):null;if(e)r.note=(r.note?r.note+' ':'')+roadWords(e);return r}
+// An open road off this map (#1013): its name, or a place beyond it the hero has heard of. It walks there; the leader's arrival puts it to the company.
+function exitPlan(a,t){const e=exitNamed(t,n=>knowsPlace(a,n));if(!e||!exitOpen(e))return null;
   const r=toFieldOf(a,{x:e.x,y:e.y},e.name);r.note='That road leaves this land. When your leader reaches it with everyone together, the company decides at the table.';return r}
 const SPOT_WORDS={blacksmith:'smith',smithy:'smith',forge:'smith',armorer:'smith',armourer:'smith',tanner:'smith',tavern:'inn',innkeeper:'inn',temple:'chapel',church:'chapel',shrine:'chapel',plaza:'square',gates:'gate','town gate':'gate','main gate':'gate','city gate':'gate',auctioneer:'auction house'};
 const TOWN_SPOTS=['gate','inn','smith','chapel','square','auction house','quest giver'];
