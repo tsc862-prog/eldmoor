@@ -582,7 +582,8 @@ export const sceneFrame=sc=>sc?framedText(sc):''; // the frame as the members he
 // Who was brought back and who still lies down when a scene ends (#654).
 function downTail(sc){const ups=[...new Set(sc.up||[])].map(byId).filter(b=>living(b)&&!isDown(b)).map(b=>b.name),dn=downIn(sc);
   return (ups.length?' '+ups.join(' and ')+(ups.length>1?' are':' is')+' back on their feet.':'')+(dn.length?' '+dn.map(b=>b.name+(b.down.stable?' lies stable':' still bleeds')).join('; ')+'.':'')}
-function finishAll(sc){frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);closeScene(sc)}
+function finishAll(sc){if(sc.phase==='outcome'){closeScene(sc);return} // already settled, only its outcome showing: settling it again would write the log, tell the members and run the ending twice
+  frameCalls(sc);if(together(sc))runAll(sc,0,true);else runTurns(sc,0,true);outcome(sc);closeScene(sc)}
 
 // ---- once per step: the paused scene (sim/index.js calls this first; true = skip the world) ----
 // Every company's open scene steps here (#518); the world stops while one that stopsWorld holds. A live-clock scene (#458)
