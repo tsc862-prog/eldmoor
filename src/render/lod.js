@@ -14,6 +14,7 @@ import {SPR,sprite,outlined,sheetFrame} from './sprites.js';
 import {LOD,MARK} from './palette.js';
 import {U} from './tile.js';
 import {followed,slotted} from '../sim/company.js';
+import {onWorld} from '../sim/kept.js';
 
 export const LOD_SC=1;
 export const farMarks=(sc,cut)=>sc<LOD_SC&&!cut; // an outdoor scene frames a close cut whatever the scale
@@ -37,6 +38,8 @@ function looks(){FACS=FAC.map((f,i)=>bucket(look('h'+i,PAWN,f.color,LOD.lit[i%LO
 // mirrored once for those that look the other.
 function mirrored(c){const o=document.createElement('canvas');o.width=c.width;o.height=c.height;const x=o.getContext('2d');x.translate(c.width,0);x.scale(-1,1);x.drawImage(c,0,0);return o}
 const beastOf={};
+// Another map (#1013): its creatures may take a key another map used, in other colours.
+onWorld(()=>{for(const k of Object.keys(beastOf))delete beastOf[k];BEASTS.length=0});
 function beast(m){const p=beastOf[m.type]||(beastOf[m.type]=[null,null]),i=m.face<0?1:0;if(p[i])return p[i];
   const M=MOBS[m.type],c=outlined(sprite(m.type+'0',SPR[M.spr][0],M.col)),b=p[i]=bucket(i?mirrored(c):c);BEASTS.push(b);return b}
 

@@ -8,11 +8,13 @@ import {CITY} from '../world/map.js';
 import {npcSprite,worldSprite,sheetFrame} from './sprites.js';
 import {racesOf} from '../data/races.js';
 import {U,ART} from './tile.js';
+import {onWorld} from '../sim/kept.js';
 
 const TRAVEL_ROLE={pedlar:'peddler',pilgrim:'hermit',tinker:'peddler',drover:'drover','road courier':'sellsword','wandering minstrel':'minstrel'};
 const LOAD={salt:'#e8e4da',grain:'#d8b050',ale:'#8a5a30',timber:'#a07848',wool:'#ece4d0',hide:'#7a5030',pelt:'#8a8a96',silk:'#a060c8',moss:'#5a8a48'};
 const STEP=[1,0,2,0],sp={kind:'npc',role:'',fac:0,race:''}; // STEP: sheet columns of a walk cycle (as draw.js)
 const figs=new Map(),carts=new Map(),facOf=new Map(),probe={role:'',fac:0};
+onWorld(()=>facOf.clear()); // another map (#1013): other towns
 
 function townFac(name){let f=facOf.get(name);if(f===undefined){f=0;for(const c of CITY)if(c.name===name){f=c.fac||0;break}facOf.set(name,f)}return f}
 function figure(role,fac,fr){let per=figs.get(role);if(!per)figs.set(role,per=[]);

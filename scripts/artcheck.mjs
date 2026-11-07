@@ -62,6 +62,7 @@ const PAL=await import('../src/render/palette.js');
 // Child mode for part 6: one world per process (the world modules pick ELDMOOR_WORLD when they load).
 if(process.argv[2]==='--autotile'){await autotileProbe();process.exit(fails?1:0)}
 if(process.argv[2]==='--towns'){await townProbe();process.exit(fails?1:0)}
+if(process.argv[2]==='--mapswitch'){await mapSwitchProbe(process.argv[3]);process.exit(0)}
 
 console.log('manifest and hooks');
 {const e=validateManifest(man,PAL,resolvePalette);ok(!e.length,'manifest valid'+(e.length?': '+e.join('; '):` (${man.assets.length} assets, models ${Object.keys(man.models).join(', ')})`));
@@ -814,7 +815,28 @@ for(const world of ['eldmoor','stepping']){
   process.stdout.write(r.s.split('\n').filter(Boolean).map(l=>l.replace(/^ {2}(ok |FAIL)/,`  $1 [${world}]`)).join('\n')+'\n');
   if(r.code!==0){fails++;if(!/FAIL/.test(r.s))console.log(`  FAIL [${world}] the ${mode.slice(2)} probe exited ${r.code}`)}}}
 
+// Part 11 (#1013 slice 4): the art of a map after a switch is the art of a process that started on it. Each map is sampled by a child that began there and by one that began on another
+// map of another size and went through a third, so a table sized or built from the first map shows up as a different hash.
+console.log('map switch: terrain after setWorld equals a fresh process');
+{const child=(world,...hops)=>new Promise(f=>{const c=spawn(process.execPath,[join(ROOT,'scripts','artcheck.mjs'),'--mapswitch',hops.join(',')],{env:{...process.env,ELDMOOR_WORLD:world},stdio:['ignore','pipe','pipe']});
+    let s='';c.stdout.on('data',d=>s+=d);c.stderr.on('data',d=>s+=d);c.on('close',code=>f({code,s}))});
+  const tail=r=>(/SAMPLE (S+)/.exec(r.s)||[])[1]||'none: '+r.s.trim().slice(-300);
+  for(const [map,from,via] of [['vale','hollin','stepping'],['hollin','vale','testlinka'],['stepping','vale','testlinka'],['eldmoor','testlinkb','vale'],['testlinkb','vale','stepping']]){
+    const [a,b]=await Promise.all([child(map),child(from,via,map)]),A=tail(a),B=tail(b);ok(a.code===0&&b.code===0&&A===B,`${map}: ${from} by way of ${via} paints what a fresh process paints (${A}${A===B?'':' against '+B})`)}}
+
 console.log(fails?`artcheck: ${fails} FAILED`:'artcheck: all ok');process.exit(fails?1:0);
+
+// Part 11, in a child: a hash of the map as the art reads it, on every third tile, after going through the maps named.
+async function mapSwitchProbe(hops){const M=await import('../src/world/map.js'),Tl=await import('../src/world/tiles.js'),Tr=await import('../src/render/terrain.js'),Sc=await import('../src/render/scenery.js'),Hb=await import('../src/render/harbour.js');
+  globalThis.document = {createElement: () => ({getContext: () => ({})})}; await import('../src/render/draw.js'); delete globalThis.document; // every render module's hook, as on the page; two make a small canvas as they load
+  let h;const mixIn=v=>{const s=String(v);for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}};
+  // painted on every map on the way: a table left over is only stale if something filled it
+  const sample=()=>{h=2166136261;mixIn([Tl.W,Tl.H,Tr.CHUNKS_X,Tr.CHUNKS_Y,Sc.sceneryOn]);
+    for(let ty=0;ty<Tl.H;ty+=3)for(let tx=0;tx<Tl.W;tx+=3){const t=M.tiles[M.I(tx,ty)];
+      for(const [px,py] of [[2,3],[8,8],[13,11]]){mixIn(Tr.procPixel(t,tx,ty,px,py));mixIn(Tr.shade(t,tx,ty,px,py));mixIn(Sc.riverPixel(tx,ty,px*2,py*2));mixIn(Sc.roadPixel(tx,ty,px*2,py*2))}
+      mixIn(Sc.waterLevel(tx+.5,ty+.5));mixIn(Hb.quayOver(tx,ty));const a=Tr.treeAnchor(tx,ty);mixIn(a?a.x+','+a.y:'-')}};
+  sample();for(const id of (hops||'').split(',').filter(Boolean)){M.setWorld(id);sample()}
+  console.log('SAMPLE '+(h>>>0).toString(16))}
 
 // Part 6, run in a child per world: the full map rendered pixel by pixel (terrain.js pixel(), as paintChunk does) with
 // no assets, with every fixture asset (PNG files in a temp folder, decoded back), with pieces removed, and with none.
