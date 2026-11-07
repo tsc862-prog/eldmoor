@@ -20,16 +20,17 @@ import {W,H,PEAK} from '../world/tiles.js';
 import {tiles,zone,I} from '../world/map.js';
 import {biomeOfZone,PEAKS} from './palette.js';
 import {assetPixels,onAssets} from './assets.js';
+import {onWorld} from '../sim/kept.js';
 
 export const ASSET_PEAKS={};for(const s of ['stone','ash','snow'])ASSET_PEAKS['autotile:peak-'+s]=PEAK;
 let on=null;
 export function peakArt(){if(on===null)on=Object.keys(ASSET_PEAKS).every(id=>assetPixels(id));return on}
 onAssets(()=>{on=null});
 
-const Z=TILE/32,C=4*Z,CPT=TILE/C,GW=W*CPT+1,GH=H*CPT+1,MX=W*TILE-1,MY=H*TILE-1; // C: art pixels a cell of the height grid
-const LC=2,LW=Math.ceil(W/LC)+1,LH=Math.ceil(H/LC)+1; // the lattice of summits, in tiles
+const Z=TILE/32,C=4*Z,CPT=TILE/C;let GW=W*CPT+1,GH=H*CPT+1,MX=W*TILE-1,MY=H*TILE-1; // C: art pixels a cell of the height grid
+const LC=2;let LW=Math.ceil(W/LC)+1,LH=Math.ceil(H/LC)+1; // the lattice of summits, in tiles
 const SPACING=1.8,FOOTHILL=1.1,TALLEST=5,SPILL=.8,APRON=.62,MAXR=TALLEST+1; // tiles; SPILL: how far a summit may rise past the tiles north of it
-export const FACE=10;const FW=W*FACE,FH=H*FACE;
+export const FACE=10;let FW=W*FACE,FH=H*FACE;
 const TALL=1.5*TILE; // art pixels: what stands this high casts the long shadow
 const clamp=(v,a,b)=>v<a?a:v>b?b:v,clampX=x=>clamp(x,0,W-1),clampY=y=>clamp(y,0,H-1);
 let sd=null,cold=null,ashen=null,near=null,top=null,done=null,lat=null,hg=null,dg=null,rg=null,sg=null,east=null,west=null,mask=null,tall=null;
@@ -127,3 +128,7 @@ export function peakPixel(tx,ty,ax,ay){const k=ty*W+tx;
 // What shadows.js needs of the mountains painted so far: the masks at FACE pixels a tile, and the box they changed in since it last asked (null: none).
 export function peakFaces(){if(!sd)build();return {east,west,mask,tall}}
 export function peakDirty(){const d=dirty;dirty=null;return d}
+// Another map (#1013): the grids are sized to it, and build() makes them again on the first mountain painted.
+onWorld(()=>{GW=W*CPT+1;GH=H*CPT+1;MX=W*TILE-1;MY=H*TILE-1;LW=Math.ceil(W/LC)+1;LH=Math.ceil(H/LC)+1;FW=W*FACE;FH=H*FACE;
+  sd=cold=ashen=near=top=done=lat=hg=dg=rg=sg=east=west=mask=tall=dirty=null;pk=-1},()=>({peakGrid:[GW,GH,MX,MY,LW,LH,FW,FH]}));
+export const warmPeaks=()=>{if(peakArt()&&!sd&&tiles.includes(PEAK))build()};

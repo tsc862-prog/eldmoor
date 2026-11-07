@@ -21,6 +21,7 @@ import {paintAtlas} from '../render/atlasart.js';
 import {followedCompany,companyLabel} from './companyview.js';
 import {ctl} from './controls.js';
 import {patch,keyed} from './stable.js';
+import {onWorld} from '../sim/kept.js';
 
 const $=id=>document.getElementById(id);
 const el=(tag,cls,text)=>{const d=document.createElement(tag);if(cls)d.className=cls;if(text!=null)d.textContent=text;return d};
@@ -75,6 +76,8 @@ export function atlasView(){const plan=ATLAS[WORLD_ID]||{lands:[{id:WORLD_ID,x:0
 // ---- the screen ----
 let root=null,stage=null,board=null,art=null,marks=null,side=null,clock=null,note=null,marker=null,face=null,tag=null,on=false,backTo=null,sel=null,sigMarks='',sigSide='',sigArt='',faceOf=null,box=null;
 export const worldMapOn=()=>on;
+// Another map (#1013 slice 4). atlasView reads the live bindings; what this screen keeps is the land picked and its signatures. Cleared only: the hook runs mid-crossing, with the far map not yet unpacked, and the next tick draws.
+onWorld(()=>{if(on)sel=MAP_ID;sigMarks=sigSide=sigArt='';box=null;faceOf=null});
 const pct=(v,b0,b1)=>((v-b0)/b1*100).toFixed(3)+'%';
 const at=(n,x,y)=>{n.style.left=pct(x,box.x,box.w);n.style.top=pct(y,box.y,box.h);return n};
 function landEl(l){const b=keyed(el('button','wmland s-'+l.state+(l.id===sel?' sel':'')),l.id);b.type='button';b.dataset.land=l.id;b.setAttribute('aria-label',l.label+': '+WORD[l.state]);b.setAttribute('aria-pressed',String(l.id===sel));

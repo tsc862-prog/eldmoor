@@ -11,6 +11,7 @@ import {biomeOfZone} from './palette.js';
 import {weatherKind} from '../sim/weather.js';
 import {G} from './grade.js';
 import {FX} from './quality.js';
+import {onWorld} from '../sim/kept.js';
 
 const NR=6,MK=2; // screen pixels a pixel; mask pixels a tile
 const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
@@ -30,12 +31,14 @@ function maskOf(fn,soft=.9){const r=mk(W*MK,H*MK),x=r.getContext('2d'),sat=new I
   if(!any)return null;const m=mk(W*MK,H*MK),o=m.getContext('2d');o.filter=`blur(${MK*soft}px)`;o.drawImage(r,0,0);o.filter='none';return {m,sat}}
 const tilesIn=(s,x0,y0,x1,y1)=>{x0=Math.max(0,Math.min(W,x0|0));y0=Math.max(0,Math.min(H,y0|0));x1=Math.max(0,Math.min(W,Math.ceil(x1)));y1=Math.max(0,Math.min(H,Math.ceil(y1)));const r=W+1;return s[y1*r+x1]-s[y0*r+x1]-s[y1*r+x0]+s[y0*r+x0]};
 let M=null;
+export const warmAir=()=>{if(!M)masks()};
 function masks(){const bio=(x,y)=>biomeOfZone(zone[I(x,y)]);
   M={river:maskOf((x,y)=>tiles[I(x,y)]===RIVER?1:0),
     fen:maskOf((x,y)=>{const t=tiles[I(x,y)];return t===SWAMP?1:t===MUD||t===SGRASS?.65:bio(x,y)==='fen'?.3:0}),
     ash:maskOf((x,y)=>tiles[I(x,y)]===LAVA?1:bio(x,y)==='ash'?.55:0)}}
 // Fog by zone, remade when the zones in fog change: a pixel a tile, smoothed by the scale.
 let fogKey='',fog=null;
+onWorld(()=>{M=fog=null;fogKey=''}); // another map (#1013): masks of its size and ground
 function fogMask(){let k='';for(let z=0;z<ZONES.length;z++)k+=weatherKind(z)==='fog'?'1':'0';if(k===fogKey)return fog;fogKey=k;if(!k.includes('1'))return fog=null;
   fog=maskOf((x,y)=>weatherKind(zone[I(x,y)])==='fog'?1:0,3);return fog} // a front, not a line: soft over a few tiles
 const ramp=(h,a,b,c,d)=>h<=a||h>=d?0:h<b?(h-a)/(b-a):h<=c?1:(d-h)/(d-c);

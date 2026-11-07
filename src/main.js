@@ -11,6 +11,7 @@ import {openSaves} from './ui/savestore.js'; // the save slots live in IndexedDB
 import {initSetup,openSetup,afterBoot} from './ui/setup.js'; // the New World setup page (#133)
 import {renderTable} from './ui/table.js';
 import {renderHold} from './ui/holdbar.js'; // gambit hold bar (#630)
+import {renderRoad} from './ui/mapswitch.js'; // the road off the map and what it waits on (#1013)
 import {checkRunAlerts,sync as syncRunAlert} from './ui/runalert.js'; // sound and notes when a Fellowship or DM runner stops
 import {every} from './ui/ticker.js'; // timers that a hidden tab does not throttle
 import {checkRunGate} from './ui/rungate.js'; // hold the world while an agent seat is not connected (#171)
@@ -52,7 +53,7 @@ function advance(real){
   checkRunGate();
   if(ctl.speed>0&&!ctl.held){let dt=real*ctl.speed;const n=Math.ceil(dt/.05);for(let i=0;i<n;i++)step(dt/n);autoSaveTick()}
   checkRunAlerts();syncRunAlert();
-  renderTable(ctl.held?0:ctl.speed);renderHold()} // Table mode (#68): the sim pauses for Fellowship scenes only at 1x
+  renderTable(ctl.held?0:ctl.speed);renderHold();renderRoad()} // Table mode (#68): the sim pauses for Fellowship scenes only at 1x
 // The watchdog (#736, ui/pagewatch.js): each frame's sim, render and panel halves, and the time between frames when the thread
 // was busy elsewhere (a tool call, a long message). A hidden tab has no frames, so its gap is not counted.
 let frameEnd=0;
