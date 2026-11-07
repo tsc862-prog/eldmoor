@@ -5,6 +5,7 @@
 // Usage: npm run worldcheck
 // If you changed a map on purpose, paste the new hashes into scripts/world-snapshots.mjs.
 import {ELDMOOR, TESTWORLD, STEPPING, VALE, WORLDS, MAPS, TESTLINK, TESTBARE, TOWN_KIT} from '../src/world/spec.js';
+import {FAC} from '../src/data/factions.js';
 import {buildWorld} from '../src/world/gen.js';
 import {RACES} from '../src/data/races.js';
 import {ROAD, BRIDGE, RIVER, WALKABLE} from '../src/world/tiles.js';
@@ -185,6 +186,11 @@ function exitFaults(maps) {
   const n = Object.values(MAPS).reduce((a, sp) => a + (sp.exits || []).length, 0);
   console.log('  exits: ' + n + ' exit(s) over ' + Object.keys(MAPS).length + ' maps, all on road and linked both ways');
   if (Object.keys({...TESTLINK, ...TESTBARE}).some(k => WORLDS[k])) {console.error('FAIL: a test fixture is in WORLDS'); fail++}
+  // #1013 slice 3: a company that crosses still has a home. Every canon map holds a town each faction may rest in (sim/crossing.js lists who reads it); a spec of lore sides needs only a town.
+  for (const [id, sp] of Object.entries(WORLDS)) {const facs = sp.sides === 'lore' ? [] : FAC.map((_, i) => i), towns = sp.towns || [];
+    if (!towns.length) {console.error('FAIL: ' + id + ' has no town to rest in'); fail++}
+    for (const f of facs) if (!towns.some(t => t.fac === f)) {console.error('FAIL: ' + id + ' has no town ' + FAC[f].name + ' may rest in'); fail++}}
+  console.log('  rest: every canon map has a town each faction may rest in');
   const a = TESTLINK.testlinka, b = TESTLINK.testlinkb;
   const doctored = [
     {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: 'nowhere', exit: 'x'}}]}},

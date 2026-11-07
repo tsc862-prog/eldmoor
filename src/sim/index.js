@@ -139,9 +139,13 @@ import {outpostsTick} from './outposts.js';
 import {pathTick} from './path.js';
 import {trafficTick} from './traffic.js'; // carts, travellers and guard patrols on the roads (#796)
 import {onWorld} from './kept.js';
+import {crossingTick} from './crossing.js'; // a company takes a road off the map (#1013)
+export {cross} from './crossing.js';
+export {crossingView} from './atlas.js';
 export function step(dt){rulingTick();downCallTick(); // a ruling the DM let lapse is filled even while a Table scene holds the world (no-op without S.rulings)
   if(holdTick(dt)){updFx(dt);return} // a gambit hold stops the clock until the agent acts (#630)
   if(tableHold(dt)){updFx(dt);return} // Table mode (#68): at 1x a Fellowship scene stops the world clock until it resolves
+  crossingTick(); // before anything reads the map: a crossing swaps it (no-op without a road named)
   S.gameMin+=dt*6;
   for(let i=S.recruits.length-1;i>=0;i--){const r=S.recruits[i];r.t-=dt;if(r.t>0)continue;S.recruits.splice(i,1);
     const a=makeHero(r.fac,r.cls,null,1);if(rnd()<.5)log('A new ',raceOf(a).name,' ',r.cls.toLowerCase(),', ',a,', arrives in ',homeOf(a).name,' with no banner yet.')}
