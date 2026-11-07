@@ -907,7 +907,7 @@ const KILN_ROOMS=[
   {id:'quench',name:'The Quench Pool',frame:'A stone basin where the finished ware was drowned to set it. The water is long gone to steam, and the two clay giants standing in the dry basin turn their heads together.',
     foes:[{type:'golem',n:2,hits:2}],lvl:1,hit:.52,rounds:3},
   {id:'heart',name:'The Kiln Heart',frame:'The last firing-chamber, still red at the heart. What tends it was built to, and has never been told it can stop.',
-    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.6},{type:'slagmote',n:2}],lvl:2,hit:.6,rounds:4,boss:true},
+    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.6},{type:'slagmote',n:2}],lvl:2,hit:.45,rounds:4,boss:true},
 ];
 
 // ---- The Wend's Head: the fifth and last chapter (#1013 slice 7b, levels 14-22) ----
