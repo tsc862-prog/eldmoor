@@ -178,6 +178,33 @@ export const TESTLINK={
   testlinkb:linkMap('Linkb','Mooring',{id:'west',name:'the west road',edge:{side:'W',from:11,to:13},to:{map:'testlinka',exit:'east'}}),
 };
 
+// A map with no lair and no dungeon (#1013): what a chapter of a campaign may be, a town each for the two peoples and the ground
+// between. Test-only, like TESTLINK; npm run crossingcheck boots it with ELDMOOR_WORLD=testbare and plays a whole game day on it.
+const BARE={size:{w:56,h:36},
+    curves:{fellEdge:{axis:'x',base:34,sin:[[6,1.4,0]]}},
+    regions:[
+      {id:'baremead',name:'Bare Mead',band:[1,3],biome:'meadow',mask:{kind:'all'}},
+      {id:'barefell',name:'Bare Fell',band:[3,5],biome:'fen',mask:{kind:'east-of-curve',curve:'fellEdge'}},
+    ],
+    towns:[
+      {name:'Barewick',fac:0,x0:3,y0:6,w:11,h:9,gate:'E',race:null},
+      {name:'Farwick',fac:1,x0:42,y0:21,w:11,h:9,gate:'W',race:null},
+    ],
+    points:{midway:[28,18]},
+    roads:[{from:'Barewick',to:'midway'},{from:'midway',to:'Farwick'}],
+    nodes:{respawn:{herb:60,ore:120,hide:60,fish:30},regions:{baremead:{herb:3,ore:2,hide:2,fish:2},barefell:{herb:3,ore:2,hide:2,fish:2}}},
+    lights:{townTorches:[[3,3]]},
+    spawn:{townPad:[4,3]},
+};
+export const TESTBARE={
+  testbare:{...BARE,name:'Barefield'},
+  testcellar:{...BARE,name:'Cellarfield',
+    landmarks:[{kind:'crypt',name:'The Bare Cellar',boss:'The Bare Reeve',x:30.5,y:8.1,mouth:{x0:29,y0:6,w:3,h:3},exclude:3.5,cd:25,entry:3}],
+    roads:[...BARE.roads,{from:'midway',to:'The Bare Cellar'}]},
+  testden:{...BARE,name:'Denfield',
+    landmarks:[{kind:'lair',name:'The Bare Den',x:44.5,y:9.5,r:5.4,inner:4,mouth:'W',exclude:7.5}]},
+};
+
 // ---- The Stepping Lands: a 160x100 test continent (issue #36, scaling phase 5) ----
 // Four times the area of Eldmoor: two home towns per faction, six regions on a ladder of
 // overlapping level bands (1-5, 4-9, 8-13, 12-16, 15-19, 18-22), the Sunken Crypt and Kragmaw
@@ -500,8 +527,8 @@ function pickWorld(){
   if(!id&&typeof globalThis.ELDMOOR_WORLD==='string')id=globalThis.ELDMOOR_WORLD;
   if(!id){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_WORLD)id=p.env.ELDMOOR_WORLD}
   id=String(id||'eldmoor').toLowerCase();
-  return WORLDS[id]?id:'eldmoor'}
+  return MAPS[id]?id:'eldmoor'}
 // Every map a campaign may live on, by id: the playable worlds and the fixtures (#1013). Looped over, never counted.
-export const MAPS={...WORLDS,...TESTLINK};
+export const MAPS={...WORLDS,...TESTLINK,...TESTBARE};
 export const WORLD_ID=pickWorld();
-export const ACTIVE_SPEC=WORLDS[WORLD_ID];
+export const ACTIVE_SPEC=MAPS[WORLD_ID];

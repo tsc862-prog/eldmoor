@@ -23,7 +23,9 @@ function mapWords(){const far=REGIONS.findIndex(r=>r.far),D=CRYPTS[0],o={
     cryptRegion:ZONES[zoneAt(D.x,D.y)]||lastZone()});
   if(LAIR)o.lairRegion=ZONES[zoneAt(LAIR.x,LAIR.y)]||lastZone();
   return o}
-export const WORDS=mapWords();
+// A world that starts on such a map has been handed none, so the far places get words of their own (nothing reads "undefined").
+const FAR_OFF='the deep places';
+export const WORDS={crypt:FAR_OFF,cryptName:FAR_OFF,cryptRegion:lastZone(),lairRegion:lastZone(),...mapWords()};
 // Fill {world} {crypt} {cryptRegion} {lairRegion} {farRegion} {lowRegion} {town0} {town1} in a template; other braces are left alone.
 export const worldFill=t=>String(t).replace(/\{(world|crypt|cryptRegion|lairRegion|farRegion|lowRegion|town\d)\}/g,(m,k)=>/^town/.test(k)?WORDS.town(+k.slice(4)):WORDS[k]);
 
