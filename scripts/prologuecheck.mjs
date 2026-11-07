@@ -173,7 +173,7 @@ if (closed.length) {
     for (const [w, x] of [['move_to', r], ['move_to in other words', r2], ['lead_to', r3]]) ok(x && x.ok === false && /not yet open/.test(JSON.stringify(x)), w + ' ' + e.name + ' is refused in words: ' + JSON.stringify(x).slice(0, 90));
   }
   ok(ld.lore && closed.every(e => ld.lore.p[e.name]), 'heroes have heard of the roads out');
-  const dm = (setDmSeat(true), dmAct('regions', {})); ok(dm.roads_out && dm.roads_out.length === closed.length && dm.roads_out.every(r => r.open === false), 'the DM sees them, closed');
+  const dm = (setDmSeat(true), dmAct('regions', {})); ok(dm.roads_out && dm.roads_out.filter(r => r.open === false).length === closed.length && dm.roads_out.length === EXITS.length, 'the DM sees every road off the map, these closed');
   init({}); ok(new Set(S.agents.map(a => a.fac)).size === 1 && S.agents.every(a => a.fac === CITY[0].fac), 'no other side walks this map');
   ok(S.agents.every(a => a.lvl <= LVL_CAP) && S.mobs.every(m => m.lvl <= LVL_CAP), 'nobody starts above the map\'s top band, and no creature stands there');
 }

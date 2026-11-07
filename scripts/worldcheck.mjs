@@ -217,7 +217,7 @@ function exitFaults(maps) {
   const doctored = [
     {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: 'nowhere', exit: 'x'}}]}},
     {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: 'testlinkb', exit: 'nope'}}]}},
-    {...MAPS, testlinkb: {...b, roads: b.roads.slice(0, 1), exits: [{...b.exits[0], to: {map: 'testlinka', exit: 'zzz'}}]}},
+    {...MAPS, testlinkb: {...b, exits: [{...b.exits[0], to: {map: 'testlinka', exit: 'zzz'}}, ...b.exits.slice(1)]}},
     {...MAPS, testlinka: {...a, roads: [], exits: [{...a.exits[0], edge: undefined, at: {x: 20.5, y: 5.5, r: 2}}]}},
     {...MAPS, testlinka: {...a, exits: [{...a.exits[0], to: {map: null}}]}},
     {...MAPS, testlinka: {...a, final: true, exits: [{...a.exits[0], to: {map: null, heard: 'lands not yet seen'}}]}},
