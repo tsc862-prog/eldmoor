@@ -10,7 +10,7 @@ import {ADVENTURES} from './adventures.js';
 import {WANDER_ROLES} from './npcs.js';
 export const NOTE_SECTIONS=['threads','characters','plans','secrets'];
 // The when/watch triggers (issue #635; their meaning and checks live in src/sim/dmwhen.js TRIGGERS, append-only, kept in step).
-export const TRIGGER_NAMES=['enter_region','enter_town','near_place','near_person','talks_to','member_hp_below','foe_dies','quest_scene','camp_made','night_falls','day_breaks','at_time','after_hours','hero_levels','oath_kept'];
+export const TRIGGER_NAMES=['enter_region','enter_town','near_place','near_person','talks_to','member_hp_below','foe_dies','quest_scene','camp_made','night_falls','day_breaks','at_time','after_hours','hero_levels','oath_kept','enter_map'];
 const ADV_TPLS=Object.keys(ADVENTURES).filter(k=>k!=='fallen'); // the world alone posts a recovery for the fallen
 const PERSON_ROLES=WANDER_ROLES.map(r=>r.id);
 const REASON={type:'string',desc:'Why, in one sentence (shown in the DM log)'};
