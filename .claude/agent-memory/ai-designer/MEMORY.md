@@ -109,4 +109,5 @@
 - [Guild choice #954](guild_choice.md) — hasLinks gate in guilds open(); guild_join/guild_found tools
 - [Sides as lore #1025](sides_lore.md) — loreSides gates: sameSide, ownTown, foeOf, mayFight, sidesOff, raidSide; fac stays, others stays separate
 - [Opening job fit #1016](opening_job_fit.md) — jobbar.js level bar; opening names a fitting job; job proposals refused up front; hosted-only
+- [Map pack #1013](map_pack.md) — mappack.js, save v8, who freezes, split keys, away is not gone, IndexedDB mirror, what slice 3 owes
 - [No lair #1013](no_lair.md) — readers crypts.js/lair.js, rule 12, dormant boss, boot words, TESTBARE fixtures, errors hidden as sentences

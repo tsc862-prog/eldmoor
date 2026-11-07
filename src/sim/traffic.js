@@ -25,7 +25,7 @@
 // DOM-free. Owned by ai-designer; the road net it reads is world-builder's.
 import {S,dayNo} from './state.js';
 import {onWorld} from './kept.js';
-import {tiles,I,CITY,LANDMARKS,OUTPOSTS,ZONES,zoneAt,dist} from '../world/map.js';
+import {tiles,I,CITY,LANDMARKS,OUTPOSTS,EXITS,ZONES,zoneAt,dist} from '../world/map.js';
 import {W,H,ROAD,BRIDGE} from '../world/tiles.js';
 import {solidAt} from '../world/passable.js';
 import {CARGO,TRAVELLERS,ROAD_WORDS} from '../data/traffic.js';
@@ -107,6 +107,7 @@ function net(){if(NET)return NET;const stops=[];
   for(const c of CITY)add(c.name,'town',c.gate,4);
   for(const o of OUTPOSTS||[])add(o.name,'outpost',o,6);
   for(const l of LANDMARKS)if(l.kind!=='lair')add(l.name,'landmark',middleOf(l),Math.ceil((l.r||0)+4)); // nobody walks to a wyrm's lair for choice
+  for(const e of EXITS)add(e.name,'road-end',e,3); // a road off the map (#1013): people walk out to the last milestone and turn back
   const byName=new Map(stops.map(s=>[s.name,s])),trees=new Map(),routes=new Map();
   const tree=s=>{if(!trees.has(s.name))trees.set(s.name,flood(s.tile).prev);return trees.get(s.name)};
   // the tiles from stop a to stop b, or null

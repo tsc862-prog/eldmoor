@@ -421,6 +421,7 @@ const fightSeen=new Map(),lastState=new Map();
 // Saved with the world (kept.js): a member mid-fight at a reload still remembers how it ended; the foe goes by id.
 keep('watch',()=>({seen:[...fightSeen].map(([id,f])=>[id,{...f,m:f.m.id}]),last:[...lastState]}),
   v=>{fightSeen.clear();lastState.clear();for(const [id,f] of v.seen)fightSeen.set(id,{...f,m:S.mobs.find(m=>m.id===f.m)||{id:f.m,alive:false}});for(const [id,st] of v.last)lastState.set(id,st)});
+export const forgetFight=a=>{fightSeen.delete(a.id)}; // a hero who leaves the map leaves the fight with it (#1013): nothing to remember of how it ended
 function watch(F,a){const st=a.state,prev=lastState.get(a.id);lastState.set(a.id,st);
   if(st==='fight'&&a.target&&a.target.kind==='mob'){const m=a.target;fightSeen.set(a.id,{m,lvl:m.lvl,elite:!!m.elite,name:m.elite?m.name:MOBS[m.type].name,z:zoneAt(a.x,a.y)});}
   else if(fightSeen.has(a.id)){const f=fightSeen.get(a.id);fightSeen.delete(a.id);

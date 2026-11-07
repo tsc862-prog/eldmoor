@@ -476,9 +476,9 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 
 - **The Wend**: the one river of the vale; the name is the vale's too, the Wending Vale. **The Low Bridge, the Weirgate ford, the High Bridge**: its three crossings, west to east.
 - **The Drowned Weir** (dungeon, level 7+ entry, south bank beside the Weirgate ford): the great delve, five chambers, a flooded sluice-works of green stone. Boss **Weir-Warden Orsk** (a Grave Warden of the old weir-keepers, named exception like Mere-Warden Hask). Chambers: **The Sluice Stair**, **The Millrace Gallery**, **The Weighing Hall**, **The Flooded Granary**, **The Weir-Warden's Chair**.
-- **The Kestrel Barrow** (dungeon, level 4+, Hawkwold): a falconer-lord's grassed mound. Boss **Lord Merrin Hawkwright**. Chambers: **The Low Door**, **The Kestrel Niches**, **The Falconer's Mews**.
-- **The Sallow Vaults** (dungeon, level 4+, Sallowfen): cellars under a burnt kiln, a smugglers' hold. Boss **Captain Dane Sallow**. Chambers: **The Eel Cellar**, **The Salt Tally**, **The Cold Store**.
-- **The Brandwright Kiln** (dungeon, level 10+, Ashenfold): a great kiln still red at the heart. Boss **The Kiln-Warden**, a golem built to tend it. Chambers: **The Flue Gallery**, **The Ash Floor**, **The Kiln Heart**.
+- **The Kestrel Barrow** (dungeon, level 4+, Hawkwold): a falconer-lord's grassed mound. Boss **Lord Merrin Hawkwright**. Chambers: **The Low Door**, **The Kestrel Niches**, **The Hawk Ossuary** (skulls of hawks and falconers stacked to the roof), **The Falconer's Mews**.
+- **The Sallow Vaults** (dungeon, level 4+, Sallowfen): cellars under a burnt kiln, a smugglers' hold. Boss **Captain Dane Sallow**. Chambers: **The Eel Cellar**, **The Salt Tally**, **The Counting Room** (the ledger-and-scales room where the fen's cargoes were taxed), **The Cold Store**.
+- **The Brandwright Kiln** (dungeon, level 10+, Ashenfold): a great kiln still red at the heart. Boss **The Kiln-Warden**, a golem built to tend it. Chambers: **The Flue Gallery**, **The Ash Floor**, **The Quench Pool** (a dry stone basin where finished ware was drowned to set it; clay giants stand in it), **The Kiln Heart**.
 - **Weirgate Watch** (outpost, Greywood, level 6-11): the old guard-post on the north bank by the ford. **Kilnmark Cross** (outpost, Ashenfold, level 10-15): a crossroads post on the road to the Brandwright Kiln.
 - **Kragmaw's Lair** (Rimecrown, level 20): the same wyrm and raid as Eldmoor, here at the river's head.
 - **Greymane, the Pack-Father of the Hawkwold** (elite, Hawkwold, wolf): a grey wolf grown huge on the uplands' flocks. **Thornback, the Boar-King of the Greywood** (elite, Greywood, mud-boar): a tusked boar with a back like a hedge.
@@ -486,7 +486,7 @@ The Sunken Crypt of Sedgewater reuses the Eldmoor stair sign and gate captain's 
 - **The Green Keeper** (DM-only figure, not a creature or a person): the green-cloaked toll-collector travellers meet at the Weirgate ford, who gives a receipt in an unreadable hand. It is what is left of Orsk's oath walking the crossings; as the oath thins it appears less and the Wend wanders more. No stats, no fight; the DM voices it. Unique within Eldmoor's canon.
 - **The Vale's story in one line**: the Wend was moved long ago and the Drowned Weir was built to hold it in its new bed; Orsk's oath is failing, Kragmaw's heat is drying the spring, and the green stone to mend the weir is fired only in the Brandwright Kiln. Three endings: free the warden, relieve him, or mend the weir. Seed and secrets: `docs/campaigns/vale.md`. The title-screen blurbs for Eldmoor, Stepping and the Vale are `blurb:` in each spec.
 - **Grimbrand, the Kiln-Golem of the Ashenfold** (elite, Ashenfold, level 17, golem kin): the last kiln-tender's guardian, gone wild when there was nobody left to tend. Slag-grey, cracked along the ribs, and one arm is still a bellows that wheezes before it swings. It walks the ash-fields between the old kilns as if still making its rounds.
-- Dungeon boss chambers run longer at the table: the Kestrel Mews 3 rounds; the Weir-Warden's Chair, the Cold Store and the Kiln Heart 4 each.
+- Dungeon boss chambers run longer at the table: the Kestrel Mews, the Weir-Warden's Chair and the Kiln Heart 3 rounds each, the Cold Store 4 (#979).
 
 #### Creatures of the Vale
 Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names and trade goods (goods in `VALE_GOODS`, Vale-only). Kin is the Eldmoor creature a species borrows its build and look from.
@@ -522,6 +522,29 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 - Name check (2026-11-05): no clash found in LORE.md or the repo; Grimbrand shares only the "brand" sound with Brandhold and the Brandwright Kiln, which suits it (the kiln-tender's guardian). No changes made to fauna.js.
 
 - Name notes: Greywood stands beside Eldmoor's Greywater and Stepping's Greyreach by sound only; the town Wendmere of the test fixture shares the Wend root and stays reserved and unused.
+
+### The Hollin Reach (first chapter, #1013)
+`HOLLIN` in `src/world/spec.js` is a 118x64 map, and the first map made under the owner's rule that a map is part of the world, not the whole of it. *Hollin* is the old word for holly; a *reach* is the near end of a road. It holds one walled town, ground for levels 1 to 5, the first delve and one small dungeon, with long walks between them: the gate stands 56 tiles from the delve, more from the quarry and from either road's end. No raid, no great dungeon, no other side on the map (sides are lore here, so any company may rest in the town).
+
+| Region | Levels | Description |
+| --- | --- | --- |
+| Hollinlea | 1-3 | Hedged fields and copses round the town, closed to the south by the Withy. A *lea* is open pasture. |
+| Withywood | 2-4 | Close, dark willow-and-hazel wood in the south-east, down to the river. The wood road runs into it and stops. |
+| Crowfell | 3-5 | Bare upland and crags in the north-east, climbed by the Fell Road. The Quarry Cellars are cut into it. |
+
+| Town | Faction | People | Notes |
+| --- | --- | --- | --- |
+| Oldstead | Concord | Hallowan | The one town of the Reach: a small hall town with an east gate, one street past the hall to the forge, the inn on a lane behind it, a well and notice board on the green. Its market is a quartermaster's table on the green, no auction hall. |
+
+- **The Withy**: the river of the Reach, one long bend along the map's south edge. A *withy* is a willow wand. No bridge and no ford: the far bank is out of reach.
+- **The Crossways**: where the three roads part, a long walk east of the gate.
+- **The Drovers' Road** (north) and **the Fell Road** (east): the two roads off the map, each ending at a last milestone. Nothing is built past them yet: an order to walk one is refused in words, and heroes have heard only that they lead to lands not yet seen.
+- **The wood road**: runs from the Crossways into Withywood and ends at the first delve.
+- **First delve of the Reach** (`src/data/prologues.js`): **the Tithe Grange** (Oldstead, ruin, keeper **Cellarer Thrupp**, who kept the tithe for a priory nobody remembers and never stopped counting; rooms **the Cart Bay**, **the Undercroft**, **the Cellarer's Count**). Once a company's, at the wood road's end.
+- **The Quarry Cellars** (Crowfell, entry 3): the Reach's one real dungeon, cut under a quarry that shut before anyone in Oldstead was born; somewhere for a level 3-5 company to go while the roads are closed. Keeper **Foreman Ruddock**, who still takes the shift's names on a slate; rooms **the Cut Stair**, **the Wedge Store**, **the Foreman's Tally**.
+- **Creatures of the Reach** (`src/data/fauna.js`, stock species under their own names): Hollinlea: **Hedge Wolf** (1-2, Hedge Pelt), **Furrow Boar** (2-3, Furrow Tusk). Withywood: **Withy Weaver** (2-3, Withy Silk), **Briar Boar** (3-4, Briar Tusk), **Underwood Wolf** (3-4, Underwood Pelt). Crowfell: **Fell Wolf** (3-4, Fell Pelt), **Scree Boar** (4-5, Scree Tusk), **Crag Spinner** (4-5, Crag Silk).
+- **Old Crookjaw**, the Terror of Crowfell: the map's one elite, level 5, a very old wolf with a broken jaw healed wrong.
+- Name notes: no region, town or dungeon name is shared with another map. Oldstead stands beside Hawkstead by its ending only. *Hollin* is also a name Tolkien gives a country in English; here it is the plain dialect word for holly, and only with *Reach*.
 
 ### Test fixtures (not canon)
 `TESTWORLD` in `src/world/spec.js` is a 40x30 fixture for the world generator check and never appears in the game. Its names are reserved so they are not reused for real places: **Lowmead** (meadow, 1-5), **Greyreach** (fen, 6-10), the town **Wendmere**, the brook, and the dungeon **The Barrow Gate** with its boss **The Barrow Reeve**.

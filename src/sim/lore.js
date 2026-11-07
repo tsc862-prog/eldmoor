@@ -15,6 +15,7 @@
 //   dm: the id of a DM-marked place (S.places, #423), learned like a landmark; the entry fades with the marker.
 //   key: a MOBS key, a VARIANTS key (site foes), or 'n:'+name for a named elite or an adventure's named foe.
 import {S,ownTown} from './state.js';
+import {closedRoads} from './roads.js';
 import {hash} from '../core/rng.js';
 import {ZONES,REGIONS,CITY,LANDMARKS,zoneAt,dist} from '../world/map.js';
 import {hasCrypt,cryptTitle,cryptIf,cryptBand} from './crypts.js';
@@ -80,6 +81,7 @@ const keyPlural=key=>key.startsWith('n:')?key.slice(2):VARIANTS[key]?VARIANTS[ke
 export function loreOf(a){if(a.lore)return a.lore;const L=a.lore={c:{},p:{}};
   const c=homeOf(a),hz=c&&c.gate?zoneAt(c.gate.x,c.gate.y):-1;if(ZONES[hz])L.p[ZONES[hz]]={how:'home',at:Math.round(S.gameMin)};
   const z=zoneAt(a.x,a.y);if(ZONES[z]&&!L.p[ZONES[z]])L.p[ZONES[z]]={how:'been',at:Math.round(S.gameMin)};
+  for(const e of closedRoads())L.p[e.name]={how:'told',from:'the gate captain',at:Math.round(S.gameMin)}; // everyone here has heard where the roads go, or that nobody knows (#1013)
   return L}
 function entry(a,key){const L=loreOf(a);return L.c[key]||(L.c[key]={tricks:[],z:[]})}
 const seenLvl=(e,m)=>{if(m.lvl==null)return;e.last=m.lvl;e.lo=e.lo==null?m.lvl:Math.min(e.lo,m.lvl);e.hi=e.hi==null?m.lvl:Math.max(e.hi,m.lvl)};
