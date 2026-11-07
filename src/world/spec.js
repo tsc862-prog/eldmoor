@@ -564,7 +564,7 @@ export const HOLLIN={
   river:{curve:'river',width:3,closed:true}, // no bridge and no ford: the far bank is scenery
   scenery:{
     wash:{hollinlea:'meadow',withywood:'woods',crowfell:'heath'},
-    dress:{'The Quarry Cellars':'vaults'},
+    dress:{'The Quarry Cellars':'quarry'},
     fields:[[46,13,9,4,'wheat'],[46,28,8,3,'plough'],[46,32,9,3,'wheat'],[56,28,7,4,'cabbage'],[20,34,9,3,'wheat'],[31,35,8,3,'plough'],[8,18,7,4,'cabbage'],[7,24,8,3,'wheat'],[55,10,5,3,'plough']],
   },
   towns:[
