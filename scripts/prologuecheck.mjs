@@ -98,6 +98,7 @@ ok(pickRow(CITY[0].name, CITY[0].fac, new Set(PROLOGUES.filter(r => r.towns && r
       ok(Math.hypot(m.x - g.x, m.y - g.y) <= 12 + PRO.FAR + 1, c.name + ': within the longest walk')}
     ok(until(() => kindOpen('opening'), 2000), c.name + ': session zero opens'); const s = S.sites && S.sites.list.find(x => x.prologue);
     ok(s && F.prologue && F.prologue.town === c.name && Math.hypot(s.x - m.x, s.y - m.y) < 1, c.name + ': the delve is raised at that mouth');
+    if (s) {const at = lives().map(a => a.x + ',' + a.y); ok(lives().every(a => clearLine(s, a)) && new Set(at).size === at.length, c.name + ': everyone stands on the near side of the mouth, each on their own spot (#965): ' + at.join(' '))}
     ok(until(() => kindOpen('crawl'), 20000) && F.prologue && F.prologue.phase === 'below', c.name + ': the company goes down');
     ok(until(() => !F.prologue, 400000), c.name + ': the delve ends'); const gt = c.gate || c.qg; ok(lives().every(a => Math.hypot(a.x - gt.x, a.y - gt.y) < 8), c.name + ': home at its own gate');
   }
