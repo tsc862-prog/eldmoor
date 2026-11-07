@@ -135,12 +135,12 @@ export function createDirector(opts={}){
     if(due||s)d.nextAt=d.t+between(DIR.GAP);if(s)d.next={sight:startSight(s)}}
   function shotNow(w,h,dt,cut,people){
     const comp=companyShot(w,h,dt,people); // always run: the pace and the velocity keep up during a sight
-    if(cut){const sc=Math.min(cut.sc,closeScale(w,h));return {x:cut.x+(cut.dx||0)/sc,y:cut.y+((cut.dy||0)+h*DIR.LIFT)/sc,sc,free:true,pos:DIR.FIGHT_POS_S}}
+    if(cut){const sc=Math.min(cut.sc,closeScale(w,h));return {x:cut.x+(cut.dx||0)/sc,y:cut.y+((cut.dy||0)+h*DIR.LIFT)/sc,sc,free:true,room:2*(cut.dx||0)/sc,pos:DIR.FIGHT_POS_S}}
     if(d.sight)return {...sightShot(w,h),pos:DIR.POS_S};
     if(d.spot&&seen(d.spot.a))return {x:d.spot.a.x*T,y:d.spot.a.y*T,sc:closeScale(w,h),pos:DIR.POS_S};
     comp.y+=h*DIR.LIFT/comp.sc;return {...comp,pos:d.mode==='fight'?DIR.FIGHT_POS_S:DIR.POS_S}}
-  function keep(s,w,h){if(s.free)return s; // the target stays inside the map, so the spring never leans on the clamp
-    const vw=w/s.sc,vh=h/s.sc;s.x=vw>=W*T?W*T/2:clamp(s.x,vw/2,W*T-vw/2);s.y=vh>=H*T?H*T/2:clamp(s.y,vh/2,H*T-vh/2);return s}
+  function keep(s,w,h){ // the target stays inside the map, so the spring never leans on the clamp. A scene's cut (free) is off centre for the banner beside it: past the east edge only what that hides
+    const vw=w/s.sc,vh=h/s.sc,far=s.room||0;s.x=vw>=W*T?s.free?s.x:W*T/2:clamp(s.x,vw/2,W*T-vw/2+far);s.y=vh>=H*T?s.free?s.y:H*T/2:clamp(s.y,vh/2,H*T-vh/2);return s}
   const write=(cam,w,h)=>{cam.sc=Math.exp(Z.p);cam.camX=X.p;cam.camY=Y.p;cam.vw=w/cam.sc;cam.vh=h/cam.sc};
   const jump=s=>{X.p=s.x;Y.p=s.y;Z.p=Math.log(s.sc)+d.bias;X.v=Y.v=Z.v=0};
   const away=(s,w)=>Math.hypot(s.x-X.p,s.y-Y.p)/(w/Math.exp(Z.p)); // view widths from here to the shot
