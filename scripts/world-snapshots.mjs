@@ -10,4 +10,5 @@ export const SNAPSHOTS = {
   hollin:   {zone: '7bfcd86f', tiles: 'f2e0d16a', minSpawn: 150},
   wendmouth: {zone: 'ccc10dc1', tiles: 'dd4e6959', minSpawn: 150},
   hawkwold: {zone: '47133cab', tiles: 'bd88e28b', minSpawn: 150},
+  weirgate: {zone: 'f8609ff3', tiles: '2daca9c0', minSpawn: 150},
 };

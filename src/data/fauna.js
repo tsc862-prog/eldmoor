@@ -62,6 +62,19 @@ export const FAUNA={
     {n:5,sp:'wolf',pack:2,name:'Horn Wolf',pl:'Horn Wolves',lv:[9,10],loot:'Horn Pelt',q:'Wolves on the Moor'},
     {n:3,sp:'boar',pack:3,name:'Scarp Boar',pl:'Scarp Boars',lv:[10,11],loot:'Scarp Tusk',q:'Tusks from the Scarp'},
     {n:2,sp:'rimehound',pack:2,name:'Horn Hound',pl:'Horn Hounds',lv:[10,11],loot:'Hold Sinew',q:'Hounds of the Hold'}]},
+  // The Weirgate (#1013 slice 7b): the Vale's creatures of the middle vale at this chapter's levels, under Hollin's rule: small groups, far apart. Levels stay inside each band; one elite on the map, Thornback in the old wood. Names are this chapter's own, and the region ids are too (the Vale's greywood keeps its own row).
+  wendreach: {tier:1,count:4,roadMinX:999,goods:[['Reach Pelt',30],['Hedge Tusk',34],['Mill Silk',38]],species:[
+    {n:5,sp:'wolf',pack:2,name:'Reach Wolf',pl:'Reach Wolves',lv:[10,11],loot:'Reach Pelt',q:'Wolves on the Reach'},
+    {n:4,sp:'boar',pack:2,name:'Hedge Boar',pl:'Hedge Boars',lv:[11,12],loot:'Hedge Tusk',q:'Tusks from the Hedgerows'},
+    {n:3,sp:'spider',pack:3,name:'Mill Spinner',pl:'Mill Spinners',lv:[11,12],loot:'Mill Silk',q:'Spinners at the Mills'}]},
+  oldwood:   {tier:1,count:4,roadMinX:999,goods:[['Alder Fur',40],['Briar Hide',44],['Green Silk',48]],elite:{name:'Thornback',title:'the Boar-King of the Greywood',base:'mudboar',fixLvl:14,scale:10,hit:4,ready:['gore']},species:[
+    {n:5,sp:'spider',pack:3,name:'Green Weaver',pl:'Green Weavers',lv:[11,12],loot:'Green Silk',q:'Webs in the Greenwood'},
+    {n:4,sp:'mudboar',pack:2,name:'Briar Boar',pl:'Briar Boars',lv:[12,13],loot:'Briar Hide',q:'Hides from the Briars'},
+    {n:3,sp:'wolf',pack:2,name:'Ford Stalker',pl:'Ford Stalkers',lv:[13,14],loot:'Alder Fur',q:'Stalkers at the Ford'}]},
+  ashmarch:  {tier:1,count:4,roadMinX:999,goods:[['March Pelt',46],['Cinder Tusk',50],['Marchhound Sinew',54]],species:[
+    {n:5,sp:'wolf',pack:2,name:'March Wolf',pl:'March Wolves',lv:[12,13],loot:'March Pelt',q:'Wolves on the March'},
+    {n:3,sp:'boar',pack:3,name:'Cinder Boar',pl:'Cinder Boars',lv:[13,14],loot:'Cinder Tusk',q:'Tusks from the Cinders'},
+    {n:2,sp:'rimehound',pack:2,name:'Marchhound',pl:'Marchhounds',lv:[14,15],loot:'Marchhound Sinew',q:'Marchhounds on the Heath'}]},
   // The Wending Vale (epic #940, slice D): each region has its own creatures, levels, names and trade goods. Entries are objects
   // {n: how many live (#988: thinned to about half, in uneven groups), sp: stock species (its sprite and stat block), name, pl, lv, loot, q}. Only species the LPC creature slice draws (wolf, boar,
   // mudboar, spider, lurker, bog, golem, wight, rimehound; PR #853) are used, so none falls back to the old look; the drake and the
