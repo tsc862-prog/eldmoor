@@ -20,7 +20,7 @@ import {MOVES,CLASS_MOVES,PASSIVES,SPEC_MOVES,MOVE_CONDS,CONDITIONS} from '../da
 import {specOf,ensureSpec,specBlock,pickSpec,chooseSpec} from './spec.js';
 import {reflexMay} from './runlink.js';
 import {profBonus} from '../data/abilities.js';
-import {S,clockStr} from './state.js';
+import {S,clockStr,sameSide,mayFight} from './state.js';
 import {pop} from './effects.js';
 import {strike,maxHp} from './heroes.js';
 import {reviveBonus} from './downed.js'; // a heal on the downed brings them up higher (#626)
@@ -62,7 +62,7 @@ export function canUse(a,id,t,mode='sec'){const M=MOVES[id];
   if(!ready(a,id,mode))return M.name+' is not ready ('+(mode==='round'?roundsLeft(a,id)+' more round(s)':cdLeft(a,id)+' s')+').';
   if(M.cost&&M.cost.hp&&a.hp<=maxHp(a)*M.cost.hp+1)return 'Too hurt to pay for '+M.name+'.';
   if(M.target==='foe'){if(!t||!living(t)||t===a)return M.name+' needs a living foe.';
-    if(t.kind==='hero'&&t.fac===a.fac&&a.state!=='duel'&&a.state!=='assist')return M.name+' is for foes.';
+    if(t.kind==='hero'&&!mayFight(a,t)&&a.state!=='duel'&&a.state!=='assist')return M.name+' is for foes.';
     if(mode!=='round'&&dist(a,t)>rangeOf(a,M)+.01)return 'The foe is out of range ('+Math.round(dist(a,t)*10)/10+' tiles, '+M.name+' reaches '+Math.round(rangeOf(a,M)*10)/10+').'}
   if(M.target==='ally'){if(!t||t.kind!=='hero'||!living(t))return M.name+' needs a friend to aim at (or yourself).';
     if(mode!=='round'&&dist(a,t)>M.range)return 'They are out of range ('+M.range+' tiles).'}
@@ -92,7 +92,7 @@ export function useMove(a,id,t,opt={}){const mode=opt.mode||'sec',M=MOVES[id],ro
   const err=canUse(a,id,t,mode);if(err)return {ok:false,error:err};
   (a.mcd||(a.mcd={}))[id]=now()+M.cd;(a.mcr||(a.mcr={}))[id]=M.rounds;
   if(M.cost&&M.cost.hp)a.hp-=maxHp(a)*M.cost.hp;
-  const R={dmg:0,kill:false,saved:0,healed:0,taunt:false,hit:0,text:''},fx=M.fx,mates=(opt.mates||[a]).filter(b=>living(b)&&b.fac===a.fac);
+  const R={dmg:0,kill:false,saved:0,healed:0,taunt:false,hit:0,text:''},fx=M.fx,mates=(opt.mates||[a]).filter(b=>living(b)&&sameSide(a,b));
   pop(a.x,a.y-.9,M.name.toUpperCase(),NOTE[M.kind]||'#ffffff');
   const ox=a.x,oy=a.y,hits=[]; // where the caster stood and the foes an area move reached, for the spell effect (#374)
   switch(M.target){
@@ -151,7 +151,7 @@ function wants(a,M,ctx){const {foe,mates,f}=ctx;
 // only(M): an optional filter on the moves looked at (a reflex member heals only, #347).
 export function pickMove(a,foe,mates,swing,mode='sec',only=null){
   const ids=movesOf(a).filter(id=>ready(a,id,mode)&&(!only||only(MOVES[id])));if(!ids.length)return null;
-  const live=(mates||[a]).filter(b=>living(b)&&b.fac===a.fac);
+  const live=(mates||[a]).filter(b=>living(b)&&sameSide(a,b));
   const engaged=engagedNear(a,6);if(foe&&foe.kind==='boss'&&!engaged.includes(foe))engaged.push(foe);
   const ctx={foe,mates:live.includes(a)?live:[a,...live],swing,engaged,mh:maxHp(a),f:hpf(a)};
   for(const pass of [false,true])for(const id of ids){const M=MOVES[id];if(!!M.swing!==pass||(M.swing&&!swing))continue;

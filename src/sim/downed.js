@@ -27,7 +27,7 @@ import {dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
 import {MOBS} from '../data/mobs.js';
 import {blockOf} from '../data/bestiary.js';
-import {S} from './state.js';
+import {S,sameSide} from './state.js';
 import {log} from './chronicle.js';
 import {pop} from './effects.js';
 import {record} from './history.js';
@@ -86,7 +86,7 @@ export const isDown=a=>!!a&&a.state==='downed';
 const standing=b=>b&&b.kind==='hero'&&b.state!=='dead'&&b.state!=='downed'&&!b.hidden&&b.hp>0;
 const heroById=id=>S.agents.find(x=>x.id===id)||null;
 // Who would come for a downed hero: their party, company or guild, of their faction.
-const kin=(a,b)=>b!==a&&b.fac===a.fac&&((a.party&&b.party===a.party)||(a.company!=null&&b.company===a.company)||(a.guild&&b.guild===a.guild));
+const kin=(a,b)=>b!==a&&sameSide(a,b)&&((a.party&&b.party===a.party)||(a.company!=null&&b.company===a.company)||(a.guild&&b.guild===a.guild));
 const healer=b=>!!CLS[b.cls]&&!!CLS[b.cls].heal;
 const nearKin=(a,r)=>nearHeroes(a.x,a.y,r).filter(b=>standing(b)&&kin(a,b)&&dist(a,b)<=r);
 // The share of max HP a healer's heal adds when it lands on the downed (heroes.js healOne, moves.js heal moves).

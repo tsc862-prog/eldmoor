@@ -71,6 +71,7 @@ const CRYPT_ROOMS=[
 
 export const ELDMOOR={
   name:'Eldmoor',
+  blurb:'Two cities, Highgate and Grimhold, face each other across a river and a long grudge. Somewhere past the hills a wyrm named Kragmaw sleeps on its hoard, and sooner or later someone will be fool enough to wake it.',
   size:{w:80,h:50},
   seeds:{terrain:11,detail:23},
   curves:{
@@ -157,6 +158,53 @@ export const TESTWORLD={
   spawn:{townPad:[4,3]},
 };
 
+// ---- Linked-map fixtures (#1013 slice 1a) ----
+// Two tiny maps joined by one road each way, for worldcheck and the crossing checks. Test-only: kept out of WORLDS so the
+// title screen and every per-world check never list them; MAPS (below) is the table that holds them. Not canon (docs/LORE.md, "Test fixtures").
+// Exit format: {id, name, to:{map, exit}, at:{x,y,r} | edge:{side:'N'|'S'|'E'|'W', from, to}}; an edge exit paints its stretch of the
+// outer ring as road, an `at` exit stands on a road the spec routes there (roads may name an exit id as an endpoint).
+const linkMap=(name,town,exit,back)=>({
+  name,size:{w:32,h:24},
+  regions:[{id:'linkmead',name:name+' Mead',band:[1,5],biome:'meadow',mask:{kind:'all'}}],
+  towns:[{name:town,fac:0,x0:3,y0:8,w:9,h:8,gate:'E',race:null}],
+  exits:[exit],
+  roads:[{from:town,to:exit.id}],
+  nodes:{respawn:{herb:60,ore:120,hide:60,fish:30},regions:{linkmead:{herb:3,ore:2,hide:2,fish:2}}},
+  lights:{townTorches:[[3,3]]},
+  spawn:{townPad:[4,3]},
+});
+export const TESTLINK={
+  testlinka:linkMap('Linka','Hearthlink',{id:'east',name:'the east road',edge:{side:'E',from:11,to:13},to:{map:'testlinkb',exit:'west'}}),
+  testlinkb:linkMap('Linkb','Mooring',{id:'west',name:'the west road',edge:{side:'W',from:11,to:13},to:{map:'testlinka',exit:'east'}}),
+};
+
+// A map with no lair and no dungeon (#1013): what a chapter of a campaign may be, a town each for the two peoples and the ground
+// between. Test-only, like TESTLINK; npm run crossingcheck boots it with ELDMOOR_WORLD=testbare and plays a whole game day on it.
+const BARE={size:{w:56,h:36},
+    curves:{fellEdge:{axis:'x',base:34,sin:[[6,1.4,0]]}},
+    regions:[
+      {id:'baremead',name:'Bare Mead',band:[1,3],biome:'meadow',mask:{kind:'all'}},
+      {id:'barefell',name:'Bare Fell',band:[3,5],biome:'fen',mask:{kind:'east-of-curve',curve:'fellEdge'}},
+    ],
+    towns:[
+      {name:'Barewick',fac:0,x0:3,y0:6,w:11,h:9,gate:'E',race:null},
+      {name:'Farwick',fac:1,x0:42,y0:21,w:11,h:9,gate:'W',race:null},
+    ],
+    points:{midway:[28,18]},
+    roads:[{from:'Barewick',to:'midway'},{from:'midway',to:'Farwick'}],
+    nodes:{respawn:{herb:60,ore:120,hide:60,fish:30},regions:{baremead:{herb:3,ore:2,hide:2,fish:2},barefell:{herb:3,ore:2,hide:2,fish:2}}},
+    lights:{townTorches:[[3,3]]},
+    spawn:{townPad:[4,3]},
+};
+export const TESTBARE={
+  testbare:{...BARE,name:'Barefield'},
+  testcellar:{...BARE,name:'Cellarfield',
+    landmarks:[{kind:'crypt',name:'The Bare Cellar',boss:'The Bare Reeve',x:30.5,y:8.1,mouth:{x0:29,y0:6,w:3,h:3},exclude:3.5,cd:25,entry:3}],
+    roads:[...BARE.roads,{from:'midway',to:'The Bare Cellar'}]},
+  testden:{...BARE,name:'Denfield',
+    landmarks:[{kind:'lair',name:'The Bare Den',x:44.5,y:9.5,r:5.4,inner:4,mouth:'W',exclude:7.5}]},
+};
+
 // ---- The Stepping Lands: a 160x100 test continent (issue #36, scaling phase 5) ----
 // Four times the area of Eldmoor: two home towns per faction, six regions on a ladder of
 // overlapping level bands (1-5, 4-9, 8-13, 12-16, 15-19, 18-22), the Sunken Crypt and Kragmaw
@@ -192,6 +240,7 @@ const CAIRN_ROOMS=[
 
 export const STEPPING={
   name:'Stepping Lands',
+  blurb:'A wide, rough continent with room to get lost in: long roads, far-apart towns and a new danger every few days of walking. Pack for the journey, because help is rarely close.',
   size:{w:160,h:100},
   seeds:{terrain:37,detail:61},
   curves:{
@@ -276,39 +325,47 @@ const VALE_WEIR_ROOMS=[
   {id:'weighing',name:'The Weighing Hall',frame:'Great scales hang from the roof, tipped by what lies in the pans. Dry bowstrings creak from the beams.',
     foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:0,hit:.29,rounds:2},
   {id:'granary',name:'The Flooded Granary',frame:'Black water lies knee-deep between the grain bins. Wardens stand in it, still guarding a harvest that rotted a century ago.',
-    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:3},
+    foes:[{type:'graveward',n:2,hits:2}],lvl:1,hit:.38,rounds:2},
   {id:'chair',name:"The Weir-Warden's Chair",frame:"The last chamber is a round pool with the weir-keeper's chair standing in it. The one who sits there has held the river back a very long time.",
-    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:4,boss:true},
+    foes:[{type:'graveward',n:1,name:'Weir-Warden Orsk',hits:4,atk:1.6},{type:'tombskit',n:1}],lvl:2,hit:.43,rounds:3,boss:true},
 ];
 const VALE_KESTREL_ROOMS=[
   {id:'door',name:'The Low Door',frame:'A low door in a grassed mound, its lintel cut with kestrels. Cold air comes out of it, and the rattle of small claws.',
-    foes:[{type:'tombskit',n:2}],lvl:-1,hit:.22,rounds:2},
+    foes:[{type:'tombskit',n:3}],lvl:-1,hit:.23,rounds:2},
   {id:'niches',name:'The Kestrel Niches',frame:'Every niche holds a stone bird and a heap of bone. One of the heaps gets up, still holding the lure-glove.',
-    foes:[{type:'shambler',n:1},{type:'tombskit',n:1}],lvl:0,hit:.27,rounds:2},
+    foes:[{type:'shambler',n:2},{type:'tombskit',n:1}],lvl:0,hit:.29,rounds:2},
+  {id:'ossuary',name:'The Hawk Ossuary',frame:'Skulls of hawks and the falconers who loved them are stacked to the roof in rows. Bowstrings creak somewhere among them, and a long-dead hand hauls itself upright.',
+    foes:[{type:'boneshot',n:2,hits:1},{type:'shambler',n:1}],lvl:1,hit:.30,rounds:2},
   {id:'mews',name:"The Falconer's Mews",frame:'The last chamber is a mews with the perches still in it. The lord who bred the birds sits among them and does not intend to be disturbed.',
-    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:3,atk:1.4},{type:'boneshot',n:1,hits:1}],lvl:1,hit:.32,rounds:3,boss:true},
+    foes:[{type:'shambler',n:1,name:'Lord Merrin Hawkwright',hits:4,atk:1.5},{type:'boneshot',n:1,hits:1}],lvl:2,hit:.38,rounds:3,boss:true},
 ];
 const VALE_VAULT_ROOMS=[
   {id:'eel',name:'The Eel Cellar',frame:'Sunken cellars under a burnt kiln, the floor a foot deep in brown water. Fen-smugglers have made a guardroom of the first one.',
-    foes:[{type:'reedcutter',n:2,hits:2}],lvl:-1,hit:.24,rounds:3},
+    foes:[{type:'reedcutter',n:3,hits:2}],lvl:-1,hit:.25,rounds:3},
   {id:'tally',name:'The Salt Tally',frame:'Barrels of grey salt and a tally-board scratched in charcoal. Two big men get up from the table and reach for their cudgels.',
-    foes:[{type:'tollbreaker',n:2,hits:2}],lvl:0,hit:.29,rounds:3},
+    foes:[{type:'tollbreaker',n:2,hits:2},{type:'reedcutter',n:1,hits:2}],lvl:0,hit:.31,rounds:3},
+  {id:'count',name:'The Counting Room',frame:'A low room of ledgers and scales, where every cargo that passed the fen was weighed and taxed. A hedge-witch sits on the strongbox and the tollmen stand up around her.',
+    foes:[{type:'tollbreaker',n:2,hits:2},{type:'hedgecaller',n:1,hits:2}],lvl:1,hit:.34,rounds:3},
   {id:'cold',name:'The Cold Store',frame:'A vaulted cold-store, and the smuggler-captain who has made himself king of it. He counts you, and the count is not kind.',
-    foes:[{type:'captain',n:1,name:'Captain Dane Sallow',hits:4,atk:1.4},{type:'hedgecaller',n:1,hits:1}],lvl:1,hit:.34,rounds:4,boss:true},
+    foes:[{type:'captain',n:1,name:'Captain Dane Sallow',hits:5,atk:1.6},{type:'hedgecaller',n:1,hits:2}],lvl:2,hit:.40,rounds:4,boss:true},
 ];
 const VALE_KILN_ROOMS=[
   {id:'flue',name:'The Flue Gallery',frame:'Heat rolls up the great flue. Slag motes drift down it like sparks and gather on the stone.',
-    foes:[{type:'slagmote',n:3}],lvl:-1,hit:.24,rounds:2},
+    foes:[{type:'slagmote',n:4}],lvl:-1,hit:.25,rounds:2},
   {id:'ash',name:'The Ash Floor',frame:'A floor of drifted ash, cooling, and the crawlers who live in it come up out of the drifts all at once.',
-    foes:[{type:'cavecrawler',n:2,hits:1},{type:'golem',n:1,hits:2}],lvl:0,hit:.3,rounds:3},
+    foes:[{type:'cavecrawler',n:2,hits:1},{type:'golem',n:1,hits:2}],lvl:0,hit:.31,rounds:2},
+  {id:'quench',name:'The Quench Pool',frame:'A stone basin where the finished ware was drowned to set it. The water is long gone to steam, and the two clay giants standing in the dry basin turn their heads together.',
+    foes:[{type:'golem',n:2,hits:2}],lvl:1,hit:.38,rounds:2},
   {id:'heart',name:'The Kiln Heart',frame:'The last firing-chamber, still red at the heart. What tends it was built to, and has never been told it can stop.',
-    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.5},{type:'slagmote',n:1}],lvl:2,hit:.4,rounds:4,boss:true},
+    foes:[{type:'golem',n:1,name:'The Kiln-Warden',hits:5,atk:1.6},{type:'slagmote',n:2}],lvl:2,hit:.43,rounds:3,boss:true},
 ];
 // Town plans for the Vale (epic #940 slice C). The LPC building kit (scripts/art/packcut-buildings.mjs, PR #914) cuts one art piece per
 // style and piece, to the footprint and door the plans give it, so every Vale town keeps these shapes (TOWN_KIT: footprint in
 // tiles, the door tile inside it, and `rise`, how many tiles of art stand over the tiles behind it, which must be the town wall or
 // another building). What makes a town its own is where the pieces stand, the town's size, its gate side and its streets
 // (`ground`, rects from the town's corner, laid as road). scripts/worldcheck.mjs holds the Vale to the kit.
+// Outline and scale (#979): `notch` rects stay outside the walls, so the ring steps round them; `gateAt` puts the gate that many tiles from the corner; `clear`
+// fells the trees whose crowns would hide the south wall; `homes` is the lane the townsfolk live on; `torches` and `grave` replace the 11x9 town's offsets.
 //
 // A row's key is the plan's `kit` and the art's name (building:lpc-<style>-<kit>): a piece may have rows of its own footprints beside the
 // plain one (`piece` names it), and `house` is only such rows: a house is sim-solid art that serves nobody. These stay out of
@@ -322,34 +379,45 @@ export const TOWN_KIT={auction:{foot:[3,2],door:[1,1],rise:1},smithy:{foot:[1,2]
   'house-lane':{piece:'house',foot:[2,2],door:[0,0],rise:0},    // a cottage south of a lane or alley: door on its north side, steps cut through the roof
   'inn-harbour':{piece:'inn',foot:[4,3],door:[2,2],rise:0},     // two storeys, its door on the south side
   'hall-long':{piece:'hall',foot:[5,2],door:[2,1],rise:1},
-  'inn-deck':{piece:'inn',foot:[3,2],door:[1,0],rise:0}};       // the inn on a plank town's deck: its steps are timber
+  'inn-deck':{piece:'inn',foot:[3,2],door:[1,0],rise:0},        // the inn on a plank town's deck: its steps are timber
+  // The great kit (#979): buildings at people's scale, at least twice a hero's height. The footprint is as deep as the art is tall, so rise is 0 and every door is on the south edge.
+  'hall-great':{piece:'hall',foot:[7,5],door:[3,4],rise:0},'auction-great':{piece:'auction',foot:[6,4],door:[2,3],rise:0},'inn-great':{piece:'inn',foot:[6,4],door:[2,3],rise:0},
+  'smithy-great':{piece:'smithy',foot:[4,4],door:[1,3],rise:0},'chapel-great':{piece:'chapel',foot:[4,6],door:[1,5],rise:0},'chapel-hill':{piece:'chapel',foot:[4,5],door:[1,4],rise:0},
+  'house-narrow':{piece:'house',foot:[2,4],door:[0,3],rise:0},'house-tall':{piece:'house',foot:[3,4],door:[1,3],rise:0},'house-wide':{piece:'house',foot:[4,4],door:[1,3],rise:0},'house-manor':{piece:'house',foot:[5,4],door:[2,3],rise:0},
+  fountain:{piece:'well',foot:[3,3],door:[1,2],rise:0}};        // the square's well: its `door` the basin's near rim
 const TOWN_SERVES={auction:'quartermaster',smithy:'smith',hall:'gate',chapel:'chapel',board:'gate',inn:'inn'};
 // [kit, dx, dy] from the town's top-left corner -> the plan's buildings (hall first among 'gate' servers is not needed: the list order decides the gate captain's door).
 function townPlan(x0,y0,list){return list.map(([kit,dx,dy])=>{const k=TOWN_KIT[kit],piece=k.piece||kit;
   return{piece,kit,box:[x0+dx,y0+dy,k.foot[0],k.foot[1]],door:[x0+dx+k.door[0],y0+dy+k.door[1]],serves:TOWN_SERVES[piece]||null}})}
 export const VALE={
   name:'The Wending Vale',
-  size:{w:144,h:60},
+  blurb:'One river, two banks and three crossings, and an old weir that has quietly stopped holding. Six towns, four dungeons and a wyrm at the river\'s head; whoever holds the water holds the vale.',
+  size:{w:184,h:60},
+  // rev 1 (#979): the vale was widened by 40 columns so its towns stand apart (an earlier save was cut on the 144-wide map and cannot be carried over, src/sim/save.js).
+  rev:1,
   seeds:{terrain:53,detail:77},
   // #934 / epic #940: no region next to a region whose low band is more than `step` levels above it, seen from any home town.
   ladder:{step:4},
   curves:{
     // The Wend: an east-west river with two gentle wanders (sin only, so the crossings below can name its row).
-    river:{axis:'x',base:30,sin:[[13,3.4,0],[5.3,1.3,1]]},
+    // warp: from x=41 on the river reads the line 40 columns back, so every crossing east of the widening keeps its old shape (the wander is smooth at the seam).
+    river:{axis:'x',base:30,sin:[[13,3.4,0],[5.3,1.3,1]],warp:{at:41,by:40}},
     // The region edges, west to east: Wendmouth | Sallowfen and Hawkwold | Greywood | Ashenfold | Rimecrown.
     wEdge:{axis:'y',base:38,noise:{seed:3,scale:5,amp:6,slice:1.7}},
-    mEdge:{axis:'y',base:75,noise:{seed:8,scale:5,amp:6,slice:2.9}},
-    eEdge:{axis:'y',base:102,noise:{seed:13,scale:5,amp:5,slice:4.3}},
-    fEdge:{axis:'y',base:122,noise:{seed:19,scale:5,amp:5,slice:5.1}},
+    wEdgeN:{axis:'y',base:78,noise:{seed:3,scale:5,amp:6,slice:1.7}}, // Hawkwold's west edge: the north bank's Wendmouth runs on past Gullstrand
+    mEdgeN:{axis:'y',base:125,noise:{seed:8,scale:5,amp:6,slice:2.9}}, // the same edge on the north bank, 10 columns east: Hawkwold has room round Hawkstead
+    mEdge:{axis:'y',base:115,noise:{seed:8,scale:5,amp:6,slice:2.9}},
+    eEdge:{axis:'y',base:142,noise:{seed:13,scale:5,amp:5,slice:4.3}},
+    fEdge:{axis:'y',base:162,noise:{seed:19,scale:5,amp:5,slice:5.1}},
   },
   regions:[
     {id:'wendmouth',name:'Wendmouth',band:[1,5],biome:'meadow',mask:{kind:'all'}},
     {id:'sallowfen',name:'Sallowfen',band:[3,8],biome:'fen',
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'wEdge'},{kind:'west-of-curve',curve:'mEdge'},{kind:'south-of-curve',curve:'river'}]}},
     {id:'greywood',name:'Greywood',band:[6,11],biome:'meadow',
-      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'mEdge'},{kind:'west-of-curve',curve:'eEdge'}]}},
+      mask:{kind:'and',masks:[{kind:'or',masks:[{kind:'and',masks:[{kind:'east-of-curve',curve:'mEdge'},{kind:'south-of-curve',curve:'river'}]},{kind:'and',masks:[{kind:'east-of-curve',curve:'mEdgeN'},{kind:'north-of-curve',curve:'river'}]}]},{kind:'west-of-curve',curve:'eEdge'}]}},
     {id:'hawkwold',name:'Hawkwold',band:[3,8],biome:'highland',
-      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'wEdge'},{kind:'west-of-curve',curve:'mEdge'},{kind:'north-of-curve',curve:'river'}]}},
+      mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'wEdgeN'},{kind:'west-of-curve',curve:'mEdgeN'},{kind:'north-of-curve',curve:'river'}]}},
     {id:'ashenfold',name:'Ashenfold',band:[10,15],biome:'ash',
       mask:{kind:'and',masks:[{kind:'east-of-curve',curve:'eEdge'},{kind:'west-of-curve',curve:'fEdge'}]}},
     {id:'rimecrown',name:'Rimecrown',band:[14,Infinity],biome:'tundra',pools:{sx:6,sy:4.4,at:.66,seed:31},
@@ -358,72 +426,79 @@ export const VALE={
   ],
   // The Wend flares into a sea off the west edge (mouth) and rises from a spring pool under the rock at x~123 (pool). The Weirgate ford is the
   // only wading place: the Low Bridge and the High Bridge are the other two crossings, and no road runs over the water anywhere else.
-  river:{curve:'river',width:2,span:[0,121],fords:[76],mouth:{reach:16,flare:6},pool:{x:123,y:30,r:2.7}},
+  river:{curve:'river',width:2,span:[0,161],fords:[116],mouth:{reach:16,flare:6},pool:{x:163,y:30,r:2.7}},
   // Art notes (src/render/scenery.js reads them; the sim and the map never do).
   scenery:{
     wash:{wendmouth:'meadow',hawkwold:'heath',greywood:'woods',ashenfold:'ash'},
-    fields:[[17,4,10,4,'wheat'],[19,9,6,2,'cabbage'],[8,14,9,3,'wheat'],[21,22,9,3,'plough'],[1,35,11,3,'cabbage'],[19,37,7,3,'wheat'],[23,41,7,3,'plough'],[1,52,8,3,'wheat'],[11,52,9,3,'plough']],
+    fields:[[36,4,5,4,'wheat'],[36,10,4,3,'cabbage'],[37,18,7,3,'plough'],[37,23,7,3,'wheat'],[74,18,9,3,'wheat'],[74,23,8,3,'cabbage'],[80,9,7,3,'wheat'],[82,14,6,3,'plough'],[1,35,11,3,'cabbage'],[19,37,7,3,'wheat'],[23,41,7,3,'plough'],[1,52,8,3,'wheat'],[11,52,9,3,'plough']],
     dress:{'The Drowned Weir':'weir','The Kestrel Barrow':'barrow','The Sallow Vaults':'vaults','The Brandwright Kiln':'kiln',Kragmaw:'lair'},
     bridges:{'26,33':'stone'},
-    head:{x:122,y:30},
-    clear:[[80.5,41,3.8],[78.2,37.5,2.6]], // felled ground before the Drowned Weir, so its mouth stands in the open
+    head:{x:162,y:30},
+    clear:[[120.5,41,3.8],[118.2,37.5,2.6]], // felled ground before the Drowned Weir, so its mouth stands in the open
   },
   towns:[
     // Concord, north bank
     // Aldermere: a market green at the river mouth; the forge and the halls front a paved lane, the inn on the green's west edge.
-    {name:'Aldermere',fac:0,x0:4,y0:4,w:11,h:9,gate:'E',race:'hallowan',spots:{square:[5.5,6.1]},
-      buildings:townPlan(4,4,[['auction',3,1],['smithy',1,1],['hall',7,1],['chapel',6,1],['board',9,3],['inn',2,5],['house-lane',6,6]]),
-      ground:[[1,3,9,1],[5,4,5,2]]},
+    {name:'Aldermere',fac:0,x0:4,y0:1,w:31,h:15,gate:'E',gateAt:5,race:'hallowan',spots:{square:[17.5,8.1]},grave:[27.5,7.6],
+      notch:[[26,0,5,3],[0,13,14,2]],clear:3,torches:[[29.5,4.5],[29.5,7.5],[15,7],[20,7],[17,13],[8,11]],
+      buildings:townPlan(4,1,[['auction-great',19,1],['smithy-great',4,1],['hall-great',12,1],['house-tall',1,1],['house-wide',8,1],['chapel-great',23,7],['house-tall',27,9],['inn-great',6,7],['house-manor',1,7],['board',14,7],['fountain',16,9]]),
+      ground:[[1,5,29,2],[1,11,11,1],[23,13,7,1]]},
     // Gullstrand: a harbour. The gate faces the river; a street runs up from it to a lane under the halls, and a quay and jetty reach out south.
-    {name:'Gullstrand',fac:0,x0:6,y0:17,w:13,h:9,gate:'S',race:'skerrin',spots:{square:[6.5,4.1]},
-      buildings:townPlan(6,17,[['auction',8,1],['smithy',11,1],['hall',2,1],['chapel',1,1],['board',8,7],['inn-harbour',1,4],['house-row',5,1],['house-gable',8,4],['house-cottage',10,4]]),
-      ground:[[1,3,11,1],[6,3,2,5],[6,9,2,3],[5,12,4,1]],pier:[[6,13,2,5],[3,13,1,2]]},
+    {name:'Gullstrand',fac:0,x0:46,y0:17,w:26,h:13,gate:'S',gateAt:6,race:'skerrin',spots:{square:[19.5,7.6]},grave:[23.5,7.6],notch:[[21,9,5,4]],clear:3,homes:[[1.5,11.5],[16.5,11.5]],
+      torches:[[5,11.5],[9,11.5],[6,6],[15,6],[20,8],[22,7]],
+      buildings:townPlan(46,17,[['auction-great',15,1],['smithy-great',1,1],['hall-great',8,1],['chapel-hill',21,1],['board',18,7],['inn-great',8,7],['house-tall',5,1],['house-manor',1,7],['house-tall',14,7]]),
+      ground:[[1,5,24,2],[6,7,2,5],[1,11,5,1],[8,11,9,1]],pier:[[6,13,2,5]]},
     // Hawkstead: a ridge town on terraces: the chapel stands on the hall's shoulder, a stair climbs the middle, the notice board at its head; cottages under the second terrace, an alley behind the inn.
-    {name:'Hawkstead',fac:0,x0:52,y0:10,w:11,h:11,gate:'E',race:'tarrow',spots:{square:[5.5,5.1]},
-      buildings:townPlan(52,10,[['smithy',1,1],['auction',3,1],['hall',7,1],['chapel',9,3],['inn',2,6],['board',6,4],['house-gable',6,6],['house-lane',1,8],['house-croft',3,8],['house-cottage',8,8]]),
-      ground:[[1,3,8,1],[1,5,9,1],[5,3,1,6]]},
+    {name:'Hawkstead',fac:0,x0:89,y0:8,w:19,h:13,gate:'E',gateAt:5,race:'tarrow',spots:{square:[15.5,8.1]},grave:[16.5,8.6],notch:[[16,11,3,2]],clear:3,homes:[[1.5,11.5],[13.5,11.5]],
+      torches:[[17.5,4.5],[17.5,7.5],[5,6],[11,6],[14,8],[6,11]],
+      buildings:townPlan(89,8,[['smithy-great',1,7],['auction-great',8,1],['hall-great',1,1],['chapel-hill',14,1],['inn-great',5,7],['board',14,7],['house-tall',11,7]]),
+      ground:[[1,6,17,1],[8,5,10,1],[1,11,14,1]]},
     // Warband, south bank
     // Brandhold: a forge town. The gate is in the north wall and a straight street runs to the yard; the inn fronts the cross lane, a cottage and a croft stand behind it.
-    {name:'Brandhold',fac:1,x0:6,y0:42,w:11,h:9,gate:'N',race:'ashfolk',spots:{square:[5.5,4.1]},
-      buildings:townPlan(6,42,[['smithy',1,1],['hall',2,1],['auction',7,1],['chapel',9,3],['board',7,3],['inn',2,4],['house-lane',1,6],['house-croft',3,6]]),
-      ground:[[5,1,2,7],[1,3,9,1],[4,5,5,2]]},
+    {name:'Brandhold',fac:1,x0:6,y0:41,w:29,h:15,gate:'N',gateAt:12,race:'ashfolk',spots:{square:[15.5,8.1]},grave:[26.5,7.6],notch:[[0,13,11,2]],clear:3,homes:[[1.5,11.5],[10.5,11.5]],
+      torches:[[11,1],[15,1],[10,7],[21,7],[15,13],[6,11]],
+      buildings:townPlan(6,41,[['smithy-great',1,1],['hall-great',14,1],['auction-great',21,1],['chapel-great',21,7],['board',12,7],['inn-great',5,7],['house-manor',5,1],['house-narrow',10,1],['house-wide',1,7],['house-tall',25,9],['fountain',14,9]]),
+      ground:[[12,1,2,5],[1,5,26,2],[1,11,10,1],[21,13,7,1]]},
     // Stiltmere: wide and loose, a fen town of planked lanes inside a palisade; a long hall on the north wall, the houses off a spine.
-    {name:'Stiltmere',fac:1,x0:44,y0:40,w:13,h:9,gate:'E',race:'mirekin',spots:{square:[8.5,4.1]},wall:'palisade',
-      buildings:townPlan(44,40,[['auction',1,1],['smithy',4,1],['hall-long',6,1],['chapel',11,1],['inn-deck',3,5],['board',6,4],['house-gable',1,4],['house-croft',8,6]]),
-      ground:[[1,3,11,1],[7,3,1,5],[10,4,2,2]]},
+    {name:'Stiltmere',fac:1,x0:51,y0:38,w:19,h:13,gate:'E',gateAt:5,race:'mirekin',spots:{square:[16.5,8.1]},grave:[16.5,7.6],wall:'palisade',notch:[[17,10,2,3]],clear:3,homes:[[1.5,11.5],[14.5,11.5]],
+      torches:[[17.5,4.5],[17.5,7.5],[5,7],[12,7],[15,10],[3,11]],
+      buildings:townPlan(51,38,[['auction-great',12,1],['smithy-great',11,7],['hall-great',5,1],['chapel-hill',1,1],['inn-great',5,7],['board',15,7],['house-wide',1,7]]),
+      ground:[[5,6,13,1],[12,5,6,1],[1,6,4,1],[1,11,15,1]]},
     // Hornridge: a hold on a long slope, the gate at the top and two terraces down to the inn.
-    {name:'Hornridge',fac:1,x0:58,y0:45,w:11,h:13,gate:'N',race:'thornhide',spots:{square:[5.5,6.1]},
-      buildings:townPlan(58,45,[['auction',1,1],['smithy',4,1],['hall',7,1],['chapel',9,3],['inn',2,8],['board',8,8],['house-cottage',1,4],['house-croft',3,4],['house-cottage',7,4]]),
-      ground:[[5,1,2,11],[1,3,9,1],[1,6,9,1]]},
+    {name:'Hornridge',fac:1,x0:85,y0:45,w:21,h:13,gate:'N',gateAt:5,race:'thornhide',spots:{square:[19.5,8.1]},grave:[19.5,9.6],notch:[[19,0,2,4]],clear:3,homes:[[1.5,11.5],[19,11.5]],
+      torches:[[4,1],[8,1],[5,6],[12,6],[17,6],[10,11]],
+      buildings:townPlan(85,45,[['auction-great',4,7],['smithy-great',1,1],['hall-great',7,1],['chapel-hill',14,1],['inn-great',10,7],['board',19,5],['house-tall',1,7],['house-tall',16,7]]),
+      ground:[[5,1,2,5],[1,6,19,1],[1,5,6,1],[1,11,19,1]]},
   ],
   landmarks:[
     // The great dungeon, beside the Weirgate ford on the south bank. entry: the level a background group first goes down (#902).
-    {kind:'crypt',name:'The Drowned Weir',boss:'Weir-Warden Orsk',x:81.5,y:38.1,mouth:{x0:80,y0:36,w:3,h:3},exclude:3.5,cd:25,rooms:VALE_WEIR_ROOMS,entry:7,
+    {kind:'crypt',name:'The Drowned Weir',boss:'Weir-Warden Orsk',x:121.5,y:38.1,mouth:{x0:120,y0:36,w:3,h:3},exclude:3.5,cd:25,rooms:VALE_WEIR_ROOMS,entry:7,
       sign:CRYPT_SIGN,captain:CRYPT_CAPTAIN},
     // Three smaller delves along the climb.
-    {kind:'crypt',name:'The Kestrel Barrow',boss:'Lord Merrin Hawkwright',x:68.5,y:23.1,mouth:{x0:67,y0:21,w:3,h:3},exclude:3.5,cd:25,rooms:VALE_KESTREL_ROOMS,entry:4},
-    {kind:'crypt',name:'The Sallow Vaults',boss:'Captain Dane Sallow',x:50.5,y:56.1,mouth:{x0:49,y0:54,w:3,h:3},exclude:3.5,cd:25,rooms:VALE_VAULT_ROOMS,entry:4},
-    {kind:'crypt',name:'The Brandwright Kiln',boss:'The Kiln-Warden',x:115.5,y:44.1,mouth:{x0:114,y0:42,w:3,h:3},exclude:3.5,cd:25,rooms:VALE_KILN_ROOMS,entry:10},
+    {kind:'crypt',name:'The Kestrel Barrow',boss:'Lord Merrin Hawkwright',x:108.5,y:23.1,mouth:{x0:107,y0:21,w:3,h:3},exclude:3.5,cd:25,rooms:VALE_KESTREL_ROOMS,entry:4},
+    {kind:'crypt',name:'The Sallow Vaults',boss:'Captain Dane Sallow',x:63.5,y:56.1,mouth:{x0:62,y0:54,w:3,h:3},exclude:3.5,cd:25,rooms:VALE_VAULT_ROOMS,entry:4},
+    {kind:'crypt',name:'The Brandwright Kiln',boss:'The Kiln-Warden',x:155.5,y:44.1,mouth:{x0:154,y0:42,w:3,h:3},exclude:3.5,cd:25,rooms:VALE_KILN_ROOMS,entry:10},
     // The raid lair, at the head of the river.
-    {kind:'lair',name:'Kragmaw',x:134.5,y:30.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
+    {kind:'lair',name:'Kragmaw',x:174.5,y:30.5,r:5.4,inner:4,mouth:'W',exclude:7.5,light:{big:1}},
   ],
   outposts:[
-    {id:'weirgate',name:'Weirgate Watch',x:78.5,y:24.5,r:3.5},
-    {id:'kilnmark',name:'Kilnmark Cross',x:108.5,y:39.5,r:3.5},
+    {id:'weirgate',name:'Weirgate Watch',x:118.5,y:24.5,r:3.5},
+    {id:'kilnmark',name:'Kilnmark Cross',x:153.5,y:37.5,r:3.5},
   ],
   points:{
     lowN:[26,31],lowS:[26,36],           // the Low Bridge
-    fordN:[76,26],fordS:[76,33],         // the Weirgate ford (no road crosses it)
-    highN:[110,31],highS:[110,36],       // the High Bridge
-    lairGate:[128,30],
-    southWay:[94,36],                    // keeps the fordS-highS road on the south bank (it once found the north road and bridged at x=74)
-    northWay:[34,21],                    // keeps the Gullstrand-Hawkstead road off the river bank (its gate faces the water)
+    fordN:[116,26],fordS:[116,33],         // the Weirgate ford (no road crosses it)
+    highN:[150,31],highS:[150,36],       // the High Bridge
+    lairGate:[168,30],
+    southWay:[134,36],                    // keeps the fordS-highS road on the south bank (it once found the north road and bridged at x=74)
+    stiltS:[60,53],                      // brings the Brandhold road round the south of Stiltmere's walls to its east gate
+    northWay:[74,21],                    // keeps the Gullstrand-Hawkstead road off the river bank (its gate faces the water)
   },
   roads:[
     {from:'Aldermere',to:'Gullstrand'},
     {from:'Gullstrand',to:'lowN'},{from:'lowN',to:'lowS'},{from:'lowS',to:'Brandhold'},
     {from:'Gullstrand',via:['northWay'],to:'Hawkstead'},
-    {from:'Brandhold',to:'Stiltmere'},{from:'Stiltmere',to:'Hornridge'},
+    {from:'Brandhold',via:['stiltS'],to:'Stiltmere'},{from:'Stiltmere',to:'Hornridge'},
     {from:'Hawkstead',to:'fordN'},{from:'Hornridge',to:'fordS'},
     {from:'fordS',to:'The Drowned Weir'},
     {from:'Hawkstead',to:'The Kestrel Barrow'},
@@ -433,12 +508,12 @@ export const VALE={
     {from:'highN',to:'lairGate'},
   ],
   lights:{townTorches:[[10.5,3.4],[10.5,6.4],[4,3],[8,3]]},
-  spawn:{townPad:[4,3],nearest:30},
+  spawn:{townPad:[8,8],nearest:30}, // #979: spawn points stay 8 tiles off every town wall, so a new recruit leaves a gate alive
   nodes:{respawn:{herb:240,ore:480,hide:180,fish:120},regions:{
     wendmouth:{herb:10,ore:4,hide:8,fish:8},sallowfen:{herb:8,ore:4,hide:6,fish:5},hawkwold:{herb:6,ore:8,hide:7,fish:3},
     greywood:{herb:9,ore:6,hide:8,fish:4},ashenfold:{herb:3,ore:9,hide:6,fish:1},rimecrown:{herb:3,ore:6,hide:6,fish:0}}},
-  labels:[['WENDMOUTH',26,10],['SALLOWFEN',57,57],['HAWKWOLD',44,4],['GREYWOOD',88,18],['ASHENFOLD',112,12],['RIMECROWN',134,10],
-    ['ALDERMERE',9.5,3],['GULLSTRAND',11.5,16],['HAWKSTEAD',57.5,9],['BRANDHOLD',11.5,41],['STILTMERE',49.5,39],['HORNRIDGE',63.5,44]],
+  labels:[['WENDMOUTH',60,13],['SALLOWFEN',92,57],['HAWKWOLD',98,4],['GREYWOOD',128,18],['ASHENFOLD',152,12],['RIMECROWN',174,10],
+    ['ALDERMERE',19.5,16.6],['GULLSTRAND',59,31],['HAWKSTEAD',98.5,7],['BRANDHOLD',20.5,57],['STILTMERE',60.5,37],['HORNRIDGE',95.5,44]],
 };
 
 // ---- choosing the world ----
@@ -452,6 +527,8 @@ function pickWorld(){
   if(!id&&typeof globalThis.ELDMOOR_WORLD==='string')id=globalThis.ELDMOOR_WORLD;
   if(!id){const p=globalThis.process;if(p&&p.env&&p.env.ELDMOOR_WORLD)id=p.env.ELDMOOR_WORLD}
   id=String(id||'eldmoor').toLowerCase();
-  return WORLDS[id]?id:'eldmoor'}
+  return MAPS[id]?id:'eldmoor'}
+// Every map a campaign may live on, by id: the playable worlds and the fixtures (#1013). Looped over, never counted.
+export const MAPS={...WORLDS,...TESTLINK,...TESTBARE};
 export const WORLD_ID=pickWorld();
-export const ACTIVE_SPEC=WORLDS[WORLD_ID];
+export const ACTIVE_SPEC=MAPS[WORLD_ID];

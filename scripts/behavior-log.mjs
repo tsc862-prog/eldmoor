@@ -121,7 +121,7 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     const seat = rec.seat, S = seatOf(seat), tools = Array.isArray(rec.tools) ? rec.tools.slice(0, 40) : [];
     const narration = cut(rec.narration, 600), flags = new Set(Array.isArray(rec.flags) ? rec.flags.map(String) : []);
     const failed = tools.filter(t => !t.ok).length, refused = tools.filter(t => t.refused).length;
-    if (!tools.length && !flags.has('reflection')) flags.add('empty'); // a reflection answered "none" (issue #179) is not an empty turn
+    if (!tools.length && !flags.has('reflection') && !flags.has('scene-cut')) flags.add('empty'); // a reflection answered "none" (issue #179) is not an empty turn
     if (tools.length && failed === tools.length) flags.add('refused');
     if (narration && S.narr.some(p => similar(p, narration) >= BD.REPEAT_SIM)) flags.add('repeat');
     if (narration && notEnglish(narration)) flags.add('foreign');
@@ -130,12 +130,12 @@ export function behaviorLog({root = behaviorRoot(), world = 'eldmoor', now = () 
     const line = {seat, hero: rec.hero || null, runner: rec.runner || null, provider: rec.provider || null, model: rec.model || null, turn: rec.turn ?? S.turns,
       gameMin: rec.gameMin ?? null, clock: rec.clock || null, wake: rec.wake || null, brief: rec.brief || null, after: rec.after || null,
       tools: tools.map(t => ({name: cut(t.name, 40), ok: !!t.ok, ...(t.ok ? {} : {error: cut(t.error, 140)}), ...(t.refused ? {refused: true} : {})})),
-      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, ...(Number.isFinite(rec.tokensCached) ? {tokensCached: rec.tokensCached} : {}), cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, ...(Number.isFinite(rec.ctx) ? {ctx: rec.ctx} : {}), cost: rec.cost ?? null, ...(Array.isArray(rec.sceneS) && rec.sceneS.length ? {sceneS: rec.sceneS.slice(0, 8).map(Number).filter(Number.isFinite)} : {}), flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
+      calls: tools.length, failed, narration, seconds: rec.seconds ?? null, tokensIn: rec.tokensIn ?? null, tokensOut: rec.tokensOut ?? null, ...(Number.isFinite(rec.tokensCached) ? {tokensCached: rec.tokensCached} : {}), cacheRead: rec.cacheRead ?? null, cacheWrite: rec.cacheWrite ?? null, ...(Number.isFinite(rec.ctx) ? {ctx: rec.ctx} : {}), ...(Number.isFinite(rec.toolSearch) ? {toolSearch: rec.toolSearch} : {}), cost: rec.cost ?? null, ...(Array.isArray(rec.sceneS) && rec.sceneS.length ? {sceneS: rec.sceneS.slice(0, 8).map(Number).filter(Number.isFinite)} : {}), flags: [...flags].sort(), ...(rec.error ? {error: cut(rec.error, 200)} : {})};
     write('turn', line);
     sawModel(line.provider, line.model, seat);
     // detectors
     const who = rec.hero && rec.hero.name ? rec.hero.name : seat;
-    S.empty = flags.has('empty') ? S.empty + 1 : 0;
+    if (!flags.has('scene-cut')) S.empty = flags.has('empty') ? S.empty + 1 : 0;
     if (S.empty >= BD.EMPTY_RUN && (S.empty === BD.EMPTY_RUN || S.empty % 10 === 0)) anomaly({kind: 'no-tool-calls', seat, hero: rec.hero || null, severity: 'bad', text: `${who}: ${S.empty} turns in a row without a tool call (${line.provider || '?'}/${line.model || '?'})`, evidence: {run: S.empty, turn: line.turn, narration: narration.slice(0, 200)}, force: S.empty === BD.EMPTY_RUN});
     if (flags.has('repeat')) anomaly({kind: 'repeated-narration', seat, hero: rec.hero || null, text: `${who} repeats an earlier narration`, evidence: {turn: line.turn, narration: narration.slice(0, 200)}});
     if (flags.has('repeat-act')) anomaly({kind: 'repeated-act', seat, hero: rec.hero || null, text: `${who} repeats the same ${tools.filter(t => t.ok).map(t => t.name).slice(-1)[0] || 'act'} as last turn`, evidence: {turn: line.turn, tool: (tools.filter(t => t.ok).slice(-1)[0] || {}).name || null}});

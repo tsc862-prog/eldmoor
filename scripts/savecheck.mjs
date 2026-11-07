@@ -296,6 +296,11 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   if (D) leaveCompany(members(D)[0]);
 }
 
+// Map revision (#979): a world that was cut again refuses a save from another cut by name; a world with no rev reads saves as ever.
+{const {mapStale} = await import('../src/sim/save.js'), {WORLDS} = await import('../src/world/spec.js');
+  ok(WORLDS.vale.rev >= 1 && mapStale({}, 'vale') && !mapStale({mapRev: WORLDS.vale.rev}, 'vale'), 'a Vale save with no map revision is stale, one with the current revision is not');
+  ok(!mapStale({}, 'eldmoor') && !mapStale({}, 'stepping'), 'saves of the other maps are never stale');}
+
 // Pristine-state restore in a child process (what a browser reload does).
 const dir = mkTmp('eldmoor-save-');
 const file = join(dir, 'save.json');

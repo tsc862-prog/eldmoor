@@ -149,6 +149,17 @@ export function ctxSection(T, tableFn) {
   L.push(tableFn(['mind', 'prompt size', 'turns', 'seats', 'cost per turn', 'cost'], [...by.values()].sort((a, b) => a.mind.localeCompare(b.mind) || a.band[0] - b.band[0]).map(r => [r.mind, r.band[2], r.n, r.seats.size, money(r.cost / r.n), money(r.cost)])), '');
   return L;
 }
+// Issue #808: lazy tools against all tools in the prompt, for a live test of AGENT_LAZY_TOOLS. The prompt floor is the number to read: it moves by the size of the deferred
+// schemas whatever the run, where dollars need hours to rise above their noise. Absent until a lazy turn is logged.
+export function toolLoadSection(T, tableFn) {
+  const rows = T.filter(t => t.provider === 'anthropic' && /^hero:/.test(String(t.seat)) && Number.isFinite(t.ctx));
+  if (!rows.some(t => (t.flags || []).includes('lazy-tools'))) return [];
+  const by = new Map(); for (const t of rows) {const way = (t.flags || []).includes('lazy-tools') ? 'lazy' : 'all in the prompt', k = t.model + '|' + way; let r = by.get(k); if (!r) by.set(k, r = {model: t.model, way, n: 0, ctx: [], calls: 0, search: 0, cost: 0, used: new Map()}); r.n++; r.ctx.push(t.ctx); r.cost += t.cost || 0;
+    const tools = t.tools || [], s = tools.findIndex(x => x.name === 'ToolSearch'); r.calls += tools.length; r.search += tools.filter(x => x.name === 'ToolSearch').length; if (s >= 0) for (const x of tools.slice(s + 1)) if (x.name !== 'ToolSearch' && x.name !== 'wait') r.used.set(x.name, (r.used.get(x.name) || 0) + 1)}
+  const L = ['## Tool loading', '', 'Hero Claude turns with every tool schema in the prompt and with lazy tools (AGENT_LAZY_TOOLS). The floor is the smallest prompt a turn ended on: it should drop by the deferred schemas. Lookups should stay well under 0.3 a turn; "after a lookup" lists what was called after one.', ''];
+  L.push(tableFn(['tools', 'model', 'turns', 'prompt floor', 'prompt p50', 'calls a turn', 'lookups a turn', 'after a lookup', 'cost per turn'], [...by.values()].sort((a, b) => a.way.localeCompare(b.way)).map(r => [r.way, r.model, r.n, kTok(Math.min(...r.ctx)), kTok(pctile(r.ctx, 50)), r1(r.calls / r.n), r1(r.search / r.n), [...r.used.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(([n, c]) => n + ' ' + c).join(', ') || '-', money(r.cost / r.n)])), '');
+  return L;
+}
 export function mindSection(T, D, W, tableFn, A = []) {
   const c = compareMinds(T, D, W, A), L = [];
   L.push('## Mind comparison', '');

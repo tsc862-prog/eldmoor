@@ -10,7 +10,7 @@
 // Owned by world-builder (routines and reactions); names and sprites by
 // character-builder; lines by lore-keeper. Canon: docs/LORE.md, "Townsfolk".
 import {pickA} from '../core/rng.js';
-import {keep} from './kept.js';
+import {keep,onWorld} from './kept.js';
 import {CITY,ZONES,dist} from '../world/map.js';
 import {gatheringFor} from './crypts.js';
 import {solidAt,standAt} from '../world/passable.js';
@@ -46,12 +46,14 @@ const fill=(s,p,ctx)=>s.replace(/\{(\w+)\}/g,(_,k)=>k==='name'?p.name:k==='town'
 const hour=()=>(S.gameMin/60)%24;
 const atWork=R=>{if(!R.hours)return true;const h=hour(),[o,c]=R.hours;return c>o?h>=o&&h<c:h>=o||h<c};
 
-const cityCache={};
+let cityCache={};
+onWorld(()=>{cityCache={}},()=>({npcCityStale:Object.values(cityCache).filter(c=>!CITY.includes(c)).length})); // another map (#1013)
 const cityOf=p=>cityCache[p.town]||(cityCache[p.town]=CITY.find(c=>c.name===p.town)||CITY[0]);
 export const townNpc=(c,role)=>(S.npcs||[]).find(p=>p.town===c.name&&p.role===role)||null;
 
 // Homes: a row along the back wall (opposite the gate), spread over the interior.
 function homeAt(c,i,n){const f=(i+.5)/n,g=c.gateSide;
+  if(c.homes){const [[ax,ay],[bx,by]]=c.homes;return{x:c.x0+ax+(bx-ax)*f,y:c.y0+ay+(by-ay)*f}} // a town whose back wall is all roofs says which lane they live on
   if(g==='E')return{x:c.x0+1.5,y:c.y0+1.5+f*(c.h-3)};
   if(g==='W')return{x:c.x1-1.5,y:c.y0+1.5+f*(c.h-3)};
   if(g==='S')return{x:c.x0+1.5+f*(c.w-3),y:c.y0+1.5};

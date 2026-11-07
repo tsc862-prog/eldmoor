@@ -29,8 +29,8 @@ ROAD_COST[ROAD]=.4;ROAD_COST[BRIDGE]=.4;ROAD_COST[FLOOR]=Infinity;ROAD_COST[WALL
 
 // ---- curves: t -> integer threshold.
 function compileCurve(c){
-  const sin=c.sin||[],nz=c.noise;
-  return t=>{let v=0;for(const [p,a,ph=0] of sin)v+=Math.sin(t/p+ph)*a;
+  const sin=c.sin||[],nz=c.noise,wp=c.warp; // warp {at, by} (a world widened in the middle, #979): from `at` on the curve reads the line `by` columns back
+  return t=>{if(wp&&t>=wp.at)t-=wp.by;let v=0;for(const [p,a,ph=0] of sin)v+=Math.sin(t/p+ph)*a;
     if(nz)v+=((c.axis==='y'?vnoise(nz.slice,t/nz.scale,nz.seed):vnoise(t/nz.scale,nz.slice,nz.seed))-.5)*nz.amp;
     return c.base+Math.round(v)}}
 
@@ -85,7 +85,7 @@ function planBuildings(t,gateTiles){
     return{piece:P.piece,box:[l,tp,w,h],door,serves:P.serves||null,draw:d}})}
 function mkTown(t){
   const x0=t.x0,y0=t.y0,x1=x0+t.w-1,y1=y0+t.h-1,g=t.gate||'E';
-  const mx=Math.floor(t.w/2),my=Math.floor(t.h/2); // middle wall tile; the gate is this tile and the next
+  const mx=t.gateAt!=null?t.gateAt:Math.floor(t.w/2),my=t.gateAt!=null?t.gateAt:Math.floor(t.h/2); // middle wall tile (or the spec's `gateAt`, tiles from the corner); the gate is this tile and the next
   let gateTiles,gate;
   if(g==='E'){gateTiles=[[x1,y0+my],[x1,y0+my+1]];gate={x:x1+1.8,y:y0+my+1}}
   else if(g==='W'){gateTiles=[[x0,y0+my],[x0,y0+my+1]];gate={x:x0-.8,y:y0+my+1}}
@@ -96,8 +96,13 @@ function mkTown(t){
     spots[k]=o?{x:x0+o[0],y:y0+o[1]}:spotAt(t,SPOT_DEFAULTS[k][0],SPOT_DEFAULTS[k][1])}
   for(const k in t.spots||{})if(!spots[k])spots[k]={x:x0+t.spots[k][0],y:y0+t.spots[k][1]};
   for(const k of Object.keys(spots)){const b=buildings.find(q=>q.serves===k);if(b)spots[k]={x:b.door[0]+.5,y:b.door[1]+.5}} // the keeper stands at the door
-  return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,buildings,...(t.wall?{wall:t.wall}:{}),...(t.ground?{ground:t.ground}:{}),
-    spots,npcs:t.npcs||null,ah:spots.quartermaster,qg:spots.gate,gate,grave:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
+  return{name:t.name,fac:t.fac,race:t.race===undefined?null:t.race,x0,x1,y0,y1,w:t.w,h:t.h,gateSide:g,gateTiles,buildings,...(t.wall?{wall:t.wall}:{}),...(t.ground?{ground:t.ground}:{}),...(t.notch?{notch:t.notch}:{}),...(t.homes?{homes:t.homes}:{}),
+    spots,npcs:t.npcs||null,ah:spots.quartermaster,qg:spots.gate,gate,grave:t.grave?{x:x0+t.grave[0],y:y0+t.grave[1]}:{x:x1-1.5,y:y0+6.2},dx:x0-2,dy:y0-2}}
+// A spec town's outline (#979): `notch: [[dx,dy,w,h], ...]` are rects at its edge left outside the walls, so the wall ring steps round them.
+// The town's x0..y1 stay its bounds, which is all the sim asks of it. With no notch this is the plain rectangle.
+const OPEN_GROUND={fen:SGRASS,ash:ROCK,tundra:SNOW}; // what a felled tree leaves, by biome (else grass)
+export const outsideTown=(c,x,y)=>x<c.x0||x>c.x1||y<c.y0||y>c.y1||(c.notch||[]).some(([dx,dy,w,h])=>x>=c.x0+dx&&x<c.x0+dx+w&&y>=c.y0+dy&&y<c.y0+dy+h);
+export function townRing(c,x,y){if(outsideTown(c,x,y))return false;for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++)if(outsideTown(c,x+i,y+j))return true;return false}
 
 // ---- roads
 // Paint a polyline: river tiles become bridges, everything but town tiles becomes road.
@@ -174,9 +179,14 @@ export function buildWorld(spec){
   // towns
   const CITY=(spec.towns||[]).map(mkTown);
   for(const c of CITY){
-    for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++)
-      tiles[I(x,y)]=(x===c.x0||x===c.x1||y===c.y0||y===c.y1)?WALL:FLOOR;
+    for(let y=c.y0;y<=c.y1;y++)for(let x=c.x0;x<=c.x1;x++)if(!outsideTown(c,x,y))
+      tiles[I(x,y)]=townRing(c,x,y)?WALL:FLOOR;
     for(const [gx,gy] of c.gateTiles)tiles[I(gx,gy)]=FLOOR}
+  // spec town `clear: n` (#979): no trees within n tiles south of the walls, nor two either side and one north, nor in its notches, because a tree's crown stands
+  // three tiles over its root and would hide the wall and the street behind it. Absent, nothing changes.
+  (spec.towns||[]).forEach((t,i)=>{const c=CITY[i];if(!t.clear)return;
+    for(let y=Math.max(0,c.y0-1);y<=Math.min(h-1,c.y1+t.clear);y++)for(let x=Math.max(0,c.x0-2);x<=Math.min(w-1,c.x1+2);x++){
+      if(tiles[I(x,y)]===TREE&&outsideTown(c,x,y))tiles[I(x,y)]=OPEN_GROUND[regions[zone[I(x,y)]].biome]??G}});
   // A town's streets and approaches (epic #940 slice C): spec town `ground: [[dx,dy,w,h], ...]`, rects from the town's top-left
   // corner, laid as ROAD over anything but wall, water and a building's footprint (inside the walls this turns floor into street;
   // outside it is a causeway or quay). Absent, nothing is painted: Eldmoor and Stepping build as before.
@@ -215,7 +225,18 @@ export function buildWorld(spec){
   const world={tiles,zone,I,w,h};
   const named=k=>{const c=CITY.find(t=>t.name===k);if(c)return[c.gate.x,c.gate.y];
     const l=LANDMARKS.find(t=>t.name===k);if(l)return[l.x,l.y];
+    const ex=EXITS.find(t=>t.id===k);if(ex)return[Math.min(w-1,Math.floor(ex.x)),Math.min(h-1,Math.floor(ex.y))];
     const p=(spec.points||{})[k];if(p)return p;throw new Error('world spec: unknown road endpoint '+k)};
+  // exits (#1013): where a road leaves this map. `at` {x,y,r} is a spot; `edge` {side:N|S|E|W,from,to} is a stretch of the map's outer
+  // ring of tiles, painted road, whose middle is the spot. Plain data; nothing in the sim targets one yet.
+  const EXITS=(spec.exits||[]).map(e=>{
+    if(e.at){return{id:e.id,name:e.name,to:{...e.to},x:e.at.x,y:e.at.y,r:e.at.r===undefined?2:e.at.r,edge:null}}
+    const d=e.edge,s=String(d&&d.side).toUpperCase(),lo=Math.min(d.from,d.to),hi=Math.max(d.from,d.to),mid=(lo+hi+1)/2;
+    if(!'NSEW'.includes(s)||s.length!==1)throw new Error('world spec: exit '+e.id+' has no side');
+    const tiles2=[];for(let k=lo;k<=hi;k++)tiles2.push(s==='N'?[k,0]:s==='S'?[k,h-1]:s==='W'?[0,k]:[w-1,k]);
+    for(const [x,y] of tiles2){if(x<0||y<0||x>=w||y>=h)throw new Error('world spec: exit '+e.id+' leaves the map');tiles[I(x,y)]=ROAD}
+    const x=s==='N'||s==='S'?mid:s==='W'?.5:w-.5,y=s==='W'||s==='E'?mid:s==='N'?.5:h-.5;
+    return{id:e.id,name:e.name,to:{...e.to},x,y,r:Math.max(2,(hi-lo+1)/2),edge:{side:s,from:lo,to:hi}}});
   const ROUTES=[];
   for(const r of spec.roads||[]){
     if(Array.isArray(r)){paintPolyline(world,r);continue}
@@ -259,7 +280,7 @@ export function buildWorld(spec){
 
   // lights and labels
   const LIGHTS=[];const torch=(spec.lights&&spec.lights.townTorches)||[];
-  for(const c of CITY)for(const [dx,dy] of torch)LIGHTS.push({x:c.x0+dx,y:c.y0+dy});
+  (spec.towns||[]).forEach((t,i)=>{const c=CITY[i];for(const [dx,dy] of t.torches||torch)LIGHTS.push({x:c.x0+dx,y:c.y0+dy})});
   for(const l of LANDMARKS)if(l.light)LIGHTS.push({x:l.x,y:l.y,...l.light});
   for(const p of (spec.lights&&spec.lights.points)||[])LIGHTS.push({...p}); // braziers, embers: free-standing lights named by the spec
   const LABELS=spec.labels?spec.labels.map(l=>[...l]):[
@@ -269,6 +290,6 @@ export function buildWorld(spec){
   const OUTPOSTS=(spec.outposts||[]).map(o=>({id:o.id,name:o.name,x:o.x,y:o.y,r:o.r||3.5,z:zoneAt(o.x,o.y)})); // contested outposts (#11): data only, never painted
   const NODES=placeNodes({tiles,zone,w,h,I,REGIONS:regions,CITY,LANDMARKS,land,mainLand},spec); // gathering nodes (#255): an overlay list, not tiles
   return{name:spec.name,w,h,I,tiles,zone,NODES,curves:Object.fromEntries(Object.keys(curves).map(k=>[k,curves[k].fn])),
-    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT:CRYPTS[0]||null,CRYPTS,ROUTES,OUTPOSTS,
+    REGIONS:regions,ZONES:regions.map(r=>r.name),CITY,LANDMARKS,LAIR,CRYPT:CRYPTS[0]||null,CRYPTS,ROUTES,OUTPOSTS,EXITS,
     zoneFor,zoneAt,tileAt,ZPTS,zonePoint,LIGHTS,LABELS,solid,land,mainLand,fords,
     road:pts=>paintPolyline(world,pts)}}

@@ -43,6 +43,7 @@ import {FAC} from '../src/data/factions.js';
 import {attachPlay, PLAY_LOG} from './relay-mcp.mjs'; // agent player: /mcp, /play (issue #75)
 import {attachRunners} from './runners.mjs';
 import {semanticRecall, embedConfig, embedStatus} from './embed.mjs'; // semantic memory search (issue #553)
+import {ttsFromEnv, ttsOff} from './providers/tts.mjs'; // narrator voice: a local speech engine, loopback only (issue #554)
 import {memoryMirror} from './memory-mirror.mjs'; // agent memories mirrored as Markdown (issue #155)
 import {behaviorLog} from './behavior-log.mjs'; // behavior logs for the watcher (issue #129) // app runners: the page starts and stops agent runners (--runners)
 import {makeProviders, PROVIDERS, isLocal, MODEL_RE, DEFAULT_MODEL, PRICES, costOf} from './providers/index.mjs';
@@ -158,7 +159,7 @@ const cap = (t, n = ECHO_MAX) => t.length > n ? t.slice(0, n) + '…[cut]' : t;
 // limits: {provider: makeLimiter()} (default: Anthropic at ANTHROPIC_CONCURRENCY); {} turns limiting off.
 // onDecide({kind, hero, provider, model, ok, status, ms, cost?, tokensIn?, tokensOut?, choice?, error?}): every /decide call as answered, for the
 // behavior logs (issue #129, scripts/behavior-log.mjs relayDecision); never the prompt, the reply text or a key.
-export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null, providers = null, localTimeout = LOCAL_TIMEOUT, limits = makeLimits(), onDecide = null} = {}) {
+export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MODEL, origin = DEV_ORIGIN, log = console.log, timeoutMs = TIMEOUT_MS, verbose = null, providers = null, localTimeout = LOCAL_TIMEOUT, limits = makeLimits(), onDecide = null, tts = null} = {}) {
   providers = providers || makeProviders({anthropicClient: client || null, model});
   const stats = {requests: 0, errors: 0, inTok: 0, outTok: 0, cost: 0, byProvider: {}};
   const vlog = rec => {
@@ -210,6 +211,7 @@ export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MOD
     const out = {};
     for (const name of PROVIDERS) {const P = providers[name]; if (!P) continue;
       try {out[name] = {...await P.status(), local: isLocal(name)}} catch (e) {out[name] = {ok: false, models: [], local: isLocal(name), error: String(e.message || e).slice(0, 80)}}}
+    if (tts) {try {const t = await tts.status(); out.tts = {engine: t.engine, voices: t.voices, ready: t.ok, error: t.error}} catch {}} // issue #554
     return out;
   }
 
@@ -227,6 +229,7 @@ export function createRelay({client, model = DEFAULT_MODEL, kindModel = KIND_MOD
     }
     const queues = () => Object.fromEntries(Object.entries(limits || {}).map(([k, l]) => [k, l.stats()])); // depth, in flight, 429s, dropped
     if (req.method === 'GET' && req.url === '/health') return void providerStatus().then(p => send(200, {ok: true, model, ...stats, providers: p, localTimeout, queues: queues()}), () => send(200, {ok: true, model, ...stats, queues: queues()}));
+    if (tts && /^\/tts(\/|\?|$)/.test(req.url) && tts.route(req, res, send, origin_ === origin ? {'access-control-allow-origin': origin, vary: 'origin'} : {})) return; // narrator voice (#554)
     if (req.method !== 'POST' || req.url !== '/decide') return send(404, {error: 'not found'});
     let size = 0; const chunks = [];
     req.on('data', c => {size += c.length; if (size > MAX_BODY) {send(413, {error: 'too large'}); req.destroy()} else chunks.push(c)});
@@ -265,7 +268,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const limits = makeLimits(env);
   // Behavior logs (issue #129): logs/behavior/<world>/ (the world the game page names); off with --no-behavior or RELAY_BEHAVIOR=0.
   const behavior = process.argv.includes('--no-behavior') || /^(0|false|no|off)$/i.test(env.RELAY_BEHAVIOR || '') ? null : behaviorLog({world: env.ELDMOOR_WORLD || 'eldmoor', log: console.log});
-  const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose, providers, localTimeout, limits, onDecide: behavior ? behavior.relayDecision : null});
+  const tts = ttsOff(env) ? null : ttsFromEnv(env); // RELAY_TTS=0 turns the narrator voice off
+  const {server} = createRelay({client, model, kindModel, origin: env.RELAY_ORIGIN || DEV_ORIGIN, verbose, providers, localTimeout, limits, onDecide: behavior ? behavior.relayDecision : null, tts});
   // Agent memories (issue #155): logs/agents/<world>/<hero>/memory/*.md from the page's notebooks; off with --no-mirror or RELAY_MIRROR=0.
   const mirror = process.argv.includes('--no-mirror') || /^(0|false|no|off)$/i.test(env.RELAY_MIRROR || '') ? null : memoryMirror({world: env.ELDMOOR_WORLD || 'eldmoor', log: console.log});
   // Semantic memory search (issue #553): recall and journal_search ranked by meaning with a local embedding model (OLLAMA_EMBED_MODEL, default nomic-embed-text); RELAY_EMBED=0 turns it off; keywords rank when the model is not pulled.
@@ -289,6 +293,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.log(`[relay] listening on http://127.0.0.1:${port}  model ${model}  origin ${env.RELAY_ORIGIN || DEV_ORIGIN}${verbose ? '  verbose -> ' + verbose : ''}${behavior ? '  behavior logs -> ' + behavior.dir() : ''}`);
     console.log(runnersOn ? '[relay] app runners ON: the game page can start and stop agent runners (logs in logs/runners/)' : '[relay] app runners off (start with --runners to launch agent runners from the game page)');
     if (runnersOn && (process.argv.includes('--resume-runners') || /^(1|true|yes)$/i.test(env.RELAY_RESUME_RUNNERS || ''))) sup.resume().catch(e => console.log('[runners] resume failed: ' + e.message)); // the last run's runners, once the page is back
+    if (tts) tts.status().then(o => console.log(o.ok ? `[relay] narrator voice: ${o.engine} at ${o.url}, ${o.voices.length} voices, clips cached in logs/tts/` : '[relay] ' + o.hint)); else console.log('[relay] narrator voice off (RELAY_TTS=0)');
     embedStatus(providers.ollama, embedCfg).then(o => console.log('[relay] ' + o.line));
     providers.ollama.status().then(o => console.log(`[relay] ollama at ${o.url}: ${o.ok ? (o.models.length ? o.models.join(', ') : 'reachable, no models pulled') : o.error} | num_ctx ${o.numCtx} for every local call (OLLAMA_NUM_CTX)`));
     if (providers.google && providers.google.configured()) providers.google.status().then(o => console.log(`[relay] google (Gemini, ${providers.google.tier || 'free'} tier): ${o.ok ? (o.models.length ? o.models.length + ' chat models' + (o.default ? ', default ' + o.default : '') : 'no chat model listed') : o.error}${(Number(env.RELAY_GOOGLE_RPM) || 0) ? ' | at most ' + Number(env.RELAY_GOOGLE_RPM) + ' calls a minute (RELAY_GOOGLE_RPM)' : ''}`));

@@ -271,7 +271,7 @@ console.log('Agents panel');
 // Quieter bars (#145): the viewing switches in Settings, Save/Load/... under one World menu
 console.log('bars');
 {const bar=document.querySelector('.bar');const visible=bar.querySelectorAll('button').filter(b=>{for(let e=b;e&&e!==bar;e=e.parentNode){if(e.hidden)return false;if(e.tagName==='DETAILS'&&!e.open&&e!==b.parentNode)return false;if(e.tagName==='DIV'&&e.classList.contains('wdrop')&&!e.parentNode.open)return false}return true});
-  ok(visible.length<=10,'the bar under the map shows '+visible.length+' buttons (was 17 with a Fellowship)');
+  ok(visible.length<=11,'the bar under the map shows '+visible.length+' buttons (was 17 with a Fellowship; 11 with Cinema, #979)');
   const wm=$('wmenu');ok(wm&&!wm.open&&wm.contains($('wSave'))&&wm.contains($('wNew')),'Save, Load, Export, Import and New world fold under the World menu');
   const sp=$('setPop'),sb=$('setBtn');ok(sp.contains($('vTab'))&&sp.contains($('vRal'))&&sp.contains($('vSnd'))&&sp.contains($('wDev'))&&sp.contains($('vChat')),'the viewing switches live in Settings');
   sb.click();ok(!sp.hidden&&sb.getAttribute('aria-expanded')==='true','Settings opens');
@@ -456,6 +456,10 @@ console.log('run gate');
   ok(sim.reflexMay&&sim.reflexMay(m3),'reflexes may decide for the member without a runner in that mode');
   gate.setRunFree(false);gate.checkRunGate(T0+232000);ok(ctl.held,'switching it off closes the gate again');
   ok(!$('ralert').textContent.includes('Resume')&&!document.querySelectorAll('[data-ralert]').length,'no "Resume without it" any more');
+  // a member of another company counts too: an heir or recruit of a company that fell to the last holds the world and is named
+  {const SO=sim.S.agents.find(x=>x.kind==='hero'&&x.state!=='dead'&&!SLT.inSlots(x)&&!x.player);sim.markPlayer(SO,true);gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>dm});L[m3.id]='connected';
+   gate.checkRunGate(T0+240000);ok(ctl.held&&box.textContent.includes(SO.name),'a hero of a company of its own with no runner holds the world, by name');
+   L[SO.id]='connected';gate.checkRunGate(T0+241000);ok(!box.textContent.includes(SO.name),'and is off the bar once its runner holds it');sim.markPlayer(SO,false);delete L[SO.id]}
   gate.setGateProbe(null);L[m3.id]='connected'}
 
 // The start gate (#222): connected is not enough; every seat must have answered one warm-up model call
@@ -474,6 +478,7 @@ console.log('start gate: ready, not just claimed');
   ok(ctl.held&&!gate.gateMissing().some(m=>m.hero===down.id)&&box.textContent.includes(slow.name),'a failed warm-up whose runner is there counts as active (owner, #559): only the seat still warming holds');
   gate.startAnyway();
   ok(!ctl.held&&box.hidden,'Start anyway releases the world');
+  ok(gate.seatWaived(slow)&&!gate.seatWaived(F[0]),'and waives just the seats that held it, so their members may answer by reflex');
   R[slow.id]={state:'ready',at:0};gate.checkRunGate(T0+3000);ok(!ctl.held,'it stays released as seats get ready');
   L[down.id]='none';gate.checkRunGate(T0+4000);gate.checkRunGate(T0+40000);
   L[down.id]='connected';R[down.id]=null;gate.checkRunGate(T0+41000);
@@ -1185,13 +1190,29 @@ console.log('the DM prepares the table');
   S.raidOn[0]=true;B.hp=B.maxhp*.6;B.breath=1.2;rv.trackRaid();st=dv.refreshDungeon();
   ok(st.phase==='raid'&&st.engaged===4&&st.approach===1&&/60%/.test(st.status)&&/4 fighting, 1 on the way/.test(st.status)&&/Cinder Breath in 2 s/.test(st.status),'raid arena: the boss’s HP, who fights and who walks in, the breath to come ('+st.status+')');
   ok(st.raiders.filter(r=>r.eng).every(r=>[IT.FLOOR,IT.DAIS].includes(at(r.x,r.y)))&&[IT.HALL,IT.STAIR,IT.FLOOR].includes(at(st.raiders[4].x,st.raiders[4].y)),'raid arena: the fighters stand on the floor round the wyrm, the late one on the causeway');
-  ok(lis().length===5&&lis().every(li=>li.classList.contains('raider'))&&/CONCORD RAID|RAID/.test(box().querySelector('.dgname').textContent),'raid arena: one row per raider on the bar ('+box().querySelector('.dgname').textContent+')');
+  ok(lis().filter(li=>!li.classList.contains('add')).length===5&&lis().filter(li=>!li.classList.contains('add')).every(li=>li.classList.contains('raider'))&&/CONCORD RAID|RAID/.test(box().querySelector('.dgname').textContent),'raid arena: one row per raider on the bar ('+box().querySelector('.dgname').textContent+')');
   let d=rv.raidDetail('boss',st);ok(d&&/HP \d+\/\d+/.test(d.stateText)&&d.foes.some(t=>/Phase: /.test(t))&&d.foes.some(t=>/Next Cinder Breath/.test(t))&&d.foes.some(t=>/No adds|adds? in the lair/.test(t)),'raid arena: the boss detail (HP, phase, breath, adds): '+d.foes.join(' | '));
   lis()[0].click();ok(!box().querySelector('.dgpin').hidden&&box().querySelector('.dgpin').textContent.includes(crew[0].name)&&/Fighting/.test(box().querySelector('.dgpin').textContent),'raid arena: a click on a raider pins its detail');
   lis()[0].click();ok(box().querySelector('.dgpin').hidden,'raid arena: a second click unpins it');
   crew[1].raid=false;crew[2].state='dead';rv.trackRaid();st=dv.refreshDungeon();
   ok(st.gone.some(g=>g.why==='broke'&&g.id===crew[1].id)&&st.gone.some(g=>g.why==='fell'&&g.id===crew[2].id)&&st.falls.length===1&&/1 broke off/.test(st.status)&&/1 fell/.test(st.status),'raid arena: who broke off and who fell ('+st.status+')');
   ok(lis().some(li=>li.classList.contains('lost')&&li.textContent.includes(crew[2].name))&&lis().some(li=>/fled/.test(li.textContent)),'raid arena: the bar marks the fled and the fallen');
+  // a raider at zero HP (sim/downed.js clears a.raid): down in the lair, not fled; then dead (a fall) or up again (lived)
+  const lay=(a,dn)=>{a.state='downed';a.raid=false;a.hp=0;a.down=dn};lay(crew[3],{s:1,f:2,stable:false});rv.trackRaid();st=dv.refreshDungeon();
+  ok(st.down.length===1&&st.down[0].id===crew[3].id&&st.down[0].here&&!st.gone.some(g=>g.id===crew[3].id)&&/1 down/.test(st.status)&&/1 broke off/.test(st.status),'raid arena: a downed raider lies in the lair, not among the fled ('+st.status+')');
+  ok(st.down[0].s===1&&st.down[0].f===2&&/1 of 3 saves made, 2 of 3 failed/.test(rv.raidDetail(crew[3].id,st).stateText)&&lis().some(li=>li.classList.contains('down')&&/\(down\)/.test(li.textContent)&&li.textContent.includes(crew[3].name)),'raid arena: its saves in the detail and its row on the bar');
+  ok(st.down[0].reach&&/reach of Cinder Breath/.test(rv.raidDetail(crew[3].id,st).notes.join(' ')),'raid arena: the breath’s reach over the downed is named');
+  select(crew[3]);uiFast();ok([...$('hero').querySelectorAll('.dglink')].some(b=>/raid/i.test(b.textContent)&&b.dataset.dungeon===L.name),'raid arena: the hero card of a downed raider still has View the raid');
+  crew[3].state='dead';rv.trackRaid();st=dv.refreshDungeon();ok(!st.down.length&&st.falls.some(q=>q.id===crew[3].id)&&/2 fell/.test(st.status),'raid arena: a downed raider who dies is a fall ('+st.status+')');
+  crew[3].state=was[3].state;delete crew[3].down;
+  lay(crew[4],{s:0,f:0,stable:true});rv.trackRaid();st=dv.refreshDungeon();ok(st.down.length===1&&st.down[0].stable&&lis().some(li=>/\(stable\)/.test(li.textContent)),'raid arena: a stable raider reads stable');
+  crew[4].state='town';crew[4].hp=10;delete crew[4].down;rv.trackRaid();st=dv.refreshDungeon();ok(st.gone.some(g=>g.why==='rose'&&g.id===crew[4].id)&&!st.falls.some(q=>q.id===crew[4].id)&&lis().some(li=>/\(up\)/.test(li.textContent)),'raid arena: a downed raider who gets up lived');
+  // adds on the bar, a boss's phase marks (Kragmaw has none), and a boss scene opens the arena as a crawl opens the dungeon
+  const add=S.mobs.find(x=>x.alive&&!x.hidden),ax={x:add.x,y:add.y};add.x=L.x+1;add.y=L.y+1;st=dv.refreshDungeon();ok(st.adds.some(q=>q.e===add)&&lis().some(li=>li.classList.contains('add')),'raid arena: an add has its row on the bar');add.x=ax.x;add.y=ax.y;
+  ok(st.boss.marks.length===0,'raid arena: Kragmaw’s one phase leaves its bar unmarked');B.tpl='vesk';st=dv.refreshDungeon();ok(st.boss.marks.join()==='0.55,0.2','raid arena: a template’s later phases mark the bar ('+st.boss.marks.join()+')');B.tpl='kragmaw';st=dv.refreshDungeon();
+  {const sv=await import('../src/render/sceneview.js'),sp=sv.sceneSpec({kind:'boss',ids:crew.map(a=>a.id),ctx:{},title:'Kragmaw',beats:[]});ok(sp&&sp.mode==='dungeon'&&sp.dungeon===L,'raid arena: a boss scene opens the arena, not the outdoor cut');
+    const TB=await import('../src/ui/table.js'),T=await import('../src/sim/table.js'),keepT=S.table,sp0=T.TABLE.speed;S.table={id:9085,kind:'boss',title:'Kragmaw',frame:['The lair shakes.'],ids:crew.slice(0,2).map(a=>a.id),i:0,phase:'turn',t:0,acts:{},ctx:{},pause:true,at:0,rd:1,beats:[]};TB.renderTable(1);
+    ok([...$('tbanner').querySelectorAll('[data-dungeon]')].some(b=>b.dataset.dungeon===L.name&&/raid/i.test(b.textContent)),'raid arena: the Table banner of a boss scene has View the raid');S.table=keepT;TB.renderTable(1);T.TABLE.speed=sp0}
   // the hero card of a raider has View the raid; the timeline's raid lines have Inside
   crew[2].state=was[2].state;select(crew[0]);uiFast();const link=[...$('hero').querySelectorAll('.dglink')].find(b=>/raid/i.test(b.textContent));
   ok(!!link&&link.dataset.dungeon===L.name,'raid arena: the hero card of a raider has View the raid');
@@ -1233,6 +1254,41 @@ console.log('the DM prepares the table');
   ok(!sv.sceneOpen()&&box().hidden&&!$('screen').classList.contains('scopen'),'scene maps: Back to world closes it, and it stays closed for that scene');
   sv.openSceneView();ok(sv.sceneOpen(),'scene maps: it opens again by hand');S.table=null;sv.sceneTick(FOL);
   ok(!sv.sceneOpen(),'scene maps: the view returns to the world when the scene ends');
+  // a fight on the map patch (#746): the cut frames sc.fp, the ground is marked, the round plays as beats; no sc.fp leaves the old cut alone
+  {const {openPatch,patchGrid}=await import('../src/sim/patch.js'),{TABLE}=await import('../src/sim/table.js'),{SCENE}=await import('../src/render/palette.js'),{MOBS}=await import('../src/data/mobs.js');
+    const mob=S.mobs.find(m=>m.alive&&!m.hidden&&!m.elite&&MOBS[m.type]),mobWas={x:mob.x,y:mob.y,alive:mob.alive,hp:mob.hp};mob.x=m0.x+2;mob.y=m0.y-1;
+    const drawn=()=>{const c={image:0};return {c,ctx:new Proxy({},{get:(o,k)=>k in o?o[k]:k==='drawImage'?()=>{c.image++}:()=>{},set:(o,k,v)=>{o[k]=v;return true}})}},cam={dpr:1,sc:8,offX:0,offY:0},t0=1000;
+    // no sc.fp: the cut is what it was, and nothing is drawn on the ground
+    const plain=scene('ambush','Ambush',{mobs:[mob.id],anchor:m0.id});S.table=plain;sv.sceneTick(FOL,t0);let c0=sv.sceneCut();
+    const ents=mem.concat([mob]),xs=ents.map(e=>e.x),ys=ents.map(e=>e.y),bw=Math.max(...xs,m0.x)-Math.min(...xs,m0.x),bh=Math.max(...ys,m0.y)-Math.min(...ys,m0.y);
+    ok(!!c0&&c0.patch===null&&c0.w===Math.max(18,bw+9)&&c0.h===Math.max(11,bh+7)&&c0.cx===(Math.max(...xs)+Math.min(...xs))/2&&c0.cy===(Math.max(...ys)+Math.min(...ys))/2-.4,'patch: a scene with no sc.fp keeps the old cut ('+(c0&&c0.w)+'x'+(c0&&c0.h)+' tiles, no patch)');
+    {const d=drawn();sv.drawSceneRings(d.ctx,cam,c0);ok(d.c.image===0&&sv.scenePose(m0)===null&&sv.sceneQueue().length===0,'patch: no sc.fp, no ground marks and no poses')}
+    S.table=null;sv.sceneTick(FOL,t0);
+    // with sc.fp: the patch at scene scale
+    const sc=scene('ambush','Ambush',{mobs:[mob.id],anchor:m0.id});ok(openPatch(sc,mem,[mob],{x:m0.x,y:m0.y},f=>f.name||MOBS[f.type].name),'patch: the fight opens on a patch');
+    const fp=sc.fp,G=patchGrid(fp),stood=ents.map(e=>[e.x,e.y]);S.table=sc;sv.sceneTick(FOL,t0);const c1=sv.sceneCut();
+    ok(!!c1&&c1.patch===fp&&c1.w===fp.w+2&&c1.h===fp.h+2.5&&c1.cx-c1.w/2<=fp.ox&&c1.cx+c1.w/2>=fp.ox+fp.w&&c1.cy-c1.h/2<=fp.oy&&c1.cy+c1.h/2>=fp.oy+fp.h,'patch: sceneCut frames the patch with a small margin ('+(c1&&c1.w)+'x'+(c1&&c1.h)+' tiles for '+fp.w+'x'+fp.h+')');
+    {const far=mem[mem.length-1],was=far.x;far.x=fp.ox+fp.w+2.5;const c2=sv.sceneCut();ok(c2.w>c1.w&&c2.cx+c2.w/2>=far.x+.5&&c2.members.includes(far),'patch: the frame grows for one who stands outside the patch ('+c2.w+' tiles)');far.x=was;sv.sceneTick(FOL,t0)}
+    {const d=drawn();sv.drawSceneRings(d.ctx,cam,c1);const L=sv.patchLayer(G);ok(d.c.image===1&&L===sv.patchLayer(G)&&L.width===fp.w*64&&L.height===fp.h*64,'patch: the ground marks are one cached layer, one tile in 64 texels, drawn under the sprites');
+      ok(['grid','gridHi','patchEdge','cover','slow','hitHero','hitFoe'].every(k=>typeof SCENE[k]==='string')&&G.cost.length===fp.w*fp.h,'patch: the marks are palette tokens')}
+    // walking: a tile the sim wrote is walked to, not jumped; the world is never written
+    const P=sv.scenePose(m0),x0=m0.x,tick=(t,n=1,d=.05)=>{for(let i=0;i<n;i++){t+=d;sv.sceneTick(FOL,t)}return t};
+    ok(!!P&&P.x===m0.x&&P.y===m0.y,'patch: everyone starts where they stand');
+    m0.x=x0-2;let t=tick(t0,1);ok(P.x<x0&&P.x>x0-2&&P.walk,'patch: a tile move is eased (shown at '+(x0-P.x).toFixed(2)+' of 2)');t=tick(t,14);ok(P.x===m0.x&&!P.walk,'patch: and arrives');
+    // a strike: the lunge, the number held back until it lands, the foe falling after its killing blow
+    const hp=mob.hp;sc.beats.push({id:m0.id,name:m0.name,k:'strike',res:'d20 20+4=24 vs AC 12 (a natural 20): hit for 9',by:'agent',roll:{die:20,mod:4,total:24,vs:12,hit:true,crit:true,dmg:9,target:fp.foes[0].name,down:false}});mob.hp=hp-9;
+    t=tick(t,3);const F=sv.scenePose(mob);ok(sv.sceneQueue().join()==='strike'&&F.show===hp&&Math.hypot(P.x-m0.x,P.y-m0.y)>.05,'patch: a strike joins the queue, its HP held back, the striker lunges');
+    t=tick(t,6);ok(F.show===hp-9&&F.flash>0,'patch: the blow lands with a flash');t=tick(t,12);ok(sv.sceneQueue().length===0&&P.x===m0.x,'patch: and the striker is back on its tile');
+    sc.beats.push({id:'foe',name:fp.foes[0].name,k:'attack',res:'d20 1+2=3 vs AC 14 (a natural 1): missed',by:'foe',roll:{die:1,mod:2,total:3,vs:14,hit:false,crit:false,dmg:0,target:m0.name,down:false}});t=tick(t,12);
+    ok(F.tilt!==0,'patch: a foe’s natural 1 is a stumble');t=tick(t,16);
+    sc.beats.push({id:m0.id,name:m0.name,k:'strike',res:'hit',by:'agent',roll:{die:12,mod:4,total:16,vs:12,hit:true,crit:false,dmg:hp-9,target:fp.foes[0].name,down:true}});mob.hp=0;mob.alive=false;t=tick(t,1);
+    const fell=[];sv.sceneFallen(fell);ok(fell.includes(mob)&&F.fade===1,'patch: a slain foe stays drawn until its killing blow lands');t=tick(t,40);fell.length=0;sv.sceneFallen(fell);ok(!fell.includes(mob)&&F.fade===0,'patch: and falls away after it');
+    // at 8x the beats are skipped; a cold gap replays nothing
+    TABLE.speed=8;sc.beats.push({id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'});m0.x=x0;t=tick(t,1);ok(sv.sceneQueue().length===0&&P.x===m0.x,'patch: at 8x the beats are skipped and everyone snaps to their tile');TABLE.speed=1;
+    sc.beats.push({id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'});t=tick(t,1,5);ok(sv.sceneQueue().length===0,'patch: after a gap nothing is replayed');
+    // the last beats play out after the scene has gone, then the view closes
+    sc.beats.push({id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'},{id:m0.id,name:m0.name,k:'guard',res:'drew it on',by:'agent'});t=tick(t,1);S.table=null;sv.sceneTick(FOL,t);ok(sv.sceneOpen()&&!!sv.sceneCut().patch,'patch: the view holds while the last beats play');t=tick(t,30);ok(!sv.sceneOpen()&&sv.scenePose(m0)===null,'patch: and returns to the world once they have');
+    Object.assign(mob,mobWas);ents.forEach((e,i)=>{if(e!==mob&&e!==m0&&(e.x!==stood[i][0]||e.y!==stood[i][1]))ok(false,'patch: the view moved '+e.name)})}
   // a staged meeting in town: a room in a generated setting, with the person and the party
   const c=CITY[0];mem.forEach((a,k)=>{a.x=c.gate.x-1+k*.8;a.y=c.gate.y});
   const npc={id:++S.uid,kind:'npc',wander:true,role:'innkeeper',fac:c.fac,name:'Mara',title:'Innkeeper',x:c.gate.x+1,y:c.gate.y-1,state:'post',att:[],met:{}};S.wanderers=(S.wanderers||[]).concat([npc]);
@@ -1538,9 +1594,9 @@ console.log('the DM prepares the table');
     const d=pf[0].querySelector('.pfdot');ok(!!d&&/^pfdot d-(agent|autopilot|reflex|ai|scripted|quiet)$/.test(d.className)&&/Runner: /.test(d.title||'')&&/Agent|Autopilot|Reflex/.test(d.textContent),'frames: a mind dot ('+(d&&d.className)+', '+(d&&d.textContent)+') with the runner state as its tooltip')}
   {L.showDock('company');uiFast();const fb=$('felbody'),m=fb.querySelector('[data-fact="drawer:members"]');m.click();uiFast();
     ok(!!fb.querySelector('[data-runact]'),'Company tab: the runner Start / Stop lives in Members and minds');fb.querySelector('[data-fact="drawer:members"]').click();uiFast()}
-  // the View bar: the Intent icons switch joins it at this width; the cap rises to 11 above 2560 px only
+  // the View bar: the Intent icons switch joins it at this width; the cap rises to 12 above 2560 px only (Cinema joined it, #979)
   {const bar_=document.querySelector('.bar'),vis=bar_.querySelectorAll('button').filter(b=>{for(let e=b;e&&e!==bar_;e=e.parentNode){if(e.hidden)return false;if(e.tagName==='DETAILS'&&!e.open&&e!==b.parentNode)return false}return true});
-    ok($('vIcons').parentNode===$('zOut').parentNode&&vis.length<=11,'3440 px: Intent icons sit on the View bar ('+vis.length+' buttons, cap 11 above 2560 px)')}
+    ok($('vIcons').parentNode===$('zOut').parentNode&&vis.length<=12,'3440 px: Intent icons sit on the View bar ('+vis.length+' buttons, cap 12 above 2560 px)')}
   // a button budget for the default view: header, frames, bar and the open dock tab
   {L.showDock('company');uiFast();const shown=b=>{for(let e=b;e&&e!==document.body;e=e.parentNode){if(e.hidden||(e.classList&&e.classList.contains('doff')))return false;if(e.tagName==='DETAILS'&&!e.open&&e!==b.parentNode)return false;if(e.id==='setPop'||e.id==='agentsPop'||e.id==='sheetov')return false;if(e.classList&&e.classList.contains('wdrop'))return false}return true};
     const n=document.body.querySelectorAll('button').filter(shown).length;ok(n<=25,'3440 px default view: '+n+' buttons visible (at most 25)')}
@@ -1656,6 +1712,10 @@ console.log('page watchdog');
   if(m&&a){const st=a.state,ta=a.target;a.state='fight';a.target=m;uiFast();ok(shape().join('|')===before.join('|'),'frames: a fight changes no part of the row');a.state=st;a.target=ta;uiFast()}
   ok(/\.dmf\.calm \.dmfact/.test(css)&&/data-dmmore/.test(fs.readFileSync(new URL('../src/ui/dmframe.js',import.meta.url),'utf8')),'dm bar: counters hidden while calm, Details button expands')}
 // the activity line names a DM-made site, never the Crypt (#917)
+// sides as lore (#1025): the Factions panel and the Honor row hide, honour is still counted
+{const P=await import('../src/ui/panels.js'),st=sim.S.setup,sec=document.createElement('section'),g=document.createElement('div');g.id='facs';sec.append(g);document.body.append(sec);const was=globalThis.document.getElementById;
+  document.getElementById=id=>id==='facs'?g:was.call(document,id);P.renderFacs();ok(!sec.hidden&&g.childNodes.length>0,'sides: the Factions table shows in a world with sides');
+  sim.S.setup={...(st||{}),sides:'lore'};P.renderFacs();ok(sec.hidden===true,'sides as lore: the Factions panel is hidden');sim.S.setup=st;P.renderFacs();ok(!sec.hidden,'and back with the setting gone');document.getElementById=was;sec.remove&&sec.remove()}
 {const {doing}=await import('../src/ui/panels.js');const a=sim.S.agents.find(x=>x.state!=='dead'&&!x.player&&!x.adv);
   if(a){const keep={st:a.state,hid:a.hidden,si:a.siteIn},L=(sim.S.sites||(sim.S.sites={seq:0,list:[]})).list,fake={id:9917,name:'The Ashen Vault',boss:'Orrik',bossTitle:'the Keeper',state:'open'};L.push(fake);
     a.state='dungeon';a.siteIn=9917;a.hidden=true;let t=doing(a);ok(/Ashen Vault/.test(t)&&/Orrik/.test(t)&&!/Sunken Crypt/.test(t),'hero card: inside a site names the site ('+t+')');
@@ -1663,5 +1723,60 @@ console.log('page watchdog');
     fake.raid=true;a.hidden=true;t=doing(a);ok(/^Raiding The Ashen Vault/.test(t),'hero card: a raid site reads as a raid ('+t+')');
     delete a.siteIn;t=doing(a);ok(/Sunken Crypt/.test(t),'hero card: the Crypt reads as before ('+t+')');
     L.pop();a.state=keep.st;a.hidden=keep.hid;if(keep.si!=null)a.siteIn=keep.si}}
+// ---- #979: the cinema view: in and out leaves the page as it was, the key, the gate over it, the director's moves ----
+console.log('cinema view');
+{const C=await import('../src/ui/cinema.js'),{cam}=await import('../src/render/draw.js'),{DIR,createDirector,restScale,wideScale,closeScale,coverScale}=await import('../src/render/director.js'),gate=await import('../src/ui/rungate.js'),{ctl}=await import('../src/ui/controls.js'),{W:WT}=await import('../src/world/tiles.js');
+  const fs=await import('node:fs'),css=fs.readFileSync(new URL('../src/style.css',import.meta.url),'utf8'),src=fs.readFileSync(new URL('../src/render/director.js',import.meta.url),'utf8');
+  const btn=$('vCin'),co=SLT.followed(),heroes=SLT.members(co),body=document.body,key=(k,x={})=>{for(const f of document._ls.keydown||[])f({key:k,target:body,preventDefault(){},stopPropagation(){},...x})};
+  const page=()=>JSON.stringify({view:cam.view,zoom:cam.zoom,camX:cam.camX,camY:cam.camY,sc:cam.sc,dir:cam.director||null,body:body.className,order:[...$('side').children].map(n=>n.id||n.className),colM:[...$('colM').children].filter(n=>!n.classList.contains('cinhole')).map(n=>n.id||n.className),scr:$('screen').parentNode.id,rows:$('felbody').children.length});
+  ok(/\bC\b/.test(btn.textContent)&&btn.parentNode===$('vMap').parentNode,'the View group has the cinema button and it shows its key: '+btn.textContent);
+  setView('fellow');uiFast();cam.camX=321;cam.camY=123;cam.sc=3.25;const was=page(),list=$('tlist');list.scrollTop=40;const top0=list.scrollTop,node=$('side').children[0];
+  btn.click();uiFast();
+  ok(C.cinemaOn()&&body.classList.contains('cinema')&&cam.view==='cinema'&&!!cam.director,'the button enters: body.cinema, the director has the camera');
+  ok(!$('cinema').hidden&&$('screen').contains($('cinema')),'the overlays sit inside the map');
+  const pl=$('cinema').querySelectorAll('.cinp');ok(pl.length>=heroes.length&&heroes.every(a=>[...pl].some(p=>p.textContent.includes(a.name))),'a plate for every member ('+pl.length+')');
+  ok(/Day \d+/.test($('cinema').querySelector('.cinc').textContent),'the clock is on the screen: '+$('cinema').querySelector('.cinc').textContent);
+  {const p0=pl[0];p0._same=1;tick(1);ok($('cinema').querySelector('.cinp')._same===1,'plates are patched, not rebuilt')}
+  setView('map');ok(cam.view==='cinema','a view change from a panel leaves the director in charge');
+  btn.click();uiFast();
+  ok(page()===was,'the button leaves: camera, classes and the panels as they were');ok($('side').children[0]===node,'the same nodes');ok(list.scrollTop>=top0,'the scroll position held ('+top0+' -> '+list.scrollTop+')');ok($('cinema').hidden,'the overlays are gone');
+  key('c');ok(C.cinemaOn(),'the C key enters');key('C');ok(!C.cinemaOn(),'C leaves again');ok(page()===was,'the key leaves the page as it was too');
+  key('c',{ctrlKey:true});ok(!C.cinemaOn(),'Ctrl+C is left alone');
+  key('c',{target:{tagName:'INPUT'}});ok(!C.cinemaOn(),'typing C in a field is left alone');
+  key('c',{repeat:true});ok(!C.cinemaOn(),'a held key does not flicker the view');
+  key('c');key('Escape');ok(!C.cinemaOn(),'Esc leaves as well');key('Escape');ok(page()===was,'Esc outside the view does nothing here');
+  // the gate: a held world says why in the view and can be answered there
+  key('c');const L={},box=$('rgate');for(const a of heroes)L[a.id]='none';gate.setGateProbe({link:a=>L[a.id]||'none',dm:()=>'connected'});const T0=9e6;ctl.speed=1;gate.checkRunGate(T0);gate.checkRunGate(T0+40000);
+  ok(ctl.held&&!box.hidden&&/WAITING FOR MINDS/.test(box.textContent),'the gate banner shows in the cinema view: '+box.textContent.slice(0,40));
+  ok($('screen').contains(box)&&/body\.cinema \.screen\{visibility:visible/.test(css),'the banner lives in the map, which stays visible');
+  const zOf=s=>+(new RegExp('(?:^|\\n)'+s+'\\{[^}]*z-index:(\\d+)').exec(css)||[])[1];ok(zOf('\\.rgate')>zOf('\\.cinema')&&zOf('\\.ralert')>zOf('\\.cinema'),'the gate and the alerts stand above the overlays');
+  uiFast();ok(/held/.test($('cinema').querySelector('.cinc').textContent),'the clock says the world is held');
+  const go=box.querySelector('[data-gateanyway]');ok(!!go,'Start anyway is there');box.dispatch('click',{target:go});ok(!ctl.held,'and answers it from the view');
+  gate.setGateProbe(null);key('c');
+  // the director, on a fake clock
+  const fake={sel:heroes[0],hover:null,camX:0,camY:0,sc:1},w=3440,h=1440,D=createDirector({seed:7,still:()=>true}),run=(n,f)=>{for(let i=0;i<n;i++){const x=fake.camX,y=fake.camY,fade=D.fade;D.step(fake,w,h,null,1/60);const px=Math.hypot(fake.camX-x,fake.camY-y)*fake.sc;if(f)f(px,fade)}};
+  const keep=heroes.map(a=>({a,x:a.x,y:a.y,st:a.state,hid:a.hidden}));for(const a of heroes){a.state='town';a.hidden=false;a.moving=false;a.x=heroes[0].x;a.y=heroes[0].y}
+  const G0=sim.S.gameMin;D.enter(fake,w,h);ok(D.fade===1,'entering starts in the dark');ok(Math.abs(fake.sc-restScale(w,h))<.01,'and close on the company ('+fake.sc.toFixed(2)+')');let big=0;run(180,(px)=>{big=Math.max(big,px)});ok(D.fade===0,'and fades up');ok(big<40,'the camera moves softly ('+big.toFixed(1)+' px a frame at most)');
+  ok(Math.abs(fake.sc*2-Math.round(fake.sc*2))<.01&&fake.sc>=2&&fake.sc>=coverScale(w,h),'at rest the scale is on a half step, from 2, covering the window ('+fake.sc.toFixed(2)+')');
+  const a0=heroes[0],sc0=fake.sc;for(const a of heroes)a.state='fight';run(300);ok(fake.sc>sc0,'a fight pulls in ('+sc0.toFixed(1)+' -> '+fake.sc.toFixed(1)+')');for(const a of heroes)a.state='town';run(900);ok(Math.abs(fake.sc-sc0)<.05,'and back out ('+fake.sc.toFixed(2)+', '+D.shotKind+')');
+  const far=2;let jumps=0,dark=0,dips=0;const F2=createDirector({seed:3,still:()=>true}),w2=1280,h2=800;for(const a of heroes)a.x=WT-2;F2.enter(fake,w2,h2);for(let i=0;i<120;i++)F2.step(fake,w2,h2,null,1/60);for(const a of heroes)a.x=far;
+  for(let i=0;i<240;i++){const x=fake.camX,fd=F2.fade;F2.step(fake,w2,h2,null,1/60);const px=Math.abs(fake.camX-x)*fake.sc;if(px>60){if(F2.fade>.97||fd>.97)dark++;else jumps++}if(fd>0)dips++}
+  ok(jumps===0&&dark===1&&dips>0,'a far target is a cut: one jump, at full black, none in the open ('+dark+' dark, '+jumps+' lit)');
+  {const B=sim.S.agents.filter(a=>a.state!=='dead'&&!a.hidden&&a.company==null).slice(0,2),k=B.map(a=>[a,a.x,a.y,a.state,a.target]);
+    if(B.length===2){const [p,q]=B[0].id<B[1].id?B:[B[1],B[0]];p.state=q.state='duel';p.target=q;q.target=p;p.x=WT-far+1;q.x=p.x+1;q.y=p.y;
+      const E=createDirector({seed:9});E.enter(fake,w,h);let saw='',lit=0;for(let i=0;i<60*70&&!saw;i++){const x=fake.camX,fd=E.fade;E.step(fake,w,h,null,1/60);if(Math.hypot(fake.camX-x,fake.camY-fake.camY)*fake.sc>60&&fd<.97&&E.fade<.97)lit++;if(E.shotKind==='sight')saw=E.sightLabel}
+      ok(/cross blades/.test(saw)&&lit===0,'now and then it cuts away to a duel, in the dark: '+saw);
+      p.state='town';for(let i=0;i<300;i++)E.step(fake,w,h,null,1/60);ok(E.shotKind!=='sight','and comes back when it is over: '+E.shotKind)}
+    for(const [a,x,y,s,t] of k){a.x=x;a.y=y;a.state=s;a.target=t}}
+  ok(D.named(a0,fake)&&!D.named({company:-5},fake),'names: the selected company only, not a stranger');
+  ok(sim.S.gameMin===G0&&!/core\/rng\.js/.test(src.split('\n').filter(l=>l.startsWith('import')&&/\brnd\b|\bri\b/.test(l)).join('')),'the director takes no sim dice and moves no game time');
+  ok(restScale(1280,800)>=2&&wideScale(3440,1440)<restScale(3440,1440)&&closeScale(3440,1440)>restScale(3440,1440)&&restScale(3840,2160)>restScale(1280,800),'distances follow the window');
+  {const r=restScale(w,h);ok(r*24>=90&&r*24<=110,'at 3440x1440 a hero stands about 100 px tall at rest ('+r*24+' px)');
+    for(const a of heroes){a.x=20+heroes.indexOf(a)%3*2;a.y=20+Math.floor(heroes.indexOf(a)/3)*2;a.state='town';a.moving=false}
+    const B=createDirector({seed:5,still:()=>true});B.enter(fake,w,h);for(let i=0;i<60;i++)B.step(fake,w,h,null,1/60);const vt=h/fake.sc/16,ht=w/fake.sc/16;ok(vt>=10&&ht>=20,'five together fit the close view ('+ht.toFixed(0)+'x'+vt.toFixed(0)+' tiles)');
+    for(const a of heroes)a.moving=true;let low=9,late=0;for(let i=0;i<60*(DIR.BEAT_GAP/2+DIR.BEAT_S+16);i++){B.step(fake,w,h,null,1/60);if(fake.sc<low)low=fake.sc;late=fake.sc}
+    ok(low<r-.5,'the road brings a beat: it pulls out ('+low.toFixed(2)+')');ok(Math.abs(late-r)<.1,'and eases back in with the company still walking ('+late.toFixed(2)+')');for(const a of heroes)a.moving=false}
+  for(const k of keep){k.a.x=k.x;k.a.y=k.y;k.a.state=k.st;k.a.hidden=k.hid}
+  key('Escape');ok(!C.cinemaOn(),'left')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

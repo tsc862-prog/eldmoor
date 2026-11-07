@@ -2,6 +2,7 @@
 // and the generic hunt), From the DM, Oaths - with the focused one pinned on top and finished ones folded below.
 // Reads sim.questLog(a) when the sim exports it; until then derives a best-effort log from today's state
 // (a.quest, a.goal, the DM hook the hero is on). The sim never imports this.
+import {loreSides} from '../sim/state.js'; // sides as lore (#1025)
 import * as sim from '../sim/index.js';
 import {S} from '../sim/index.js';
 import {MOBS} from '../data/mobs.js';
@@ -24,7 +25,7 @@ function derive(a){const active=[];
   const adv=a.adv!=null&&S.adventures?S.adventures.find(h=>h.id===a.adv&&h.phase==='active'):null;
   if(adv){const T=ADVENTURES[adv.tpl]||{};
     active.push({id:'dm-'+adv.id,kind:'dm',title:(T.name||adv.tpl)+(adv.data&&adv.data.thing?': '+adv.data.thing:''),giver:adv.giver?adv.giver.name:adv.town||'',
-      where:zname(adv.zone)||adv.town||'',objective:'',progress:null,reward:'Gold, experience and honor',
+      where:zname(adv.zone)||adv.town||'',objective:'',progress:null,reward:loreSides()?'Gold and experience':'Gold, experience and honor',
       status:'active',focus:false,started:adv.born==null?null:adv.born,ends:adv.until==null?null:adv.until,from:adv.by==='dm-agent'?'agent':'scripted'})}
   if(active.length)active[0].focus=true;
   return {active,done:[],focus:active.length?active[0].id:null}}

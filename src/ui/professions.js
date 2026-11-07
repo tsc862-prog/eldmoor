@@ -2,6 +2,7 @@
 // craft), skill 1-100 as a bar and the band name. Read-only DOM from sim/professions.js; the panel rebuilds on
 // its own timer, so nothing here keeps state. Second half: under each trade a line of what it works or makes (what it takes,
 // what is in sight, which recipes are ready from the pack, the next step), the last craft and the supper meal on its way out.
+import {worldFill} from '../world/words.js';
 import {professionsOf,skillBand} from '../sim/professions.js';
 import {PROF,SKILL_MAX} from '../data/professions.js';
 import {MATERIALS,USES} from '../data/items.js';
@@ -47,7 +48,7 @@ export function professionBlock(node,a,{title=true}={}){
   if(title)node.append(el('div','sec','Professions'));
   const ml=mealOn(a);
   if(ml){const U=USES[ml.id],m=el('div','profmeal');m.append(el('span','dm','Supper: '),el('span','qf',ml.id||'a meal'),' +'+Math.round(ml.v*100)+'% '+ml.stat,el('span','dm',' · '+mealLeft(ml)+' left'));
-    if(U)m.title=U.flavour;node.append(m)}
+    if(U)m.title=worldFill(U.flavour||'');node.append(m)}
   const rows=professionsOf(a);
   if(!rows.length){node.append(el('div','dm profnone','No professions yet'));return null}
   const box=el('div','profs');

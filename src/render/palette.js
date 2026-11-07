@@ -153,9 +153,17 @@ export const THEMES={
 export const BOSS_PAL={R:'#7a2a3a',W:'#d04a2a',E:'#ffe060',T:'#f0ead0',D:'#3a1a20'};
 // The raid arena's marks (render/raidview.js): the breath's telegraph and wave, the boss's bar, broke-off and fallen marks.
 export const RAID={breath:[255,140,40],wave:[255,200,90],bar:'#c8402e',barHi:'#ff7a50',barBack:'#24100e',phase:UI.amber,
-  fled:'#ffd070',fell:'#e0584a',add:UI.red,ring:'rgba(255,120,40,.35)'};
+  fled:'#ffd070',fell:'#e0584a',saved:'#58c070',add:UI.red,ring:'rgba(255,120,40,.35)',cold:[38,36,44,235],plate:'rgba(6,6,14,.72)'};
 // The scene view's marks (render/sceneview.js): the outdoor cut's frame, the dimmed world past it, the turn chevron.
-export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,person:UI.amber};
+// A fight on a map patch (#746): the tile grid (a dark line and a pale one beside it, so it reads on grass and on snow alike), the
+// patch's edge, cover and slow tiles (a faint wash, and a glyph with a dark rim), and the fight's beats (the hit flash on a hero and on a
+// foe, a shot's streak, the rings of a guard, a ward and a heal, and the colours of the words that float up: the dungeon view's).
+export const SCENE={frame:UI.gold,dim:'rgba(6,6,14,.5)',turn:UI.gold,foe:UI.red,person:UI.amber,
+  grid:'rgba(10,12,22,.26)',gridHi:'rgba(255,246,220,.12)',patchEdge:'rgba(242,193,78,.5)',markRim:'#100c16',
+  cover:'#8fe08a',coverWash:'rgba(143,224,138,.1)',slow:'#9ad8f0',slowWash:'rgba(154,216,240,.12)',
+  hitHero:'#ff5a48',hitFoe:'#ffffff',shot:'#fff0b8',
+  ring:{ward:'#bfe8a8',heal:'#8ee0a0',potion:'#e07a9a',guard:'#e8c860',hold:'#e8c860'},
+  word:{hit:UI.red,hurt:'#ff6a5a',heal:'#8ee0a0',miss:'#b8b4c8',fumble:'#e0b040',fell:'#e8e0c8',fail:'#e0584a',plain:'#9ad8f0'}};
 
 // What a hero is trying to do (#534, render/purposefx.js): the intent icon over a head and the followed or hovered hero's
 // path, tether and wait line, one colour per kind (the purpose line in the panels uses the same hues).
@@ -217,11 +225,18 @@ export const TOWN_GROUND={
 export const HOUSE_SHAKE={stone:['#4a3224','#6e4c34','#8e6a48','#ac8a60'],timber:['#2e2018','#463226','#5e4634','#786048']};
 // The palisade's stakes and its plank decking, dark to light (scripts/art/packcut-walls.mjs).
 export const PALISADE={log:['#1e140e','#3a281c','#5a3e2a','#7a5a3e','#9a7a56'],deck:['#2e2218','#46342a','#5a4432','#6e563e','#826a4e']};
+// Harbours (#979, render/harbour.js): hull planks dark to light, the inside of a boat, its rim, a furled sail, net, and the quay's planks where the deck piece is not loaded.
+export const HARBOUR={hull:['#2a1c14','#46301f','#5e4230','#7a5a3e'],inner:['#3a2a1e','#46342a'],rim:['#8a6a48','#b08c60'],sail:['#c8b890','#e8dcb8','#a89870'],net:['#a89870','#c8b890'],plank:['#46342a','#6e563e','#a08660']};
 export const LANDMARK={
   crypt:['#78748a','#5a5668','#4a4652','#2e2a34','#0a0810','#7ad0a0','#c8ffd8','#e8e4d8','#5a8a44'],
   lair:['#5a2a1c','#3a1c16','#655c58','#4a423e','#2a2422','#c8401a','#f07a22','#ffd04a','#e8e0c8','#a8a090'],
 };
 
+// Mountain rock (#989), dark to light, from the LPC cliff colours of assets autotile:peak-*: warm stone, ash, frost for rock in cold country, snow. line: the outline.
+export const PEAKS={stone:['#2a1c1e','#3e2f2b','#4f3f36','#615043','#776553','#8f7c64','#a99878'],
+  ash:['#21161a','#2e1e1f','#3a2826','#4b3632','#5c4742','#6f5c56','#8a7a74'],
+  frost:['#262a36','#343a46','#444d57','#566170','#6b7888','#8595a8','#a6b7cc'],
+  snow:['#7f92c6','#9cb0dc','#c9daf0','#e4ecf8','#f6f9fd'],line:'#1c1216'};
 // Flat building palettes (#763): what a generated building or standing landmark may use, taken from the procedural house
 // (render/townart.js: three roof tones, two wall tones, one dark line, a door), per town style and for the crypt mouth and
 // the lair. The manifest's building recipe quantises to exactly these (post.flat, scripts/art/post-flat.mjs, no widening,

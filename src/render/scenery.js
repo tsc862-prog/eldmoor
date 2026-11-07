@@ -17,6 +17,7 @@ import {W,H,G,TREE,ROCK,LAVA,ROAD,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE,MUD,SWAMP,
 import {tiles,zone,I,CITY,LANDMARKS,REGIONS,OUTPOSTS,solid} from '../world/map.js';
 import {ACTIVE_SPEC} from '../world/spec.js';
 import {asset,assetPixels,onAssets} from './assets.js';
+import {outsideTown} from '../world/gen.js';
 import {ATLAS} from './sceneryatlas.js';
 
 export const ASSET_SCENERY={'prop:scenery':TREE}; // hook table (artcheck): the sheet of pieces; no piece, no procedural stand-in
@@ -62,6 +63,7 @@ function data(){if(D)return D;
   const tone=new Float32Array(FW*FH),rust=new Float32Array(FW*FH);
   for(let j=0;j<FH;j++)for(let i=0;i<FW;i++){const x=i/R,y=j/R;tone[j*FW+i]=vnoise(x/9,y/9,301)*.62+vnoise(x/3.4,y/3.4,303)*.28+vnoise(x/1.3,y/1.3,305)*.1;rust[j*FW+i]=vnoise(x/6,y/6,307)}
   const wash=new Uint8Array(W*H);{const w=NOTE.wash||{},byZ=REGIONS.map(r=>WASH[w[r.id]]||0);for(let k=0;k<W*H;k++)wash[k]=byZ[zone[k]]||0}
+  const seam=new Uint8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++){const k=I(x,y);for(let j=-4;j<=4&&!seam[k];j++)for(let i=-4;i<=4;i++){const X=x+i,Y=y+j;if(X>=0&&Y>=0&&X<W&&Y<H&&wash[I(X,Y)]!==wash[k]){seam[k]=1;break}}}
   const fords=[];for(let y=0;y<H;y++)for(let x=0;x<W;x++)if(tt(x,y)===RIVER&&!solid[I(x,y)])fords.push([x,y]);
   const fc=fords.length?[fords.reduce((s,f)=>s+f[0],0)/fords.length+.5,fords.reduce((s,f)=>s+f[1],0)/fords.length+.5]:null;
   const farm=new Uint8Array(W*H);for(const [x,y,w,h] of NOTE.fields||[])for(let j=y;j<y+h;j++)for(let i=x;i<x+w;i++){const t=tt(i,j);
@@ -70,16 +72,25 @@ function data(){if(D)return D;
     if(t===G||t===FLOWER)farm[I(i,j)]=1}
   const lair=LANDMARKS.find(L=>L.kind==='lair'&&(NOTE.dress||{})[L.name]==='lair')||null;
   // roads out in the country (a town's own streets keep their tiles), and the land they pass over
-  const town=(x,y)=>CITY.some(c=>x>=c.x0&&x<=c.x1&&y>=c.y0&&y<=c.y1);
+  const town=(x,y)=>CITY.some(c=>!outsideTown(c,x,y));
   const open=new Uint8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++)if((tt(x,y)===ROAD||tt(x,y)===BRIDGE)&&!town(x,y))open[I(x,y)]=1;
   const road=field((x,y)=>x>=0&&y>=0&&x<W&&y<H&&open[I(x,y)],2);
   const nearR=new Uint8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(!open[I(x,y)])continue;for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const X=x+dx,Y=y+dy;if(X>=0&&Y>=0&&X<W&&Y<H&&!town(X,Y))nearR[I(X,Y)]=1}}
   // felled ground: trees that would hide a crossing stand as stumps instead (the tile stays solid, and looks it)
   const felled=new Uint8Array(W*H);{const cut=(cx,cy,r)=>{for(let y=Math.floor(cy-r);y<=cy+r;y++)for(let x=Math.floor(cx-r);x<=cx+r;x++)if(tt(x,y)===TREE&&Math.hypot(x+.5-cx,y+.5-cy)<=r)felled[I(x,y)]=1};
     if(fc)cut(fc[0]+.5,fc[1]+.2,3.6);for(const [x,y,r] of NOTE.clear||[])cut(x,y,r)}
-  return D={water,lava,trees,near,tone,rust,wash,fords,fc,farm,lair,road,nearR,open,felled}}
+  // the ground's own kinds, for soilAt: what each tile counts as, a blurred mask of each kind, and which tiles have more than one kind near them
+  const cls=new Int8Array(W*H);for(let y=0;y<H;y++)for(let x=0;x<W;x++)cls[I(x,y)]=soilClass(x,y,open);
+  const mask=new Map();for(const t of new Set(cls))if(t>=0)mask.set(t,field((x,y)=>x>=0&&y>=0&&x<W&&y<H&&cls[I(x,y)]===t,3));
+  const soft=new Array(W*H).fill(null);
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(cls[I(x,y)]<0)continue;const L=[];for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++){const X=x+i,Y=y+j;if(X<0||Y<0||X>=W||Y>=H)continue;const t=cls[I(X,Y)];if(t>=0&&!L.includes(t))L.push(t)}
+    if(L.length>1)soft[I(x,y)]=L.sort((a,b)=>a-b)}
+  return D={water,lava,trees,near,tone,rust,wash,seam,fords,fc,farm,lair,road,nearR,open,felled,cls,mask,soft}}
 
 // ---- the river ----
+// How wet a point is, 0 to 1: the painted water's edge is at .5. render/water.js keeps its marks on the water by it.
+export const waterLevel=(x,y)=>NOTE?at(data().water,x,y):0;
+export const farmAt=(x,y)=>!!NOTE&&!!data().farm[I(x,y)]; // a tile of a field as it was laid (render/sway.js ripples the wheat)
 // Water is the map's RIVER and BRIDGE tiles smoothed: a blur of the tile mask cut at one half keeps the line on straight reaches and
 // rounds the tile stairs, so the whole river reads as one water. Land the curve gives back to a river tile is drawn as ground; the
 // bank is a dark cut face where the water lies south of it and a pale strand where it lies north (we look down from the south).
@@ -105,7 +116,8 @@ const ROADTINT={ash:['#5e5046',.5],tundra:['#8c8078',.36],fen:['#5a4a30',.24]};
 export function roadPixel(tx,ty,ax,ay){if(!NOTE)return null;const d=data(),k=ty*W+tx;if(!d.nearR[k])return null;
   const x=tx+(ax+.5)/TILE,y=ty+(ay+.5)/TILE,F=at(d.road,x,y)+(vnoise(x*3.3,y*3.3,241)-.5)*.1;
   if(F<.385)return null;const A=assetPixels('tile:road'),X=tx*TILE+ax,Y=ty*TILE+ay;let c=A?(A.hex[(Y%A.h)*A.w+X%A.w]||'#a68a58'):'#a68a58';
-  const b=REGIONS[zone[k]]&&REGIONS[zone[k]].biome,tn=ROADTINT[b];if(tn)c=mix(c,tn[0],tn[1]);
+  {const tintAt=(u,v)=>ROADTINT[(REGIONS[zoneNear(u,v)]||{}).biome],tn=tintAt(x,y)||tintAt(x-1.4,y)||tintAt(x+1.4,y)||tintAt(x,y-1.4)||tintAt(x,y+1.4);
+    if(tn){const f=([[0,0],[-1.4,0],[1.4,0],[-.7,0],[.7,0],[0,-1.4],[0,1.4],[0,-.7],[0,.7]].filter(([i,j])=>tintAt(x+i,y+j)===tn).length/9);c=mix(c,tn[0],tn[1]*f)}} // the road takes its new colour over a couple of tiles
   if(F<.43)return hash(X,Y,243)>.55?mix(c,'#2a2014',.42):mix(c,'#2a2014',.24);
   if(F>.62&&hash(X>>1,Y>>1,245)>.965)return mix(c,'#fff0d0',.3);
   return c}
@@ -119,6 +131,36 @@ export const treeFelled=(tx,ty)=>!!NOTE&&!!data().felled[ty*W+tx];
 const GROUNDS=new Set([G,FLOWER,SGRASS,MUD,SWAMP,ROCK,SNOW,ICE]);
 export function dryGround(tx,ty){for(let r=1;r<=3;r++)for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){const t=tt(tx+dx,ty+dy);if(GROUNDS.has(t))return t===FLOWER?G:t}return G}
 
+// ---- the ground as shapes (#979) ----
+// Grass, mud, fen water, ash, snow, ice and lava are tiles, and left to the tile grid their edges are stairs of squares. Here each kind's mask is blurred and every
+// pixel near a border takes the strongest kind there, with a little noise, so ponds are round and flows run in curves. Lava stays where the sim has it to within a
+// tile, as the river does. A lone speck of one kind in another (a rock tile in the snow) is smoothed away. Town tiles take no part.
+// Straight runs of tiles stay straight under a blur, so the place a border is read at wanders first: this much of a tile, slowly. Region seams use it too.
+const WARP=(x,y,s)=>(vnoise(x*.42,y*.42,s)-.5)*1.5+(vnoise(x*1.1,y*1.1,s+1)-.5)*.5;
+const zoneCell=(x,y)=>I(Math.max(0,Math.min(W-1,Math.floor(x+WARP(x,y,237)*1.6))),Math.max(0,Math.min(H-1,Math.floor(y+WARP(x,y,239)*1.6))));
+const zoneNear=(x,y)=>zone[zoneCell(x,y)];
+const BIOME_SOIL={meadow:G,fen:SGRASS,ash:ROCK,tundra:SNOW,highland:G};
+function soilClass(x,y,open){const t=tt(x,y);if(t===FLOWER)return G;if(t===G||t===SGRASS||t===MUD||t===SWAMP||t===ROCK||t===SNOW||t===ICE||t===LAVA)return t;
+  if(t===TREE||t===PEAK){const b=REGIONS[zone[I(x,y)]]&&REGIONS[zone[I(x,y)]].biome;return BIOME_SOIL[b]??G}
+  if(t===RIVER||t===BRIDGE||(t===ROAD&&open[I(x,y)]))return dryGround(x,y);
+  return -1}
+// The kind of ground art pixel (ax,ay) of tile (tx,ty) shows, or -1 where the tile's own kind stands alone. rim: how near the border, and against which kind.
+export const soilRim={m:1,other:-1};
+export function soilAt(tx,ty,ax,ay){if(!NOTE)return -1;const d=data(),L=d.soft[ty*W+tx];if(!L)return -1;
+  const x0=tx+(ax+.5)/TILE,y0=ty+(ay+.5)/TILE,x=x0+WARP(x0,y0,267),y=y0+WARP(x0,y0,269),n=(vnoise(x*2.3,y*2.3,261)-.5)*.14;let b=-1,bv=-9,o=-1,ov=-9;
+  for(let i=0;i<L.length;i++){const v=at(d.mask.get(L[i]),x,y)+(i&1?n:-n);if(v>bv){o=b;ov=bv;b=L[i];bv=v}else if(v>ov){o=L[i];ov=v}}
+  soilRim.m=bv-ov;soilRim.other=o;return b}
+// The border's own line: a lit lip and a shadow, by what meets what. c: the plain colour of kind k there.
+export function soilEdge(c,k,tx,ty,ax,ay){const m=soilRim.m,o=soilRim.other,X=tx*TILE+ax,Y=ty*TILE+ay,h=hash(X,Y,265);if(m>.14)return c;
+  if(k===ICE)return m<.05?mix(c,'#e4f2f8',.7):m<.1?mix(c,'#b4d8e6',.42):c; // the pool's frozen margin
+  if(o===ICE&&k===SNOW){const d=data(),x=tx+(ax+.5)/TILE,y=ty+(ay+.5)/TILE,g=at(d.mask.get(ICE),x,y+.14)-at(d.mask.get(ICE),x,y-.14);return g>0?(m<.06?mix(c,'#7e9cb8',.72):m<.11?mix(c,'#a8c0d4',.5):c):(m<.05?mix(c,'#ffffff',.6):c)}
+  if(k===LAVA)return m<.05?'#ffd86a':m<.1?mix(c,'#ffb040',.6):c;
+  if(o===LAVA)return m<.07?mix(c,'#17100f',.86):m<.13?mix(c,'#2a1c18',.56):c;
+  if(k===SWAMP)return m<.05?mix(c,'#141c14',.6):c;
+  if(o===SWAMP)return m<.06?mix(c,'#26301e',.5):c;
+  if(m<.035&&h>.4)return mix(c,'#000000',.14);
+  return c}
+
 // ---- ground tones ----
 const LOOK=[null,
   {lo:['#2c7a36',.3],hi:['#9ac24a',.26],shade:'#1c5a2c'},
@@ -128,9 +170,9 @@ const LOOK=[null,
 const softMeadow=t=>t===G||t===FLOWER||t===TREE;
 // Colour c of tile type t at art pixel (ax,ay) of tile (tx,ty), toned for its region.
 export function tonePixel(c,t,tx,ty,ax,ay){if(!NOTE)return c;const d=data();
-  let k=ty*W+tx;const X=tx*TILE+ax,Y=ty*TILE+ay,x=tx+(ax+.5)/TILE,y=ty+(ay+.5)/TILE;
-  {const h=hash(X>>2,Y>>2,233);if(h>.7&&tx>1&&ty>1&&tx<W-2&&ty<H-2){const j=hash(X>>2,Y>>2,235),o=(j*5|0)-2;k=(ty+((j*25|0)%5)-2)*W+tx+o}} // a ragged line where one region's tone gives way to the next
-  const w=d.wash[k];
+  const X=tx*TILE+ax,Y=ty*TILE+ay,x=tx+(ax+.5)/TILE,y=ty+(ay+.5)/TILE;
+  const w=d.seam[ty*W+tx]?d.wash[zoneCell(x+(hash(X>>1,Y>>1,241)-.5)*2.6,y+(hash(X>>1,Y>>1,243)-.5)*2.6)]:d.wash[ty*W+tx]; // the line where one region's tone gives way to the next wanders with the ground's
+
   if(d.lair&&(t===SNOW||t===ICE||t===ROCK||t===TREE||t===PEAK||(t===LAVA&&parseInt(c.slice(5,7),16)>parseInt(c.slice(1,3),16)-8))){const q=Math.hypot(x-d.lair.x,y-d.lair.y)-(d.lair.r||5),n=at(d.tone,x,y),b=(B4[(Y&3)*4+(X&3)]+.5)/16-.5;
     if(q<8){const p=1-q/8+(n-.5)*1.3+b*.16;if(p>.92)c=mix(c,'#2c2624',.86);else if(p>.62)c=mix(c,'#57504e',.8);else if(p>.44)c=mix(c,'#8a8684',.6)}} // the wyrm's heat: snow gone to soot and slush round the nest
   if(w===0)return c;
@@ -152,9 +194,15 @@ const snap=v=>Math.round(v*ART)/ART;
 function pc(c,n,x,y,rows){const a=ATLAS[n],im=sheetImg();if(!a||!im)return;const h=rows||a[3];c.drawImage(im,a[0],a[1],a[2],h,snap(x),snap(y),a[2]/ART,h/ART)}
 // Piece n standing with its foot at world (x,y), centred.
 const foot=(c,n,x,y)=>{const a=ATLAS[n];if(a)pc(c,n,x-a[2]/ART/2,y-a[3]/ART)};
+// For others that dress the land (harbour.js): piece n at world (x,y), false when the sheet is not loaded; and a piece's size in world units.
+export const scenePiece=(c,n,x,y)=>{if(!sheetImg())return false;pc(c,n,x,y);return true};
+export const scenePieceSize=n=>{const a=ATLAS[n];return a?[a[2]/ART,a[3]/ART]:null};
 const rect=(c,x,y,w,h,k)=>{c.fillStyle=k;c.fillRect(x,y,w,h)};
 
-const FLOWERS=['flGold','flWhite','flRed','flBlue'];
+const FLOWERS=[['#f2c94a','#c8922a'],['#f4f4ea','#c8ccd0'],['#e8604a','#b03a30'],['#7a9ce8','#4a68c0']];
+// A drift of single blossoms round (x,y): a stem and a head each, thrown on a loose scatter so no tile's square shows.
+function bloom(c,x,y,col,tx,ty,n){for(let i=0;i<n;i++){const a=hash(tx,ty,811+i)*6.283,r=Math.sqrt(hash(tx,ty,851+i))*13,px=snap(x+Math.cos(a)*r),py=snap(y+Math.sin(a)*r*.8),k=.5;
+    rect(c,px,py+k,k,k*2,'#2c6a30');rect(c,px-k,py-k,k*3,k*2,col[1]);rect(c,px,py-k,k,k,col[0]);rect(c,px-k,py,k,k,col[0])}}
 // One ember-lit crack, a walk of half-unit steps from (x,y).
 function fissure(c,x,y,s){let dx=hash(x|0,y|0,s)>.5?1:-1;const n=7+(hash(x|0,y|0,s+1)*9|0);
   for(let i=0;i<n;i++){const hot=i>1&&i<n-2;rect(c,x,y,1,.5,'#1a1312');if(hot)rect(c,x,y+.5,1,.5,i&1?'#f07a2a':'#c8401a');else rect(c,x,y+.5,1,.5,'#2a201e');
@@ -163,10 +211,10 @@ function fissure(c,x,y,s){let dx=hash(x|0,y|0,s)>.5?1:-1;const n=7+(hash(x|0,y|0
 function scatter(c,tx,ty,t,w,d){const X=tx*U,Y=ty*U,h=hash(tx,ty,801),o=hash(tx,ty,802),ox=hash(tx,ty,803)*10-2,oy=hash(tx,ty,804)*10-2;
   if(w===1||w===2||w===3){if(t!==G&&t!==FLOWER)return;
     const f=vnoise(tx/4.5,ty/4.5,805);
-    if(t===FLOWER||(w!==3&&f>.6&&o<.62)){const pick=vnoise(tx/9,ty/9,807)*1.6+o*.5;pc(c,FLOWERS[w===2?(pick>.9?3:0):Math.min(3,pick*2.2|0)],X-4+ox,Y-4+oy);if(t===FLOWER)return}
-    if(w===1){if(h<.13)pc(c,'tuftGS',X+ox,Y+oy);else if(h<.18)pc(c,'tuftLS',X+ox,Y+oy);else if(h<.195)pc(c,'tuftG',X+ox-4,Y+oy-4);else if(h<.21)pc(c,'pebTanS',X+ox-2,Y+oy);else if(h<.3)pc(c,'blades',X+ox-6,Y+oy-6)}
-    else if(w===2){if(h<.11)pc(c,'tuftBS',X+ox,Y+oy);else if(h<.2)pc(c,'tuftLS',X+ox,Y+oy);else if(h<.215)pc(c,'tuftB',X+ox-4,Y+oy-4);else if(h<.27)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.36)pc(c,'blades',X+ox-6,Y+oy-6)}
-    else{if(h<.1)pc(c,'tuftDS',X+ox,Y+oy);else if(h<.125)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.15)pc(c,'stump',X+ox,Y+oy+4);else if(h<.18)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.32)pc(c,'blades',X+ox-6,Y+oy-6)}
+    if(t===FLOWER||(w!==3&&f>.6&&o<.62)){const pick=vnoise(tx/9,ty/9,807)*1.6+o*.5;bloom(c,X+8,Y+8,FLOWERS[w===2?(pick>.9?3:0):Math.min(3,pick*2.2|0)],tx,ty,3+(h*4|0));if(t===FLOWER)return}
+    if(w===1){if(h<.13)pc(c,'tuftGS',X+ox,Y+oy);else if(h<.18)pc(c,'tuftLS',X+ox,Y+oy);else if(h<.195)pc(c,'tuftG',X+ox-4,Y+oy-4);else if(h<.21)pc(c,'pebTanS',X+ox-2,Y+oy);else if(h<.235)pc(c,'blades',X+ox-6,Y+oy-6)}
+    else if(w===2){if(h<.11)pc(c,'tuftBS',X+ox,Y+oy);else if(h<.2)pc(c,'tuftLS',X+ox,Y+oy);else if(h<.215)pc(c,'tuftB',X+ox-4,Y+oy-4);else if(h<.27)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.29)pc(c,'blades',X+ox-6,Y+oy-6)}
+    else{if(h<.1)pc(c,'tuftDS',X+ox,Y+oy);else if(h<.125)pc(c,'tuftD',X+ox-4,Y+oy-4);else if(h<.15)pc(c,'stump',X+ox,Y+oy+4);else if(h<.18)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.22)pc(c,'blades',X+ox-6,Y+oy-6)}
     return}
   if(w===4&&t===ROCK){
     if(h<.08)pc(c,'pebDarkS',X+ox-2,Y+oy);else if(h<.1)pc(c,'pebDark',X+ox-4,Y+oy-4);else if(h<.2)pc(c,'pebGreyS',X+ox-2,Y+oy);else if(h<.27)pc(c,'pebTanS',X+ox-2,Y+oy);
@@ -181,7 +229,7 @@ function riverside(c,tx,ty,t,d){const X=tx*U,Y=ty*U,h=hash(tx,ty,821),o=hash(tx,
     if(b==='tundra'){if(h<.4)pc(c,'floe',X+ox-2,Y+4+o*6)}
     else if(b==='ash'){if(h<.14){pc(c,'pebDarkS',X+ox-4,Y+2);rect(c,X+ox-3,Y+11,10,.5,'#e6f4f4')}}
     else if(b==='fen'){if(h<.3)pc(c,'lily',X+ox,Y+3+o*7);if(h<.1)pc(c,'lily',X+ox+6,Y+8)}
-    else if(h<.09)pc(c,'lily',X+ox,Y+3+o*7);else if(h<.14){pc(c,'pebGreyS',X+ox-4,Y+2);rect(c,X+ox-3,Y+11,10,.5,'#e6f4f4')}
+    else if(h<.09)pc(c,'lily',X+ox,Y+3+o*7);else if(h<.14){pc(c,'pebGreyS',X+ox-4,Y+2);rect(c,X+ox-3,Y+11,3,.5,'#c4e4ec');rect(c,X+ox+3,Y+11.5,2,.5,'#a4d4e4')}
     return}
   const nS=isW(tt(tx,ty+1)),nN=isW(tt(tx,ty-1));if(!(nS||nN)||(t!==G&&t!==FLOWER&&t!==SGRASS&&t!==MUD&&t!==SNOW&&t!==ROCK))return;
   const y=nS?Y+8:Y-2;
@@ -227,7 +275,7 @@ const floorC=new Map();
 function lairFloor(L){let cv=floorC.get(L.name);if(cv!==undefined)return cv;if(typeof document==='undefined')return null;const r=(L.r||5)+2,S=Math.ceil(r*2*TILE);cv=document.createElement('canvas');cv.width=cv.height=S;
   const x=cv.getContext('2d'),img=x.createImageData(S,S),o=img.data,A=assetPixels('tile:ash-rock'),x0=L.x-r,y0=L.y-r,d=data(),dir={W:[-1,0],E:[1,0],N:[0,-1],S:[0,1]}[L.opening]||[-1,0];
   for(let j=0;j<S;j++)for(let i=0;i<S;i++){const wx=x0+(i+.5)/TILE,wy=y0+(j+.5)/TILE,t=tt(wx|0,wy|0),q=Math.hypot(wx-L.x,wy-L.y),ax=(wx-L.x)*dir[0]+(wy-L.y)*dir[1],ac=Math.abs((wx-L.x)*dir[1]+(wy-L.y)*dir[0]);
-    if(t===LAVA||t===PEAK||t===TREE||at(d.lava,wx,wy)>.62)continue;const gate=ax>0&&ac<2.3-Math.max(0,q-(L.r||5))*.9+(vnoise(i/9,j/9,871)-.5)*.8;if(q>(L.r||5)+(vnoise(i/8,j/8,873)-.5)*.5&&!gate)continue;
+    if(t===PEAK||t===TREE||at(d.mask.get(LAVA),wx,wy)>.36)continue;const gate=ax>0&&ac<2.3-Math.max(0,q-(L.r||5))*.9+(vnoise(i/9,j/9,871)-.5)*.8;if(q>(L.r||5)+(vnoise(i/8,j/8,873)-.5)*.5&&!gate)continue;
     let c=A?(A.hex[(j%A.h)*A.w+i%A.w]||'#6e6460'):'#6e6460';c=mix(c,'#1e1817',.72);if(hash(i>>1,j>>1,875)>.996)c='#c8401a';const p=(j*S+i)*4,v=rgbOf(c);o[p]=v[0];o[p+1]=v[1];o[p+2]=v[2];o[p+3]=255}
   x.putImageData(img,0,0);floorC.set(L.name,cv);return cv}
 onAssets(()=>floorC.clear());
@@ -249,6 +297,8 @@ function bridges(c,x0,y0,x1,y1,d){for(const b of d.bridges||(d.bridges=findBridg
     for(let y=-len/2,left=len;left>0;y+=U,left-=U){pc(c,S[1],-11,y,Math.min(TILE,left*ART)|0);pc(c,S[1],8,y,Math.min(TILE,left*ART)|0)}
     const a=ATLAS[S[2]];if(a)for(const y of [-len/2-2,0-a[3]/ART/2,len/2-a[3]/ART+1]){pc(c,S[2],-11-(a[2]/ART-3)/2,y);pc(c,S[2],8-(a[2]/ART-3)/2,y)}
     c.restore()}}
+// Each bridge's deck, in tiles [x, y, w, h], rails in: a bridge's tiles are wider than its art, and the water shows either side (sheen.js).
+export function bridgeDecks(){if(!NOTE)return [];const d=data();return (d.bridges||(d.bridges=findBridges())).map(b=>{const along=b.h>=b.w,cx=b.x+b.w/2,cy=b.y+b.h/2,hw=12/U,hl=((along?b.h:b.w)+1.3)/2;return along?[cx-hw,cy-hl,2*hw,2*hl]:[cx-hl,cy-hw,2*hl,2*hw]})}
 function findBridges(){const seen=new Uint8Array(W*H),out=[];for(let y=0;y<H;y++)for(let x=0;x<W;x++){if(tt(x,y)!==BRIDGE||seen[I(x,y)])continue;let a=x,b=y,e=x,f=y;const st=[[x,y]];seen[I(x,y)]=1;
     while(st.length){const [u,v]=st.pop();a=Math.min(a,u);b=Math.min(b,v);e=Math.max(e,u);f=Math.max(f,v);for(const [p,q] of [[u+1,v],[u-1,v],[u,v+1],[u,v-1]])if(tt(p,q)===BRIDGE&&!seen[I(p,q)]){seen[I(p,q)]=1;st.push([p,q])}}
     out.push({x:a,y:b,w:e-a+1,h:f-b+1})}return out}
