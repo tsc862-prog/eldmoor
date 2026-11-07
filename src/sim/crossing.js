@@ -33,14 +33,15 @@
 //
 // State (plain data, saved with the company):
 //   C.road {exit, by, at, aim?, phase?:'table'|'go', since?, hold?:{k, text, come?, since, away:[id]}}
-import {S,dayNo,inCompany} from './state.js';
+import {S,dayNo,inCompany,ownTown} from './state.js';
 import {MAP_ID,ZONES,CITY,zoneAt,dist} from '../world/map.js';
 import {W,H} from '../world/tiles.js';
 import {MAPS} from '../world/spec.js';
 import {standAt} from '../world/passable.js';
 import {hash} from '../core/rng.js';
 import {homeOf} from '../data/races.js';
-import {exitById,exitOpen,exitNamed,beyond,mapName,roadHolds,markOathMap,townNear} from './atlas.js';
+import {exitById,exitOpen,exitNamed,beyond,mapName,roadHolds,markOathMap,townNear,questAside,questBack,stampLore} from './atlas.js';
+import {boundWords} from './farlands.js';
 import {switchMap,crossers} from './mappack.js';
 import {log} from './chronicle.js';
 import {timeline,record} from './history.js';
@@ -157,38 +158,39 @@ const onMap=q=>({x:Math.max(1.5,Math.min(W-2.5,q.x)),y:Math.max(1.5,Math.min(H-2
 // What an order, an aim or a job of the old map means on the next: nothing. The adventure is set aside with its map (adv.held) and taken up
 // within QL.NEAR on return; an aim's coordinates and a remembered ground are numbers of the old map, so the next turn asks a new aim.
 function leaveBehind(C,go,ld){for(const a of [ld,...go])if(a&&a.adv)holdAdventure(a);
-  for(const a of go){a.pq=[];delete a.playGround;markOathMap(a);const I=a.intent;if(I&&!I.done)I.done={at:Math.round(S.gameMin),why:'you left that land behind'}}
+  for(const a of go){a.pq=[];delete a.playGround;delete a.heardAim;markOathMap(a);questAside(a);stampLore(a);for(const c of CITY)if(ownTown(c,a))learnPlace(a,c.name,'seen');const I=a.intent;if(I&&!I.done)I.done={at:Math.round(S.gameMin),why:'you left that land behind'}}
   delete C.road;delete C.wait;delete C.waitDun;delete C.accept;delete C.tableQ;
+  for(const p of C.plans||[])if(p.status==='open')p.status='left'; // they crossed together: a meeting of the old land has nobody left to miss it
   const P=(S.parties||[]).find(p=>p.company===C.id);if(P)delete P.dest;
   if(S.staged&&S.staged.cur&&S.staged.cur.phase==='waiting')unstage();} // whatever was walking to meet them is left on that road, and the DM log says so
 // All or none, in one tick. Everyone who rides with the company goes: its members, its hires, anyone in its party. Returns the far side's exit.
-export function cross(C,e){const from=MAP_ID,to=e.to.map,first=!(S.maps&&S.maps[to]),go=[...crossers()],ld=openingLead(C),L0=memOf(C);
+export function cross(C,e){const from=MAP_ID,to=e.to.map,first=!(S.maps&&S.maps[to]),go=[...crossers()],ld=openingLead(C),L0=memOf(C),bound=C.road&&C.road.bound||null;
   leaveBehind(C,go,ld);parkWhens(from);
   switchMap(to);
   const back=exitById(e.to.exit),at=back?entrySpot(back):homeOf(ld).gate,n=go.length;
-  go.sort((x,y)=>(L0.indexOf(y)>=0)-(L0.indexOf(x)>=0)||L0.indexOf(x)-L0.indexOf(y)).forEach((a,i)=>{const q=spreadAt(at,i,n),p=standAt(onMap(q).x,onMap(q).y);a.x=p.x;a.y=p.y;a.zone=zoneAt(a.x,a.y);a.dest=null;a.moving=false;if(a.state==='town')a.state='hunt'});
+  go.sort((x,y)=>(L0.indexOf(y)>=0)-(L0.indexOf(x)>=0)||L0.indexOf(x)-L0.indexOf(y)).forEach((a,i)=>{const q=spreadAt(at,i,n),p=standAt(onMap(q).x,onMap(q).y);a.x=p.x;a.y=p.y;a.zone=zoneAt(a.x,a.y);a.dest=null;a.moving=false;if(a.state==='town')a.state='hunt';questBack(a)});
   unparkWhens(to);
   const z=ZONES[zoneAt(at.x,at.y)]||null,c=nearest(at);
-  for(const a of go){if(z)learnPlace(a,z,'seen');learnPlace(a,mapName(to),'seen');if(c)learnPlace(a,c.name,'seen');record(a,'Took ',gd(e.name),' out of ',gd(mapName(from)),' into ',gd(mapName(to)),'.')}
+  for(const a of go){if(z)learnPlace(a,z,'seen');learnPlace(a,mapName(to),'seen');learnPlace(a,mapName(from),'seen');learnPlace(a,e.name,'seen');if(back)learnPlace(a,back.name,'seen');if(c)learnPlace(a,c.name,'seen');record(a,'Took ',gd(e.name),' out of ',gd(mapName(from)),' into ',gd(mapName(to)),'.')}
   log(gd(coName(C,ld)),' takes ',gd(e.name),' out of ',gd(mapName(from)),' and comes to ',gd(mapName(to)),'.');
   timeline('oath',gd(coName(C,ld)),first?' came for the first time to ':' came back to ',gd(mapName(to)),'.');
   campaign(C,'council',gd(coName(C,ld)),' crosses from ',gd(mapName(from)),' into ',gd(mapName(to)),'.');
   dmlog('agent',null,[(C.name||'A company')+' crossed from '+mapName(from)+' to '+mapName(to)+' by '+e.name+' on day '+dayNo()+'.'+(first?' A new land: it is yours to fill.':'')],{by:'scripted',crossing:true,from,to,company:C.id,first},{heroes:go.map(a=>a.id)});
   for(const a of L0)notify(a,'You have crossed into '+mapName(to)+', by '+e.name+'. What you knew of the road behind stays behind you.',true,1);
-  openFarside(C,back||e,ld,first);return back}
+  openFarside(C,back||e,ld,first,bound);return back}
 function nearest(p){let b=null,bd=1e9;for(const c of CITY){const d=dist(p,c.gate);if(d<bd){bd=d;b=c}}return b}
 
 // ---- the far side ----
 function farFrame(C,ld,e,first,at){const M=MAPS[MAP_ID]||{},z=ZONES[zoneAt(at.x,at.y)]||'open country',c=nearest(at);
   return [gd(coName(C,ld)),first?' comes down ':' comes back down ',gd(e.name),' into ',gd(z),M.name?', in '+M.name:'','. ',M.blurb?M.blurb+' ':'',c?'The nearest walls are '+c.name+', '+dirOf(at,c.gate)+' of here.':'No walls stand anywhere in sight.']}
-function openFarside(C,e,ld,first){const at=ld||{x:e.x,y:e.y},town=nearest(at),frame=farFrame(C,ld,e,first,at),L=memOf(C);
-  const ctx={farside:1,map:MAP_ID,exit:e.name,first:first?1:0,town:town?town.name:null,anchor:ld?ld.id:null,lead:ld?ld.id:null,setting:'field'};
+function openFarside(C,e,ld,first,bound){const at=ld||{x:e.x,y:e.y},town=nearest(at),frame=farFrame(C,ld,e,first,at),L=memOf(C);
+  const ctx={farside:1,map:MAP_ID,exit:e.name,first:first?1:0,town:town?town.name:null,anchor:ld?ld.id:null,lead:ld?ld.id:null,setting:'field',...(bound?{bound}:{})};
   const sc=tableOn()?openScene('farside',(first?'A new land: ':'Back in ')+mapName(MAP_ID),frame,ctx,C):null;
   if(!sc)settleFar(C,ctx,L.map(a=>a.id));return sc}
 function settleFar(C,ctx,ids){const L=ids.map(byId).filter(living),ld=byId(ctx.lead);
   const line=(ctx.first?'We came down '+ctx.exit+' into '+mapName(ctx.map)+' for the first time.':'We came back to '+mapName(ctx.map)+' by '+ctx.exit+'.')+(ctx.town?' The nearest walls are '+ctx.town+'.':'');
   for(const a of L)remember(a,'table',line);
-  if(ld)notify(ld,'The road is behind you. Where you go in '+mapName(ctx.map)+' is yours to say: name your aim, and look round before you lead on.',true,2);
+  if(ld)notify(ld,'The road is behind you. Where you go in '+mapName(ctx.map)+' is yours to say: name your aim, and look round before you lead on.'+boundWords(ld,ctx.bound),true,2);
   return line}
 const DM_FAR={
   onFrame(sc){const c=sc.ctx,M=MAPS[c.map]||{},n=plansFor(c.map),L=sc.ids.map(byId).filter(living);

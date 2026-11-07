@@ -168,19 +168,20 @@ export const TESTWORLD={
 // title screen and every per-world check never list them; MAPS (below) is the table that holds them. Not canon (docs/LORE.md, "Test fixtures").
 // Exit format: {id, name, to:{map, exit}, at:{x,y,r} | edge:{side:'N'|'S'|'E'|'W', from, to}}; an edge exit paints its stretch of the
 // outer ring as road, an `at` exit stands on a road the spec routes there (roads may name an exit id as an endpoint).
-const linkMap=(name,town,exit,back)=>({
+const linkMap=(name,town,...exits)=>({
   name,size:{w:32,h:24},
   regions:[{id:'linkmead',name:name+' Mead',band:[1,5],biome:'meadow',mask:{kind:'all'}}],
   towns:[{name:town,fac:0,x0:3,y0:8,w:9,h:8,gate:'E',race:null}],
-  exits:[exit],
-  roads:[{from:town,to:exit.id}],
+  exits,
+  roads:exits.map(e=>({from:town,to:e.id})),
   nodes:{respawn:{herb:60,ore:120,hide:60,fish:30},regions:{linkmead:{herb:3,ore:2,hide:2,fish:2}}},
   lights:{townTorches:[[3,3]]},
   spawn:{townPad:[4,3]},
 });
 export const TESTLINK={
   testlinka:linkMap('Linka','Hearthlink',{id:'east',name:'the east road',edge:{side:'E',from:11,to:13},to:{map:'testlinkb',exit:'west'}}),
-  testlinkb:linkMap('Linkb','Mooring',{id:'west',name:'the west road',edge:{side:'W',from:11,to:13},to:{map:'testlinka',exit:'east'}}),
+  testlinkb:linkMap('Linkb','Mooring',{id:'west',name:'the west road',edge:{side:'W',from:11,to:13},to:{map:'testlinka',exit:'east'}},{id:'north',name:'the north road',edge:{side:'N',from:20,to:22},to:{map:'testlinkc',exit:'south'}}),
+  testlinkc:linkMap('Linkc','Farhold',{id:'south',name:'the south road',edge:{side:'S',from:20,to:22},to:{map:'testlinkb',exit:'north'}}), // a land two roads on, for the way across a land between (#1013 slice 5)
 };
 
 // A map with no lair and no dungeon (#1013): what a chapter of a campaign may be, a town each for the two peoples and the ground
