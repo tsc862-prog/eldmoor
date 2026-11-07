@@ -354,6 +354,18 @@ console.log('roads knowledge (#539)');
     H.x = keep.x; H.y = keep.y; rebuild() }
   S.gameMin = t0 }
 
+// a seasoned start knows the places and creatures its level has worked (#930)
+{ const {CRYPT: CR} = await import('../src/world/map.js');
+  const mk = (lvl, pl = true) => { const a = S.agents.find(x => x.kind === 'hero' && x.state !== 'dead' && !x.player && !x.lore); a.lvl = lvl; a.player = pl; return a };
+  const vet = mk(14), n = L.careerLore(vet);
+  ok(n > 0 && L.knowsPlace(vet, CR.name), 'a level 14 start has heard of the Crypt');
+  ok(L.careerLore(vet) === 0, 'teaching twice adds nothing');
+  const green = mk(2); L.careerLore(green);
+  ok(!L.knowsPlace(green, CR.name), 'a level 2 start has not');
+  const bg = mk(14, false); ok(L.careerLore(bg) === 0 && !bg.lore, 'a scripted hero gets no lore');
+  vet.player = false; green.player = false }
+
+
 // Other lands (#1013): on a world with a road off it a far name is heard like any place; on this world there is nothing to hear.
 {const {spawnSync} = await import('node:child_process'), r = spawnSync(process.execPath, ['scripts/crossingcheck.mjs', '--hear'], {env: {...process.env, ELDMOOR_WORLD: 'testlinka'}, encoding: 'utf8'}); process.stdout.write(r.stdout || ''); ok(r.status === 0, 'a place on another land is learned by ear' + (r.status ? ': ' + (r.stderr || '').slice(-400) : ''))}
 console.log(fail ? `\nlorecheck: ${fail} FAILED\n` : '\nlorecheck: all ok\n');
