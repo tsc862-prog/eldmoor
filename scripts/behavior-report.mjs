@@ -345,6 +345,12 @@ export function wishSection(rows, turns, table) {
   }
   L.push('### Tools tried that do not exist', '');
   L.push(d.unknown.length ? table(['name tried', 'times', 'seats'], d.unknown.slice(0, 15).map(u => [u.tool, u.n, u.seats.slice(0, 6).join(', ')])) : 'None in the turn lines.', '');
+  { // free actions per seat per game day, and who ruled (#864): the DM's model or its scripted reflex
+    const w = rows.filter(r => r.type === 'attempt'), seats = new Map();
+    for (const r of w) {const k = r.name || r.seat || '?'; let x = seats.get(k); if (!x) seats.set(k, x = {n: 0, dm: 0}); x.n++; if (r.by === 'dm-agent') x.dm++}
+    const span = new Set(w.map(r => r.day).filter(x => x != null)), nd = Math.max(1, span.size ? Math.max(...span) - Math.min(...span) + 1 : 1);
+    L.push('### Free actions per seat per game day', '', seats.size ? table(['seat', 'attempts', 'ruled by the DM\'s model', 'scripted', 'per game day'], [...seats].sort((p, q) => q[1].n - p[1].n).map(([k, x]) => [k, x.n, x.dm, x.n - x.dm, (x.n / nd).toFixed(2)])) : 'No seat has tried a free action yet.', '');
+  }
   L.push('### Free actions the DM ruled on most', '');
   if (!d.attempts) L.push('No attempts ruled on.', '');
   else {
