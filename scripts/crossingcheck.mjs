@@ -18,6 +18,7 @@
 //   9. on the TESTLINK fixtures: the leader's word and nothing else opens a road; every hold in words; go, wait, turn back as a vote; all or
 //      none; the company spread at the entry, what it leaves behind, the arrival; frozen state identical on return; a fallen member on the far
 //      map; the DM at both tables; mock runners holding real claims across it, one mid-wait; a save mid-crossing in a fresh process.
+//  10. a company stays a party (#1048): through a walk to any town, on any map, after a fall; lead_to after it, for any company; C.road ends with the words.
 // Usage: npm run crossingcheck
 import {spawnSync} from 'node:child_process';
 import {readFileSync, writeFileSync, readdirSync} from 'node:fs';
@@ -448,6 +449,49 @@ async function crossTools() {
   const {knowsPlace: knows} = await import('../src/sim/lore.js'), {homeOf} = await import('../src/data/races.js');
   return {...T, knows, homeOf, home, CO, CN, TB, SC, CR, PC, tableView, act, steps, until, calm, world, exit, off, at, scene, opened, answers, closed, go, byId, setRunnerLinks, setReflexAck};
 }
+if (mode === '--party') { // a company stays a party (#1048): through a walk to any town, across a road, after a fall; and C.road lasts as long as the words that made it
+  const X = await crossTools(), {S, SIM, M, home, CO, CN, TB, act, steps, until, calm, world, exit, at, scene, opened, answers, closed, go, setRunnerLinks} = X;
+  const {maxHp} = await import('../src/sim/heroes.js'), {slotParty} = CO;
+  const together = (F, L) => {const P = slotParty(F); return !!P && L.every(a => a.party === P)};
+  const idle = L => {for (const a of L) {a.playActAt = -1e9; a.pq = []}}; // nobody has given an order for hours: autopilot plays them
+  // Autopilot's walk home (homeCmd), for the leader; the others follow by themselves. Asks that nobody was ever without the party on the way, and that they all come in.
+  const heading = (F, mem, lead) => {const c = X.homeOf(lead); S.gameMin = Math.ceil(S.gameMin / 1440) * 1440 + 480; at(mem, {x: 22, y: 12}); idle(mem); steps(5); lead.pq = [{kind: 'move', legs: [{x: c.gate.x, y: c.gate.y, st: 'return'}], last: 'town', label: c.name, auto: 'heading home to ' + c.name + ' (the pack is full)'}]; let held = true;
+    const inTown = until(() => {held = held && together(F, mem); return lead.state === 'town'}, 60 * 60); for (let i = 0; i < 300; i++) {steps(); held = held && together(F, mem)} return {held, inTown}}; // autopilot may walk straight out again, and that is the case that lost the party
+  const leadsOut = (lead, n, target = 'east') => {const r = act(lead, 'lead_to', {target}); ok(r.ok && r.followers > 0 && r.followers <= n, 'lead_to works there: ' + (r.error || r.leading + ', ' + r.followers + ' of ' + n + ' in earshot')); return r};
+
+  console.log('\na company stays a party');
+  {const {F, mem, lead} = world(); ok(together(F, mem), 'the company stands in the hall as one party');
+    const w = heading(F, mem, lead); ok(w.inTown, 'autopilot heads home to ' + M.CITY[0].name); ok(w.held, 'one party every step of the way, and five seconds on'); calm(); leadsOut(lead, mem.length - 1)}
+  {const {F, mem, lead} = world(), town = M.CITY[0].name; at(mem); steps(5); const r = act(lead, 'lead_to', {target: town}); ok(r.ok, 'lead_to ' + town + ': ' + (r.error || r.leading));
+    ok(until(() => lead.state === 'town' && mem.every(a => a.state === 'town'), 60 * 200), 'the company walks in behind the leader'); steps(120); ok(together(F, mem), 'and is a party when it gets there'); leadsOut(lead, mem.length - 1)}
+  {const {F, mem, lead} = world(), hurt = mem.find(a => a !== lead); at(mem); steps(5); hurt.hp = maxHp(hurt) * .1; act(hurt, 'flee', {}); hurt.state = 'return'; hurt.pq = []; act(lead, 'hunt', {}); steps(120);
+    ok(lead.state !== 'return' && lead.state !== 'town', 'one who runs for home does not turn the leader round: ' + lead.state); ok(until(() => hurt.state === 'town', 60 * 200) && together(F, mem), 'and is still of the party in town')}
+
+  console.log('a fall out in the field');
+  {const {F, mem, lead} = world(); at(mem); steps(5); const gone = mem.find(a => a !== lead); gone.state = 'dead'; gone.hp = 0; steps(10); const L = mem.filter(a => a !== gone); ok(together(F, L), 'the party closes up where it stands'); ok(CN.leaderOfC(F) === lead, 'with the same leader'); leadsOut(lead, L.length - 1, 'west')}
+
+  console.log('on the far side of a road');
+  {const {F, mem, lead} = world(); ok(go(F, mem, lead) && opened(F, 'farside'), 'they take the road'); answers(F, 'look'); closed(F); ok(together(F, mem), 'a party on the far side'); calm();
+    const w = heading(F, mem, lead); ok(w.inTown && w.held, 'autopilot heads home to ' + M.CITY[0].name + ', on ' + M.MAP_ID + ', one party every step'); leadsOut(lead, mem.length - 1);
+    const back = act(lead, 'lead_to', {target: M.EXITS[0].name}); ok(back.ok && !!F.road, 'and may lead them back to the road: ' + (back.error || back.leading))}
+
+  console.log('any company');
+  {world({fellowship: false}); const L = S.agents.filter(a => a.fac === 0 && a.state !== 'dead').slice(0, 2); for (const a of L) {a.town = M.CITY[0].name; SIM.markPlayer(a, true)}
+    const C = CO.companyOf(L[0]); CO.joinCompany(C, L[1]); for (const a of S.agents) if (!L.includes(a) && CO.companyOf(a)) SIM.markPlayer(a, false); for (const a of L) a.partyOk = true; calm();
+    const ld = CN.leaderOfC(C), P = () => S.parties.find(p => p.company === C.id); at(L); steps(120); ok(!!P() && L.every(a => a.party === P()), 'two who ride together form up in the field');
+    const r = act(ld, 'lead_to', {target: M.CITY[0].name}); ok(r.ok && r.followers === 1, 'lead_to is theirs too: ' + (r.error || r.leading)); ok(until(() => L.every(a => a.state === 'town'), 60 * 200) && !!P() && L.every(a => a.party === P()), 'and they are a party in town')}
+  {world({fellowship: false}); const a = S.agents.find(x => x.fac === 0 && x.state !== 'dead'); a.town = M.CITY[0].name; SIM.markPlayer(a, true); calm(); at([a]); const r = act(a, 'lead_to', {target: M.CITY[0].name}); ok(r.ok && r.followers === 0, 'for a solo lead_to is move_to: ' + (r.error || r.leading))}
+
+  console.log('the road lasts as long as the words');
+  {const {F, mem, lead} = world(); at(mem, {x: exit().x - 14, y: exit().y}); steps(5); ok(act(lead, 'move_to', {target: exit().name}).ok && !!F.road, 'an order names the road'); steps(60); ok(!!F.road, 'and it stands while they walk');
+    const c = act(lead, 'rest', {minutes: 30}); ok(c.ok && !F.road, 'another order ends it: ' + (c.error || 'rest'));
+    act(lead, 'move_to', {target: exit().name}); ok(!!F.road, 'the order given anew'); lead.pq = []; steps(2); ok(!F.road, 'a walk order that is gone (a night\'s camp clears it) takes the road with it');
+    act(lead, 'move_to', {target: exit().name}); steps(60); lead.pq = [{kind: 'hunt', n: 1, k0: lead.kills}]; steps(2); ok(!F.road, 'and a leader who hunts the other way is on no road')}
+  {const {F, mem, lead} = world(); at(mem, {x: exit().x - 14, y: exit().y}); steps(5); act(lead, 'intent', {goal: 'take ' + exit().name + ' out of here', why: 'the hall is too small'}); ok(!!F.road, 'an aim names the road'); lead.pq = []; steps(60); ok(!!F.road, 'and holds with no walk order under it: autopilot carries an aim');
+    lead.intent.done = {at: S.gameMin, why: 'test'}; ok(until(() => true, 1) && !!F.road, 'a spent aim keeps the road while they stand by it'); steps(2); ok(!F.road, 'and not fourteen tiles off')}
+  {const {F, mem, lead} = world(); at(mem); act(lead, 'move_to', {target: exit().name}); ok(opened(F, 'crossing'), 'at the road the order is spent and the table still opens'); answers(F, 'wait'); closed(F)}
+  console.log(fail ? fail + ' failed' : 'the party holds'); process.exit(fail ? 1 : 0);
+}
 if (mode === '--road') { // when the scene opens, what holds it, what it asks and what comes of it
   const X = await crossTools(), {S, SIM, M, home, CO, CN, TB, PC, tableView, act, steps, until, world, exit, off, at, scene, opened, answers, closed, setRunnerLinks, setReflexAck} = X;
   const {learnPlace} = await import('../src/sim/lore.js'), {setGateHold} = await import('../src/sim/prep.js'), far = exit().to.map;
@@ -874,7 +918,7 @@ for (const [from, to] of [['testlinka', 'testlinkb'], ['eldmoor', 'testlinkb']])
   ok(r.status === 0, 'five maps fit the store');
 }
 // ---- 9. the crossing ----
-for (const [m, what] of [['--road', 'when a road opens, what holds it and what it asks'], ['--over', 'the crossing, the far side and home again'], ['--voice', 'the DM at both tables'], ['--know', 'what heroes and the DM know of other lands'], ['--runners', 'mock runners hold their claims across it']]) {
+for (const [m, what] of [['--road', 'when a road opens, what holds it and what it asks'], ['--party', 'a company stays a party, and the road lasts as long as the words'], ['--over', 'the crossing, the far side and home again'], ['--voice', 'the DM at both tables'], ['--know', 'what heroes and the DM know of other lands'], ['--runners', 'mock runners hold their claims across it']]) {
   const r = spawnSync(process.execPath, [HERE, m], {env: env('testlinka'), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 240000});
   process.stdout.write(r.stdout || ''); if (r.stderr) process.stderr.write(r.stderr.slice(-2000));
   ok(r.status === 0, what);
