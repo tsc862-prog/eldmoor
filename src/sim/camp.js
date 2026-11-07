@@ -42,7 +42,7 @@ import {rnd,ri,hash} from '../core/rng.js';
 import {CITY,CRYPTS,ZONES,zoneAt,tileAt,dist} from '../world/map.js';
 import {nearLair} from './lair.js';
 import {WALKABLE,ROCK,PEAK} from '../world/tiles.js';
-import {solidAt,standAt} from '../world/passable.js';
+import {solidAt,standAt,landAt} from '../world/passable.js';
 import {MOBS} from '../data/mobs.js';
 import {USES} from '../data/items.js';
 import {campMeal,campLight} from './inv.js'; // rations and torches (sim/inv.js)
@@ -194,12 +194,12 @@ function breakCamp(F,why){const g=F.camp;if(!g||!g.phase)return;const L=members(
   emit('break',g,{why})
   g.ids=[]}
 
-// ---- visitors: an ambush on the watch ----
-function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zone&&MOBS[t].lv&&!MOBS[t].boss);if(!all.length)return null;
+// ---- visitors: an ambush on the watch ---- (ambushMob is exported for pathcheck, #1060)
+export function ambushMob(g,lvl){const all=Object.keys(MOBS).filter(t=>MOBS[t].z===g.zone&&MOBS[t].lv&&!MOBS[t].boss);if(!all.length)return null;
   let types=all.filter(t=>MOBS[t].lv[0]<=lvl+2); // never a foe far above the company: the weakest of the region if none fits
   if(!types.length)types=[all.reduce((b,t)=>MOBS[t].lv[0]<MOBS[b].lv[0]?t:b)];
   const t=types[ri(0,types.length-1)],M=MOBS[t];
-  let p=null;for(let k=0;k<8&&!p;k++){const ang=rnd()*Math.PI*2,x=g.x+Math.cos(ang)*7,y=g.y+Math.sin(ang)*7;if(open(x,y))p={x,y}}
+  let p=null;for(let k=0;k<8&&!p;k++){const ang=rnd()*Math.PI*2,x=g.x+Math.cos(ang)*7,y=g.y+Math.sin(ang)*7;if(open(x,y)&&landAt(x,y)===landAt(g.x,g.y))p={x,y}} // on land joined to the camp's (#1060): a creature over a river with no crossing never reaches the fire
   if(!p)return null;
   const m=spawnMob(t,null,{lvl:Math.max(M.lv[0]-2,Math.min(M.lv[1]+1,lvl)),add:true});m.xpMul=.6;Object.assign(m,standAt(p.x,p.y));m.home={x:m.x,y:m.y};m.spawn={x:m.x,y:m.y};return m}
 function visitor(F,g,w){const L=members(g);if(!L.length)return;g.stats.visitors++;
