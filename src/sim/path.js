@@ -59,8 +59,10 @@ export function lineCost(x0,y0,x1,y1){ready();
   return Infinity}
 export const clearLine=(a,b)=>lineCost(a.x,a.y,b.x,b.y)<Infinity;
 // What stands on the straight line between two points: 'river', 'wall', 'building', 'peak', 'lava', 'rock', 'forest', or null.
-export function blockedBy(x0,y0,x1,y1){const L=Math.hypot(x1-x0,y1-y0);if(!fin(L)||!fin(x0)||!fin(y0))return null;
-  for(let d=.25;d<=L;d+=.25){const x=Math.floor(x0+(x1-x0)*d/L),y=Math.floor(y0+(y1-y0)*d/L);if(!inb(x,y))return null;if(solid[I(x,y)])return WHY[solid[I(x,y)]]}return null} // stops at the map's edge: a target far off it must not cost a walk there
+export function blockedBy(x0,y0,x1,y1){const b=blockAt(x0,y0,x1,y1);return b?b.why:null}
+// The same with where it stands: {why, x, y} (the tile), or null (#797: a hero speaks only of what it can see or knows).
+export function blockAt(x0,y0,x1,y1){const L=Math.hypot(x1-x0,y1-y0);if(!fin(L)||!fin(x0)||!fin(y0))return null;
+  for(let d=.25;d<=L;d+=.25){const x=Math.floor(x0+(x1-x0)*d/L),y=Math.floor(y0+(y1-y0)*d/L);if(!inb(x,y))return null;if(solid[I(x,y)])return {why:WHY[solid[I(x,y)]],x,y}}return null} // stops at the map's edge: a target far off it must not cost a walk there
 
 function push(f,i){if(hn===HI.length){const a=new Int32Array(hn*2),b=new Float32Array(hn*2);a.set(HI);b.set(HF);HI=a;HF=b}
   let k=hn++;while(k>0){const p=(k-1)>>1;if(HF[p]<=f)break;HF[k]=HF[p];HI[k]=HI[p];k=p}HF[k]=f;HI[k]=i}

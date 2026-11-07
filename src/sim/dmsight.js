@@ -16,7 +16,7 @@ import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPTS,zoneAt,dist} from '../world/
 import {cryptRow,cryptGroupOf,cryptTitle} from './crypts.js';
 import {hasLair} from './lair.js';
 import {spotErr,LK,activeOf} from './levers.js';
-import {solidAt,solidWhy} from '../world/passable.js';
+import {GROUND,DIRS,bearing,groundScan,groundLines,roadLine,routeFacts,wayWords} from './ground.js'; // the ground, read as a hero reads it (#797)
 import {focuses} from './dmfocus.js';
 import {countKind,questItems,invOf} from './inv.js';
 import {gearScore} from './gear.js';
@@ -81,16 +81,12 @@ export function knowsOf(a){const s=loreSummary(a,12),met=(metNames(a)||[]).slice
 export const sightOf=a=>({carries:carriesOf(a),quests:questsOf(a),knows:knowsOf(a)});
 
 // ---- survey: the ground around a point ----
-const DIRS=['east','southeast','south','southwest','west','northwest','north','northeast']; // y grows downward
-const bearing=(c,p)=>DIRS[((Math.round(Math.atan2(p.y-c.y,p.x-c.x)/(Math.PI/4))%8)+8)%8];
 const OPEN=[G,SGRASS,FLOWER,SNOW];
 function spotAt(p,gap){return !spotErr(p)&&!(S.places||[]).some(q=>dist(q,p)<gap)}
 // c: {x,y,label}; r: radius in tiles. Legal spots are accepted by mark_place, place_person and stage_scene as "x,y".
-export function survey(c,radius){const r=Math.max(4,Math.min(30,Math.round(Number(radius))||12)),cx=Math.floor(c.x),cy=Math.floor(c.y);
-  const road={},water={},blocked={};let onRoad=false;
-  for(let y=Math.max(1,cy-r);y<=Math.min(H-2,cy+r);y++)for(let x=Math.max(1,cx-r);x<=Math.min(W-2,cx+r);x++){
-    const p={x:x+.5,y:y+.5},d=dist(c,p);if(d>r)continue;const t=tiles[I(x,y)],dir=bearing(c,p),note=(B,why)=>{const o=B[dir];if(!o||d<o.d)B[dir]={d:R1(d),at:x+','+y,why}};
-    if(t===ROAD||t===BRIDGE){note(road);if(d<1.2)onRoad=true}else if(t===RIVER)note(water);else if(solidAt(x,y)||!WALKABLE.includes(t))note(blocked,solidWhy(x,y))}
+// to: a second point: the way on foot from c to it, from the same route a hero's move_to reads (the DM knows the land, so nothing is unnamed).
+export function survey(c,radius,to){const r=Math.max(4,Math.min(30,Math.round(Number(radius))||12));
+  const sc=groundScan(c,r),{road,water,blocked,onRoad,crossings}=sc;
   const fmt=B=>DIRS.filter(k=>B[k]).map(k=>({dir:k,nearest:B[k].at,tiles:B[k].d,...(B[k].why?{kind:B[k].why}:{})}));
   const nearby=[...CITY.map(t=>({kind:'town',name:t.name,x:t.gate.x,y:t.gate.y})),...LANDMARKS.map(l=>({kind:l.kind||'landmark',name:l.name,x:l.x,y:l.y}))]
     .map(o=>({...o,d:dist(c,o)})).filter(o=>o.d<=r*2.5).sort((x,y)=>x.d-y.d).slice(0,8).map(o=>({kind:o.kind,name:o.name,at:Math.round(o.x)+','+Math.round(o.y),tiles:R1(o.d),dir:bearing(c,o)}));
@@ -105,9 +101,12 @@ export function survey(c,radius){const r=Math.max(4,Math.min(30,Math.round(Numbe
   pick(true);if(spots.length<6)pick(false);
   const z=zoneAt(c.x,c.y),b=REGIONS[z]&&REGIONS[z].band;
   return {ok:true,near:c.label||null,at:R1(c.x)+','+R1(c.y),radius:r,region:ZONES[z]||null,levels:b?b[0]+'-'+(b[1]===Infinity?'+':b[1]):null,on_road:onRoad,
-    roads:fmt(road),water:fmt(water),impassable:fmt(blocked),towns_and_landmarks:nearby,marked_places:marked,
+    roads:fmt(road),water:fmt(water),impassable:fmt(blocked),crossings:crossings.map(k=>({kind:k.k,at:k.x+','+k.y,tiles:k.d,dir:k.dir,region:k.region})),
+    ground:[...groundLines(sc,{max:GROUND.SURVEY,region:k=>k.region}),...[roadLine(sc)].filter(Boolean)],...(to?{way:wayTo(c,to)}:{}),towns_and_landmarks:nearby,marked_places:marked,
     legal_spots:spots.map(s=>({at:s.x+','+s.y,tiles:R1(dist(c,s)),dir:bearing(c,s)})),
     note:'legal_spots are open ground, '+LK.PLACE_GAP+' or more tiles from other places and the towns: pass one as "x,y" to mark_place, place_person or stage_scene near. impassable lists the solid ground (walls, mountains, lava, rock, buildings, forest cores) with its kind.'}}
+
+function wayTo(c,to){const o=routeFacts({x:c.x,y:c.y},[{x:to.x,y:to.y,st:'travel'}]);return {to:to.label||null,words:wayWords(o,dist(c,to))||'Plain going, straight there.',...(o||{})}}
 
 // ---- world_standing: the "world second" read ----
 const FOCUS_WHY={crypt:'its leader will lead them down into the Crypt',raid:'its leader means to bring down the wyrm',adventure:'its leader sends them after the jobs on the town boards',pvp:'its leader wants enemy blood on the roads',open:'no focus set'};

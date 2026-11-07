@@ -131,7 +131,7 @@ for(const c of CITY){let bad=0;const sp=Object.values(c.spots);for(const a of sp
   const z=o&&o.route&&o.route.by&&o.route.by[0];
   a.lore=a.lore||{};const words=JSON.stringify(o.route);const known=ZONES.filter(n=>words.includes(n));
   ok(known.every(n=>{const q=playerAct(a.id,'places',{});return JSON.stringify(q).includes(n)}),'the route names only places the hero knows ('+(known.join(', ')||'none')+')');
-  ok(!!z&&/^(bridge|ford)$/.test(z.crossing),'the crossing is a fact: '+JSON.stringify(z))}}
+  ok(!!z&&(/^(bridge|ford)$/.test(z.crossing)||z.crossing==='unknown'&&z.tiles==null),'the crossing is a fact, and one the hero cannot know has no kind or distance: '+JSON.stringify(z))}}
 
 // ---- a long run ---- (20 game minutes in Eldmoor; the other worlds get a shallow pass of PATHCHECK_MINUTES, 5, from the parent: full depth on one world, #940)
 const MINUTES=Number(process.env.PATHCHECK_MINUTES)||20;

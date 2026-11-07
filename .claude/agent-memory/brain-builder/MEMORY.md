@@ -59,6 +59,7 @@
 - [Narrator voice](narrator-voice.md) — #554 local TTS: loopback engine, relay routes, hash cache, page queue rules, ttscheck
 - [Attempt ruling](attempt-ruling.md) — #522 attempt tool, ruling_call/answer protocol, effect grammar, wait rule, scene hooks, ruling voice
 - [Cost report](cost-report.md) — #799 sources, wake classes, game hours from digests, measured spend and lever evidence
+- [Way words](way-words.md) — #797 ground.js: route facts, way sentence, hero survey tool, sight gate, brief.way, waycheck pitfalls
 - [Tool map](tool-map.md) — #640 toolmap.mjs generated tool inventory in hero/DM orders, groups, budget, orderscheck assertions
 - [DM when/watch](dm-when-watch.md) — #635 deferred actions on triggers + DM-chosen wakes: dmwhen.js, run() hook, eventDue watch, test child, pitfalls
 - [Whisper and emote](whisper-emote.md) — #627 aside.js, entry flags (whisper/emote/veil), limits, hooks, check pitfalls
