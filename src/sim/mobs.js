@@ -4,10 +4,10 @@
 // roads; named rare elites (ELITES) spawn, stalk their zone and drop epics.
 import {rnd,ri,pickA} from '../core/rng.js';
 import {W,H,ROAD,WALKABLE} from '../world/tiles.js';
-import {tiles,zone,I,ZONES,zonePoint,zoneAt,dist,tileAt} from '../world/map.js';
+import {tiles,zone,I,ZONES,LVL_CAP,zonePoint,zoneAt,dist,tileAt} from '../world/map.js';
 import {standAt,solidAt} from '../world/passable.js';
 import {clearLine,noWay} from './path.js'; // paths (#794): a mob walks round what is solid, and gives up what it cannot reach
-import {MOBS,COUNTS,ELITES,ECO} from '../data/mobs.js';
+import {MOBS,COUNTS,ELITES,ECO,eliteOf} from '../data/mobs.js';
 import {blockOf,ABILITIES,ELITE_TEMPLATE,ELITE_EXTRA,NAMED_KITS,tagMul,heroTag} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
 import {S} from './state.js';
@@ -46,8 +46,10 @@ export const blk=m=>{const c=m._blk;if(c!==undefined&&c.type===m.type&&c.v===m.v
 // template adds its one extra ability). opt: lvl, variant (a VARIANTS key), name, title, abilities (replaces
 // the block's), role-free multipliers hpMul / hitMul, add (a summoned lesser kin: no respawn, no loot),
 // special (a custom foe), res / weak (replace the block's), xpMul.
-export function spawnMob(type,E,opt={}){const M=MOBS[type],p=zonePoint(M.z),B=blockOf(type,opt.variant,opt.role);
-  const lvl=E?E.lvl:opt.lvl!=null?opt.lvl:ri(M.lv[0],M.lv[1]);
+// M.pack (data/fauna.js, a thin map): the species keeps to small groups. Each spawn after a group's first stands by the last of its kind; read from the living mobs, so it is saved with them.
+const packMate=(type,n)=>{const L=S.mobs.filter(o=>o.type===type&&!o.gone&&!o.elite);return L.length%n?L[L.length-1].spawn:null};
+export function spawnMob(type,E,opt={}){const M=MOBS[type],mate=M.pack&&!E?packMate(type,M.pack):null,p=mate?zonePoint(M.z,mate):zonePoint(M.z),B=blockOf(type,opt.variant,opt.role);
+  const lvl=Math.min(LVL_CAP,E?E.lvl:opt.lvl!=null?opt.lvl:ri(M.lv[0],M.lv[1]));
   const m={id:++S.uid,kind:'mob',type,lvl,x:p.x,y:p.y,home:{...p},spawn:{...p},
     maxhp:Math.round((25+lvl*16)*B.hp*(E?E.scale:1)*(opt.hpMul||1)),hit:B.hit*(E?E.hit:1)*(opt.hitMul||1),acd:B.cd,
     alive:true,respawn:0,target:null,cd:0,face:1,wait:rnd()*3,dest:null,scan:rnd()};
@@ -62,7 +64,7 @@ export function spawnAll(){for(const t in COUNTS)for(let i=0;i<COUNTS[t];i++)spa
   S.zoneLastHero=ZONES.map(()=>S.gameMin);
   S.eco={t:ECO.tick,eliteT:60,empty:ZONES.map(()=>false),eliteNext:ZONES.map(()=>0),stats:{extra:0,culled:0,eliteSpawns:0,eliteKills:0,eliteDeaths:0}}}
 
-function spawnElite(z){const E=ELITES[z];if(!E)return; // no row for this zone (#308): skip, never throw
+function spawnElite(z){const E=eliteOf(z);if(!E)return; // no row for this zone (#308): skip, never throw
   const m=spawnMob(E.base,E);S.eco.stats.eliteSpawns++;
   log('Rumours spread of ',{t:m.name,c:'gd'},', ',E.title,', stalking ',ZONES[z],'.');timeline('elite',{t:m.name,c:'gd'},', '+E.title+', began stalking '+ZONES[z]+'.')}
 

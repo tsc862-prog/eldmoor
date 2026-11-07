@@ -212,8 +212,8 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
 {restore(JSON.parse(json));
   if (!companies().some((C) => C.ids.length === 1 && !C.slots)) markPlayer(S.agents.find((a) => a.state !== 'dead' && !a.player && !SLT.inSlots(a)), true); // a solo rides along (the first one may have fallen)
   const v7 = snapshot(), txt = JSON.stringify(v7);
-  ok(v7.version === 7 && Array.isArray(v7.companies) && !('fellowship' in v7) && !/"fellow(Role|From)?":/.test(JSON.stringify([v7.agents, v7.parties])),
-    `v7 save: ${v7.companies.length} companies, no fellowship key, no fellow, fellowRole or fellowFrom on heroes and no fellow on parties`);
+  ok(v7.version === 8 && Array.isArray(v7.companies) && !('fellowship' in v7) && !/"fellow(Role|From)?":/.test(JSON.stringify([v7.agents, v7.parties])),
+    `v8 save: ${v7.companies.length} companies, no fellowship key, no fellow, fellowRole or fellowFrom on heroes and no fellow on parties`);
   const live = S.agents.filter((a) => a.player && a.state !== 'dead');
   ok(live.length > 0 && live.every((a) => companyOf(a) && S.companies.filter((C) => C.ids.includes(a.id)).length === 1),
     `every agent-played hero rides in exactly one company (${live.length}; solos: ${companies().filter((C) => C.ids.length === 1).map((C) => C.name).join(', ') || 'none'})`);
@@ -244,7 +244,7 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   for (const p of v6.parties) {if (p.company === C.id) p.fellow = true; delete p.company}
   if (v6.companiesPast) v6.fellowshipsPast = v6.companiesPast;
   if (v6.table) delete v6.table.company; // a v6 scene had no company (#440)
-  delete v6.companies; delete v6.companySeq; delete v6.followId; delete v6.companiesPast; v6.version = 6;
+  delete v6.companies; delete v6.companySeq; delete v6.followId; delete v6.companiesPast; delete v6.campaign; v6.version = 6;
   ok(!/"company":/.test(JSON.stringify([v6.agents, v6.parties, v6.table])) && v6.fellowship.slots && v6.table, 'fixture: a v6 save with a Fellowship, a.fellow / p.fellow and an open table');
   restore(JSON.parse(JSON.stringify(v7))); const a7 = JSON.parse(JSON.stringify(snapshot()));
   restore(JSON.parse(JSON.stringify(v6))); const a6 = JSON.parse(JSON.stringify(snapshot()));
@@ -275,6 +275,20 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   rmSync(dir, {recursive: true, force: true});
   TABLE.mode = 'off';
 }
+
+// ---- the campaign (#1013): v8 wraps a v7 save in a campaign that never left its first map ----
+{const {WORLD_ID} = await import('../src/world/spec.js'), {MAP_ID} = await import('../src/world/map.js');
+  restore(JSON.parse(json)); const v8 = JSON.parse(JSON.stringify(snapshot()));
+  ok(v8.version === 8 && v8.campaign && v8.campaign.id === WORLD_ID && v8.campaign.map === WORLD_ID && Object.keys(v8.campaign.maps).length === 0 && !S.maps, 'a world that never left its map saves v8 with an empty campaign and packs nothing');
+  const v7 = JSON.parse(JSON.stringify(v8)); delete v7.campaign; v7.version = 7;
+  restore(v7); const back = JSON.parse(JSON.stringify(snapshot())), d = diff(v8, back);
+  ok(!d && !S.maps && MAP_ID === WORLD_ID, 'a v7 save loads as the same world, and saves as v8' + (d ? ' -- ' + d : ''));
+  const nowhere = JSON.parse(JSON.stringify(v8)); nowhere.campaign.map = 'a-map-this-build-has-not';
+  let code = null; try {restore(nowhere)} catch (e) {code = e.code} ok(code === 'stale-map', 'a save on a map gone from the build is refused as a stale map, not a crash');
+  ok(S.gameMin === v8.gameMin && !S.maps, 'and the world it was refused over stands');
+  const other = JSON.parse(JSON.stringify(v8)); other.campaign.id = 'another-campaign'; other.campaign.map = 'another-campaign'; restore(other);
+  ok(MAP_ID === WORLD_ID, 'an imported save of another campaign is laid on this map as ever: the map is only picked inside a campaign');
+  restore(JSON.parse(json))}
 
 // The company helpers (data only): one faction, at most PARTY.MAX heroes, solos, merge, leave.
 {const free = (f) => S.agents.filter((a) => a.state !== 'dead' && a.fac === f && !a.company);
