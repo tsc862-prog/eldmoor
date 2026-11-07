@@ -5,9 +5,11 @@ import {SNOW} from '../world/tiles.js';
 import {S} from '../sim/state.js';
 import {U as T} from './tile.js';
 import {F} from './life.js';
+import {onWorld} from '../sim/kept.js';
 
 const N=160,PX=new Float32Array(N),PY=new Float32Array(N),PT=new Float32Array(N).fill(-1e9),PS=new Int8Array(N);
 let head=0;const lastAt=new Map(); // agent id -> {x,y,s}
+onWorld(()=>{PT.fill(-1e9);lastAt.clear();head=0}); // another map (#1013): no print crosses
 const FADE=150; // game minutes a print lasts
 export function trackSteps(agents){
   for(const a of agents){if(!a.moving||a.hidden||a.state==='dead'||a.x<F.x0||a.x>F.x1||a.y<F.y0||a.y>F.y1)continue;

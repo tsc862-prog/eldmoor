@@ -14,6 +14,7 @@ import {lifeLight,lifeWindows} from './townlife.js';
 import {G} from './grade.js';
 import {castInto} from './shadows.js';
 import {FX} from './quality.js';
+import {onWorld} from '../sim/kept.js';
 
 const NR=4; // the map is this many times coarser than the screen
 const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
@@ -42,6 +43,8 @@ function lavaGlow(cooled){const k=cooled?1:0;if(glowC[k]!==undefined)return glow
 // The soft dark of the land, baked once a set of terrain art at SH pixels a tile: what stands under canopies, the feet of walls, houses and
 // mountains, and a slow mottling so a meadow is not one flat green. White is no change: this is multiplied in.
 const SH=6;let shade=null,shadeGen=-1;
+onWorld(()=>{for(const k of Object.keys(glowC))delete glowC[k];shade=null;shadeGen=-1}); // another map (#1013): its lava, its woods
+export const warmShade=()=>{if(!shade||shadeGen!==chunkGen)buildShade()};
 function buildShade(){shade=mk(W*SH,H*SH);const x=shade.getContext('2d'),m=mk(W*SH,H*SH),o=m.getContext('2d');
   const blob=(px,py,rx,ry,a)=>{o.fillStyle=`rgba(10,18,44,${a})`;o.beginPath();o.ellipse(px*SH,py*SH,rx*SH,ry*SH,0,0,7);o.fill()};
   let canopy=false;for(let ty=0;ty<H&&!canopy;ty++)for(let tx=0;tx<W;tx++)if(tiles[I(tx,ty)]===TREE&&treeAnchor(tx,ty)){canopy=true;break}

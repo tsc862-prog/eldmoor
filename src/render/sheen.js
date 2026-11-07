@@ -10,10 +10,13 @@ import {FX} from './quality.js';
 import {castCover} from './shadows.js';
 import {sceneryOn,waterLevel,bridgeDecks} from './scenery.js';
 import {quayLip} from './harbour.js';
+import {onWorld} from '../sim/kept.js';
 
 const K=4; // mask pixels a tile
 const SLATE=[92,108,158]; // the water's colour with no sun left to fight
 let mask=null,tint=null,key=-1;
+onWorld(()=>{mask=tint=null;key=-1}); // another map (#1013)
+export const warmSheen=()=>{if(mask===null)build()};
 const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
 function build(){const r=mk(W*K,H*K),x=r.getContext('2d');let any=false;x.fillStyle='#fff';
   for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){const t=tiles[I(tx,ty)];if(t===RIVER||(t===BRIDGE&&sceneryOn)){x.fillRect(tx*K,ty*K,K,K);any=true}else if(t===SWAMP){x.globalAlpha=.5;x.fillRect(tx*K,ty*K,K,K);x.globalAlpha=1;any=true}}

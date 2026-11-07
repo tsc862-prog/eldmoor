@@ -33,6 +33,7 @@ import {BOSS_PAL,RAID,MARK,TEXT,UI} from './palette.js';
 import {classColor} from '../core/colors.js';
 const WYRM={kind:'boss'};
 import {drawConditions} from './conditions.js';
+import {onWorld} from '../sim/kept.js';
 
 export const isArena=s=>!!s&&s.kind==='lair';
 export const arenaOf=s=>buildArena(s);
@@ -72,7 +73,8 @@ export function trackRaid(){const on=S.raidOn;if(!on)return;const B=S.boss,m=lai
       if(a.state==='downed'){const at=last[p.id]||(m?{x:m.arena.cx,y:m.arena.cy+2}:{x:0,y:0});r.down.push({id:p.id,name:p.name,cls:p.cls,x:at.x,y:at.y});continue} // not "broke off": goDown clears a.raid
       if(!a.raid){r.broke.push({id:p.id,name:p.name,cls:p.cls,hp:maxHp(a)>0?a.hp/maxHp(a):0});continue}
       if(m){const s=spotOf(a,m,B);const q=last[p.id]||(last[p.id]={x:0,y:0});q.x=s.x;q.y=s.y}}}}
-let lair0;const lairSite=()=>lair0!==undefined?lair0:(lair0=LANDMARKS.find(L=>L.kind==='lair')||null);
+let lair0;onWorld(()=>{lair0=undefined}); // another map (#1013)
+const lairSite=()=>lair0!==undefined?lair0:(lair0=LANDMARKS.find(L=>L.kind==='lair')||null);
 export const lairs=()=>LANDMARKS.filter(L=>L.kind==='lair');
 
 // Where a raider stands in the arena: its true place round the boss, or, still walking in, in a queue on the causeway.

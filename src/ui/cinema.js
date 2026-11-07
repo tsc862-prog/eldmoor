@@ -114,6 +114,9 @@ export function leaveCinema(){if(!on)return false;on=false;cam.director=null;Obj
   if(R&&R.resize)R.resize();if(window.scrollTo)window.scrollTo(saved.x,saved.y);setCinemaWish(false);syncBtn();syncView();
   if(backTo&&backTo.focus)backTo.focus();backTo=null;return true}
 export const toggleCinema=()=>on?leaveCinema():enterCinema();
+// A map switch while the view is open (#1013): the director starts over on the company, in the dark, and fades up (render/roadfade.js hands it the last beat). The camera it
+// would give back on leaving was on the land left behind. aim: the company stands on the new map, the picture is not back yet.
+export function cinemaArrive(aim){if(!on)return;const [w,h]=canvasSize();director.enter(cam,w,h);if(aim&&saved){saved.camX=cam.camX;saved.camY=cam.camY;if(saved.view==='region')saved.view='map'}}
 // Opening the world: the view comes back on when it was on, or was asked for on the title screen.
 export function resumeCinema(){if(cinemaWish())enterCinema()}
 

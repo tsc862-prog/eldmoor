@@ -1778,5 +1778,33 @@ console.log('cinema view');
     ok(low<r-.5,'the road brings a beat: it pulls out ('+low.toFixed(2)+')');ok(Math.abs(late-r)<.1,'and eases back in with the company still walking ('+late.toFixed(2)+')');for(const a of heroes)a.moving=false}
   for(const k of keep){k.a.x=k.x;k.a.y=k.y;k.a.state=k.st;k.a.hidden=k.hid}
   key('Escape');ok(!C.cinemaOn(),'left')}
+// ---- #1013 slice 4: the page follows a map switch: the road bar, the picker, the selection, the cinema view, the fade's beats. Last, as it leaves the smoke on another map ----
+console.log('map switch');
+{const {renderRoad}=await import('../src/ui/mapswitch.js'),{cam,mapArrived}=await import('../src/render/draw.js'),{crossingView,S}=sim,{switchMap}=await import('../src/sim/mappack.js'),M=await import('../src/world/map.js');
+  const C=await import('../src/ui/cinema.js'),F=await import('../src/render/roadfade.js'),{regionList}=await import('../src/ui/region.js');
+  const co=SLT.followed(),bar=()=>$('roadbar');
+  ok(!!co,'a company to take the road');renderRoad();ok(bar()&&bar().hidden,'with no road named the bar stays hidden');
+  const R0=co.road;co.road={exit:'x',by:co.ids[0],at:1,hold:{k:'far',text:'The road waits: Ann is out of shouting range.',away:[],since:1}};renderRoad();
+  ok(!bar().hidden&&/The road waits: Ann/.test(bar().textContent),'the bar reads crossingView(): what the road waits on: '+bar().textContent);ok(crossingView().waits===co.road.hold.text,'the same words as the DM sees');
+  co.road.phase='table';renderRoad();ok(bar().hidden,'at the table the Table banner says it');delete co.road;if(R0)co.road=R0;renderRoad();ok(bar().hidden,'the road dropped: the bar goes');
+  // a hero of the land left behind, a region picked, the cinema view open
+  const off=S.agents.find(a=>a.state!=='dead'&&!co.ids.includes(a.id)&&a.company==null);select(off);
+  const was=[...$('vReg').querySelectorAll('option')].length;cam.region=1;C.enterCinema();
+  const {MOBS}=await import('../src/data/mobs.js'),mem0=S.agents.find(a=>a.id===co.ids[0]);mem0.quest={type:Object.keys(MOBS)[0],need:6,have:2}; // a hunt taken on the land left behind
+  const to='testlinka';ok(switchMap(to)&&M.MAP_ID===to,'the map switches under the page, with no reload');ok(cam.region==null,'the picked region goes with the land');
+  mapArrived('aim');const opts=[...$('vReg').querySelectorAll('option')].map(o=>o.textContent);
+  ok(opts.length===regionList().length+1&&opts.slice(1).join()===M.ZONES.join()&&was!==opts.length,'the region list is rebuilt: '+opts.join(', '));
+  ok(co.ids.includes(cam.sel&&cam.sel.id),'a hero left frozen on the old map is no longer selected: the company is');
+  mem0.quest.type='nothing-here';select(mem0);ok(true,'a member whose hunt names a creature of the land left behind still opens in the hero panel');delete mem0.quest;
+  ok(cam.director.fade===1,'the cinema view: the director starts over in the dark');mapArrived('shown');ok(cam.director.fade===1,'and fades up when the picture is back');
+  uiFast();uiSlow();ok(/Linka Mead/.test($('cinema').querySelector('.cinz').textContent),'the clock names the land on screen: '+$('cinema').querySelector('.cinz').textContent);
+  C.leaveCinema();ok(cam.camX<=32*16&&cam.camY<=24*16,'leaving the view does not put the camera back on the old map ('+Math.round(cam.camX)+', '+Math.round(cam.camY)+')');
+  // the beats, on a fake clock and a fake canvas
+  const real=performance.now,ctx=new Proxy({createImageData:(w,h)=>({data:new Uint8ClampedArray(w*h*4)})},{get:(t,k)=>k in t?t[k]:()=>{},set:(t,k,v)=>{t[k]=v;return true}}),cv={width:1280,height:720,getContext:()=>ctx};let now=0,aims=0,shown=0;performance.now=()=>now;
+  const steps=[],pic=document.createElement;document.createElement=t=>t==='canvas'?{width:0,height:0,getContext:()=>ctx}:pic.call(document,t);
+  const at=M.EXITS[0];F.beginFade(cv);ok(F.fading()&&F.fadeBeat()==='out','a switch starts the fade');
+  try{for(let i=0;i<1200&&F.fading();i++){now+=16;F.fadeFrame(ctx,cv,()=>{aims++;return {x:at.x,y:at.y}},()=>[0,0,1,1],()=>{shown++;return false});const b=F.fadeBeat();if(b&&steps[steps.length-1]!==b)steps.push(b)}}catch(e){ok(false,'the fade ran: '+e.message)}
+  performance.now=real;document.createElement=pic;
+  ok(steps.join()==='out,dark,lift,in','the beats come in order: '+steps.join());ok(aims===1&&shown===1,'the camera is aimed once, the picture handed back once');ok(!F.fading(),'and it ends')}
 if(fail){console.error('\nuismoke: '+fail+' failed');process.exit(1)}
 console.log('\nuismoke: all checks passed');process.exit(0)

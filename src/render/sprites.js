@@ -779,6 +779,7 @@ export function buntingSprite(wpx,frame=0){frame=frame?1:0;const key='bunt'+wpx+
 // Fellowship face portraits (#367): generated head-and-shoulders faces, see portrait.js.
 export {portrait,portraitPixels,PORTRAIT_W,PORTRAIT_H} from './portrait.js';
 import {setHeadSource} from './portrait.js';
+import {onWorld} from '../sim/kept.js';
 
 // ---- the 32 px tier on the world map (#177, render/tile.js) ----
 // A procedural sprite drawn on the world map: scaled up by PROC_SCALE to stand as tall as a generated 32x48 frame and
@@ -796,8 +797,9 @@ export function worldSprite(c,outline=true){const m=outline?bigOut:bigCache;let 
 const slug=s=>String(s).toLowerCase().replace(/[^a-z0-9]+/g,'-');
 export const ASSET_SPRITES={};
 for(const cls of Object.keys(CLS))ASSET_SPRITES['sprite:hero-'+slug(cls)]={kind:'hero',cls};
-for(const key of Object.keys(MOBS))ASSET_SPRITES['sprite:mob-'+slug(key)]={kind:'mob',type:key};
-const HERO_ID={},MOB_ID={};for(const [id,v] of Object.entries(ASSET_SPRITES))(v.kind==='hero'?HERO_ID:MOB_ID)[v.kind==='hero'?v.cls:v.type]=id;
+const HERO_ID={},MOB_ID={};
+function mobSheets(){for(const k of Object.keys(MOB_ID)){delete ASSET_SPRITES[MOB_ID[k]];delete MOB_ID[k]}for(const key of Object.keys(MOBS)){MOB_ID[key]='sprite:mob-'+slug(key);ASSET_SPRITES[MOB_ID[key]]={kind:'mob',type:key}}}
+mobSheets();for(const [id,v] of Object.entries(ASSET_SPRITES))if(v.kind==='hero')HERO_ID[v.cls]=id;
 // Per id, the sheet canvas per faction (a hero sheet recoloured; a creature's under 0); undefined = not built yet.
 const sheetC=new Map();
 // The sheet canvas for id in faction fac's colours, or null while it is missing or loading. No allocation once built.
@@ -830,6 +832,9 @@ onAssets(()=>{for(const c of Object.keys(npcId))delete npcId[c]});
 // A Stepping/Vale clone ('wolf@0') uses its species' sheet 'sprite:mob-wolf' (MOB_ID is built from whatever MOBS held at import,
 // so it holds the clone's own key, which has no asset); the id is cached per type, and sheetOf answers null for an id with no asset.
 const MOB_SHEET=new Map();
+// Another map (#1013): fauna.js has rewritten MOBS, and a creature's key may come back in other colours. Only the creatures' cached sprites go.
+const forget=()=>{for(const k of Object.keys(MOB_ID))for(const f of [0,1])delete sprCache[k+f]};
+onWorld(()=>{forget();mobSheets();forget();MOB_SHEET.clear()},()=>({mobSheets:Object.keys(MOB_ID).sort()}));
 function mobSheetId(t){let v=MOB_SHEET.get(t);if(v===undefined)MOB_SHEET.set(t,v='sprite:mob-'+slug(baseId(t)));return v}
 export function sheetFrame(e,dir,col){
   const id=e.kind==='hero'?heroSheetId(e.cls,e.race):e.kind==='mob'?mobSheetId(e.type):e.kind==='npc'&&e.role?npcSheetId(e.role,e.race):e.kind==='boss'?'sprite:boss-kragmaw':null;if(!id)return null;

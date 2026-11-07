@@ -29,6 +29,7 @@ import {townStyle} from '../data/townart.js';
 import {harbourEnts,harbourLight} from './harbour.js';
 import {onAssets,assetPixels} from './assets.js';
 import {trackSteps,drawFootprints} from './footprints.js';
+import {onWorld} from '../sim/kept.js';
 
 const OPPOSITE={E:'W',W:'E',N:'S',S:'N'},U_ART=1/ART;
 const KEEPERS=['peddler','drover','quartermaster','innkeeper']; // townsfolk roles whose look a stallkeeper borrows
@@ -36,6 +37,7 @@ const GOODS=[['#c8402a','#e8b038','#7a9a3a'],['#4a7ab0','#e8e0c8','#a04a8a'],['#
 
 // ---- the plan of a town, built once (the tiles do not change) ----
 const LAY=new Map();
+onWorld(()=>LAY.clear()); // another map (#1013)
 // Chimneys and the hall's flag, where the town's art has them: an image cut from the LPC kits says so (#833), and it may arrive
 // after the plan was made, so these alone are looked up again when the assets change.
 function roofSpots(L){const c=L.c;L.chim.length=0;L.flag=null;

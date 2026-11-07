@@ -39,6 +39,8 @@ Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; retur
 async function sim() {
   const SIM = await import('../src/sim/index.js');
   await import('../src/sim/player.js'); await import('../src/sim/dmagent.js'); await import('../src/sim/staged.js'); await import('../src/sim/dmwhen.js');
+  // render's captures (slice 4): chunk grid, scenery, peak and shadow sizes, weather boxes, town labels, creature sheets. Two modules make a small canvas as they load; nothing else here wants a DOM
+  globalThis.document = {createElement: () => ({getContext: () => ({})})}; await import('../src/render/draw.js'); delete globalThis.document;
   const K = await import('../src/sim/kept.js'), M = await import('../src/world/map.js'), T = await import('../src/world/tiles.js');
   const {MOBS, COUNTS, ELITES, ECO} = await import('../src/data/mobs.js'), {EPICS} = await import('../src/data/items.js');
   const dump = () => ({...K.worldCaptures(), size: [T.W, T.H], zones: M.ZONES, towns: M.CITY.map(c => c.name), crypts: M.CRYPTS.map(c => c.name), lair: M.LAIR && M.LAIR.name,

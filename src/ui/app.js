@@ -29,12 +29,13 @@ import {initPurpose,renderMapTip} from './purposeview.js'; // purpose line, map 
 import {initSettings} from './settings.js'; // the Settings popover and the World menu (#145)
 import {trackDowned} from './downview.js'; // each death save as it lands (#659)
 import {initCinema,renderCinema} from './cinema.js'; // the map as the whole window, with the director camera (#979)
+import {initMapSwitch} from './mapswitch.js'; // what the page does when the company takes a road to another map (#1013)
 
 export function initUI(renderer){
   initPanels();initControls(renderer);initSaveUI();initMinds();initFellowship(setView);initLegends();initMapLegend();initTable();initRunAlert();initRunGate((k,h)=>startRunner(k,h));
   initSheet();initFrames();applyLayout();
   const minds=()=>{renderHero();renderFrames();renderFellowship();renderMinds()};
-  initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents();initChatPanel();initSettings(()=>renderHero());initPurpose();initCinema(renderer)}
+  initMindCtl(minds);initRunners(()=>{minds();renderAgents()});initDmSeat(()=>renderMinds());initAgents();initChatPanel();initSettings(()=>renderHero());initPurpose();initCinema(renderer);initMapSwitch()}
 
 export function uiFast(){trackDowned();applyLayout();renderHero();renderClock();renderFellowship();renderFrames();renderSheet();renderChatPanel();renderMapTip();renderMapLegend();renderCinema()}
 export function uiSlow(){renderTops();renderFacs();renderGuilds();renderFallen();renderMinds();renderTimeline();renderLegends();renderDmLog();renderDmSeat();renderAgents()}
