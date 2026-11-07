@@ -21,7 +21,7 @@
 //   site.prologue  the row's id: its ruin stays on the map; site.xp its share of a site's XP; its loot is plain and it has no epic
 import {CITY,zoneAt} from '../world/map.js';
 import {cryptName} from './crypts.js';
-import {onMainLand} from '../world/passable.js';
+import {onMainLand,nearestOpen} from '../world/passable.js';
 import {clearLine} from './path.js';
 import {hash} from '../core/rng.js';
 import {homeOf} from '../data/races.js';
@@ -76,8 +76,12 @@ function raise(row,at){const X=ensureSites(),T=SITE_THEMES[row.theme],born=Math.
     boss:row.boss,bossTitle:'',epic:null,rooms:JSON.parse(JSON.stringify(row.rooms)),loot:{...row.loot,goods:row.loot.goods.slice()},grow:0,found:{at:born,by:'the company'},runs:0,cleared:null,group:null,prologue:row.id,xp:row.xp};
   const pl={id:++S.uid,kind:'site',theme:row.theme,name:row.name,x:at.x,y:at.y,z:at.z,born,until:null,lever:null,site:s.id};
   (S.places||(S.places=[])).push(pl);s.place=pl.id;X.list.push(s);X.stats.made++;return s}
-function placeAtMouth(s,L){const p={x:s.x,y:s.y+1.5},T=SITE_THEMES[s.theme];
-  L.forEach((a,i)=>{Object.assign(a,spreadAt(p,i,L.length),{state:'hunt',zone:s.region,dest:null,target:null,moving:false});found(a,s.name,T.mouth,s.place)})}
+// Everyone on the mouth's side of whatever runs beside it (#965): a spread spot in water is moved to the nearest open tile, which may be the far bank.
+// A spot with no clear line from the mouth itself (the ground in front of it may be solid) is swapped for the nearest free one that has it.
+function mouthSpots(m,p,n){const out=Array.from({length:n},(_,i)=>spreadAt(p,i,n)),free=t=>clearLine(m,t)&&!out.some(o=>Math.hypot(o.x-t.x,o.y-t.y)<1.2);
+  return out.map((q,i)=>clearLine(m,q)?q:out[i]=nearestOpen(m.x,m.y,5,free)||{x:m.x,y:m.y})}
+function placeAtMouth(s,L){const p={x:s.x,y:s.y+1.5},T=SITE_THEMES[s.theme],at=mouthSpots(s,p,L.length);
+  L.forEach((a,i)=>{Object.assign(a,at[i],{state:'hunt',zone:s.region,dest:null,target:null,moving:false});found(a,s.name,T.mouth,s.place)})}
 function begin(C){const L=memOf(C);if(L.length<2||L.some(a=>a.lvl>PRO.MAX_LVL)||!tableOn()||!companyAtTable(C))return false;
   const town=C.hall||homeOf(L[0]).name,c=CITY.find(x=>x.name===town)||homeOf(L[0]),row=pickRow(town,C.fac),at=row&&mouthNear(c);if(!at)return false;
   const g=c.gate||c.qg,d=Math.round(Math.hypot(at.x-g.x,at.y-g.y));
