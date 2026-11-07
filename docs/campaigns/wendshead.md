@@ -15,7 +15,7 @@ DM-only. The heroes never read this; reveal it through narrate, npc_say, hooks, 
 - **Last Roof**: Kilnmark is the end of the Concord's freight and the last place a hero who falls can be buried in sight of a hall. The gate-folk keep a book of the names carried up the Kilnway. tags: kilnmark, act1
 
 ## Characters
-- **Gate Captain of Kilnmark**: Tarrow, taciturn and long-memoried. Wants the Kilnway kept open to the freight and the pool watched. Secret: the book of names carried up the Kilnway has one name she has crossed out and written back four times. tags: kilnmark, npc
+- **Gate Captain of Kilnmark**: A Tarrow, taciturn and long-memoried. Wants the Kilnway kept open to the freight and the pool watched. Secret: the book of names carried up the Kilnway has one name she has crossed out and written back four times. tags: kilnmark, npc
 - **The Kiln-Warden**: A golem built to tend the fire. Not a villain; a thing that has never been relieved, and a mirror of Orsk at the weir below. DM-only: it will stop if somebody tells it, in the kiln-tenders' words. tags: kiln, warden
 - **Coldwatch's Lamp-Keeper**: A weathered man with a lamp he never lets go out, who knows how the pool has fallen by the marks on the rock. He is unafraid of the wyrm and afraid of the snow. tags: coldwatch, npc
 - **Kragmaw**: The Cinder Wyrm. Not a speaker. Keep it a presence: heat, a sound from beyond the pool, the lava ring's colour at night. tags: kragmaw
@@ -25,7 +25,7 @@ DM-only. The heroes never read this; reveal it through narrate, npc_say, hooks, 
 - **Act I, levels 14-17, the Slagmoor and Kilnmark**: The arrival by the Kilnway, the town, the gate-book and the first sight of the kilns on the horizon. Teach the width and the quiet. tags: act1
 - **Act II, levels 16-20, the Kilnlands**: The Brandwright Kiln, Grimbrand, and the brick-red country between; let the company choose whether to put the fire out. tags: act2
 - **Act III, levels 18-20, the Crownfell**: Coldwatch, the pool, the lair. A raid is the company's own start; the DM may hint, never ask. The pool is the answer to the Vale's question. tags: act3, kragmaw
-- **The Way Back Stays Open**: The Kilnway runs both ways. A company may go home to the Weirgate; the wyrm sleeps on the Wend's Head and nowhere else. tags: roads
+- **The Way Back Stays Open**: The Kilnway runs both ways. A company may go home to the Weirgate; the wyrm sleeps at the Wend's Head and nowhere along the road behind you. tags: roads
 - **If the company falls**: Death is permanent. A replacement walks in at the next camp or town; a stranger from these parts. tags: hardcore
 
 ## Secrets

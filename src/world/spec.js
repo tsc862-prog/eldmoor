@@ -823,7 +823,7 @@ const WEIR_ROOMS=[
 // ---- The Weirgate: the fourth chapter (#1013 slice 7b, levels 10-15) ----
 // Two roads come in, the Wend Road along the river from the Wendmouth in the west and the Hawk Road down off the Hawkwold in the north, and meet at the one place the Wend can be waded.
 // North of the ford, Aldermere under its alders; south of it the Drowned Weir at the end of its own turning, and a long way east along the Kilnway, the forge town at Brandhold.
-// The Vale's towns and rooms, Hollin's density: two towns a long day apart, thin creatures, nothing near a wall. The Kilnway runs on east past Brandhold; it is not open yet.
+// The Vale's towns and rooms, Hollin's density: two towns a long day apart, thin creatures, nothing near a wall. The Kilnway runs on east past Brandhold to the Wend's Head.
 export const WEIRGATE={
   name:'The Weirgate',
   blurb:'Old meadow and wood round the one place the Wend can be waded: an alder-shaded market town on the north bank, a drowned weir of green stone on the south, and far off down the Kilnway a forge town. Come by the Wend Road from the Wendmouth or the Hawk Road from the Hawkwold, at about level 10.',
