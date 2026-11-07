@@ -9,11 +9,12 @@ import {hash,vnoise} from '../core/rng.js';
 import {TILE,U,ART} from './tile.js';
 import {W,H,G,TREE,SWAMP,MUD,ROCK,PEAK,LAVA,ROAD,FLOOR,WALL,RIVER,BRIDGE,SGRASS,FLOWER,SNOW,ICE} from '../world/tiles.js';
 import {tiles,zone,I} from '../world/map.js';
-import {biomeOfZone} from './palette.js';
+import {biomeOfZone,PEAT} from './palette.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {ASSET_TOWNS,drawPlaces} from './townart.js';
 import {drawQuay} from './harbour.js';
-import {sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery,soilAt,soilEdge} from './scenery.js';
+import {deriveTree,woodKind} from './woods.js';
+import {sceneWash,sceneryOn,riverPixel,roadPixel,sceneGround,treeFelled,tonePixel,paintScenery,soilAt,soilEdge} from './scenery.js';
 import {ASSET_PEAKS,peakArt,peakPixel} from './peaks.js';
 import {onWorld} from '../sim/kept.js';
 
@@ -179,10 +180,13 @@ export function texel(t,tx,ty,px,py,noBg=false){
 let fk2=-1,fv2=0;const flipOf=(tx,ty)=>{const k=ty*W+tx;if(k!==fk2){fk2=k;fv2=Math.floor(hash(tx,ty,737)*4)}return fv2};
 // The asset colour of tile type t at art pixel (ax,ay) of tile (tx,ty) (0..TILE-1), or null: the base tile patches, the
 // road patch (turned for a north-south road) and the water patch (away from the banks, which keep the procedural foam).
+// Mud in a fen (palette.js PEAT): the LPC mud is a rust red that read as raw sores in the green; in a fen it is dark peat. Only the tile's own colours move.
+const peatAt=(t,tx,ty)=>t===MUD&&biomeOfZone(zone[I(tx,ty)])==='fen';
+const peat=c=>PEAT[c]||c;
 function assetTexel(t,tx,ty,ax,ay){
   const x=tx*TILE+ax,y=ty*TILE+ay;
   if(TILE_ASSET[t]){const id=TILE_ASSET[t],A=assetPixels(id);if(!A)return null;
-    if(A.w===TILE&&A.h===TILE&&SCATTER.has(id)){const k=flipOf(tx,ty);let u=ax&(TILE-1),v=ay&(TILE-1);if(k&1)u=TILE-1-u;if(k&2)v=TILE-1-v;return A.hex[v*TILE+u]}
+    if(A.w===TILE&&A.h===TILE&&SCATTER.has(id)){const k=flipOf(tx,ty);let u=ax&(TILE-1),v=ay&(TILE-1);if(k&1)u=TILE-1-u;if(k&2)v=TILE-1-v;const c=A.hex[v*TILE+u];return c&&peatAt(t,tx,ty)?peat(c):c}
     return A.hex[(y%A.h)*A.w+x%A.w]}
   if(t===ROAD){const A=assetPixels('tile:road');if(!A)return null;const v=roadVerticalAt(tx,ty),u=v?y:x,w=v?x:y;return A.hex[(w%A.h)*A.w+u%A.w]}
   if(t===RIVER){const A=assetPixels('tile:water');if(!A)return null;const px=Math.floor(ax/ART),py=Math.floor(ay/ART);
@@ -350,8 +354,9 @@ function canopyImg(b,h){const n=Math.floor(h*VARIANTS)%VARIANTS;let got=null;
   return got}
 const treeSpots=new Map(); // tile key -> anchor {tree, x, y (the base, in tiles), ax, ay, w, h (world units), im} or false
 function anchorAt(tx,ty){if(tx<0||ty<0||tx>=W||ty>=H)return null;const k=ty*W+tx;let a=treeSpots.get(k);if(a!==undefined)return a||null;
-  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0&&!(sceneryOn&&treeFelled(tx,ty))){const v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
-    if(v){const w=v.im.naturalWidth/ART,h=v.im.naturalHeight/ART;
+  a=false;if(tiles[I(tx,ty)]===TREE&&((tx+ty)&1)===0&&!(sceneryOn&&treeFelled(tx,ty))){let v=canopyImg(propBiome(biomeOfZone(zone[I(tx,ty)])),hash(tx,ty,611));
+    if(v&&sceneryOn&&sceneWash(tx,ty)===3){const k=woodKind(tx,ty),bid=k&&v.id.replace(/-\d$/,'-'+(1+(hash(tx,ty,619)*2|0))),base=bid&&asset(bid),im=base&&deriveTree(k,bid,base);if(im)v={id:'wood:'+k+':'+bid,im}} // a wood's own kinds (render/woods.js)
+    if(v){const w=(v.im.naturalWidth||v.im.width)/ART,h=(v.im.naturalHeight||v.im.height)/ART;
       a={tree:true,id:v.id,im:v.im,x:tx+.5,y:ty+1,ax:(tx+.5)*U+(hash(tx,ty,613)-.5)*5-w/2,ay:(ty+1)*U-CANOPY_ROOT/ART+(hash(tx,ty,615)-.5)*3-1,w,h}}}
   treeSpots.set(k,a);return a||null}
 // Paint the trees that reach chunk tiles x0..x1 by y0..y1 (crowns overhang: a tree rooted up to two rows below or a column aside counts).

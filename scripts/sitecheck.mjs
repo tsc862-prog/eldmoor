@@ -103,6 +103,7 @@ if (site.state === 'cleared') {
   ok(ru && ru.kind === 'ruin' && ru.until > S.gameMin, 'a ruin marker is left');
   ok((S.timeline || []).some(e => e.kind === 'site' && e.site === site.id && JSON.stringify(e.parts).includes(site.name)), 'a timeline entry names it and links the site');
   ok(!P.playerAct(hero.id, 'enter_site', {site: site.name}).ok, 'a cleared site cannot be entered again');
+  ok(site.paid && site.paid.gold > 0 && site.paid.items.some(i => i.name === site.epic && i.who === hero.name), 'what the clear paid stays on the site (#976): ' + JSON.stringify(site.paid));
 }
 // a save taken mid-crawl resumes it
 ok(!!snap, 'a save was taken mid-crawl');
