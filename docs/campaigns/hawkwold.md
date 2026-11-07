@@ -23,7 +23,7 @@ DM-only. The heroes never read this; reveal it through narrate, npc_say, hooks, 
 
 ## Plans
 - **Act I, levels 6-8, Foldlands and Hawkstead**: The arrival, the crossroads of the Fell Road, the cairn, the climb to Hawkstead and its terraces. Teach the width and the wind: the two towns do not know each other's news. tags: act1
-- **Act II, levels 8-11, Hawkwold and Hornmoor**: The Barrow in the hills, the Wend Bridge, the long south bank, Hornridge. Let the company choose which hall it answers to. tags: act2
+- **Act II, levels 8-11, Hawkwold and Hornmoor**: The Barrow in the hills, the Wend Bridge, the long south bank, Hornridge. Let the company choose which hall it rests in first. tags: act2
 - **If they came from the Reach**: Whatever they carried up the road is the only thing here that knows them: a milestone's number, a name out of a ledger, Oldstead's own word. Let one thing from the Reach turn out to have been heard of here, and once. tags: roads, hollin
 - **The Way Back Stays Open**: The Fell Road runs both ways. A company may go home; the Reach will be as they left it, and they will have outgrown it. tags: roads, hollin
 - **If the company falls**: Death is permanent. A replacement walks in at the next camp or town; a stranger from these parts, who has never heard of the Reach. tags: hardcore
