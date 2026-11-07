@@ -50,7 +50,7 @@ import {soloFor,companyOf,isSolo,leaveCompany,inSlots,partySlotted,slotKeyOf,slo
 import {pop} from './effects.js';
 import {maxHp,xpNeed,atkOf,moveTo,strike,priestHeal,healOne,findMob,turnIn,huntZone} from './heroes.js';
 import {route,doorAt} from './path.js'; // the way a walk goes (#794)
-import {partyMates,leaderOf,leaveParty} from './party.js';
+import {partyMates,leaderOf,leaveParty,keeps} from './party.js';
 import {speak,say,agentLine,sayHearers} from './chat.js';
 import {whisperTo,emoteAct} from './aside.js'; // whisper and emote (#627)
 import {earshot} from './earshot.js'; // who hears you now (#395)
@@ -500,7 +500,7 @@ function watch(a){const w=a.playW||(a.playW={hp:a.hp,lvl:a.lvl,state:a.state,kil
 
 function town(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.hp=Math.min(mh,a.hp+mh*.3*dt);
   // Fellowship (#68): with nothing else to do, a member follows the leader out of town (leave_party to stay)
-  if(!cmd&&a.party&&partySlotted(a.party)&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil&&!turnHeld(a)){const c=homeOf(a);
+  if(!cmd&&a.party&&(partySlotted(a.party)||a.partyOk)&&a.party.leader!==a&&leaderOf(a)&&!a.splitUntil&&!turnHeld(a)&&!(keeps(a.party)&&a.hp<mh*.9)){const c=cityAt(a)||homeOf(a); // one who came in hurt mends first (#1048): with a host the company no longer turns home with them
     cmd={kind:'move',legs:[{x:c.gate.x,y:c.gate.y,st:'town'}],last:'hunt',label:'the gate, following '+a.party.leader.name};a.pq=[cmd];ev(a,'The party is out with '+a.party.leader.name+'; you follow them out of '+c.name+'.')}
   if(cmd&&cmd.kind==='move')return travel(a,dt,cmd);
   if(cmd&&cmd.kind==='rest'){if(S.gameMin>=cmd.until||(!cmd.search&&!cmd.hold&&a.hp>=mh))done(a,cmd.hold?null:cmd.search?'You finish searching.':'Rested. HP '+pct(a.hp,mh)+'%.');a.moving=false;return true}
@@ -523,7 +523,8 @@ function finishMove(a,cmd){a.moving=false;const last=cmd.last||'hunt';a.state=la
   const own=!cmd.flee&&(!cmd.auto||cmd.aim)&&last==='town'&&!!cityAt(a);if(own)a.playArrive=S.gameMin;
   done(a,cmd.flee?'Made it back to '+homeOf(a).name+'.':'Arrived: '+cmd.label+'.',own?2:true)}
 // No command and heading home (fled, a party turning back, an adventure ended): walk to the gate.
-function homeward(a,dt){const c=homeOf(a);if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.moving=false;ev(a,'Back in '+c.name+'.')}return true}
+const gatherTown=a=>{const p=a.party;return p&&p.leader!==a&&keeps(p)&&p.leader.state==='town'?cityAt(p.leader):null}; // the leader's town, not this hero's own home (#1048)
+function homeward(a,dt){const c=gatherTown(a)||homeOf(a);if(moveTo(a,c.gate.x,c.gate.y,dt,2.4)){a.state='town';a.moving=false;ev(a,'Back in '+c.name+'.')}return true}
 
 // Out in the world, not walking: hunt, rest, or stand and keep watch.
 function field(a,dt,cmd){const mh=maxHp(a);a.cd-=dt;a.zone=zoneAt(a.x,a.y);
@@ -1389,8 +1390,8 @@ const T={
       const P=propose(a,'break_camp','',{});if(typeof P==='string')throw new Rule(P);
       return {ok:true,proposal:propText(P),status:P.status,note:'Only the leader ('+(leaderFor(a)?leaderFor(a).name:'none')+') breaks camp outright, so your call went to the vote as proposal #'+P.id+' (your vote: yes).'+(P.status==='open'?'':' '+P.result)}}
     const e=leaderBreak(a);if(e)throw new Rule(e);return {ok:true,broke_camp:true}},
-  lead_to(a,{target}){need(!inSlots(a)||a.state!=='camp',campBlock(a)||'The Fellowship is camped.');
-    need(inSlots(a)&&a.party&&partySlotted(a.party),'You are not with the Fellowship.');need(a.party.leader===a,'Only the leader ('+a.party.leader.name+') leads the party.');
+  lead_to(a,{target}){need(a.state!=='camp',campBlock(a)||'Your company is camped.');
+    {const ld=a.party?a.party.leader:leaderFor(a);need(ld,'You ride with no company.');need(ld===a,'Only the leader ('+ld.name+') leads the party.')} // any company; with nobody near it is a walk of your own, and not_told says who was left
     need(legal.includes(a.state),'You cannot lead from here ('+a.state+').');need(a.state!=='fight'&&a.state!=='duel'&&a.state!=='assist','You are in a fight. flee() first.');
     const p=plan(a,target);if(p.error)throw new Rule(p.error);a.pq=[{kind:'move',legs:p.legs,last:p.last,label:p.label}];if(a.state==='follow')a.state='hunt';a.dest=null;
     const n=followLead(a,p.label);const r={ok:true,leading:p.label,followers:n};const far=outOfRange(a);if(far.length)r.not_told=nameList(far)+' too far away to hear the order; they stay where they are until you are together or a courier reaches them.';if(p.warn)r.warning=p.warn;if(p.note)r.note=p.note;return r},

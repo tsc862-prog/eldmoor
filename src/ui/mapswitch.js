@@ -8,6 +8,7 @@ import {cam,onMapArrive} from '../render/draw.js';
 import {followedCompany,followedMembers} from './companyview.js';
 import {select,setView,syncView,fillRegionPicker} from './controls.js';
 import {cinemaArrive} from './cinema.js';
+import {sceneLook} from '../render/sceneview.js';
 
 const PHASE={walking:'On the way',go:'Setting out'};
 let box=null,sig='';
@@ -24,5 +25,5 @@ export function renderRoad(){if(!box&&!(box=make()))return;const v=crossingView(
 function arrived(stage){if(stage==='shown'){cinemaArrive();return}
   fillRegionPicker();if(cam.view==='region')setView(followedMembers().length?'fellow':'map');
   if(!(cam.sel&&S.agents.includes(cam.sel))){const C=followedCompany(),a=C&&followedMembers().map(c=>c.hero).find(h=>h&&h.state!=='dead');select(a||null)}
-  cinemaArrive(true);syncView()}
+  sceneLook(cam);cinemaArrive(true);syncView()}
 export function initMapSwitch(){onMapArrive(arrived)}
