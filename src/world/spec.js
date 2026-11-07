@@ -226,7 +226,7 @@ const STEPPING_CRYPT_ROOMS=[
   {id:'bonehall',name:'The Salt-Bone Hall',frame:'Fen salt has crusted the old shelves white. The bones under it are not as still as they should be, and a dry bowstring creaks in the dark.',
     foes:[{type:'shambler',n:1},{type:'boneshot',n:1,hits:1}],lvl:0,hit:.27,rounds:2},
   {id:'mere',name:"The Mere-Warden's Seat",frame:'The last chamber is a round pool with a stone chair standing in it. The one who sits there has watched the fen rise for a very long time.',
-    foes:[{type:'graveward',n:1,name:'Mere-Warden Hask',hits:3,atk:1.5},{type:'tombskit',n:1}],lvl:1,hit:.36,rounds:2,boss:true},
+    foes:[{type:'graveward',n:1,name:'Mere-Warden Hask',hits:3,atk:1.5},{type:'tombskit',n:1}],lvl:1,hit:.31,rounds:2,boss:true},
 ];
 
 // The Hollow Cairn's chambers (#717): four, pitched for Cairnwold (levels 8-13; offsets from the party's average).
@@ -525,11 +525,11 @@ export const VALE={
 // (levels 3-5; offsets from the party's average, never above the map's top band). Bestiary species only; the foreman is a Camp Captain under a name.
 const QUARRY_ROOMS=[
   {id:'cut',name:'The Cut Stair',frame:'Steps hewn square into the quarry wall go down into a cold smell of wet stone. Pale things click along the drill-marks ahead of the light.',
-    foes:[{type:'cavecrawler',n:2}],lvl:-1,hit:.22,rounds:2},
+    foes:[{type:'cavecrawler',n:3}],lvl:0,hit:.28,rounds:2},
   {id:'store',name:'The Wedge Store',frame:'Racks of iron wedges and a stack of lintels nobody ever came to fetch. Someone has been sleeping on them, and he is not pleased to be woken.',
-    foes:[{type:'tollbreaker',n:1},{type:'cavecrawler',n:1}],lvl:0,hit:.27,rounds:2},
+    foes:[{type:'tollbreaker',n:1},{type:'cavecrawler',n:1}],lvl:1,hit:.34,rounds:2},
   {id:'tally',name:"The Foreman's Tally",frame:'The last cellar has a desk in it, cut from one block. The man behind it has a slate of names and has been waiting for this shift to report.',
-    foes:[{type:'captain',n:1,name:'Foreman Ruddock',hits:3,atk:1.4},{type:'cavecrawler',n:1,hits:1}],lvl:1,hit:.32,rounds:3,boss:true},
+    foes:[{type:'captain',n:1,name:'Foreman Ruddock',hits:3,atk:1.4},{type:'cavecrawler',n:1,hits:1}],lvl:1,hit:.44,rounds:3,boss:true},
 ];
 const QUARRY_SIGN='A slate hangs from the stair-rail, chalked in a square hand: "No one below without the foreman\'s word." The chalk is fresher than the slate.';
 const QUARRY_CAPTAIN='The quarry on Crowfell shut before my time, and the cellars under it did not shut with it. That is no first errand. Come back when you have walked home from a few things, and go together.';
@@ -576,7 +576,7 @@ export const HOLLIN={
   ],
   landmarks:[
     // Up on Crowfell, a long walk from the gate by its own spur of the Fell Road. entry: the level a background group first goes down.
-    {kind:'crypt',name:'The Quarry Cellars',boss:'Foreman Ruddock',x:98.5,y:8.1,mouth:{x0:97,y0:6,w:3,h:3},exclude:3.5,cd:25,rooms:QUARRY_ROOMS,entry:3,sign:QUARRY_SIGN,captain:QUARRY_CAPTAIN},
+    {kind:'crypt',name:'The Quarry Cellars',boss:'Foreman Ruddock',x:98.5,y:8.1,mouth:{x0:97,y0:6,w:3,h:3},exclude:3.5,cd:25,gap:400,span:400,xp:.35,rooms:QUARRY_ROOMS,entry:3,sign:QUARRY_SIGN,captain:QUARRY_CAPTAIN},
   ],
   points:{
     crossways:[62,24],    // where the three roads part, in the open, a long walk east of the gate
