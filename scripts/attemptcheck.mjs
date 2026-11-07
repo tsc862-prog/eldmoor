@@ -104,7 +104,7 @@ r = act(A, 'attempt', {what: 'I bargain with the gate guard for a cheaper toll.'
 ok(r.call, 'waiting for the DM');
 fake += 2000; step(1 / 60); ok(S.rulings.cur.some(x => x.id === r.call && x.state === 'wait'), 'still waiting inside its 4 s');
 fake += 2500; step(1 / 60); ok(S.rulings.cur.some(x => x.id === r.call && x.state === 'wait'), 'never picked up: still waiting past its 4 s (the pickup allowance, #680)');
-fake += 4000; step(1 / 60); ok(!S.rulings.cur.some(x => x.id === r.call), 'filled at 4 s + the 4 s pickup cap');
+fake += R.ATTEMPT.PICKUP_MS; step(1 / 60); ok(!S.rulings.cur.some(x => x.id === r.call), 'filled at 4 s + the pickup cap for a running voice');
 ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.call === r.call && e.detail.by === 'scripted' && e.detail.why === 'slow' && e.detail.late === 'late pickup' && e.detail.skill === 'persuasion'), 'scripted fill logged: why slow, late pickup, persuasion by keyword');
 a2 = dmAct('ruling_answer', {call: r.call, skill: 'persuasion', dc: 'fair', text: 'Late.'});
 ok(!a2.ok && /scripted DM filled it/.test(a2.error), 'a late answer is refused: ' + a2.error);
@@ -182,6 +182,56 @@ console.log('the invitation (#864)');
   ok(!r.ok && iA > 0 && iW > iA, 'the no-such-tool refusal names attempt before the wish: ' + r.error);
   r = act(B, 'no_such_tool', {}); ok(r.error.includes(ATTEMPT_INVITE) && !r.error.includes(WISH_INVITE), 'the wish line keeps its once a day; attempt stays');
   const c = cleanArgs('pry_door', {}); ok(c.error.indexOf('attempt {what}') > 0 && c.error.indexOf('attempt {what}') < c.error.indexOf('Tools:'), 'the runner-side refusal too, ahead of the tool list');
+}
+
+console.log('the ruling reaches the model (#864)');
+{const DA = await import('./dm-agent.mjs'); const wait = ms => new Promise(res => setTimeout(res, ms)), now = () => fake != null ? fake : realNow();
+  fake = 2e12; setDmSeat(true); fresh(A); dmAct('ruling_call', {budget_s: 8});
+  // a late pickup keeps the whole budget while a voice runs
+  r = act(A, 'attempt', {what: 'I pace out the wall for a loose stone.'}); fake += 9500; step(1 / 60);
+  let c3 = dmAct('ruling_call', {budget_s: 8}); ok(c3.call && c3.call.seconds_left >= 7.9, 'picked up 9.5 s late: all 8 s are left (was 2.5, the aborts of the logs): ' + (c3.call && c3.call.seconds_left));
+  // 8x: game minutes do not end a wait, real time does
+  const gm0 = S.gameMin; S.gameMin += 200; step(1 / 60); ok(S.rulings.cur.some(x => x.id === r.call && x.state === 'wait'), '200 game minutes at speed do not take the call from the voice');
+  fake += 8100; step(1 / 60); ok(!S.rulings.cur.some(x => x.id === r.call), 'the real-time budget still falls to the reflex'); S.gameMin = gm0 + 200;
+  // a wound however the model writes it; still bounded
+  const chk = x => R.checkEffect(A, x, null);
+  for (const w of ['wound:10', 'wound:10%', 'wound:' + A.name + ':10', 'wound:10:minor', {kind: 'wound', target: '10%', value: ''}, {kind: 'wound', target: A.name, value: '10'}]) ok(chk(w).n === 10, 'wound read: ' + J(w));
+  ok(chk('wound:50').forbidden && chk('wound:' + A.name + ':50').forbidden && chk('wound:badly').err, 'over 15%, or no number: still refused');
+  ok(chk('boon:d6:next try').t === 'd6' && chk('open_scene:mystery:the webs').t === 'mystery' && chk('move:north 3').x != null, 'a value beside the other forms is not read into the target');
+  // a voice held 3 s still rules; a refused answer goes back once
+  fake = null; fresh(A); A.state = 'town'; let n = 0; const seen = [];
+  const reply = effects => ({text: J({skill: 'athletics', dc: 'fair', effects, fail_effects: [], text: 'It comes free.', fail_text: 'It holds.', note: ''}), usage: {in: 1, out: 1, cost: 0}});
+  const adapter = {call: async o => {n++; seen.push(o.user); if (n === 1) {await wait(3000); return reply([{kind: 'level', target: '1', value: ''}])} return reply([])}};
+  const lines = [], tool = async (b, t, args) => dmAct(t, args), V = DA.rulingVoice({base: 'x', adapter, model: 'mock', log: l => lines.push(l), tool, pollIdle: 20, pollHot: 10, budgetS: 8});
+  await wait(60); r = act(A, 'attempt', {what: 'I pull the bow from the webbing.'});
+  for (let i = 0; i < 300 && S.rulings.cur.some(x => x.id === r.call); i++) {await wait(20); step(1 / 60)}
+  await V.stop();
+  ok(n === 2 && /last answer was refused/.test(seen[1]), 'held 3 s, refused, asked once more with the refusal');
+  ok(S.dmLog.some(e => e.detail && e.detail.ruling && e.detail.call === r.call && e.detail.by === 'dm-agent'), 'ruled by the model inside the 8 s budget');
+  ok(lines.every(l => /A|pull the bow/.test(l)) && lines.some(l => l.includes(A.name) && l.includes('pull the bow')), 'the log names the hero and the attempt: ' + lines[0]);
+  // an abort names them too
+  fresh(A); const slow = {call: o => new Promise((res, rej) => o.signal.addEventListener('abort', () => rej(new Error('Request was aborted.'))))}, l2 = [];
+  const V2 = DA.rulingVoice({base: 'x', adapter: slow, model: 'mock', log: l => l2.push(l), tool, pollIdle: 20, pollHot: 10, budgetS: 4});
+  await wait(60); dmAct('ruling_call', {budget_s: 1.5}); r = act(A, 'attempt', {what: 'I wrench at the gate bar.'}); for (let i = 0; i < 300 && !l2.length; i++) await wait(20); await V2.stop();
+  ok(l2.some(l => l.includes(A.name) && l.includes('wrench') && /left \d/.test(l)), 'an aborted call names hero, attempt and the seconds left: ' + l2[0]);
+  S.rulings.cur.length = 0;
+}
+
+console.log('the invitation at a mouth and after the narrator (#864)');
+{ const {INVITE} = await import('../src/sim/invite.js'), {hostPace} = await import('../src/sim/player-host.js');
+  const turn = async () => {B.playFresh = true; B.reflect = null; return (await hostPace(B.id, {brief: true})).brief};
+  const crypt = LANDMARKS.find(l => l.kind === 'crypt'), lair = LANDMARKS.find(l => l.kind === 'lair');
+  fresh(B); B.state = 'hunt'; B.pq = []; B.profs = [{id: 'alchemy', skill: 1}, {id: 'cooking', skill: 1}]; B.nudge = null; delete B.dmSaid;
+  if (crypt && crypt.mouth) {B.x = crypt.mouth.x0 - 1; B.y = crypt.mouth.y0; const b = await turn(); ok(b.invite && b.invite.text.includes(crypt.name), 'at the crypt mouth: ' + (b.invite && b.invite.text))}
+  if (lair) {B.nudge = null; B.x = lair.x + lair.r + 2; B.y = lair.y; const b = await turn(); ok(b.invite && b.invite.text.includes(lair.name), 'at the lair edge: ' + (b.invite && b.invite.text))}
+  B.nudge = null; B.x = -999; B.y = -999; ok(!(await turn()).invite, 'far from anything: no line');
+  setDmSeat(true); B.x = A.x; B.y = A.y; const said = dmAct('narrate', {near: A.name, radius: 8, text: 'A bow lies half-sunk in the mud where the spider fell.'}); B.state = 'hunt';
+  ok(said.ok && B.dmSaid != null, 'the narrator line marks who heard it');
+  let b = await turn(); ok(b.invite && b.invite.kind === 'attempt' && /narrator/.test(b.invite.text) && !/bow/.test(b.invite.text), 'the next header invites an attempt, in general words: ' + (b.invite && b.invite.text));
+  b = await turn(); ok(!b.invite || !/narrator/.test(b.invite.text), 'once a line');
+  S.gameMin += 60; dmAct('narrate', {near: A.name, radius: 8, text: 'Crows lift from the rushes.'}); b = await turn(); ok(!b.invite || !/narrator/.test(b.invite.text), 'not again inside the gap');
+  S.gameMin += INVITE.TOLD + 1; delete B.nudge.toldAt; b = await turn(); ok(!b.invite || !/narrator/.test(b.invite.text), 'a stale line invites nothing');
+  B.nudge = null; delete B.dmSaid;
 }
 
 console.log('lapsed: a hero gone');
