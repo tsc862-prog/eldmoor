@@ -71,6 +71,11 @@ section('B. the leader proposes');
   for (let k = 0; k < 120; k++) step(1 / 60);
   ok(M.every(a => a.state === 'dungeon'), 'nobody is thrown back out of the group');
   // the raid: the vote reserves the muster, and the muster takes them even though the pools leave companies out
+  if (!LAIR) { // a map with no lair (Hollin, #1013): a raid is refused in words, nothing musters
+    fresh({}); setRunnerLinks(() => 'connected'); const Lx = CN.leaderOfC(company()); T.TABLE.mode = 'off';
+    const rx = act(Lx, 'propose', {kind: 'raid'});
+    ok(!rx.ok && /nothing here to raid/.test(rx.error), 'a raid is refused where no great beast keeps a lair: ' + rx.error);
+  } else {
   fresh({}); setRunnerLinks(() => 'connected');
   const G = company(), N = CO.members(G), Lg = CN.leaderOfC(G), f = G.fac; T.TABLE.mode = 'off'; field(f);
   const c = homeOf(Lg); N.forEach((a, i) => put(a, c.gate.x + i * .4, c.gate.y + 2)); S.raidT = 1e9;
@@ -89,6 +94,7 @@ section('B. the leader proposes');
   for (const a of hm) if (R.status === 'open' && !R.votes[a.id]) act(a, 'vote', {proposal_id: R.id, vote: 'yes', reason: 'Ride.'});
   H.accept.raid = S.gameMin - 1; step(1 / 60);
   ok(CN.raidReserve() < 0 && !(H.wait && H.wait.raid) && /never came together/.test(logOf(H)), 'a raid vote that lapses frees the muster and says so');
+  }
 }
 
 // ---- C. a solo's direct orders ----
@@ -136,12 +142,14 @@ section('C. a solo: go_crypt, join_raid');
   ok(!inPool && !/Stepped back|Turned down/.test(events(a)), 'no muster takes a solo: the guard is never reached');
   // join_raid
   a = solo(15); S.raidOn[a.fac] = false; S.raidT = 1e9; r = act(a, 'join_raid');
+  if (!LAIR) {a = solo(15); r = act(a, 'join_raid'); ok(!r.ok && /nothing here to raid/.test(r.error), 'join_raid is refused where no great beast keeps a lair: ' + r.error)} else {
   ok(!r.ok && /read_chronicle/.test(r.error), 'join_raid with no muster out: ' + r.error);
   S.raidOn[a.fac] = true; const bgR = S.agents.filter(b => living(b) && b.fac === a.fac && b !== a).slice(0, 2); bgR.forEach((b, i) => {b.raid = true; b.raidIdx = i; b.state = 'raid'})
   r = act(a, 'join_raid');
   ok(r.ok && a.raid && a.raidOk && a.state === 'raid', 'join_raid falls in with the muster');
   const d0 = dist(a, LAIR); for (let k = 0; k < 120; k++) step(1 / 60);
   ok(a.raid && a.state === 'raid' && dist(a, LAIR) < d0, 'it rides for the lair and stays in the raid');
+  }
   // a company of two does not get the solo's orders
   fresh({}); setRunnerLinks(() => 'connected'); const m = CN.leaderOfC(company());
   ok(/propose/.test(act(m, 'go_crypt').error) && /propose/.test(act(m, 'join_raid').error), 'a company member is sent to propose');
@@ -173,10 +181,12 @@ section('F. others none');
 {
   fresh({others: 'none'}); setRunnerLinks(() => 'connected'); T.TABLE.mode = 'off'; const F = company(), M = CO.members(F), L = CN.leaderOfC(F), f = F.fac, c = homeOf(L);
   M.forEach((a, i) => {put(a, c.gate.x + i * .4, c.gate.y + 2); a.lvl = 14; a.gear = 12}); S.raidT = 1e9;
+  if (!LAIR) {const rx = act(L, 'propose', {kind: 'raid'}); ok(!rx.ok && /nothing here to raid/.test(rx.error), 'no lair, no raid, even for a company alone: ' + rx.error)} else {
   act(L, 'propose', {kind: 'raid'}); const P = F.props.find(q => q.kind === 'raid');
   for (const a of M) if (P.status === 'open' && !P.votes[a.id]) act(a, 'vote', {proposal_id: P.id, vote: 'yes', reason: 'Alone, then.'});
   S.raidT = 0; for (let k = 0; k < 60 * 30 && !S.raidOn[f]; k++) {SAFE(); step(1 / 60)}
   ok(S.raidOn[f] && M.every(a => a.raid), 'five alone at 14 muster on their own vote');
+  }
   fresh({others: 'none'}); setRunnerLinks(() => 'connected'); const G = company(), N = CO.members(G); for (const a of N) a.lvl = 15;
   for (let k = 0; k < 60 * 120; k++) {if (!(k % 60)) {CRYPT.cd = 0; S.raidT = 0} step(1 / 60)}
   ok(!(G.props || []).some(q => q.kind === 'crypt' || q.kind === 'raid'), 'and nothing asks them to');
