@@ -562,7 +562,7 @@ Fauna of `src/data/fauna.js`: each region has its own creatures, levels, names a
 
 - **The Low Bridge**: the only way over the Wend on this map, under Gullstrand's south wall.
 - **The Crossways** of the Wendmouth: where the Drovers' Road parts, west to the Low Bridge and east into the flats.
-- **The Drovers' Road** (south): the same road as the Reach's, coming up onto the south bank; it runs both ways. **The Wend Road** (east): runs on past Stiltmere to the Weirgate, and a company may cross by it, all together, at the table..
+- **The Drovers' Road** (south): the same road as the Reach's, coming up onto the south bank; it runs both ways. **The Wend Road** (east): runs on past Stiltmere to the Weirgate, and a company may cross by it, all together, at the table.
 - **The Sallow Vaults** (Sallowfen, entry 5): as in the Vale, at the end of their own turning off the fen road; the first dungeon a company passes. Keeper **Captain Dane Sallow**.
 - **The Gull Cliff Den** (Gullhead, entry 7): Old Brine's den, in the Vale a first delve, here a small dungeon of three rooms in the sea-cliffs at the end of the cliff road: **the Net Run**, **the Fish Midden**, **the Warm Hollow**. Keeper **Old Brine**, a scarred sea-wolf mother.
 - **Creatures of the Wendmouth** (`src/data/fauna.js`, the Vale's by name, at this chapter's levels): Wendmouth: **Strand Wolf** (5-6), **Reed Boar** (6-7), **Dyke Weaver** (6-7). Sallowfen: **Sallow Bogling** (6-7), **Sallow Hog** (7-8), **Eel Lurker** (8-9). Gullhead: **Heath Wolf** (7-8), **Crag Boar** (8-9), **Windhound** (9-10).

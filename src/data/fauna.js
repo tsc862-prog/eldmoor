@@ -68,7 +68,7 @@ export const FAUNA={
     {n:4,sp:'boar',pack:2,name:'Hedge Boar',pl:'Hedge Boars',lv:[11,12],loot:'Hedge Tusk',q:'Tusks from the Hedgerows'},
     {n:3,sp:'spider',pack:3,name:'Mill Spinner',pl:'Mill Spinners',lv:[11,12],loot:'Mill Silk',q:'Spinners at the Mills'}]},
   oldwood:   {tier:1,count:4,roadMinX:999,goods:[['Alder Fur',40],['Briar Hide',44],['Green Silk',48]],elite:{name:'Thornback',title:'the Boar-King of the Greywood',base:'mudboar',fixLvl:14,scale:10,hit:4,ready:['gore']},species:[
-    {n:5,sp:'spider',pack:3,name:'Green Weaver',pl:'Green Weavers',lv:[11,12],loot:'Green Silk',q:'Webs in the Greenwood'},
+    {n:5,sp:'spider',pack:3,name:'Green Weaver',pl:'Green Weavers',lv:[11,12],loot:'Green Silk',q:'Webs in the Greywood'},
     {n:4,sp:'mudboar',pack:2,name:'Briar Boar',pl:'Briar Boars',lv:[12,13],loot:'Briar Hide',q:'Hides from the Briars'},
     {n:3,sp:'wolf',pack:2,name:'Ford Stalker',pl:'Ford Stalkers',lv:[13,14],loot:'Alder Fur',q:'Stalkers at the Ford'}]},
   ashmarch:  {tier:1,count:4,roadMinX:999,goods:[['March Pelt',46],['Cinder Tusk',50],['Marchhound Sinew',54]],species:[
