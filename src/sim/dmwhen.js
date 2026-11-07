@@ -96,7 +96,8 @@ function subjects(on){if(on.hero!=null){const a=byId(on.hero);return a&&alive(a)
 const subjText=on=>on.hero!=null?(byId(on.hero)||{name:'#'+on.hero}).name:on.cid!=null?(companyById(on.cid)||{name:'a company'}).name||'a company':'any agent hero';
 
 // Resolve a trigger's arguments when it is set: {on, label} or {error}.
-function resolve(trigger,o){const T=TRIGGERS[trigger];if(!T)return {error:'trigger must be one of: '+TRIGGER_NAMES.join(', ')};
+function trig(k){return Object.hasOwn(TRIGGERS,k)?TRIGGERS[k]:undefined} // own keys only: a trigger named 'constructor' is none
+function resolve(trigger,o){const T=trig(trigger);if(!T)return {error:'trigger must be one of: '+TRIGGER_NAMES.join(', ')};
   const on={},need=k=>'"'+trigger+'" needs '+k+' ('+T.args+')';
   if(o.hero!=null&&o.hero!==''){const h=heroOf(o.hero);if(!h)return {error:'hero: no living hero called "'+clean(o.hero,40)+'"'};on.hero=h.id}
   else if(o.company!=null&&o.company!==''){const C=companyOfArg(o.company);if(!C)return {error:'company: no company called "'+clean(o.company,40)+'" (an id or name from companies_view, or "fellowship")'};on.cid=C.id}
@@ -186,7 +187,7 @@ function sortArgs(a,toolRow){const on=objArg(a.on);if(on==null)return {error:'on
 
 export function setWhen(a){const w=W();if(!w)return {ok:false,error:'The DM seat has no state yet.'};a=a&&typeof a==='object'?a:{};
   const trigger=clean(a.trigger,30).toLowerCase(),reason=clean(a.reason,160),usage=WHEN_USAGE;
-  if(!TRIGGERS[trigger])return {ok:false,error:'Refused: trigger must be one of: '+TRIGGER_NAMES.join(', ')+'. '+usage,triggers:triggersList()};
+  if(!trig(trigger))return {ok:false,error:'Refused: trigger must be one of: '+TRIGGER_NAMES.join(', ')+'. '+usage,triggers:triggersList()};
   if(!reason)return {ok:false,error:'Refused: a reason is required (one sentence for the DM log). '+usage};
   if(w.list.filter(e=>e.kind==='when').length>=WHEN.MAX)return {ok:false,error:'Refused: '+WHEN.MAX+' whens are pending already; cancel one with unwhen {id} (whens lists them).'};
   if(w.day.when>=WHEN.PER_DAY)return {ok:false,error:'Refused: '+WHEN.PER_DAY+' whens set today already.'};
@@ -217,7 +218,7 @@ export function setWhen(a){const w=W();if(!w)return {ok:false,error:'The DM seat
 
 export function setWatch(a){const w=W();if(!w)return {ok:false,error:'The DM seat has no state yet.'};a=a&&typeof a==='object'?a:{};
   const trigger=clean(a.trigger,30).toLowerCase(),usage=WATCH_USAGE;
-  if(!TRIGGERS[trigger])return {ok:false,error:'Refused: trigger must be one of: '+TRIGGER_NAMES.join(', ')+'. '+usage,triggers:triggersList()};
+  if(!trig(trigger))return {ok:false,error:'Refused: trigger must be one of: '+TRIGGER_NAMES.join(', ')+'. '+usage,triggers:triggersList()};
   if(w.list.filter(e=>e.kind==='watch').length>=WATCH.MAX)return {ok:false,error:'Refused: '+WATCH.MAX+' watches are set already; drop one with unwatch {id}.'};
   if(w.day.watch>=WATCH.PER_DAY)return {ok:false,error:'Refused: '+WATCH.PER_DAY+' watches set today already.'};
   const sa=sortArgs(a,undefined);if(sa.error)return {ok:false,error:'Refused: '+sa.error+'. '+usage};
