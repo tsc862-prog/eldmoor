@@ -8,3 +8,4 @@
 - [Smith temper #13](project_smith.md) — gold sink: +1 ilvl per temper, caps, no repair, hooks
 - [Hero trades #14](project_hero_trades.md) — order book S.listings, fee/lapse, scripted buy/sell, auction_* tools
 - [Vale fauna #945](project_vale_fauna.md) — per-region species, art lookup gap, home-town lows, unreachable small delves
+- [Hollin tune](project_hollin_tune.md) — #1013: Quarry Cellars numbers, chapter XP plateau, Crookjaw result

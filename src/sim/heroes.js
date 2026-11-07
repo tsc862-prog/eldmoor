@@ -8,7 +8,7 @@ import {outpostHonor,outpostDest} from './outposts.js';
 import {SPEED} from '../world/tiles.js';
 import {standAt} from '../world/passable.js';
 import {pathLeg,pathReached,pathStep,clearLine,HOLD,DONE} from './path.js'; // paths, not straight lines (#794)
-import {CRYPT,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
+import {CRYPT,LVL_CAP,ZONES,zoneFor,zoneAt,tileAt,dist,zonePoint} from '../world/map.js';
 import {cryptOfHero} from './crypts.js';
 import {assignRace,homeOf} from '../data/races.js';
 import {FAC,genName} from '../data/factions.js';
@@ -100,7 +100,10 @@ export function moveTo(e,x,y,dt,sp){let st=-1;
     e.x=q.x;e.y=q.y;st-=d;pathReached(e)} // a leg's end inside this tick: the rest of the step goes on along the next
   return false}
 
-export function gainXp(a,x){if(a.lvl>=20)return;a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
+// A chapter map (spec.chapter, #1013) tapers XP once a hero stands above its top band (LVL_CAP): a level over, a sixth of it; two or more, a fiftieth.
+// Every other map has LVL_CAP Infinity and is untouched. The one place; kills, crawls, quests and shares all pass through gainXp.
+const xpPlateau=l=>{const over=l-LVL_CAP;return over>=2?.02:over>=1?.17:1};
+export function gainXp(a,x){if(a.lvl>=20)return;if(LVL_CAP<Infinity)x*=xpPlateau(a.lvl);a.xp+=Math.round(x);actNote(a,'xp',null,Math.round(x));
   while(a.lvl<20&&a.xp>=xpNeed(a.lvl)){a.xp-=xpNeed(a.lvl);a.lvl++;actNote(a,'level',null,a.lvl);if(a.lvl%5===0)levelGrowth(a,a.lvl);a.hp=maxHp(a);pop(a.x,a.y-.5,'LEVEL UP','#f2c14e');wakeLevelUp(a,maxHp(a));
     if(a.lvl%5===0||a.lvl>=15)say(a,'levelup',{level:a.lvl});
     record(a,'Reached level '+a.lvl+'.');

@@ -18,3 +18,4 @@
 - [Vale spacing measure](project_vale_spacing.md) — #979: 144x60 cannot separate Vale towns; three overlapping pairs; growth proposed
 - [Map exits](project_map_exits.md) — #1013 1a: exits format, setWorld/MAP_ID, MAPS table, TESTLINK; Vale exits deferred
 - [World words](project_world_words.md) — #1003 WORDS tokens for world names in templates; worldtextcheck guards the Vale; what was left and why
+- [Hollin Reach](project_hollin_reach.md) — #1013 7a first chapter map: density rule, chapter/sides flags, closed exits, LVL_CAP, delve at a road's end

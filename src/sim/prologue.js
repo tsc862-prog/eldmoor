@@ -67,6 +67,7 @@ export function pickRow(town,fac,taken=used()){const free=PROLOGUES.filter(r=>!t
 // It stays in the gate's own region (a new town beside a river or a higher band must not put a green company in the next land) and in
 // a clear walk of the gate (#721's towns: Murkstead's nearest ground lay across the Greywater, Brinereach's in Sedgewater).
 export function mouthNear(c){const g=c.gate||c.qg;if(!g)return null;const gz=zoneAt(g.x,g.y);
+  if(c.delve)return {x:c.delve.x,y:c.delve.y,z:zoneAt(c.delve.x,c.delve.y)}; // a town whose spec stands its delve at a road's end (#1013); worldcheck holds that spot to the road and open ground
   for(const n of [16,64])for(let d=SITE.TOWN_GAP+1;d<=SITE.TOWN_GAP+PRO.FAR;d++)for(let k=0;k<n;k++){const ang=k*2*Math.PI/n,q={x:Math.floor(g.x+Math.cos(ang)*d)+.5,y:Math.floor(g.y+Math.sin(ang)*d)+.5}; // a second, finer look for a town the sixteen rays miss
     if(q.x<1||q.y<1)continue;const z=zoneAt(q.x,q.y);if(z!=null&&z===gz&&!siteSpotErr(q,z)&&onMainLand(q.x,q.y)&&clearLine(g,q))return {...q,z}}
   return null}
