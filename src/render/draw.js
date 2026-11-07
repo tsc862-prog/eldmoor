@@ -13,11 +13,12 @@
 //   A wheel, drag or minimap click in follow mode drops to the free camera at the
 //   same scale, so nothing jumps.
 import {clamp} from '../core/rng.js';
-import {W,H,LAVA} from '../world/tiles.js';
+import {W,H} from '../world/tiles.js';
 import {U as T,ART,PROC_SCALE,HEAD,followTiles} from './tile.js';
 import {OUTPOSTS} from '../world/map.js';
 import {outpostsView} from '../sim/outposts.js';
-import {LAIR,CRYPT,LANDMARKS,LIGHTS,LABELS,tiles,I} from '../world/map.js';
+import {LAIR,CRYPT,CRYPTS,LANDMARKS,LABELS} from '../world/map.js';
+import {cryptNamed} from '../sim/crypts.js';
 import {FAC} from '../data/factions.js';
 import {MOBS} from '../data/mobs.js';
 import {S,maxHp} from '../sim/index.js';
@@ -28,28 +29,41 @@ import {bubbleVisible} from '../core/chatview.js';
 import {drawWeather} from './weather.js';
 import {drawEncounters} from './encounters.js';
 import {drawPlaces} from './places.js';
-import {drawCamp,drawCampLight} from './camp.js';
-import {trafficEnts,isTraffic,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
+import {drawCamp} from './camp.js';
+import {trafficEnts,isTraffic,trafficShadow,drawTrafficEnt} from './traffic.js'; // carts, travellers and road guards (#856)
+import {farMarks,gatherFar,drawMarks,homeLane} from './lod.js'; // the whole map's marks (#729)
 import {drawMemorials} from './memorials.js';
 import {drawConditions,condLift} from './conditions.js';
-import {getChunk,CH,CHUNKS_X,CHUNKS_Y,chunkGen} from './terrain.js';
+import {getChunk,warmChunks,CH,CHUNKS_X,CHUNKS_Y,chunkGen,treesNear,drawTree} from './terrain.js';
 import {createMinimap} from './minimap.js';
 import {drawWholeMap} from './wholemap.js'; // company rings and name tags in the whole-map view (#844)
 import {syncSpells,drawSpells} from './spellfx.js';
-import {TEXT,MARK,LIGHT,BOSS_PAL} from './palette.js';
+import {TEXT,MARK,BOSS_PAL} from './palette.js';
 import {initDungeonView,dungeonOpen,drawDungeon,trackCrawl} from './dungeonview.js'; // the dungeon view over the world (#85)
 import {trackRaid} from './raidview.js'; // the raid arena's record of each raid it saw (#85)
-import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor} from './sceneview.js'; // scene maps (#431)
+import {initSceneView,sceneTick,sceneCut,drawSceneView,drawSceneRings,drawSceneMarks,arenaPattern,refreshOutdoor,scenePose,sceneFallen,sceneTint} from './sceneview.js'; // scene maps (#431)
 import {CITY} from '../world/map.js';
-import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeLight,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
+import {gateEnts} from './townart.js';
+import {lifeBegin,lifeGround,lifeEnts,lifeAir,lifeStats} from './townlife.js'; // critters, smoke, stalls, guards, flags, footprints (#795)
 import {drawPurposeGround,drawIntentIcon} from './purposefx.js'; // what a hero is trying to do (#534): path, tether, wait line, intent icons
 import {inSlots,slotted} from '../sim/company.js'; // the slotted company (#588)
-const SCENE_LIGHT=[255,232,196]; // the light under a Table scene's people at night (#471)
+import {G,gradeAt,CLOUD} from './grade.js'; // the hour's light (#979)
+import {drawCast,castFigure,castBlob} from './shadows.js';
+import {lightPass} from './lightmap.js';
+import {drawAir} from './atmos.js';
+import {drawWater} from './water.js';
+import {drawSway,swayTree,drawGrass,drawWheat} from './sway.js';
+import {drawMotes} from './motes.js';
+import {drawSheen} from './sheen.js';
+import {FX} from './quality.js';
+import {skyAt} from './life.js';
+const HIT_NUM=/^\d+!?$/; // a blow's number from the sim; a fight on a patch shows it as its beat lands instead (#746)
+const EPZ=[],EPY=[]; // per entity this frame: its pose on a patch (#746), its feet row
 const TOWNS=new Set(CITY.map(c=>c.name.toUpperCase())); // town labels are places (gold), the rest regions
 
 export const ZOOMS=[1,1.6,2.6,4];
 export const cam={view:'map',sel:null,camX:W*T/2,camY:H*T/2,sc:1,offX:0,offY:0,dpr:1,fit:1,zoom:1,vw:W*T,vh:H*T,close:false,region:null,hover:null,icons:true}; // hover, icons: the hovered hero and the Intent icons switch in Settings (#534, render/purposefx.js)
-const BOSS_HEAD=SPR.boss[0].length*PROC_SCALE+6; // Kragmaw's nameplate height over its feet
+const BOSS_HEAD=82; // Kragmaw's nameplate height over its feet: the sheet stands 76 units, the procedural sprite less
 // The facing of each entity for a generated sheet (0 down, 1 left, 2 right, 3 up), from how it last moved.
 const FACE=new WeakMap();
 function dirOf(e){let f=FACE.get(e);if(!f){f={x:e.x,y:e.y,d:e.face<0?1:2};FACE.set(e,f)}
@@ -93,18 +107,6 @@ export function centerOn(wx,wy){const z=currentZoom();freeCam(z<ZOOMS[1]?2.6:z);
 export function screenToWorld(clientX,clientY){const r=cvRef.getBoundingClientRect();
   return {x:((clientX-r.left)*cam.dpr-cam.offX)/cam.sc/T,y:((clientY-r.top)*cam.dpr-cam.offY)/cam.sc/T}}
 
-// Lava light for the night pass: one pixel per tile, each tile's share of lava in a 5x5 window,
-// scaled up with smoothing so whole lava fields glow softly. Built once (two variants: with and
-// without Kragmaw's ring, which cools while the wyrm is dead). Any world size, any number of fields.
-const glowC={};
-function lavaGlow(cooled){const k=cooled?1:0;if(glowC[k])return glowC[k];
-  const lair=LANDMARKS.find(l=>l.kind==='lair'),c=document.createElement('canvas');c.width=W;c.height=H;const x=c.getContext('2d'),img=x.createImageData(W,H),d=img.data;
-  const lava=(tx,ty)=>tx>=0&&ty>=0&&tx<W&&ty<H&&tiles[I(tx,ty)]===LAVA&&!(cooled&&lair&&Math.hypot(tx+.5-lair.x,ty+.5-lair.y)<=lair.r+1)?1:0;
-  const C=LIGHT.lava;
-  for(let ty=0;ty<H;ty++)for(let tx=0;tx<W;tx++){let n=0;for(let j=-2;j<=2;j++)for(let i=-2;i<=2;i++)n+=lava(tx+i,ty+j)*(i||j?1:3);
-    if(!n)continue;const o=(ty*W+tx)*4;d[o]=C[0];d[o+1]=C[1];d[o+2]=C[2];d[o+3]=Math.min(255,n*16)}
-  x.putImageData(img,0,0);return glowC[k]=c}
-
 export function createRenderer(cv,screenEl){
   const ctx=cv.getContext('2d');cvRef=cv;
   const miniEl=document.getElementById('minimap');
@@ -113,23 +115,8 @@ export function createRenderer(cv,screenEl){
     cam.fit=Math.min(cv.width/(W*T),cv.height/(H*T));if(mini)mini.resize()}
   new ResizeObserver(resize).observe(screenEl);resize();initDungeonView();initSceneView();
 
-  function darkness(){const h=(S.gameMin/60)%24;if(h>=21||h<5)return .55;if(h>=18)return (h-18)/3*.55;if(h<7)return (7-h)/2*.55;return 0}
-  // Night tint by the hour: dusk and dawn are saturated (plum, then rose), full night a lifted deep blue, so the ground keeps its detail.
-  const nt=[0,0,0],nc=document.createElement('canvas'),nx=nc.getContext('2d'),NR=4;
-  function nightTint(){const h=(S.gameMin/60)%24,N=LIGHT.night,Wm=h>=12?LIGHT.dusk:LIGHT.dawn;
-    let f=h>=21||h<5?1:h>=12?(h-18)/3:(7-h)/2;f=clamp(f,0,1);f=f*f*(3-2*f);
-    for(let i=0;i<3;i++)nt[i]=Math.round(Wm[i]+(N[i]-Wm[i])*f);return nt}
-  function punch(x,y,r,a){const g=nx.createRadialGradient(x,y,0,x,y,r);g.addColorStop(0,'rgba(0,0,0,'+a+')');g.addColorStop(.55,'rgba(0,0,0,'+a*.55+')');g.addColorStop(1,'rgba(0,0,0,0)');nx.fillStyle=g;nx.fillRect(x-r,y-r,r*2,r*2)}
-  function nightPass(sc,dk,sel,inView){
-    const w=Math.ceil(cv.width/NR),h=Math.ceil(cv.height/NR);if(nc.width!==w||nc.height!==h){nc.width=w;nc.height=h}
-    const c=nightTint();nx.setTransform(1,0,0,1,0,0);nx.globalCompositeOperation='source-over';nx.clearRect(0,0,w,h);
-    nx.fillStyle='rgba('+c[0]+','+c[1]+','+c[2]+','+(Math.pow(dk/.55,.5)*LIGHT.nightA)+')';nx.fillRect(0,0,w,h);
-    nx.globalCompositeOperation='destination-out';
-    const k=sc/NR,ox=cam.offX/NR,oy=cam.offY/NR; // light radii are in world units
-    let n=0;const lit=(e,r,a,dy)=>{if(n>90)return;const x=e.x*T,y=e.y*T-dy;if(!inView(x,y,r))return;n++;punch(x*k+ox,y*k+oy,r*k,a*Math.min(1,dk/.4))};
-    for(const m of S.mobs){if(m.alive&&!m.hidden)lit(m,17,.6,6)}
-    for(const a of S.agents){if(a.hidden||a.state==="dead")continue;if(a===sel||a.company!=null)lit(a,a===sel?48:40,.95,7);else lit(a,28,.8,7)}
-    ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=true;ctx.drawImage(nc,0,0,w,h,0,0,cv.width,cv.height);ctx.imageSmoothingEnabled=false}
+  // The sky over the camera, eased so the light turns as weather comes on rather than jumping (#979).
+  let cloud=0;const skyNow=()=>{const c=CLOUD[skyAt(cam.camX/T,cam.camY/T)]||0;cloud+=(c-cloud)*.02;return cloud};
   function drawText(txt,x,y,col,css){const s=css*cam.dpr/cam.sc;ctx.font=s+'px VT323, monospace';ctx.textAlign='center';ctx.fillStyle='#000';ctx.fillText(txt,x+s*.07,y+s*.07);ctx.fillStyle=col;ctx.fillText(txt,x,y)}
   // A thin disposition ellipse at the feet (close zoom only), the same colours as the UI.
   function dispoRing(x,y,w,d){ctx.strokeStyle=(DISP[d]||DISP.neutral).color;ctx.globalAlpha=.75;ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(x,y+.5,w/2+1.5,2.5,0,0,7);ctx.stroke();ctx.globalAlpha=1}
@@ -146,12 +133,8 @@ export function createRenderer(cv,screenEl){
         const x0=sx-w/2-2,y0=sy-s*.75,x1=sx+w/2+2,y1=sy+s*.12+(L.up?1:0);let hit=false;
         for(let k=0;k<BOX.length;k+=4)if(BOX[k]<x1&&BOX[k+2]>x0&&BOX[k+1]<y1&&BOX[k+3]>y0){hit=true;break}
         if(hit)continue;BOX.push(x0,y0,x1,y1);
-        if(L.pl){ctx.fillStyle='rgba(8,10,20,.82)';ctx.fillRect((x0-cam.offX)/sc,(y0-1-cam.offY)/sc,(x1-x0)/sc,(y1-y0+3)/sc)}
+        if(L.pl){ctx.fillStyle='rgba(8,10,20,.3)';ctx.fillRect((x0-cam.offX)/sc,(y0-1-cam.offY)/sc,(x1-x0)/sc,(y1-y0+3)/sc)}
         drawText(L.t,L.x,y,L.col,L.css);break}}}
-  // A radial light of colour c=[r,g,b] and strength a at world (x,y), radius r (lighter pass).
-  function glow(x,y,r,c,a){const g=ctx.createRadialGradient(x,y,0,x,y,r),k=c[0]+','+c[1]+','+c[2];g.addColorStop(0,'rgba('+k+','+a+')');g.addColorStop(1,'rgba('+k+',0)');ctx.fillStyle=g;ctx.fillRect(x-r,y-r,r*2,r*2)}
-  function shadow(x,y,w){ctx.fillStyle=MARK.shadow;ctx.beginPath();ctx.ellipse(x,y,w/2,1.5,0,0,7);ctx.fill()} // a traffic walker's shadow, filled at once (#856)
-
   // Draw the terrain chunks that intersect the canvas, each snapped to integer device
   // pixels so neighbouring chunks never show a seam at fractional scales.
   // A still camera (the whole map, a region view, a parked free camera) draws the terrain from one canvas at the
@@ -177,30 +160,33 @@ export function createRenderer(cv,screenEl){
   // 0 camera+terrain, 1 ground layers (encounters, places, camp, spells), 2 entities (gather, sort, draw), 3 bolts and
   // weather, 4 night, lights and spells in the air, 5 labels and Fellowship markers, 6 bubbles, floating text and the minimap.
   let PH=null;const ph=i=>{if(PH){const t=performance.now();PH.ms[i]+=t-PH.t;PH.t=t}};
-  let blink=0;
+  let blink=0,frameNo=1;
   function draw(){PH=globalThis.__drawPhases&&globalThis.__drawPhases.on?globalThis.__drawPhases:null;if(PH){PH.t=performance.now();PH.n++}
     trackCrawl();trackRaid();sceneTick(cam);if(dungeonOpen()){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');drawDungeon(performance.now()/1000);if(mini)mini.draw(S);return} // the dungeon view covers the world; skip drawing it
     if(drawSceneView(performance.now()/1000)){cam.whole=false;if(screenEl.classList)screenEl.classList.remove('wholemap');return} // an indoor scene map covers the world too (#431)
     blink+=1/60;const {agents,mobs,boss,fx}=S;
     ctx.setTransform(1,0,0,1,0,0);ctx.fillStyle='#000';ctx.fillRect(0,0,cv.width,cv.height);
-    const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height));
+    const sel=cam.sel,fr=framed(),follow=following(),cut=sceneCut(cv.width/Math.max(1,cv.height)),cin=cam.director,onPatch=!!(cut&&cut.patch),seen=e=>onPatch&&scenePose(e)||e; // cin: the cinema view's director (#979), null in every other view
     if(cut){ // an outdoor scene (#431): the camera frames the scene's cut of the world below the banner and above the bar
       const top=cut.top*cam.dpr,bot=cut.bottom*cam.dpr,rt=(cut.right||0)*cam.dpr,want=Math.max(cam.fit*2,Math.min(Math.max(40,cv.width-rt)/(cut.w*T),Math.max(40,cv.height-top-bot)/(cut.h*T)));
-      const first=!cam.cut;cam.cut=true;cam.sc=first?want:cam.sc+(want-cam.sc)*.15;
-      const tx=cut.cx*T+rt/2/cam.sc,ty=cut.cy*T-(top-bot)/2/cam.sc; /* the banner docked on the right (#546): the cut fills the room left of it */if(first){cam.camX=tx;cam.camY=ty}else{cam.camX+=(tx-cam.camX)*.15;cam.camY+=(ty-cam.camY)*.15}
+      if(cin){cam.cut=true;cin.step(cam,cv.width,cv.height,{x:cut.cx*T,y:cut.cy*T,sc:want,dx:rt/2,dy:-(top-bot)/2})} // the cinema view eases into the cut (#979)
+      else{const first=!cam.cut;cam.cut=true;cam.sc=first?want:cam.sc+(want-cam.sc)*.15;
+      const tx=cut.cx*T+rt/2/cam.sc,ty=cut.cy*T-(top-bot)/2/cam.sc; /* the banner docked on the right (#546): the cut fills the room left of it */if(first){cam.camX=tx;cam.camY=ty}else{cam.camX+=(tx-cam.camX)*.15;cam.camY+=(ty-cam.camY)*.15}}
       cam.vw=cv.width/cam.sc;cam.vh=cv.height/cam.sc}
     else{cam.cut=false;
+    if(cin)cin.step(cam,cv.width,cv.height,null);else{ // the director camera (#979, render/director.js)
     cam.sc=fr?cam.sc+(frameScale(fr)-cam.sc)*.08:follow?followScale():cam.fit*cam.zoom;
     if(fr){cam.camX+=(fr.x*T-cam.camX)*.1;cam.camY+=(fr.y*T-cam.camY)*.1}
-    else if(follow){cam.camX+=(sel.x*T-cam.camX)*.12;cam.camY+=(sel.y*T-cam.camY)*.12}
+    else if(follow){cam.camX+=(sel.x*T-cam.camX)*.12;cam.camY+=(sel.y*T-cam.camY)*.12}}
     clampCam()}
     const sc=cam.sc,vw=cam.vw,vh=cam.vh;
     cam.offX=Math.round((vw/2-cam.camX)*sc);cam.offY=Math.round((vh/2-cam.camY)*sc);
     const vx0=cam.camX-vw/2,vy0=cam.camY-vh/2,vx1=vx0+vw,vy1=vy0+vh;
     const inView=(x,y,m)=>x>vx0-m&&x<vx1+m&&y>vy0-m&&y<vy1+m;
     if(cut&&cut.edge){ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;ctx.fillStyle=arenaPattern(ctx,cut.biome);ctx.fillRect(vx0,vy0,vw,vh)} // past the map's edge: a generated arena of the biome's ground
-    drawTerrain(sc);ph(0);
+    drawTerrain(sc);warmChunks(cam.camX/T,cam.camY/T);ph(0);
     ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ctx.imageSmoothingEnabled=false;
+    gradeAt((S.gameMin/60)%24,skyNow());drawCast(S.gameMin);drawSheen(ctx,S.gameMin); // the hour's light, then what stands still throws its shadow on the ground (#979)
     // lava shimmer: embers drifting around the lair ring
     const tt=performance.now()/400;
     if(S.boss.alive&&inView(LAIR.x*T,LAIR.y*T,96)){ctx.fillStyle=MARK.ember;for(let i=0;i<14;i++){const a=i*2.4+tt*.3;ctx.fillRect(Math.round(LAIR.x*T+Math.cos(a)*76),Math.round(LAIR.y*T+Math.sin(a)*76),2,2)}}
@@ -211,71 +197,93 @@ export function createRenderer(cv,screenEl){
         const f=Math.abs(o.ctl)/100;ctx.fillStyle='#14141c';ctx.fillRect(px-11,py+5,22,3);
         if(f>0){ctx.fillStyle=o.ctl>0?FAC[0].color:FAC[1].color;ctx.fillRect(px-10,py+6,Math.round(20*f),1)}
         if(o.contested){ctx.fillStyle=MARK.ember;ctx.fillRect(px-10,py+9,20,1)}}}
-    const close=cam.close=sc>=cam.fit*2;
+    const close=cam.close=sc>=cam.fit*2||!!cin;
     drawEncounters(ctx,S,cam,sprite,SPR,blink,drawText); // road encounters under the entities
     drawMemorials(ctx,S,cam,{sprite,SPR,inView,drawText,blink}); // gravestones, statues, cooled lair (sim/memorials.js)
     drawPlaces(ctx,S,cam,{blink,drawText,inView,npcSprite,outlined,dispoRing}); // DM lever markers, conditions and DM-placed people (sim/levers.js)
     drawCamp(ctx,S,cam,{inView,blink,drawText}); // the Fellowship's campfire and bedrolls (sim/camp.js)
-    let lt=performance.now();if(!cut){lifeBegin(S,cam,lt/1000);lifeGround(ctx)} // the ambient life of the map (#795): render only
+    let lt=performance.now();if(!cut){lifeBegin(S,cam,lt/1000);lifeGround(ctx);if(FX.full){drawWater(ctx);drawGrass(ctx);drawWheat(ctx);drawSway(ctx,ctx.getTransform())}} // the ambient life of the map (#795), and the water and wind (#979): render only
     lifeStats.acc=performance.now()-lt;
-    if(!cut)drawPurposeGround(ctx,S,cam,{drawText,blink}); // the followed or hovered hero's road, tether or wait line, under the entities
+    if(!cut&&!cin)drawPurposeGround(ctx,S,cam,{drawText,blink}); // the followed or hovered hero's road, tether or wait line, under the entities
     if(cut)drawSceneRings(ctx,cam,cut); // who is in the scene: a ring at their feet (#431)
     const fxNow=performance.now()/1000;syncSpells(fx,fxNow,inView);drawSpells(ctx,0,close,inView,fxNow);ph(1); // spell effects on the ground: rings, roots, briars (#374)
     // entities in view, sorted by y: mobs, heroes, townsfolk (sim/npcs.js) and the boss
+    // Far out (#729) most of the world is marks and only those the watcher is looking at go on as sprites.
     ENTS.length=0;
-    for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ENTS.push(m);
-    for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
-    for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
-    if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
-    lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;
-    if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS); // road traffic, skipped at whole-map zoom (#856)
+    const far=farMarks(sc,cut);
+    if(far)gatherFar(S,cam,inView,MARGIN,ENTS);
+    else{
+      for(const m of mobs)if(m.alive&&!m.hidden&&inView(m.x*T,m.y*T,MARGIN))ENTS.push(m);
+      for(const a of agents)if(!a.hidden&&inView(a.x*T,a.y*T,MARGIN))ENTS.push(a);
+      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,MARGIN))ENTS.push(p);
+      if(boss.alive&&inView(boss.x*T,boss.y*T,MARGIN))ENTS.push(boss);
+      lt=performance.now();if(!cut)lifeEnts(ENTS);lifeStats.acc+=performance.now()-lt;if(close)gateEnts(ENTS,inView); // a gatehouse stands among the people passing it (#979)
+      if(close&&!cut)trafficEnts(S,inView,MARGIN,ENTS)} // road traffic, skipped at whole-map zoom (#856)
+    if(onPatch)sceneFallen(ENTS); // a foe whose last blow is still to play, or who is falling
+    // whole trees (#834) are painted into the terrain chunk, under everything; one that stands in front of an entity (rooted below its feet)
+    // is sorted in among the entities and drawn again over it, with the trees near it, so a hero walks behind a trunk and not over a crown
+    if(close&&!far){const n=ENTS.length;for(let i=0;i<n;i++)treesNear(ENTS[i].x,ENTS[i].y,ENTS,frameNo)}
+    frameNo++;
     ENTS.sort(byY);
     // Pass 1 (#716): each entity's sprite (or generated sheet frame), size and x, and the shadows in one path a frame (the
     // living at full alpha, ghosts in a second path at theirs) instead of one fill per entity. Shadows now all sit under
     // every sprite, which is where they belong anyway.
-    const nE=ENTS.length;
+    const nE=ENTS.length,sunny=close&&G.sunA>.01&&FX.full; // up close what moves throws its own shape along the sun, under the contact shadow
     ctx.fillStyle=MARK.shadow;ctx.beginPath();
-    for(let i=0;i<nE;i++){const e=ENTS[i],ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',fr=e.moving?Math.floor(blink*6+e.id)%2:0;
-      if(e.kind==='deco'||isTraffic(e)){ESPR[i]=null;continue} // drawn whole in pass 2, with their own shadow
+    for(let i=0;i<nE;i++){const e=ENTS[i];EPZ[i]=null;
+      if(e.kind==='deco'||e.tree){ESPR[i]=null;if(sunny&&!e.tree&&!e.flat)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),e.kp?5:3,e.kp?24:9);continue} // drawn whole in pass 2, with its own shadow
+      if(isTraffic(e)){trafficShadow(ctx,e,Math.round(e.x*T),Math.round(e.y*T));if(sunny)castBlob(ctx,Math.round(e.x*T),Math.round(e.y*T),6,22);continue} // its shadow joins the path; the sprite is drawn whole in pass 2
+      const ghost=e.kind==='hero'&&e.state==='ghost',live=e.state!=='dead',pz=onPatch?scenePose(e):null,mv=pz?pz.walk:e.moving,fr=mv?Math.floor(blink*6+e.id)%2:0;EPZ[i]=pz;
       let s;if(e.kind==='mob'){const M=MOBS[e.type];s=sprite(e.type+fr,SPR[M.spr][fr],M.col)}
       else if(e.kind==='boss'){const bf=Math.floor(blink*1.6)%2;s=sprite('boss'+bf,SPR.boss[bf],BOSS_PAL)}
-      else if(e.kind==='npc')s=npcSprite(e,e.moving?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
+      else if(e.kind==='npc')s=npcSprite(e,mv?fr:Math.floor(blink*1.5)%2); // idle townsfolk work their hands
       else if(e.state==='dead')s=sprite('grave'+e.fac,SPR.grave[0],{G:'#8a8a96',F:'#3a3a46',B:FAC[e.fac].dark});
       else s=heroSprite(e,ghost,fr);
       // a generated sheet (#177) for a living hero or creature, else the procedural sprite scaled to the same height
-      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob')?sheetFrame(e,dirOf(e),e.moving?STEP[Math.floor(blink*6+e.id)%4]:0):null;
+      const G=live&&!ghost&&(e.kind==='hero'||e.kind==='mob'||e.kind==='npc'||e.kind==='boss')?sheetFrame(e,e.kind==='npc'&&!mv?0:e.kind==='boss'?1:pz?pz.dir:dirOf(e),e.kind==='boss'?STEP[Math.floor(blink*2.2)%4]:mv?STEP[Math.floor(blink*6+e.id)%4]:0):null;
       let F=null;if(G){F=EGF[i]||(EGF[i]={img:null,sx:0,sy:0,fw:0,fh:0});F.img=G.img;F.sx=G.sx;F.sy=G.sy;F.fw=G.fw;F.fh=G.fh} // sheetFrame hands back one shared object
       ESPR[i]=s;EG[i]=F;ESW[i]=G?G.fw/ART:s.width*PROC_SCALE;ESH[i]=G?G.fh/ART:s.height*PROC_SCALE;
-      // townsfolk at home stand on one wall column a tile apart (sim homeAt): stagger them over three lanes so the sprites do not stack (#701)
-      const px=EPX[i]=Math.round((e.x+(e.kind==='npc'&&e.state==='home'&&!e.moving?((e.id%3)-1)*.6:0))*T);
-      if(live&&!ghost){const py=Math.round(e.y*T),w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7)}}
+      const px=EPX[i]=Math.round((pz?pz.x:e.x+homeLane(e))*T),py=EPY[i]=Math.round((pz?pz.y:e.y)*T);
+      if(live&&!ghost&&!(pz&&pz.fade<1)){const w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7)}}
     ctx.fill();
     let ghosts=false;ctx.beginPath();
-    for(let i=0;i<nE;i++){const e=ENTS[i];if(e.kind!=='hero'||e.state!=='ghost')continue;const px=EPX[i],py=Math.round(e.y*T),w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7);ghosts=true}
+    for(let i=0;i<nE;i++){const e=ENTS[i];if(e.kind!=='hero'||e.state!=='ghost')continue;const px=EPX[i],py=EPY[i],w=ESW[i]/2;ctx.moveTo(px+w,py);ctx.ellipse(px,py,w,1.5,0,0,7);ghosts=true}
     if(ghosts){ctx.globalAlpha=.6;ctx.fill();ctx.globalAlpha=1}
+    const tf=ctx.getTransform();
+    if(sunny){ctx.globalAlpha=G.sunA*.9;
+      for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i];if(!s||e.state==='dead'||e.state==='ghost')continue;const pz=EPZ[i];if(pz&&pz.fade<1)continue;const F=EG[i],px=EPX[i],py=EPY[i]; // a figure posed in a scene casts from where it stands (#746)
+        if(F)castFigure(ctx,tf,F.img,F.sx,F.sy,F.fw,F.fh,px,py,ESW[i],ESH[i],false);else{const o=worldSprite(s,true);castFigure(ctx,tf,o,0,0,o.width,o.height,px,py,ESW[i],ESH[i],(pz?pz.face:e.face)<0)}}
+      ctx.setTransform(tf);ctx.globalAlpha=1}
     // Pass 2: the sprites in y order, and what rides on each. A mirrored sprite sets the transform once instead of
     // save/translate/scale/restore.
-    const tf=ctx.getTransform();
-    for(let i=0;i<nE;i++){const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=Math.round(e.y*T),live=e.state!=='dead';
-      if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);continue} // critters, stalls and guards (townlife.js)
-      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink,shadow);continue}
-      if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6;
-      if(close&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
-      if(G)ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);
+    let ghostA=1; // 1, or the see-through strength of a member drawn again over the tree that stands in front of it
+    const drawEnt=i=>{const e=ENTS[i],s=ESPR[i],G=EG[i],sw=ESW[i],sh=ESH[i],px=EPX[i],py=EPY[i],pz=EPZ[i],live=e.state!=='dead';
+      if(e.kind==='deco'){e.paint(ctx,Math.round(e.x*T),Math.round(e.y*T),blink,e);return} // critters, stalls and guards (townlife.js)
+      if(isTraffic(e)){drawTrafficEnt(ctx,e,Math.round(e.x*T),Math.round(e.y*T),blink);return}
+      if(e.kind==='hero'&&e.state==='ghost')ctx.globalAlpha=.6*ghostA;
+      if(close&&!cin&&e.kind==='npc')dispoRing(px,py,sw,toneOf(e,slotted(),S.gameMin).kind); // townsfolk: friendly green, wary amber, hostile red
+      const tilt=pz&&pz.tilt;if(pz&&pz.fade<1)ctx.globalAlpha=pz.fade;if(tilt){ctx.save();ctx.translate(px,py);ctx.rotate(tilt);ctx.translate(-px,-py)} // a stumble on a 1, a foe falling
+      if(G){ctx.drawImage(G.img,G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh);if(pz&&pz.flash>0){ctx.globalAlpha=pz.flash;ctx.drawImage(sceneTint(G.img,pz.col),G.sx,G.sy,G.fw,G.fh,px-sw/2,py-sh,sw,sh)}}
       else{const o=worldSprite(s,live),ow=live?1/ART:0,x0=-Math.floor(s.width/2)*PROC_SCALE-ow; // living entities get the dark outline, one art pixel wide
-        if(e.face<0){ctx.setTransform(-tf.a,0,0,tf.d,tf.e+px*tf.a,tf.f);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);ctx.setTransform(tf)} // mirrored about px
-        else ctx.drawImage(o,px+x0,py-sh-ow,o.width/ART,o.height/ART)}
-      ctx.globalAlpha=1;
+        const fl=pz&&pz.flash>0?sceneTint(o,pz.col):null; // the hit flash
+        if((pz?pz.face:e.face)<0){ctx.save();ctx.translate(px,0);ctx.scale(-1,1);ctx.drawImage(o,x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,x0,py-sh-ow,o.width/ART,o.height/ART)}ctx.restore()} // mirrored about px, on top of any tilt (a setTransform from the base dropped the stumble and fall of every foe facing left)
+        else{ctx.drawImage(o,px+x0,py-sh-ow,o.width/ART,o.height/ART);if(fl){ctx.globalAlpha=pz.flash;ctx.drawImage(fl,px+x0,py-sh-ow,o.width/ART,o.height/ART)}}}
+      if(tilt)ctx.restore();ctx.globalAlpha=ghostA;
       const top=py-sh;
       // role markers at the post: the gate captain's quest mark, the quartermaster's auction sign
       if(e.kind==='npc'&&e.state==='post'){if(e.role==='captain'){const by=Math.round(Math.sin(blink*4));ctx.fillStyle=MARK.quest;ctx.fillRect(px-1,top-11+by,2,6);ctx.fillRect(px-1,top-4+by,2,2)}
         else if(e.role==='quartermaster'){ctx.fillStyle='#f2c14e';ctx.fillRect(px-2,top-8,4,4);ctx.fillStyle='#8a6a1a';ctx.fillRect(px-1,top-6,2,1)}}
-      if(e===sel){ctx.fillStyle=Math.floor(blink*3)%2?MARK.sel:MARK.selHi;ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
-      if(close&&e.hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=(e.kind==='boss'?21:8)*PROC_SCALE;
-        ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*e.hp/mx),2)}
-      if(e.kind==='hero'&&!cut)drawIntentIcon(ctx,S,cam,e,px,top,sw,close); // the intent icon at the right shoulder (#534)
+      if(e===sel&&!cin){ctx.fillStyle=Math.floor(blink*3)%2?MARK.sel:MARK.selHi;ctx.fillRect(px-2,top-7,5,2);ctx.fillRect(px-1,top-5,3,1);ctx.fillRect(px,top-4,1,1)}
+      const hp=pz?pz.show:e.hp; // a blow's HP falls as its beat lands (#746)
+      if(close&&hp<(e.kind==='hero'?maxHp(e):e.maxhp)&&!(pz&&(hp<=0||pz.fade<1))&&e.state!=='ghost'&&e.state!=='dead'){const mx=e.kind==='hero'?maxHp(e):e.maxhp,w=(e.kind==='boss'?21:8)*PROC_SCALE;
+        ctx.fillStyle=MARK.hpBack;ctx.fillRect(px-w/2-1,top-4,w+2,4);ctx.fillStyle=e.kind==='hero'?MARK.hpHero:MARK.hpFoe;ctx.fillRect(px-w/2,top-3,Math.max(0,w*hp/mx),2)}
       if(close&&e.eff)drawConditions(ctx,S,cam,e,px,py,top,blink); // Table conditions over the head (#307)
-    }
+    };
+    for(let i=0;i<nE;i++){const e=ENTS[i];
+      if(e.tree||e.veil){if(e.veil)drawEnt(i);else{drawTree(ctx,e);if(FX.full)swayTree(ctx,tf,e)} // a crown in front of entities hides them, as a hero walking behind a tree would be; the followed hero and the company stay readable as a see-through figure
+        for(let j=0;j<i;j++){const o=ENTS[j];if(o.tree||Math.abs(o.x-e.x)>2.4||o.y>=e.y||o.y<e.y-5||!(o===sel||(o.kind==='hero'&&inSlots(o))))continue;ghostA=.45;ctx.globalAlpha=.45;drawEnt(j);ghostA=1;ctx.globalAlpha=1}
+        continue}
+      drawEnt(i)}
     ph(2);
     // effects: bolts leave a short fading trail; the boss's breath ring
     for(const p of fx){if(p.type==='bolt'){const t=1-p.life/.25;if(!inView(p.x0*T,p.y0*T,96))continue;ctx.fillStyle=p.col;
@@ -284,25 +292,10 @@ export function createRenderer(cv,screenEl){
       if(p.type==='ring'){if(!inView(p.x*T,p.y*T,96))continue;ctx.strokeStyle='rgba(255,140,40,'+p.life+')';ctx.lineWidth=3;ctx.beginPath();ctx.arc(p.x*T,p.y*T,(1-p.life/.6)*72+8,0,7);ctx.stroke()}}
     // weather sits on the ground, so it goes under the night: fog no longer brightens midnight
     lt=performance.now();if(!cut)lifeAir(ctx,blink);lifeStats.acc+=performance.now()-lt;
-    drawWeather(ctx,S,cam,blink);ph(3);
-    // night: a blue wash, then light added back (lighter): lava fields glow, torches flicker,
-    // crypt mouths breathe a faint green, the camp fire (camp.js)
-    const dk=darkness();if(dk>0){
-      // The night is a low-resolution light map (a quarter of the screen): the wash is laid at the hour's tint, then a soft hole is cut
-      // under each company member, the followed hero and (fainter) every other hero and foe in view, so people stay in colour and
-      // the dark stays dark everywhere else. One small canvas, a handful of gradients, one scaled blit a frame.
-      nightPass(sc,dk,sel,inView);
-      ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);
-      ctx.globalCompositeOperation='lighter';
-      const lg=lavaGlow(!S.boss.alive);ctx.globalAlpha=dk*.65;ctx.imageSmoothingEnabled=true;ctx.drawImage(lg,0,0,W,H,0,0,W*T,H*T);ctx.imageSmoothingEnabled=false;ctx.globalAlpha=1;
-      const now=performance.now()/1000;
-      for(const L of LIGHTS){const r=L.big?92:28;if(!inView(L.x*T,L.y*T,r))continue;const fl=L.big?1:.86+.14*Math.sin(now*7.3+L.x*3.1)*Math.sin(now*3.1+L.y);
-        glow(L.x*T,L.y*T,r*(L.big?1:.94+.06*fl),LIGHT.torch,dk*.7*fl)}
-      for(const L of LANDMARKS)if(L.kind==='crypt'&&L.mouth){const x=(L.mouth.x0+L.mouth.x1+1)/2*T,y=(L.mouth.y0+1)*T;if(inView(x,y,40))glow(x,y,26,LIGHT.crypt,dk*(.35+.1*Math.sin(now*1.3)))}
-      drawCampLight(ctx,S,dk,inView);
-      lt=performance.now();if(!cut)lifeLight(ctx,glow,dk,LIGHT);lifeStats.acc+=performance.now()-lt;
-      if(cut)for(const e of cut.members.concat(cut.foes))glow(e.x*T,e.y*T-HEAD/2,22*PROC_SCALE*.75,SCENE_LIGHT,dk*.6); // a Table scene's people keep a pool of light at night (#471)
-      ctx.globalCompositeOperation='source-over'}
+    if(!cut&&FX.full)drawMotes(ctx,0);drawWeather(ctx,S,cam,blink);drawAir(ctx,cv,cam,sc,performance.now()/1000);ph(3);
+    // the light: the hour's ambient, soft dark, flames and lava, in one multiply and a thin add (lightmap.js, #979)
+    const dk=G.dk;lt=performance.now();lightPass(ctx,cv,cam,{S,sel,sc,inView,cut,seen});if(!cut&&FX.full)drawMotes(ctx,1);lifeStats.acc+=performance.now()-lt;
+    ph(4);if(far){drawMarks(ctx,cam.dpr,dk);ctx.setTransform(sc,0,0,sc,cam.offX,cam.offY);ph(2)} // the marks, timed with the entities
     drawSpells(ctx,1,close,inView,fxNow);ph(4); // spell effects in the air, over the night wash: they carry their own light (#374)
     // Labels by zoom (#176). Every label is queued with a priority, then placed highest first; one
     // that would overlap a placed label is dropped, so a crowd shows its most important names.
@@ -317,23 +310,24 @@ export function createRenderer(cv,screenEl){
       if(sel&&!sel.hidden&&sel.state!=='dead'&&inView(sel.x*T,sel.y*T,40))lab(sel.name,sel.x*T,sel.y*T-HEAD,MARK.sel,16,10,null,true); // the followed hero is named at any zoom
       if(boss.alive&&inView(LAIR.x*T,LAIR.y*T,LM))lab('KRAGMAW',LAIR.x*T,(LAIR.y-3)*T,TEXT.elite,12,5);
       for(const L of LANDMARKS){if(L.kind!=='crypt'||!L.mouth||!inView(L.x*T,L.y*T,LM))continue; // every crypt, labelled just above its mouth
-        const g=CRYPT&&L.name===CRYPT.name&&CRYPT.group&&CRYPT.group.phase==='inside'?CRYPT.group:null;
-        lab(g?'CRYPT · '+g.mem.length+' INSIDE':L.name.replace(/^the /i,'').toUpperCase(),(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
+        const D=cryptNamed(L.name),g=D&&D.group&&D.group.phase==='inside'?D.group:null,word=L.name.replace(/^the /i,'').toUpperCase();
+        lab(g?(D===CRYPT?'CRYPT':word)+' · '+g.mem.length+' INSIDE':word,(L.mouth.x0+L.mouth.x1+1)/2*T,(L.mouth.y0-.6)*T,TEXT.crypt,12,5)}}
     else{
-      if(CRYPT&&CRYPT.group&&CRYPT.group.phase==='inside'&&inView(CRYPT.x*T,CRYPT.y*T,LM))lab(CRYPT.group.mem.length+' inside · '+Math.ceil(CRYPT.group.t)+'s',CRYPT.x*T,CRYPT.mouth.y0*T-4,TEXT.crypt,14,7);
+      if(!cin)for(const D of CRYPTS)if(D.group&&D.group.phase==='inside'&&inView(D.x*T,D.y*T,LM))lab(D.group.mem.length+' inside · '+Math.ceil(D.group.t)+'s',D.x*T,D.mouth.y0*T-4,TEXT.crypt,14,7);
       const lh=14*cam.dpr/sc;
-      if(cut)for(const r of bubbleBoxes(ctx,S,cam))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
+      if(cut)for(const r of bubbleBoxes(ctx,S,cam,onPatch?scenePose:null))RES.push(r[0]*sc+cam.offX,r[1]*sc+cam.offY,r[2]*sc+cam.offX,r[3]*sc+cam.offY); // a Table scene: names keep clear of the bubbles (#471)
       for(const a of agents){if(a.hidden||!inView(a.x*T,a.y*T,40))continue;
+        if(cin&&!cut&&!cin.named(a,cam))continue; // the cinema view names only the hovered hero and the selected company, with no plate (#979)
         const dead=a.state==='dead';if(dead&&!near&&a!==sel)continue;
-        const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),y=a.y*T-HEAD-condLift(a,cam);
+        const inCut=cut&&!dead&&(cut.members.includes(a)||cut.foes.includes(a)),ap=seen(a),y=ap.y*T-HEAD-condLift(a,cam);
         if(inCut&&a.bubble&&a.bubble.life>0&&bubbleVisible(a,S))continue; // its bubble names it already: one label per member
-        if(inCut){lab(a.name,a.x*T,y,inSlots(a)?classColor(a.cls):FAC[a.fac].color,14,inSlots(a)?9:8,[y-lh*1.05,a.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
+        if(inCut){lab(a.name,ap.x*T,y,inSlots(a)?classColor(a.cls):FAC[a.fac].color,cin?LS-6:14,inSlots(a)?9:8,[y-lh*1.05,ap.y*T+4+lh*.8,y-lh*2.1],true);continue} // class colour, a plate, and other heights before it is dropped
         const mate=!dead&&inSlots(a); // a company member is always named: big, class colour, a plate, stacked when bunched (#842)
-        lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:mate?classColor(a.cls):dead?TEXT.dead:FAC[a.fac].color,mate||a===sel?LS:LS-4,a===sel?10:mate?8:dead?1:4,null,mate||a===sel,mate?6:0)}
-      for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,slotted(),S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
+        lab((dead?'† ':'')+a.name,a.x*T,y,a===sel?MARK.sel:mate?classColor(a.cls):dead?TEXT.dead:FAC[a.fac].color,cin?LS-6:mate||a===sel?LS:LS-4,a===sel?10:mate?8:dead?1:4,null,!cin&&(mate||a===sel),mate?6:0)}
+      if(!cin)for(const p of S.npcs||[])if(inView(p.x*T,p.y*T,40)){const t=toneOf(p,slotted(),S.gameMin);if(t.kind==='friendly'&&!near)continue; // townsfolk nameplates: [name] in the disposition colour; a wary or hostile one at any close zoom
         lab(toneName(p,t),p.x*T,p.y*T-HEAD-condLift(p,cam),t.color||TEXT.person,12,t.kind==='friendly'?2:5)}
-      for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;lab(m.name,m.x*T,m.y*T-HEAD-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
-      if(boss.alive&&inView(boss.x*T,boss.y*T,LM))lab('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-BOSS_HEAD-condLift(boss,cam),TEXT.elite,15,9)}
+      if(!cin)for(const m of mobs){if(!m.elite||!m.alive||!inView(m.x*T,m.y*T,40))continue;const p=seen(m);lab(m.name,p.x*T,p.y*T-HEAD-condLift(m,cam),TEXT.elite,14,6)} // named elite nameplate
+      if(!cin&&boss.alive&&inView(boss.x*T,boss.y*T,LM))lab('Kragmaw · '+Math.max(0,Math.round(boss.hp/boss.maxhp*100))+'%',boss.x*T,boss.y*T-BOSS_HEAD-condLift(boss,cam),TEXT.elite,15,9)}
     // The Fellowship (#94): a role marker over each member and their name at any zoom (close views
     // queue the names above), plus a dashed ring around the party in Follow Fellowship.
     if(slotted()){const px1=cam.dpr/sc,F=slotted(),mem=[];for(const k in F.slots){const a=agents.find(x=>x.id==F.slots[k]);if(a&&!a.hidden&&a.state!=='dead')mem.push(a)}
@@ -344,14 +338,14 @@ export function createRenderer(cv,screenEl){
         const m=Math.max(3,5*px1),cx=Math.round(a.x*T),cy=a.y*T-HEAD-15*px1-m-condLift(a,cam);
         ctx.fillStyle=MARK.edge;ctx.beginPath();ctx.moveTo(cx,cy-m-px1);ctx.lineTo(cx+m+px1,cy);ctx.lineTo(cx,cy+m+px1);ctx.lineTo(cx-m-px1,cy);ctx.fill();
         ctx.fillStyle=col;ctx.beginPath();ctx.moveTo(cx,cy-m);ctx.lineTo(cx+m,cy);ctx.lineTo(cx,cy+m);ctx.lineTo(cx-m,cy);ctx.fill();
-        lab(a.name,a.x*T,a.y*T-HEAD,a===sel?MARK.sel:col,16,a===sel?10:7,null,true,3)}}
+        if(a!==sel)lab(a.name,a.x*T,a.y*T-HEAD,col,16,7,null,true,3)}} // the selected hero is named above, at any zoom: a second plate would stack on it (#967)
     flushLabels(sc);lifeStats.ms+=(lifeStats.acc-lifeStats.ms)*.05;ph(5);
     const whole=!cut&&!follow&&sc<=cam.fit*1.001;cam.whole=whole;if(screenEl.classList)screenEl.classList.toggle('wholemap',whole); // the whole map: rings and tags, the corner minimap would only repeat it (#844)
     if(whole)drawWholeMap(ctx,cam,blink);
-    if(close){drawBubbles(ctx,S,cam,drawText);
-      for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
+    if(close){drawBubbles(ctx,S,cam,drawText,onPatch?scenePose:null);
+      for(const p of fx)if(p.type==='txt'&&inView(p.x*T,p.y*T,LM)&&!(onPatch&&HIT_NUM.test(p.txt))){ctx.globalAlpha=Math.min(1,p.life*1.5);drawText(p.txt,p.x*T,p.y*T,p.col,15);ctx.globalAlpha=1}}
     if(cut){drawSceneMarks(ctx,cam,cut,performance.now()/1000);refreshOutdoor()} // the scene's rings, turn, speaker and frame (#431)
-    if(mini)mini.draw(S);ph(6);
+    if(mini&&!cin)mini.draw(S);if(cin)cin.paint(ctx,cv.width,cv.height);ph(6);
   }
 
   return {draw,resize,screenToWorld,setZoom,zoomAt,panBy,centerOn,stepZoom,currentZoom,onCamChange};

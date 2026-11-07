@@ -25,14 +25,14 @@
 //   - The scripted DM (sim/dm.js raiseSite) raises sites from finished adventures and world events, through the lever.
 import {rnd,clamp,hash} from '../core/rng.js';
 import {W,H,ROAD} from '../world/tiles.js';
-import {tiles,I,ZONES,REGIONS,CITY,CRYPT,zoneAt,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,CRYPTS,zoneAt,dist} from '../world/map.js';
 import {standAt} from '../world/passable.js';
 import {EPICS,DG_EPICS} from '../data/items.js';
 import {baseId,ELITE_TEMPLATE} from '../data/bestiary.js';
 import {CLS} from '../data/classes.js';
 import {FAC} from '../data/factions.js';
 import {SITE_THEMES,SITE_THEME_IDS,SITE_WORDS,SITE_BANNED} from '../data/sites.js';
-import {S} from './state.js';
+import {S,loreSides,sameSide} from './state.js';
 import {log} from './chronicle.js';
 import {record,timeline} from './history.js';
 import {notify} from './notify.js';
@@ -119,7 +119,7 @@ function roadNear(p,r){const x0=Math.max(0,Math.floor(p.x-r)),x1=Math.min(W-1,Ma
   for(let y=y0;y<=y1;y++)for(let x=x0;x<=x1;x++)if(tiles[I(x,y)]===ROAD)return true;return false}
 export function siteSpotErr(p,z){const e=spotErr(p,{region:z,clear:SITE.TOWN_GAP});if(e)return e;
   if(roadNear(p,SITE.ROAD_GAP))return 'within '+SITE.ROAD_GAP+' tiles of a road';
-  if(CRYPT&&dist(p,CRYPT)<SITE.PLACE_GAP+(CRYPT.exclude||0))return 'too close to '+CRYPT.name;
+  {const D=CRYPTS.find(x=>dist(p,x)<SITE.PLACE_GAP+(x.exclude||0));if(D)return 'too close to '+D.name}
   const q=(S.places||[]).find(x=>dist(x,p)<SITE.PLACE_GAP);if(q)return 'too close to '+q.name;
   return null}
 function findSpot(z,near,R){const ok=q=>!siteSpotErr(q,z);const r1=q=>({x:Math.floor(q.x)+.5,y:Math.floor(q.y)+.5});
@@ -205,7 +205,7 @@ export function enterSiteTool(a,args){const no=e=>({ok:false,error:e});const C=c
     enterSite(C,s);return {ok:true,site:s.name,entered:true,note:'You go down into '+s.name+' alone. Every chamber is a scene at the table.'+greenOf(L,s)}}
   const P=propose(a,'site','go down into '+s.name+' together, all of us',{site:s.id});
   if(typeof P==='string')return no(P);
-  const short=s.raid&&!raidSized(L)?' It is a raid and you are '+L.length+': at the mouth you go down with another company that voted for it, or with heroes of your side called from nearby to make five.':'';
+  const short=s.raid&&!raidSized(L)?' It is a raid and you are '+L.length+': at the mouth you go down with another company that voted for it, or with heroes'+(loreSides()?'':' of your side')+' called from nearby to make five.':'';
   return {ok:true,site:s.name,proposal:P.id,status:P.status,note:'Put to the party: everyone votes. If it passes, walk to '+s.name+' together; you go down once all of you stand at its mouth.'+short+greenOf(L,s)}}
 
 // ---- the vote (council.js setSiteHook) ----
@@ -289,14 +289,14 @@ function releaseFills(C){for(const a of S.agents)if(a.siteFill===C.id)release(a)
 // fill-ins it called. Not enough yet: it calls heroes of its side from within CALL once per wait (they walk to the mouth) and
 // returns null; enough: the others (never the company itself).
 function raidCrew(C,s,L,w){let crew=L.slice();
-  for(const O of S.companies||[]){if(O===C||O.fac!==C.fac||!O.siteGo||O.siteGo.site!==s.id)continue;const M=members(O);if(M.length&&M.every(a=>atMouth(a,s)))crew=crew.concat(M)}
+  for(const O of S.companies||[]){if(O===C||!sameSide(O,C)||!O.siteGo||O.siteGo.site!==s.id)continue;const M=members(O);if(M.length&&M.every(a=>atMouth(a,s)))crew=crew.concat(M)}
   const fills=S.agents.filter(a=>a.siteFill===C.id&&a.state==='dungeon'&&a.state!=='dead'),here=fills.filter(a=>dist(a,s)<=SITE.MOUTH+.5);
   crew=crew.concat(here).slice(0,SITE.RAID_MAX);
   if(raidSized(crew))return crew.slice(L.length);
   if(!w.called){w.called=1;const want=Math.max(0,5-crew.length-(fills.length-here.length));
     const pool=S.agents.filter(a=>bgFree(a)&&a.fac===C.fac&&dist(a,s)<=SITE.CALL&&a.lvl>=s.band[0]-2).sort((x,y)=>dist(x,s)-dist(y,s)||x.id-y.id).slice(0,want);
     pool.forEach((a,i)=>{a.state='dungeon';a.siteAt={x:s.x,y:s.y};a.siteIn=s.id;a.siteFill=C.id;a.dgIdx=L.length+i;a.target=null;a.dest=null;record(a,'Answered the call of ',gd(C.name||'a company'),' to raid ',siteTag(s),'.')});
-    const msg=pool.length?pool.length+' of your side answer the call and walk to the mouth of '+s.name+': '+pool.map(a=>a.name).join(', ')+'. You go down when they stand with you.':'Nobody of your side is near enough to answer the call. Wait for another company to vote for '+s.name+', or give it up.';
+    const yours=loreSides()?'':' of your side',msg=pool.length?pool.length+(yours||' heroes')+' answer the call and walk to the mouth of '+s.name+': '+pool.map(a=>a.name).join(', ')+'. You go down when they stand with you.':'Nobody'+yours+' is near enough to answer the call. Wait for another company to vote for '+s.name+', or give it up.';
     for(const b of L)notify(b,s.name+' is a raid and you are '+L.length+'. '+msg,true);
     if(pool.length)clog(C,'council',gd(C.name||'The company'),' call '+pool.length+' of their side to the raid of ',gd(s.name),'.')}
   return null}

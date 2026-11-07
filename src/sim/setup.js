@@ -18,6 +18,9 @@
 //         may hold both.
 //   others  'full' (the default, also when absent): the world's usual roster of background heroes. 'none' (#780): no roster;
 //         the setup's heroes and whoever the DM brings (summon_hero). Kept in S.setup, so a load keeps it.
+//   sides  'lore' (#1025): Concord and Warband are peoples, not sides. The page sets it on every new world; absent = sides as ever, so a seeded or older
+//         setup is unchanged. In a lore setup a hero's fac follows its people (else the setup's fac), a company may mix peoples, and hall and start towns are any
+//         town of the world. It does not imply others:'none': the roster keeps its logic among itself, and none of that reaches a company.
 //   prologue  'delve' or 'none' (#922, sim/prologue.js): a first dungeon before the open world, for a company of two or more. Absent =
 //         PROLOGUE_DEFAULT (data/prologues.js); stored only when it differs. Needs a host with runner links and the Table on.
 //   fac   the together faction; for apart the default of a hero with none
@@ -41,7 +44,7 @@ import {CLS} from '../data/classes.js';
 import {CITY,REGIONS} from '../world/map.js';
 import {standAt} from '../world/passable.js';
 import {WORLDS} from '../world/spec.js';
-import {S} from './state.js';
+import {S,loreSides} from './state.js';
 import {makeHero} from './heroes.js';
 import {rollScores} from './abilities.js';
 import {disableBrain,MIND_PROVIDERS} from './brain.js';
@@ -59,6 +62,9 @@ import {inSlots,slotted,SLOTS,SLOT_KEYS} from './company.js'; // the slotted com
 export const SETUP_VERSION=2;
 export const MODES=['together','apart'];
 export const OTHERS=['full','none']; // other heroes in the world (#780)
+export const SIDES=['war','lore']; // what the factions are (#1025); only 'lore' is ever stored
+const lore=s=>!!s&&s.sides==='lore';
+const sidesField=s=>lore(s)?{sides:'lore'}:{};
 // The first delve (#922): what a setup's opening is. Absent = the default, so only a difference is ever stored.
 export const prologueOf=s=>s&&PROLOGUE_VALUES.includes(s.prologue)?s.prologue:PROLOGUE_DEFAULT;
 const prologueField=s=>s&&PROLOGUE_VALUES.includes(s.prologue)&&s.prologue!==PROLOGUE_DEFAULT?{prologue:s.prologue}:{};
@@ -102,7 +108,7 @@ export function slotsOf(s){s=asV2(s);const H=s&&Array.isArray(s.heroes)?s.heroes
 // The v1 editing shape of a together setup of the five (the setup page edits places until #454), or null.
 export function slotsView(s){s=asV2(s);if(!s||s.mode==='apart')return null;const map=slotsOf(s);if(!map)return null;
   const slots={};for(const k of SLOT_KEYS){const {fac,start,group,...h}=s.heroes[map[k]];slots[k]=clone(h)}
-  return {v:1,world:s.world,seed:s.seed,fac:s.fac,...(s.name?{name:s.name}:{}),...(s.hall?{hall:s.hall}:{}),...(s.others==='none'?{others:'none'}:{}),...prologueField(s),slots,dm:clone(s.dm||DEFAULT_DM())}}
+  return {v:1,world:s.world,seed:s.seed,fac:s.fac,...(s.name?{name:s.name}:{}),...(s.hall?{hall:s.hall}:{}),...(s.others==='none'?{others:'none'}:{}),...sidesField(s),...prologueField(s),slots,dm:clone(s.dm||DEFAULT_DM())}}
 
 // The archetype a hero gets: the chosen id, or for 'random' one picked from the seed and the hero's index (a hash,
 // so the world's random stream is untouched and the same seed gives the same picks). null = none.
@@ -132,8 +138,8 @@ export const MIND_PRESETS=['haiku','claude','local','last'];
 export const PRESETS=[...SHAPE_PRESETS,...MIND_PRESETS];
 const PAIRS=[1,1,2,2,null]; // groups of the classic five for 'pairs-and-solo'
 function shaped(s,mode,n,groups){const old=s.heroes||[],fac=s.fac|0;
-  s.mode=mode;if(mode==='apart')delete s.hall;s.heroes=CLASSIC.slice(0,n).map((cls,i)=>{const o=old[i]&&old[i].cls===cls&&(old[i].fac==null||old[i].fac===fac)?old[i]:{cls};
-    const {start,group,...h}=clone(o);h.fac=fac;h.mind=agentOnly(old[i]&&old[i].mind);
+  s.mode=mode;if(mode==='apart')delete s.hall;s.heroes=CLASSIC.slice(0,n).map((cls,i)=>{const o=old[i]&&old[i].cls===cls&&(lore(s)||old[i].fac==null||old[i].fac===fac)?old[i]:{cls};
+    const {start,group,...h}=clone(o);h.fac=facOf(s,{...h,fac});h.mind=agentOnly(old[i]&&old[i].mind);
     if(mode==='apart'){h.start={town:'home'};if(groups&&groups[i]!=null)h.group=groups[i]}
     return h});
   return s}
@@ -149,7 +155,7 @@ export function applyPreset(name,base,ctx={}){const b=asV2(base);if(!b||!Array.i
   if(name==='last'){const l=cleanSetup(ctx.last);if(!l||!l.heroes.length)return null;
     if(l.dm)s.dm={...l.dm}; // cleanSetup: always an agent
     // the viewer's last heroes, kept whole when of the same faction (or apart); else only their minds, by index
-    if(l.mode==='apart'||l.fac===s.fac){s.mode=l.mode;s.fac=l.fac;s.heroes=clone(l.heroes);if(l.name)s.name=l.name;else delete s.name;if(l.hall)s.hall=l.hall;else delete s.hall;if(l.others)s.others=l.others;else delete s.others;if(l.prologue)s.prologue=l.prologue;else delete s.prologue;return s}
+    if(l.mode==='apart'||l.fac===s.fac||lore(s)){s.mode=l.mode;s.fac=l.fac;s.heroes=clone(l.heroes);if(l.name)s.name=l.name;else delete s.name;if(l.hall)s.hall=l.hall;else delete s.hall;if(l.others)s.others=l.others;else delete s.others;if(l.prologue)s.prologue=l.prologue;else delete s.prologue;return s}
     s.heroes.forEach((h,i)=>{if(l.heroes[i])h.mind={...l.heroes[i].mind}});
     return s}
   return null}
@@ -163,14 +169,16 @@ function mindProblem(m,what,modes=MIND_MODES){if(!m||typeof m!=='object'||!modes
   if(!SETUP_PROVIDERS.includes(m.provider)||!MIND_PROVIDERS.includes(m.provider))return what+': pick a provider for the '+(m.mode==='ai'?'AI':'agent')+'.';
   if(typeof m.model!=='string'||!MODEL_OK.test(m.model))return what+': there is no model for the '+(m.mode==='ai'?'AI':'agent')+'; pick one'+(m.provider==='ollama'?' (is Ollama running with a model pulled?)':'')+'.';
   return null}
-const townOf=(name,fac)=>CITY.find(c=>c.name===name&&c.fac===fac)||null;
+const townOf=(name,fac)=>CITY.find(c=>c.name===name&&(fac==null||c.fac===fac))||null; // fac null: any town (#1025)
 // The towns a together company of this faction may found its hall in (#771), from the world spec: the page may be choosing
-// for another map than the one it stands on.
-export const hallTowns=(world,fac)=>((WORLDS[world]||{}).towns||CITY).filter(t=>t.fac===fac).map(t=>t.name);
+// for another map than the one it stands on. fac null: every town of the map (sides as lore, #1025).
+export const hallTowns=(world,fac)=>((WORLDS[world]||{}).towns||CITY).filter(t=>fac==null||t.fac===fac).map(t=>t.name);
 // The hall a setup chose, when it is a town of this world (undefined: the leader's home town, as ever).
-export const hallOf=s=>s&&s.hall&&townOf(s.hall,s.fac)?s.hall:undefined;
+export const hallOf=s=>s&&s.hall&&townOf(s.hall,lore(s)?null:s.fac)?s.hall:undefined;
 const regionOf=name=>{const i=REGIONS.findIndex(r=>r.name===name);return i<0?null:{i,r:REGIONS[i]}};
-const facOf=(s,h)=>h&&h.fac!=null?h.fac:s.fac;
+// A lore setup (#1025): a hero's fac is a lore tag that follows its people, so it never needs choosing.
+const peopleFac=(s,h)=>{const r=h&&h.race&&RACES.find(x=>x.id===h.race);return r?r.fac:s.fac};
+const facOf=(s,h)=>lore(s)?peopleFac(s,h):h&&h.fac!=null?h.fac:s.fac;
 // The companies a setup founds, as lists of hero indexes: together one of all; apart one per group (in order of
 // first appearance) and one per hero with no group.
 export function groupsOf(s){s=asV2(s);const H=s&&Array.isArray(s.heroes)?s.heroes:[];if(s.mode!=='apart')return H.length?[H.map((h,i)=>i)]:[];
@@ -187,12 +195,14 @@ function togetherProblem(H){if(H.length!==SLOTS.length)return 'Together rides as
 export function validateSetup(s0){const out=[];
   if(!s0||typeof s0!=='object')return ['No setup.'];
   const s=asV2(s0),H=Array.isArray(s.heroes)?s.heroes:null,mode=s.mode==null?'together':s.mode;
+  const sp=WORLDS[s.world]||null; // starts are checked against the map the setup is for, which may not be the one the page stands on
   if(!MODES.includes(mode))out.push('Pick Together or Apart.');
   if(s.others!=null&&!OTHERS.includes(s.others))out.push('Other heroes: the usual roster or none.');
+  if(s.sides!=null&&!SIDES.includes(s.sides))out.push('Sides: as ever, or lore.');
   if(s.prologue!=null&&!PROLOGUE_VALUES.includes(s.prologue))out.push('Opening: a first delve, or straight to the hall.');
   if(!(Number.isInteger(s.seed)&&s.seed>=0))out.push('The seed must be a whole number.');
   if(mode!=='apart'&&!FAC[s.fac])out.push('Pick a faction.');
-  else if(mode!=='apart'&&s.hall&&!hallTowns(s.world,s.fac).includes(s.hall))out.push('The hall: '+s.hall+' is not a town of the '+FAC[s.fac].name+'.');
+  else if(mode!=='apart'&&s.hall&&!hallTowns(s.world,lore(s)?null:s.fac).includes(s.hall))out.push('The hall: '+s.hall+' is not a town of '+(lore(s)?'this world':'the '+FAC[s.fac].name)+'.');
   if(!H||!H.length)return out.concat(['Pick at least one hero.']);
   if(H.length>MAX_HEROES)out.push('At most '+MAX_HEROES+' heroes.');
   else if(H.length>seatCap(s))out.push('Seats full: '+H.length+' heroes, but only '+SEATS.PAID+' agent heroes may play while any mind is paid (Claude or OpenAI). Up to '+SEATS.LOCAL+' when every hero uses a local model.');
@@ -204,9 +214,9 @@ export function validateSetup(s0){const out=[];
     if(!h||typeof h!=='object'){out.push(L+': missing.');continue}
     const fac=facOf(s,h);
     if(!FAC[fac])out.push(L+': pick a faction.');
-    else if(mode==='together'&&fac!==s.fac)out.push(L+': a company is of one faction; Together needs every hero of the '+(FAC[s.fac]?FAC[s.fac].name:'same faction')+'.');
+    else if(mode==='together'&&fac!==s.fac&&!lore(s))out.push(L+': a company is of one faction; Together needs every hero of the '+(FAC[s.fac]?FAC[s.fac].name:'same faction')+'.');
     if(!CLS[h.cls])out.push(L+': pick a class.');
-    if(h.race&&FAC[fac]&&!racesOf(fac).some(r=>r.id===h.race))out.push(L+': that people is not of the '+FAC[fac].name+'.');
+    if(h.race&&FAC[fac]&&!racesOf(fac).some(r=>r.id===h.race))out.push(L+(lore(s)?': no such people.':': that people is not of the '+FAC[fac].name+'.')); // a lore hero's fac follows its people, so only an unknown people lands here
     if(h.name!=null&&h.name!==''){const n=String(h.name).trim();
       if(n.length<2||n.length>24||!/^[\p{L}][\p{L}' -]*$/u.test(n))out.push(L+': a name is 2-24 letters (spaces, hyphens and apostrophes allowed).');
       else if(seen.has(n.toLowerCase()))out.push(L+': "'+n+'" is used twice.');else seen.add(n.toLowerCase())}
@@ -214,10 +224,10 @@ export function validateSetup(s0){const out=[];
     if(h.archetype!=null&&h.archetype!==''&&!archOk(h.archetype))out.push(L+': unknown archetype; pick one, Random or None.');
     if(mode==='apart'&&h.start!=null){const st=h.start;
       if(typeof st!=='object')out.push(L+': unknown start.');
-      else{if(st.town!=null&&st.town!==''&&st.town!=='home'&&FAC[fac]&&!townOf(st.town,fac))out.push(L+': '+st.town+' is not a town of the '+FAC[fac].name+'.');
-        if(st.region!=null&&st.region!==''&&!regionOf(st.region))out.push(L+': there is no region called '+st.region+'.')}}
+      else{const tf=lore(s)?null:fac;if(st.town!=null&&st.town!==''&&st.town!=='home'&&FAC[fac]&&!(sp&&sp.towns?sp.towns.some(t=>t.name===st.town&&(tf==null||t.fac===tf)):townOf(st.town,tf)))out.push(L+': '+st.town+' is not a town of '+(lore(s)?'this world':'the '+FAC[fac].name)+'.');
+        if(st.region!=null&&st.region!==''&&!(sp&&sp.regions?sp.regions.some(r=>r.name===st.region):regionOf(st.region)))out.push(L+': there is no region called '+st.region+'.')}}
     const mp=mindProblem(h.mind,L);if(mp)out.push(mp)}
-  if(mode==='apart')for(const g of groupsOf(s))if(g.length>1&&new Set(g.map(i=>facOf(s,H[i]))).size>1)out.push('Group '+H[g[0]].group+': a company is of one faction.');
+  if(mode==='apart'&&!lore(s))for(const g of groupsOf(s))if(g.length>1&&new Set(g.map(i=>facOf(s,H[i]))).size>1)out.push('Group '+H[g[0]].group+': a company is of one faction.');
   if(!s.dm||typeof s.dm!=='object')out.push('DM: pick the model that plays the DM.');
   else{const mp=mindProblem({...s.dm},'DM',DM_MODES);if(mp)out.push(mp)}
   return out}
@@ -227,7 +237,7 @@ export function validateSetup(s0){const out=[];
 export function cleanSetup(s0){if(!s0||typeof s0!=='object')return null;const s=asV2(s0);
   const mode=MODES.includes(s.mode)?s.mode:'together',fac=s.fac|0;
   const heroes=(Array.isArray(s.heroes)?s.heroes:[]).slice(0,MAX_HEROES).map(p=>{p=p&&typeof p==='object'?p:{};
-    const hf=mode==='together'||p.fac==null?fac:p.fac|0,st=p.start&&typeof p.start==='object'?p.start:null;
+    const hf=lore(s)?peopleFac({fac},p):mode==='together'||p.fac==null?fac:p.fac|0,st=p.start&&typeof p.start==='object'?p.start:null;
     const start=mode==='apart'&&st?{...(st.town?{town:String(st.town)}:{}),...(st.region?{region:String(st.region)}:{})}:null;
     return {cls:p.cls,...(p.name?{name:String(p.name).trim()}:{}),...(p.race?{race:p.race}:{}),fac:hf,
       ...(Array.isArray(p.profs)&&p.profs.length?{profs:[...new Set(p.profs)].filter(id=>PROF[id]).slice(0,MAX_PROF)}:{}),
@@ -236,7 +246,7 @@ export function cleanSetup(s0){if(!s0||typeof s0!=='object')return null;const s=
       ...(mode==='apart'&&p.group!=null&&p.group!==''?{group:typeof p.group==='number'?p.group:String(p.group)}:{}),
       mind:agentOnly(p.mind)}}); // agents only (#148): an older page's scripted or AI mind becomes an agent
   const dm=s.dm&&(s.dm.mode==='agent'||s.dm.mode==='ai')&&s.dm.provider&&s.dm.model?{mode:'agent',provider:s.dm.provider,model:s.dm.model}:DEFAULT_DM(); // the DM is always an agent (#520): an older scripted DM becomes the default
-  return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,mode,fac,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),...(mode==='together'&&s.hall?{hall:String(s.hall)}:{}),...(s.others==='none'?{others:'none'}:{}),...prologueField(s),heroes,dm}}
+  return {v:SETUP_VERSION,world:s.world||'eldmoor',seed:s.seed>>>0,mode,fac,...(s.name?{name:String(s.name).trim().slice(0,40)}:{}),...(mode==='together'&&s.hall?{hall:String(s.hall)}:{}),...(s.others==='none'?{others:'none'}:{}),...sidesField(s),...prologueField(s),heroes,dm}}
 
 // ---- names ----
 // A name in a people's voice (the same tables as data/races.js, with the caller's dice so a reroll is cheap).
@@ -262,7 +272,7 @@ function pickOne(p,fac,used,taken){
 // Together: slot map {tank:id,...} for found(), the five places in SLOTS order (the same dice as v1).
 export function pickSetup(setup){setup=asV2(setup);const used=new Set(),pick={},fac=setup.fac,map=slotsOf(setup);
   const taken=new Set(S.agents.map(a=>a.name.toLowerCase()));
-  for(const sl of SLOTS)pick[sl.key]=pickOne(setup.heroes[map[sl.key]],fac,used,taken).id;
+  for(const sl of SLOTS){const h=setup.heroes[map[sl.key]];pick[sl.key]=pickOne(h,lore(setup)?facOf(setup,h):fac,used,taken).id}
   return pick}
 // Apart: one hero per entry, in order: [heroId].
 export function pickApart(setup){const used=new Set(),taken=new Set(S.agents.map(a=>a.name.toLowerCase()));
@@ -287,7 +297,7 @@ export function applyMinds(setup){setup=asV2(setup);const F=slotted();if(!F)retu
 // Apart: where a hero (entry h) starts. {town (a CITY row of its faction), zone (region index) or null, lvl (the
 // region band's low end; 1 = in town)}.
 export function startOf(a,h){const st=h&&h.start||{};
-  const town=(st.town&&st.town!=='home'&&townOf(st.town,a.fac))||homeOf(a);
+  const town=(st.town&&st.town!=='home'&&townOf(st.town,loreSides()?null:a.fac))||homeOf(a);
   const reg=st.region?regionOf(st.region):null,band=reg&&reg.r.band||[1];
   return {town,zone:reg?reg.i:null,lvl:Math.max(1,band[0]|0)}}
 

@@ -29,6 +29,7 @@ process.env.SAVECHECK_SEED = String(SEED);
 {let r = SEED >>> 0; seedRng(SEED); Math.random = () => {r = (Math.imul(r, 1664525) + 1013904223) >>> 0; return r / 4294967296}}
 
 const RUN_MIN = 20, DIRTY_MIN = 2, MORE_MIN = 10, TWO_DAYS_MIN = 8; // real minutes at 1x; a game-day is 4
+const PLAY_SEED = 0x51a7, reseed = (n) => {let r = n >>> 0; seedRng(n); Math.random = () => {r = (Math.imul(r, 1664525) + 1013904223) >>> 0; return r / 4294967296}};
 let fail = 0;
 const ok = (cond, msg) => {if (cond) console.log('  ok   ' + msg); else {console.error('  FAIL ' + msg); fail++}};
 const run = (min) => {const frames = min * 60 * 60; for (let i = 0; i < frames; i++) step(1 / 60)};
@@ -85,7 +86,13 @@ if (args[0] === '--fixture') {
   seedRng(0x5eed); let seed = 0x5eed; Math.random = () => {seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296};
   TABLE.mode = 'auto'; restore(JSON.parse(readFileSync(args[1], 'utf8')));
   const a = fixHash(), open = !!S.table; for (let i = 0; i < 600; i++) step(1 / 60);
+  writeFileSync(args[1] + '.end', JSON.stringify(snapshot())); // where it ended: a parent that finds the hashes apart names the first difference
   console.log(JSON.stringify({a, b: fixHash(), open, min: S.gameMin})); process.exit(0);
+}
+if (args[0] === '--playon') {
+  // ---- child phase: a pristine process plays on from the save with the original's dice and writes where it ended ----
+  restore(JSON.parse(readFileSync(args[1], 'utf8'))); reseed(PLAY_SEED); run(DIRTY_MIN);
+  writeFileSync(args[2], JSON.stringify(snapshot())); process.exit(0);
 }
 if (args[0] === '--restore') {
   // ---- child phase: pristine module state, never init()'d ----
@@ -147,9 +154,20 @@ ok(refs.length > 0, `${refs.length} object references were written as ids`);
 ok(A2.fx === undefined, 'fx is not saved');
 ok(A2.GOODS && Object.keys(A2.GOODS).length === Object.keys(GOODS).length && A2.CRYPT && 'group' in A2.CRYPT, 'GOODS supply and CRYPT group/cd are in the save');
 
-// Dirty the live state, then restore the snapshot over it.
+ok(A2.boss && A2.boss.kind === 'boss' && A2.boss.maxhp > 0 && typeof A2.boss.alive === 'boolean', `the boss is written in full, not as a reference to itself (${A2.boss && A2.boss.name}, ${A2.boss && A2.boss.alive ? 'alive' : 'fallen'})`);
+ok(A2.kept && Object.keys(A2.kept).length > 0, `the world's module state is in the save (${Object.keys(A2.kept || {}).join(', ')})`);
+
+// Dirty the live state, then restore the snapshot over it. The dirtying doubles as the original playing on: the same dice
+// from the moment of the save, so a pristine process restoring that save must arrive at the very same world (below).
 const marker = S.agents.filter((a) => a.state !== 'dead')[0];
+reseed(PLAY_SEED);
 run(DIRTY_MIN);
+const played = JSON.parse(JSON.stringify(snapshot()));
+{const dir = mkTmp('eldmoor-playon-'), f = join(dir, 'save.json'), out = join(dir, 'end.json'); writeFileSync(f, json);
+  const c = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--playon', f, out], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+  const d = c.status === 0 ? diff(played, JSON.parse(readFileSync(out, 'utf8'))) : 'the child failed: ' + (c.stderr || c.stdout || '').slice(-400);
+  rmSync(dir, {recursive: true, force: true});
+  ok(!d, `a world restored in a fresh process plays ${DIRTY_MIN} minutes exactly as the original did` + (d ? ' -- ' + d : ''))}
 const dirtyMin = S.gameMin, dirtyGoods = GOODS[Object.keys(GOODS)[0]].supply;
 restore(A2);
 ok(S.gameMin === A.gameMin && dirtyMin !== A.gameMin, `restore over the same S: clock back to ${A.gameMin} (was ${Math.round(dirtyMin)})`);
@@ -163,6 +181,14 @@ sane('after restore');
 run(MORE_MIN);
 sane(`after ${MORE_MIN} more minutes`);
 ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Math.round(S.gameMin)}`);
+
+// A save from before the boss was written holds only {ref:'boss'}: Kragmaw stays as it stands, it is not emptied.
+{const old = JSON.parse(json); old.boss = {ref: 'boss'}; delete old.kept; restore(old);
+  ok(S.boss.kind === 'boss' && S.boss.maxhp > 0 && typeof S.boss.alive === 'boolean', 'an older save with no boss in it keeps a whole Kragmaw');
+  restore(JSON.parse(json)); ok(S.boss.hp === A.boss.hp && S.boss.alive === A.boss.alive, 'the saved Kragmaw comes back as it was')}
+// The dead are told once: a restored narrator does not count the fallen list as new deaths.
+{restore(JSON.parse(json)); const n = S.nar ? S.nar.deaths.length : 0; for (let i = 0; i < 2; i++) step(1 / 60);
+  ok(!S.nar || !S.fallen.length || S.nar.deaths.length <= n + 1, `a reload does not add the fallen to the dawn recap again (${n} waiting, ${S.fallen.length} on the list)`)}
 
 // An older world whose members were scripted (or relay-played) is converted on restore, with a notice (#148).
 {const old = JSON.parse(json), OF = old.companies.find((c) => c.slots); OF.minds = 'off'; OF.ai = false;
@@ -204,6 +230,11 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   const sc = openScene('elite', 'Save fixture', ['A brute bars the road.'], {mob: foe.id});
   ok(!!sc && S.table === sc && !sc.resolved && split.splitUntil > S.gameMin, `fixture: ${split.name} split off, an ${sc ? sc.kind : '?'} scene open at the table`);
   const v7 = JSON.parse(JSON.stringify(snapshot()));
+  // A v6 save knows no company ids and the migration numbers its solos from 2, so records keyed by a v7 solo's id cannot ride
+  // along: a fallen solo's id 2 lent to the new solo (S.dmFocus.last) made the DM's board refill differ, a fixture fault (#324).
+  {const keep = String(v7.companies.find((c) => c.slots).id), F = v7.dmFocus || {};
+    for (const m of [F.by, F.last]) for (const id of Object.keys(m || {})) if (id !== keep) delete m[id];
+    for (const h of v7.adventures || []) if (h.cid != null && String(h.cid) !== keep) delete h.cid}
   // The same world written the v6 way (the shape main wrote before companies).
   const v6 = JSON.parse(JSON.stringify(v7)), C = v6.companies.find((c) => c.slots);
   v6.fellowship = {...C, id: C.seed}; delete v6.fellowship.seed; delete v6.fellowship.from;
@@ -232,16 +263,16 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   ok(!d6 && !!S.table, 'the v6 save restores to the same world as the v7 one (snapshots deep-equal but for when the solos were founded, the scene still open)' + (d6 ? ' -- ' + d6 : ''));
   ok(S.agents.filter((a) => a.player && a.state !== 'dead').every((a) => companyOf(a)) && S.companies.every((c) => c.ids.length <= PARTY.MAX) && S.followId === SLT.slotted().id,
     'after the v6 migration every agent hero rides in a company and the Fellowship is followed');
-  // Running on is compared in fresh processes: module-level timers and caches are not part of a save, so two restores in
-  // one process drift apart even from the same file.
+  // Running on is compared in fresh processes, so nothing the parent's modules hold can help either side.
   const dir = mkTmp('eldmoor-v6-'), runs = {};
   for (const [k, snap] of [['v7', v7], ['v6', v6]]) {const f = join(dir, k + '.json'); writeFileSync(f, JSON.stringify(snap));
     const c = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--fixture', f], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
     try {runs[k] = JSON.parse((c.stdout || '').trim().split(/\r?\n/).pop())} catch {runs[k] = {err: (c.stderr || c.stdout || '').slice(-400)}}}
-  rmSync(dir, {recursive: true, force: true});
   const r7 = runs.v7, r6 = runs.v6;
   ok(r7.a && r7.a === r6.a && r6.open, `fixture hashes the same after restore: v7 ${r7.a} / v6 ${r6.a}` + (r6.err ? ' -- ' + r6.err : ''));
-  ok(r7.b && r7.b === r6.b && r7.min === r6.min, `and 10 s later: v7 ${r7.b} / v6 ${r6.b}`);
+  const first = () => {try {return ' -- first difference ' + diff(JSON.parse(readFileSync(join(dir, 'v7.json.end'), 'utf8')), JSON.parse(readFileSync(join(dir, 'v6.json.end'), 'utf8')))} catch (e) {return ' -- ' + e.message}};
+  ok(r7.b && r7.b === r6.b && r7.min === r6.min, `and 10 s later: v7 ${r7.b} / v6 ${r6.b}` + (r7.b === r6.b ? '' : first()));
+  rmSync(dir, {recursive: true, force: true});
   TABLE.mode = 'off';
 }
 
@@ -264,6 +295,11 @@ ok(S.gameMin > A.gameMin + MORE_MIN * 60 * 6 - 1, `world ran on to game-min ${Ma
   for (const b of members(C)) leaveCompany(b); ok(!S.companies.includes(C) && !x.company, 'a company left by everyone ends');
   if (D) leaveCompany(members(D)[0]);
 }
+
+// Map revision (#979): a world that was cut again refuses a save from another cut by name; a world with no rev reads saves as ever.
+{const {mapStale} = await import('../src/sim/save.js'), {WORLDS} = await import('../src/world/spec.js');
+  ok(WORLDS.vale.rev >= 1 && mapStale({}, 'vale') && !mapStale({mapRev: WORLDS.vale.rev}, 'vale'), 'a Vale save with no map revision is stale, one with the current revision is not');
+  ok(!mapStale({}, 'eldmoor') && !mapStale({}, 'stepping'), 'saves of the other maps are never stale');}
 
 // Pristine-state restore in a child process (what a browser reload does).
 const dir = mkTmp('eldmoor-save-');

@@ -10,6 +10,7 @@
 import {DM_PROVIDERS} from './dm-agent.mjs';
 import {checkStart} from './runners.mjs';
 import {spawnSync} from 'node:child_process';
+import {runWorld, OTHER_WORLDS} from './worlds.mjs';
 import {fileURLToPath} from 'node:url';
 import {init, S, validateSetup, defaultSetup, applyPreset, cleanSetup, snapshot} from '../src/sim/index.js';
 import * as SLT from '../src/sim/company.js'; // the slotted company (#588)
@@ -53,7 +54,7 @@ if (process.argv[2] === '--facts') {const k = process.argv[3], P = await import(
 const PEOPLES = ['ashfolk', 'mirekin', 'mirekin', 'ashfolk', 'thornhide'];
 const peopled = (races, hall) => {const t = defaultSetup(771, 'stepping', 1); races.forEach((r, i) => t.heroes[i].race = r); if (hall) t.hall = hall; return t};
 if (process.argv[2] === '--stand') {const k = process.argv[3], {dist} = await import('../src/world/map.js');
-  const st = k === 'mixed' ? peopled(PEOPLES) : k === 'hall' ? peopled(PEOPLES, 'Murkstead') : k === 'single' ? peopled(PEOPLES.map(() => 'ashfolk')) : k === 'foreign' ? {...defaultSetup(771, 'eldmoor', 1), hall: 'Murkstead'}
+  const st = k === 'any' ? defaultSetup(771, process.env.ELDMOOR_WORLD, 1) : k === 'mixed' ? peopled(PEOPLES) : k === 'hall' ? peopled(PEOPLES, 'Murkstead') : k === 'single' ? peopled(PEOPLES.map(() => 'ashfolk')) : k === 'foreign' ? {...defaultSetup(771, 'eldmoor', 1), hall: 'Murkstead'}
     : (() => {const t = applyPreset('pairs-and-solo', peopled(PEOPLES)); t.heroes[2].start = {town: 'home', region: REGIONS[REGIONS.findIndex(r => r.band && r.band[0] > 1)].name}; return t})();
   init({setup: cleanSetup(st)});
   console.log('STAND ' + JSON.stringify({valid: validateSetup(st).join(' | '), setup: S.setup, cos: companies().map(C => {const L = members(C), c = CITY.find(t => t.name === C.hall);
@@ -245,6 +246,13 @@ ok(run(1, 'v1') === a1 && run(4242, 'v1') === run(4242), 'together: a v1 setup b
  const p = stand('apart'), [P1, P2] = p.cos;
  ok(p.valid === '' && P1.n === 2 && P1.far <= 4 && P1.inHall && P1.home, 'apart: a group of two peoples stands in one town (' + P1.hall + ', ' + P1.far.toFixed(1) + ' tiles)');
  ok(P2.n === 2 && P2.far <= 4 && !P2.town, 'apart: a group seasoned to a region stands together out there too (' + P2.far.toFixed(1) + ' tiles)')}
+
+// the same standing, for every world of WORLDS but Eldmoor (#940 slice B): the default together company stands in a hall town of its faction on that map
+for (const w of OTHER_WORLDS) {
+ const out = runWorld(fileURLToPath(import.meta.url), w, {args: ['--stand', 'any'], capture: true}), m = String(out.stdout).match(/STAND (.*)/);
+ if (!m) console.error(String(out.stderr).slice(-800));
+ const a = m ? JSON.parse(m[1]) : {cos: [{}]}, A = a.cos[0];
+ ok(a.valid === '' && a.cos.length === 1 && A.n === 5 && A.inHall && A.far <= 4 && A.home && A.town && hallTowns(w, 1).includes(A.hall), w + ': the default company of five stands together in one hall town of its faction (' + A.hall + ')')}
 
 // Professions per place (#259): validated, cleaned, seeded through learn(), kept for a replacement.
 {const P = await import('../src/sim/professions.js'), {offerReplacement} = await import('../src/sim/company.js'), S2 = (await import('../src/sim/index.js')).S;

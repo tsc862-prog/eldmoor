@@ -8,6 +8,7 @@ import {ZONES,REGIONS,CITY} from '../world/map.js';
 import {S} from './state.js';
 import {log} from './chronicle.js';
 import {sightLever} from './levers.js';
+import {onWorld} from './kept.js';
 
 // Every weather kind with its gameplay multipliers and chronicle line ({z} is the zone name).
 export const WEATHER={
@@ -31,7 +32,8 @@ const BIOME_SKY={
 };
 // A region may name its own sky in the spec (`sky`: [kind, weight] pairs); else its biome's table.
 export const skyFor=r=>r.sky||BIOME_SKY[r.biome]||BIOME_SKY.meadow;
-const ZW=REGIONS.map(skyFor);
+let ZW=REGIONS.map(skyFor);
+onWorld(()=>{ZW=REGIONS.map(skyFor)},()=>({skies:ZW})); // another map (#1013)
 // Game minutes a spell lasts: clear skies 1.5-3 h, weather 1-2.5 h.
 const dur=k=>k==='clear'?90+rnd()*90:60+rnd()*90;
 

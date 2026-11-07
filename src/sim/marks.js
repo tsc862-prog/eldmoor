@@ -5,7 +5,8 @@
 // the speaker as its source (hearMarks, called where a hero reads what it heard). A scripted townsperson never learns it.
 // Agent heroes only (lore's learner); no RNG; the seeded world is unchanged.
 import {S} from './state.js';
-import {dist,zoneAt,ZONES,CITY,LANDMARKS,CRYPT} from '../world/map.js';
+import {dist,zoneAt,ZONES,CITY,LANDMARKS} from '../world/map.js';
+import {cryptIf} from './crypts.js';
 import {loreOf} from './lore.js';
 
 export const MARK={MAX:12,NAME_MIN:3,NAME_MAX:40,NOTE_MAX:120,SIGHT:6};
@@ -18,7 +19,7 @@ const reEsc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
 
 // Names a mark may not take: a region, a town, a landmark, a DM place, or a place the hero already knows by another source.
 function taken(a,name){const k=key(name);
-  if(ZONES.some(z=>z&&key(z)===k)||CITY.some(c=>key(c.name)===k)||LANDMARKS.some(l=>key(l.name)===k)||(CRYPT&&key(CRYPT.name)===k))return 'That is already the name of a land you could not rename.';
+  if(ZONES.some(z=>z&&key(z)===k)||CITY.some(c=>key(c.name)===k)||LANDMARKS.some(l=>key(l.name)===k)||cryptIf(n=>key(n)===k))return 'That is already the name of a land you could not rename.';
   if((S.places||[]).some(p=>p&&p.name&&key(p.name)===k))return 'A marked place already goes by that name.';
   for(const n of Object.keys(loreOf(a).p)){if(key(n)!==k)continue;const e=loreOf(a).p[n];if(!e.mk)return 'You already know a place called '+n+'.'}
   return null}

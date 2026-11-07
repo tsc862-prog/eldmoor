@@ -8,7 +8,7 @@
 //   lastKnown a.knownAt[id] = {x,y,at} written where two heroes spoke; the courier fee is priced from that place, never
 //             from where the other hero is now.
 // Plain data on S.sightings and S.notices (created on first use, saved with the world).
-import {S} from './state.js';
+import {S,sameSide} from './state.js';
 import {homeOf} from '../data/races.js';
 
 export const SIGHT={DAYS:3,MAX:24,NOTICE_DAYS:2,NOTICE_MAX:30,TEXT:120,LINES:3};
@@ -24,7 +24,7 @@ export function writeSighting(a,bound,town){if(!a||!a.player||a.kind!=='hero')re
 const live=s=>S.gameMin-s.at<=SIGHT.DAYS*1440;
 // What the reader hears at a town: other heroes of its faction seen at that gate, newest first (text only, no places but the region named).
 export function sightingLines(reader,town){
-  return (S.sightings||[]).filter(s=>live(s)&&s.fac===reader.fac&&s.hero!==reader.id&&(!town||s.town===town)).slice(0,SIGHT.LINES)
+  return (S.sightings||[]).filter(s=>live(s)&&sameSide(s,reader)&&s.hero!==reader.id&&(!town||s.town===town)).slice(0,SIGHT.LINES)
     .map(s=>({hero:s.name,text:'A '+s.cls+' called '+s.name+' passed through '+ago(s.at)+(s.bound?', bound for '+s.bound:'')+'.',bound:s.bound||undefined}))}
 
 // ---- notices ----
@@ -38,7 +38,7 @@ export function postNotice(a,text,town){const t=clean(text,SIGHT.TEXT+1);
   const n={id:(S.noticeSeq=(S.noticeSeq||0)+1),by:a.id,byName:a.name,cls:a.cls,fac:a.fac,town,text:t,at:Math.round(S.gameMin),until:Math.round(S.gameMin+SIGHT.NOTICE_DAYS*1440)};
   L.unshift(n);if(L.length>SIGHT.NOTICE_MAX)L.length=SIGHT.NOTICE_MAX;return n}
 export function noticesAt(reader,town){
-  return (S.notices||[]).filter(n=>liveN(n)&&n.town===town&&n.fac===reader.fac&&n.by!==reader.id)
+  return (S.notices||[]).filter(n=>liveN(n)&&n.town===town&&sameSide(n,reader)&&n.by!==reader.id)
     .map(n=>({from:'A '+n.cls+' called '+n.byName+' of '+n.town,notice:n.text,posted:ago(n.at),poster:n.byName}))}
 
 const byId=id=>S.agents.find(x=>x.id===id)||null;

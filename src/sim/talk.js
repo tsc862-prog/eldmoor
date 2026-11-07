@@ -24,8 +24,10 @@
 //   S.talks {seq, call, cur:[conv], past:[short], day:{d, lines, offers, opened}, stats}
 //   conv {id, npc, name, heroes:[ids], lines:[{who:'member'|'npc', id, name, text, t}], ex, wait:{call, hero, line, gm, real, by}|null,
 //         offers:[{kind, ex, by, mark}], offerEx, state 'open'|'done', born, last, why}
-import {S,clockStr} from './state.js';
+import {S,clockStr,ownTown,sameSide} from './state.js';
+import {keep} from './kept.js';
 import {ZONES,ZPTS,CITY,LANDMARKS,CRYPT,zoneAt,zoneFor,dist} from '../world/map.js';
+import {cryptIf,cryptTitle} from './crypts.js';
 import {FAC} from '../data/factions.js';
 import {USES,SLOTS} from '../data/items.js';
 import {ELITES} from '../data/mobs.js';
@@ -87,6 +89,7 @@ const DAY=1440;
 // Private LCG (like sim/npcs.js): the scripted lines never touch the gameplay RNG.
 const SEED0=0x5bd1e995;let seed=SEED0;export const resetTalkSeed=()=>{seed=SEED0}; // init() puts the private stream back (#674)
 const r=()=>{seed=(Math.imul(seed,1103515245)+12345)&0x7fffffff;return seed/0x80000000};
+keep('talk',()=>seed,v=>{seed=v}); // saved with the world
 const pick=L=>L[Math.floor(r()*L.length)];
 
 // ---- helpers ----
@@ -291,7 +294,7 @@ export function offer(c,p,kind,args={},by='dm-agent',speaker=null){const T=talkS
     for(const b of mem)remember(b,'talk',full(p)+' told us: '+lead+(where?' ('+where+')':''));
     noteOn(p,'Told the Fellowship: '+lead)}
   else if(kind==='job'){const tpl=String(args.tpl||ROLE_JOB[p.role]||'rescue');if(!ADVENTURES[tpl]||tpl==='fallen')return no('tpl must be one of '+Object.keys(ADVENTURES).filter(k=>k!=='fallen').join(', '));
-    const town=p.town&&CITY.some(x=>x.name===p.town&&x.fac===a.fac)?p.town:home.name;
+    const town=p.town&&CITY.some(x=>x.name===p.town&&ownTown(x,a))?p.town:home.name;
     const giver=['captain','innkeeper','smith','quartermaster','priest','bard'].includes(p.role)?p.role:undefined;
     const z=args.region!=null&&args.region!==''?regionIdx(args.region):null;
     const res=pull('post_hook',{town,tpl,...(giver?{giver}:{}),forHero:a.id,...(z!=null?{region:z}:{}),reward:['small','fair','generous'].includes(args.reward)?args.reward:'fair',src:'request'},{by,reason:'a job from '+full(p)+' in conversation'});
@@ -370,16 +373,16 @@ function townAnswer(p,a,text){const raw=String(text||''),t=raw.toLowerCase();if(
   const pl=[];
   ZONES.forEach((n,z)=>{if(nmRe(n).test(t))pl.push({name:n,z,at:nearestOf(p,z)})});
   for(const c of CITY)if(c.name!==p.town&&nmRe(c.name).test(t))pl.push({name:c.name,at:{x:(c.x0+c.x1)/2,y:(c.y0+c.y1)/2}});
-  for(const l of LANDMARKS)if(!(CRYPT&&l.name===CRYPT.name)&&nmRe(l.name.replace(/^the /i,'')).test(t))pl.push({name:l.name,at:l,z:zoneAt(l.x,l.y)});
+  for(const l of LANDMARKS)if(!cryptIf(n=>n===l.name)&&nmRe(l.name.replace(/^the /i,'')).test(t))pl.push({name:l.name,at:l,z:zoneAt(l.x,l.y)});
   for(const m of S.places||[])if(m.name&&nmRe(m.name).test(t))pl.push({name:m.name,at:m,z:m.z});
   for(const g of pl.slice(0,1)){learnPlace(a,g.name,'told');
     parts.push(g.name+' lies '+(g.at?wayTo(p,g.at):'a way off')+(g.z!=null&&ZONES[g.z]&&g.name!==ZONES[g.z]?', in '+ZONES[g.z]:'')+(g.z!=null&&g.name===ZONES[g.z]?'; '+jobRumour(a,g.z):'')+'.')}
-  if(CRYPTQ.test(t)||(CRYPT&&nmRe(CRYPT.name.replace(/^the /i,'')).test(t))){fit=true;
+  if(CRYPTQ.test(t)||cryptIf(n=>nmRe(n.replace(/^the /i,'')).test(t))){fit=true;const D=CRYPT;
     const cw=p.role==='captain'?captainWarning(a):null;
-    parts.push(cw||((CRYPT?CRYPT.name:'The Crypt')+' lies '+(CRYPT?wayTo(p,CRYPT):'far off')+'. Tried blades go down together, or not at all.'));
-    if(CRYPT)learnPlace(a,CRYPT.name,'told')}
+    parts.push(cw||((D?D.name:'The Crypt')+' lies '+(D?wayTo(p,D):'far off')+'. Tried blades go down together, or not at all.'));
+    if(D)learnPlace(a,D.name,'told')}
   // a name nobody here knows: a capitalised run in the middle of the line
-  const known=new Set([a.name,p.name,...people().flatMap(q=>[q.name,String(q.name||'').split(' ')[0]]),...(S.agents||[]).map(b=>b.name),...ZONES,...CITY.map(c=>c.name),...LANDMARKS.map(l=>l.name),CRYPT&&CRYPT.name].filter(Boolean).flatMap(x=>String(x).split(' ')).map(x=>x.toLowerCase()));
+  const known=new Set([a.name,p.name,...people().flatMap(q=>[q.name,String(q.name||'').split(' ')[0]]),...(S.agents||[]).map(b=>b.name),...ZONES,...CITY.map(c=>c.name),...LANDMARKS.map(l=>l.name),cryptTitle()].filter(Boolean).flatMap(x=>String(x).split(' ')).map(x=>x.toLowerCase()));
   if(!hit.length&&!pl.length&&!(CRYPTQ.test(t))){const runs=[];let cur=[];
     for(const m of raw.matchAll(/[A-Za-z][A-Za-z'-]*/g)){const w=m[0],i=m.index,before=raw.slice(0,i).trimEnd(),start=!before||/[.!?]$/.test(before),lw=w.toLowerCase();
       const cap=/^[A-Z]/.test(w)&&!known.has(lw)&&!STOP.has(lw)&&(!start||cur.length);
@@ -406,7 +409,7 @@ export function traderFor(a,name,range){const s=String(name==null?'':name).trim(
   const open=people().filter(p=>p.trade&&p.trade.until>S.gameMin&&(s?String(p.id)===s||String(p.name).toLowerCase()===s||full(p).toLowerCase()===s||p.role===s:true));
   if(!open.length)return s?{error:'Nobody called "'+name+'" has offered to trade with you. Talk to them first.'}:null;
   const p=open.sort((x,y)=>dist(a,x)-dist(a,y))[0];if(dist(a,p)>range)return {error:full(p)+' is too far away to trade ('+Math.round(dist(a,p))+' tiles).'};
-  if(!inSlots(a)||p.trade.fac!==a.fac)return {error:full(p)+' trades only with the Fellowship.'};
+  if(!inSlots(a)||!sameSide(p.trade,a))return {error:full(p)+' trades only with the Fellowship.'};
   return p}
 export function npcBuy(a,p,{slot,item,count}){const st=stockOf(p);
   if(item!=null&&item!==''){const id=Object.keys(USES).find(x=>x.toLowerCase()===String(item).toLowerCase());
@@ -524,8 +527,10 @@ export function lineRefusal(a,text){if(!a||!a.player)return null;
   return null}
 export function noteSaid(a,text,listeners){if(!a||!a.player)return;spokenAbout(a,text);const L=a.talkSaid||(a.talkSaid=[]);L.push(String(text).slice(0,200));if(L.length>TALK.LAST)L.shift();
   for(const b of listeners||[])if(b&&b!==a&&b.kind==='hero'){(b.talkHeard||(b.talkHeard={}))[a.id]=1;noteKnownAt(b,a);noteKnownAt(a,b)}
-  if(saidHook)try{saidHook(a,text,listeners)}catch(e){}} // a companion of its company may answer (#764, sim/compvoice.js)
+  if(saidHook)try{saidHook(a,text,listeners)}catch(e){} // a companion of its company may answer (#764, sim/compvoice.js)
+  for(const f of saidMore)try{f(a,text,listeners)}catch(e){}} // the world may answer (#1017, sim/narrvoice.js)
 let saidHook=null;export function setSaidHook(f){saidHook=typeof f==='function'?f:null}
+const saidMore=[];export const addSaidHook=f=>{if(typeof f==='function')saidMore.push(f)};
 export function heardLines(a,n=TALK.HEARD){const cut=t=>t.length>TALK.CUT?t.slice(0,TALK.CUT-1)+'…':t;
   return (a.chat||[]).filter(e=>e.from&&(e.party||e.trigger==='agent'||e.from.kind==='hero'||e.whisper||e.emote)).slice(-n)
     .map(e=>e.t+' '+(e.from===a?'(you)':e.from.name||'?')+(e.party?' [party]':'')+(e.whisper?' [whispered]':'')+': '+(e.emote?'*':'')+cut(String(e.text||''))+(e.emote?'*':''))}

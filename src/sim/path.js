@@ -15,6 +15,7 @@ import {tiles,I,solid,land,CITY} from '../world/map.js';
 import {WHY,crossing,stepOpen} from '../world/solidgrid.js';
 import {nearestOpen} from '../world/passable.js';
 import {S} from './state.js';
+import {onWorld} from './kept.js';
 
 export const PATH={
   PER_TICK:8,    // plans a tick, at most (a tick is 1/60 s at 1x: 8 a tick is far above the need, it guards the worst case)
@@ -33,6 +34,8 @@ const inb=(x,y)=>x>=0&&y>=0&&x<W&&y<H,fin=Number.isFinite;
 let COST=null,N=0,G=null,FROM=null,SEEN=null,stamp=0,HI=null,HF=null,hn=0,used=0,usedAt=-1,usedNodes=0;
 function ready(){if(COST)return;N=W*H;COST=new Float32Array(N);for(let i=0;i<N;i++)COST[i]=solid[i]?Infinity:1/SPEED[tiles[i]];
   G=new Float32Array(N);FROM=new Int32Array(N);SEEN=new Uint32Array(N);HI=new Int32Array(1024);HF=new Float32Array(1024)}
+
+onWorld(()=>{COST=G=FROM=SEEN=HI=HF=null;N=0},()=>{ready();return {pathN:N,pathCost:Array.from(COST)}}); // another map (#1013): the next walk builds the grids again
 
 // A new tick: the plan budget starts over. step() calls it; a clock that moved does the same for walkers driven outside step().
 export function pathTick(){used=0;usedNodes=0;usedAt=S.gameMin}

@@ -87,6 +87,22 @@ if (process.argv[2] === '--hash') {
   console.log('HASH ' + h); process.exit(0);
 }
 
+// ---- day-one child (#910): a prep turn on a held new world, before the first tick, posts a hook and it lands on the board ----
+if (process.argv[2] === '--dayone') {
+  init({fellowship: false}); setDmSeat(true); // no step() yet: the scripted DM has not run its first tick
+  const {CITY} = await import('../src/world/map.js'), out = {had: !!S.adventures, errs: []};
+  const call = (t, a) => {try {return dmAct(t, a)} catch (e) {out.errs.push(t + ': ' + e.message); return {ok: false}}};
+  for (const t of ['dm_status', 'hooks', 'levers', 'regions', 'npcs', 'read_dm_log', 'read_timeline', 'world_standing', 'survey']) call(t, t === 'survey' ? {near: CITY[0].name} : {});
+  const r = call('post_hook', {town: CITY[0].name, tpl: 'rescue', giver: 'captain', reason: 'the opening job for the table'});
+  out.ok = !!r.ok; out.err = r.error || null;
+  out.onBoard = !!r.ok && (S.adventures || []).some(h => h.id === r.effect.hook && h.phase === 'open' && h.town === CITY[0].name);
+  const p = call('place_person', {role: 'hermit', near: CITY[0].name, reason: 'day one'}), m = call('mark_place', {kind: 'ruin', near: CITY[0].name, reason: 'day one'});
+  out.pp = !!p.ok; out.mp = !!m.ok; out.ppErr = p.error || null; out.mpErr = m.error || null;
+  const T0 = CITY[0].name, more = [['set_condition', {kind: 'fog', near: T0, reason: 'x'}], ['seed_rumour', {town: T0, text: 'a light on the road', reason: 'x'}], ['stage_scene', {kind: 'meeting', near: T0, frame: 'a stranger waits', reason: 'x'}], ['narrate', {text: 'Dawn.', near: T0}], ['npc_say', {npc: 'x', text: 'hi'}], ['notes_write', {section: 'plans', title: 'a', text: 'b'}], ['when', {trigger: 'night_falls', action: 'narrate', args: {text: 'dusk', near: T0}, reason: 'x'}]];
+  out.crash = []; for (const [t, a] of more) {const x = call(t, a); if (/Cannot read|undefined|is not a function/.test((x && x.error) || '')) out.crash.push(t + ': ' + x.error.slice(0, 80))}
+  console.log('DAYONE ' + JSON.stringify(out)); process.exit(0);
+}
+
 // ---- session zero child (issue #437): the opening framed by the DM agent's call, or by the DM's reflexes when no runner listens (#561: the seat is always open) ----
 if (process.argv[2] === '--opening') {
   const A = await import('../src/sim/arrival.js'), T = await import('../src/sim/table.js'), F_ = await import('../src/sim/company.js'), PL = await import('../src/sim/player.js');
@@ -346,11 +362,22 @@ console.log('when and watch (scripts/dmwhen-test.mjs)');
   ok(k.status === 0 && /WHEN OK/.test(out), `when and watch: ${n} checks (set, list, cancel, every trigger, firing through the same tools, expiry, refused at fire time, caps, reserve, save/restore, the runner's wake)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
 
 // ---------------------------------------------------------------- 0b. summon_hero (issue #780), in a world of its own
+console.log('the DM on stage (scripts/dmstage-test.mjs)');
+{const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'dmstage-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
+  for (const l of out.split('\n')) if (/FAIL/.test(l)) console.log(l);
+  ok(k.status === 0 && /STAGE OK/.test(out), `the DM on stage: ${(out.match(/ ok   /g) || []).length} checks (a call per scene, frames for every kind, the speak order, the narrator's voice, names on the map)`, out.slice(-400) + String(k.stderr || '').slice(-300))}
 console.log('summon_hero (scripts/summon-test.mjs)');
 {const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'summon-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
   for (const l of out.split(/\r?\n/)) if (/^\s+FAIL /.test(l)) console.error(l);
   const n = (out.match(/^\s+ok /gm) || []).length;
   ok(k.status === 0 && /SUMMON OK/.test(out), `summon_hero: ${n} checks (one scripted hero at the level asked, its caps and refusals, the DM log, the companies' reserve, a when, no replacement, save/restore)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-600)))}
+
+// ---------------------------------------------------------------- 0c. call_to (issue #826), in a world of its own
+console.log('call_to (scripts/callto-test.mjs)');
+{const k = realSpawnSync(process.execPath, [join(ROOT, 'scripts', 'callto-test.mjs')], {cwd: ROOT, encoding: 'utf8'}), out = String(k.stdout || '');
+  for (const l of out.split(/\r?\n/)) if (/^\s+FAIL /.test(l)) console.error(l);
+  const n = (out.match(/^\s+ok /gm) || []).length;
+  ok(k.status === 0 && /CALLTO OK/.test(out), `call_to: ${n} checks (asked by a person and by the narrator, the caps, a decline and its wait, pile-on and the other refusals, an accepted call going down, a raid, a solo's answer, the reserve, what the DM is told, a when, save/restore, no dice)` + (k.status === 0 ? '' : ' -> ' + (out + (k.stderr || '')).slice(-400)));}
 
 // ---------------------------------------------------------------- 1. the DM tools in the sim
 console.log('the DM tools');
@@ -492,6 +519,11 @@ ok(dmAct('fly').ok === false, 'unknown DM tools are refused');
 }
 
 // ---------------------------------------------------------------- 1a. flat lever tools (issue #413)
+console.log('day one (#910): a prep turn on a held new world');
+{const ch = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--dayone'], {encoding: 'utf8'}); if (ch.stderr) process.stderr.write(ch.stderr);
+  const l = (ch.stdout || '').split(/\r?\n/).find(x => x.startsWith('DAYONE ')), d = l ? JSON.parse(l.slice(7)) : {};
+  ok(d.had === false && d.ok && d.onBoard, 'post_hook before the scripted DM ever ticked lands on the town board (#910)' + (d.err ? ': ' + d.err.slice(0, 120) : ''));
+  ok(d.pp && d.mp && d.errs && !d.errs.length && d.crash && !d.crash.length, 'the other DM tools and levers a prep turn can call raise no error on day one' + (d.crash ? ' ' + d.crash.join('; ') : ''))}
 console.log('flat lever tools: post_hook, place_person, mark_place');
 {const {zoneFor, zonePoint, CITY, LANDMARKS} = await import('../src/world/map.js'), {homeOf} = await import('../src/data/races.js'), {focus, reserveOf} = await import('../src/sim/dmfocus.js'), {LEVERS} = await import('../src/sim/levers.js');
   const L = SLT.slotHeroes(SLT.slotted()), home = homeOf(L[0]).gate, spot = innerPoint(zonePoint, zoneAt, zoneFor(Math.max(1, L[0].lvl), home), home);
@@ -526,7 +558,7 @@ console.log('flat lever tools: post_hook, place_person, mark_place');
   r = dmAct('post_hook', {town: 'Nowhere-at-all', tpl: 'rescue', reason: 'x'});
   ok(r.ok === false && /town: unknown place/.test(r.error) && /town takes "fellowship"/.test(r.error), 'post_hook at an unknown town names what town takes: ' + r.error.slice(0, 100));
   r = dmAct('post_hook', {town: hall, tpl: 'rescue', place: 'the moon', reason: 'x'});
-  ok(r.ok === false && /place: no place or person/.test(r.error), 'post_hook about an unknown place is refused');
+  ok(r.ok === false && /place: no marked place or person/.test(r.error), 'post_hook about an unknown place is refused');
   // place_person
   r = dmAct('place_person', {role: 'hermit', near: 'fellowship', name: 'Odo', want: 'someone to read the stones at the old cairn', attitude: 'wary', reason: 'a lead for their oath'});
   const w = r.ok && S.wanderers.find(x => x.id === r.npc), e2 = lastLever();
@@ -1280,6 +1312,9 @@ ok(h.dm.link === 'connected', 'after a call the seat shows connected');
   ok(SLT.slotHeroes(SLT.slotted()).some(a => (a.chat || []).some(e => /^Mock line/.test(e.text))), 'the members hear the DM\'s lines in the game')
 
   {const wid = S.staged.cur && S.staged.cur.cast.npc; ok(wid != null && S.talks && (S.talks.cur.some(c => c.npc === wid) || S.talks.past.some(c => c.npc === wid)), 'the staged meeting leaves the way open for words (a conversation with the drover)')}}
+// the narrator's voice reaches the game over /play/dm, though it is no tool of the agent's (#1017)
+{const q = await post('/play/dm', {tool: 'narrator_call', args: {}, runner: 'test:1'}); ok(q.ok === true && q.call === null, 'POST /play/dm narrator_call: the voice\'s route is open', q);
+  const m = await post('/mcp?role=dm&runner=test:1', {jsonrpc: '2.0', id: 9, method: 'tools/list', params: {}}).catch(() => null); ok(!JSON.stringify(m || '').includes('narrator_call'), 'it is no MCP tool of the agent\'s')}
 // the talk voice answers a member's words over /play/dm (issue #170)
 {const {talkVoice} = await import('./dm-agent.mjs'), TK = await import('../src/sim/talk.js'), P = await import('../src/sim/player.js'), {homeOf} = await import('../src/data/races.js');
   const A = SLT.slotHeroes(SLT.slotted())[0], c0 = homeOf(A), qm = S.npcs.find(p => p.town === c0.name && p.role === 'quartermaster');

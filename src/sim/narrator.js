@@ -15,10 +15,11 @@
 import {rnd,ri,pickA} from '../core/rng.js';
 import {bestFor,skillMod} from './abilities.js';
 import {ZONES,zoneAt,dist} from '../world/map.js';
+import {hasLair} from './lair.js';
 import {MOBS} from '../data/mobs.js';
 import {CLS} from '../data/classes.js';
 import * as N from '../data/narration.js';
-import {S} from './state.js';
+import {S,raidSide} from './state.js';
 import {log,fac} from './chronicle.js';
 import {pop} from './effects.js';
 import {agentDie,strike,maxHp} from './heroes.js';
@@ -114,8 +115,8 @@ export function eliteSight(m,dt){if(!m.elite||m.seen||!m.alive)return;ensure();
 
 // ---- scene: a raid pulls the boss ----
 export function bossPull(eng){ensure();if(S.nar.pulled||!eng.length||!canSpeak())return;S.nar.pulled=true;S.narStats.pulls++;
-  const f=eng[0].fac;let n=0;for(const a of S.agents)if(a.raid&&a.fac===f&&a.state==='raid')n++;
-  speak(...fill(pickA(N.BOSS_PULL),{boss:gd(S.boss.name),n:num(Math.max(n,eng.length)),fac:fac(f)}))}
+  const f=raidSide(eng[0]);let n=0;for(const a of S.agents)if(a.raid&&raidSide(a)===f&&a.state==='raid')n++;
+  speak(...fill(pickA(N.BOSS_PULL),{boss:gd(S.boss.name),n:num(Math.max(n,eng.length)),fac:S.raidName&&S.raidName[f]?gd(S.raidName[f]):fac(f)}))}
 
 // ---- dawn recap ----
 const isMob=c=>c.startsWith('slain by a '),isCrypt=c=>c.startsWith('lost in'),isBoss=c=>c.startsWith('incinerated');
@@ -138,8 +139,8 @@ function dawnRecap(){const n=S.nar,day=Math.floor(S.gameMin/1440)+1,D=n.deaths,p
   const kills=S.facStats.map((f,i)=>f.bosses-n.bosses[i]);n.bosses=S.facStats.map(f=>f.bosses);
   let boss;if(kills[0]||kills[1])boss=[gd('Kragmaw'),' fell to ',fac(kills[0]>=kills[1]?0:1),'.'];
   else if(n.raids)boss=[Num(n.raids)+' raid'+(n.raids>1?'s':'')+' broke on ',gd('Kragmaw'),'; it holds at '+Math.round(S.boss.hp/S.boss.maxhp*100)+'%.'];
-  else boss=S.boss.alive?[gd('Kragmaw'),' sleeps untouched.']:[gd('Kragmaw'),'’s lair lies empty.'];
-  parts.push(' ',...(crypt?[crypt+'; ',...boss.map((p,i)=>i===0&&typeof p==='string'?p.toLowerCase():p)]:boss));
+  else boss=!hasLair()?[]:S.boss.alive?[gd('Kragmaw'),' sleeps untouched.']:[gd('Kragmaw'),'’s lair lies empty.'];
+  parts.push(' ',...(crypt?[crypt+(boss.length?'; ':'.'),...boss.map((p,i)=>i===0&&typeof p==='string'?p.toLowerCase():p)]:boss));
   speak(...parts);S.narStats.recaps++;n.deaths=[];n.elites=[];n.raids=0}
 
 // Once per step after the sim tick: the real-time clock for the cap, zone-entry scenes,
@@ -150,7 +151,8 @@ export function narratorTick(dt){ensure();const n=S.nar;n.t+=dt;
     if(a.state==='follow'){a.narScene=true;continue}
     if(a.state!=='hunt'||a.narScene)continue;a.narScene=true;
     if(!a.party||a.party.leader===a)sceneEnter(a)}
-  for(const f of S.fallen){if(f===n.lastFallen)break;n.deaths.push(f)}n.lastFallen=S.fallen[0]||null;
+  const last=n.lastFallen; // by name and hour, not identity: a restored world holds a copy of this entry
+  for(const f of S.fallen){if(last&&f.name===last.name&&f.t===last.t)break;n.deaths.push(f)}n.lastFallen=S.fallen[0]||null;
   for(const m of S.mobs)if(m.elite&&!m.alive&&!m.narDead){m.narDead=true;n.elites.push(m.name)}
   for(let f=0;f<S.raidOn.length;f++){if(S.raidOn[f]&&!n.raidOn[f])n.raids++;n.raidOn[f]=S.raidOn[f]}
   if(n.pulled&&!S.agents.some(a=>a.state==='raid'))n.pulled=false;

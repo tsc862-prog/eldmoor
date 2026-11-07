@@ -3,8 +3,8 @@
 // keepOath for what it cannot see), it fails (a protected companion falls), or the hero renounces it, at a cost.
 // What can be tracked is matched from the words: a named elite, a named epic, an enemy hero, Kragmaw, clearing the Crypt, a place,
 // a companion, a kind of creature. Anything else is kept as words: the game never calls it kept; the hero says so with keep_oath.
-import {S} from './state.js';
-import {CRYPT,zoneAt,dist} from '../world/map.js';
+import {S,foeOf} from './state.js';
+import {CRYPT,CRYPTS,zoneAt,dist} from '../world/map.js';
 import {ELITES,MOBS} from '../data/mobs.js';
 import {EPICS,DG_EPICS,BOSS_EPICS} from '../data/items.js';
 import {BOSSES} from '../data/bosses.js';
@@ -40,10 +40,10 @@ export function matchWords(a,text,kind,about){
   if(kind==='vow')return {type:'own',kind:'vow',about:null};
   if(kind)return (kind==='slay'&&slayGoal(a,about.name))||(kind==='recover'&&knownEpic(about.name))||{type:'own',kind,about};
   const boss=Object.values(BOSSES).find(b=>names(text,b.name));if(boss&&SLAY.test(text))return {type:'legend'};
-  if(names(text,CRYPT.name)&&CLEAR.test(text))return {type:'delve'};
+  {const D=CRYPTS.find(x=>names(text,x.name));if(D&&CLEAR.test(text))return D===CRYPT?{type:'delve'}:{type:'delve',dun:D.name}}
   const E=longest(ELITES).find(e=>names(text,e.name));if(E)return {type:'avenge',target:E.name};
   const ep=longest(allEpics()).find(n=>names(text,n));if(ep)return epicGoal(ep);
-  if(SLAY.test(text)){const h=S.agents.find(x=>x.kind==='hero'&&x.fac!==a.fac&&alive(x)&&names(text,x.name));if(h)return slayGoal(a,h.name)}
+  if(SLAY.test(text)){const h=S.agents.find(x=>x.kind==='hero'&&foeOf(a,x)&&alive(x)&&names(text,x.name));if(h)return slayGoal(a,h.name)}
   if(GUARD.test(text)){const C=companyOf(a),b=(C?C.ids.map(byId):[]).find(x=>x&&x!==a&&alive(x)&&names(text,x.name));if(b)return {type:'own',kind:'protect',about:{name:b.name,id:b.id}}}
   const place=longest(placeList()).find(n=>names(text,n));if(place){const p=placeNamed(place);if(p)return {type:'own',kind:'reach',about:{name:p.name,zone:p.zone,x:p.x,y:p.y,r:p.r}}}
   if(SLAY.test(text)){const m=longest(Object.values(MOBS).map(m=>m.name).filter(Boolean)).find(n=>names(text,n));if(m)return {type:'own',kind:'slay',about:{name:m}}}
@@ -52,7 +52,7 @@ const allEpics=()=>[...EPICS.flat(),...DG_EPICS,...BOSS_EPICS];
 const epicGoal=n=>({type:DG_EPICS.includes(n)?'heirloomCrypt':BOSS_EPICS.includes(n)?'heirloomBoss':'heirloom',target:n});
 const knownEpic=w=>{const n=allEpics().find(x=>norm(x)===norm(w));return n?epicGoal(n):null};
 function slayGoal(a,w){const E=ELITES.find(e=>norm(e.name)===norm(w));if(E)return {type:'avenge',target:E.name};
-  const h=S.agents.find(x=>x.kind==='hero'&&x.fac!==a.fac&&alive(x)&&norm(x.name)===norm(w));return h?{type:'avengeHero',target:h.name,targetId:h.id,targetFac:h.fac,victim:null}:null}
+  const h=S.agents.find(x=>x.kind==='hero'&&foeOf(a,x)&&alive(x)&&norm(x.name)===norm(w));return h?{type:'avengeHero',target:h.name,targetId:h.id,targetFac:h.fac,victim:null}:null}
 // Is this oath one only the hero can call kept?
 export const wordsOnly=g=>!!(g&&g.type==='own'&&(g.kind==='vow'||g.kind==='protect'));
 

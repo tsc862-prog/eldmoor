@@ -125,6 +125,8 @@ if(mode==='a'){
   const n2=all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:healer');n2.value='';n2.dispatch('input',{target:n2});
   click(ids.get('setup'),b=>b.dataset.a==='nameroll'&&b.dataset.slot==='dps1');
   ok(all(ids.get('setup'),'input').find(i=>i.dataset.f==='name:dps1').value.length>=3,'name reroll fills a name');
+  {const h=sels(ids.get('setup'),'hall');if(h&&h.childNodes.length>1)ok(h.childNodes.slice(1).every(o=>o.text.includes(' · ')),'Hall: each town reads with its region and people');
+   ok(/World/.test(text(ids.get('setup')))&&all(ids.get('setup'),'canvas').length>=1,'setup: the chosen world shows its preview')}
   {const o=sels(ids.get('setup'),'others');ok(o&&o.value==='full'&&o.childNodes.map(x=>x.value).join()==='full,none','Other heroes (#780): the usual roster by default, or none');
    o.value='none';o.dispatch('change',{target:o});ok(sels(ids.get('setup'),'others').value==='none','the choice stays on the page')}
   {const p=sels(ids.get('setup'),'prologue');ok(p&&p.value==='delve'&&p.childNodes.map(x=>x.value).join()==='delve,none'&&p.childNodes[0].text==='A first delve'&&p.childNodes[1].text==='Straight to the hall','Opening (#922): a first delve by default, or straight to the hall');
@@ -162,6 +164,10 @@ if(mode==='a'){
   let played=[];title.showTitle(k=>played.push(k));
   let t=ids.get('title');
   ok(t&&!t.hidden&&title.titleOpen(),'the title shows on load');
+  {const {WORLDS}=await imp('src/world/spec.js');const cards=all(t,'button').filter(b=>b.dataset.a==='map'),keys=Object.keys(WORLDS);
+   ok(cards.length===keys.length&&keys.every(k=>cards.some(b=>b.dataset.world===k)),'title: one map card per WORLDS entry ('+keys.join(', ')+')');
+   ok(cards.every(b=>all(b,'canvas').length===1&&WORLDS[b.dataset.world].name&&text(b).includes(WORLDS[b.dataset.world].name)&&/\d+ x \d+ tiles/.test(text(b))),'title: each card has a preview, the name, a line and its size');
+   ok(cards.filter(b=>b.attrs&&b.attrs['aria-pressed']==='true'||b.getAttribute&&b.getAttribute('aria-pressed')==='true').length===1,'title: exactly one card is marked as the map this page is on')}
   ok(!save.isBooted()&&sim.S.agents.length===0,'no world is built or restored behind it');
   ok(!all(t,'button').some(b=>b.dataset.a==='continue'),'no Continue without a save');
   ok(all(t,'button').some(b=>b.dataset.a==='new'&&b.classList.contains('primary')),'New world is the first choice without a save');
@@ -264,19 +270,21 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   const sel=f=>all(R(),'select').find(s=>s.dataset.f===f);
   ok(pressed('smode','mode','together')&&!pressed('smode','mode','apart'),'switch: Together is on by default');
   ok(!all(R(),'button').some(b=>b.dataset.a==='count')&&!sel('start:0'),'together: no hero count, no start towns');
-  // the hall picker (#771): only where the faction has a choice of towns; a pick lasts until another faction or map
-  {const change=(f,v)=>{const s=sel(f);s.value=v;s.dispatch('change',{target:s})},w0=sel('world').value,f0=sel('fac').value;
-   change('world','eldmoor');ok(!sel('hall'),'hall: no picker with one town to choose');
-   change('world','stepping');const o=sel('hall').childNodes.map(x=>x.value);ok(o[0]===''&&o.length===4,'hall: the default and the three towns of the faction: '+o);
-   change('hall',o[2]);ok(sel('hall').value===o[2],'hall: the pick stands');
-   change('fac',f0==='0'?'1':'0');ok(sel('hall').value==='','hall: another faction goes back to the default');
-   change('fac',f0);change('world',w0)}
+  // the hall picker (#771): every town of the map (sides are lore, #1025); a pick lasts until another map
+  {const change=(f,v)=>{const s=sel(f);s.value=v;s.dispatch('change',{target:s})},w0=sel('world').value,{WORLDS}=await imp('src/world/spec.js');
+   ok(!sel('fac'),'no side to choose (#1025): the Faction select is gone');
+   change('world','eldmoor');ok(sel('hall').childNodes.length===WORLDS.eldmoor.towns.length+1,'hall: every town of the map, of either people');
+   change('world','stepping');const o=sel('hall').childNodes.map(x=>x.value);ok(o[0]===''&&o.length===WORLDS.stepping.towns.length+1,'hall: the default and every town: '+o);
+   const only=o.find(n=>n&&!WORLDS.eldmoor.towns.some(t=>t.name===n));change('hall',only);ok(sel('hall').value===only,'hall: the pick stands');
+   change('world','eldmoor');ok(sel('hall').value==='','hall: another map goes back to the default');
+   change('world',w0)}
+  {const p=sel('race:tank'),{RACES}=await imp('src/data/races.js');ok(p.childNodes.length===RACES.length+1,'People lists every people, not one side\'s (#1025)')}
   click(R(),b=>b.dataset.a==='smode'&&b.dataset.mode==='apart');
   ok(pressed('smode','mode','apart')&&all(R(),'.scard').length===5,'Apart keeps the five heroes as cards');
   ok(all(R(),'button').filter(b=>b.dataset.a==='count').length===10&&pressed('count','n','5'),'Apart: hero count 1-10 (6-10 need local minds), five chosen');
   const so=sel('start:0').childNodes.map(o=>o.value),{CITY}=await imp('src/world/map.js');
-  const fac0=+sel('hfac:0').value;
-  ok(so[0]==='home'&&CITY.filter(c=>c.fac===fac0).every(c=>so.includes('town:'+c.name))&&!CITY.filter(c=>c.fac!==fac0).some(c=>so.includes('town:'+c.name)),'start towns are the CITY rows of the hero faction: '+so.slice(0,4));
+  ok(!sel('hfac:0'),'Apart: no side select on a card (#1025)');
+  ok(so[0]==='home'&&CITY.every(c=>so.includes('town:'+c.name)),'start towns are all the CITY rows: '+so.slice(0,4));
   ok(so.some(v=>/^region:/.test(v)),'regions are offered too');
   click(R(),b=>b.dataset.a==='count'&&b.dataset.n==='3');
   ok(all(R(),'.scard').length===3&&pressed('count','n','3'),'hero count 3 -> three cards');
@@ -284,15 +292,13 @@ if(mode==='a'){setup.openSetup({first:true});await sleep(30);
   ok(all(R(),'.scard').length===1&&!sel('group:0'),'one hero: no group picker');
   click(R(),b=>b.dataset.a==='count'&&b.dataset.n==='2');
   let g=sel('group:0');g.value='1';g.dispatch('change',{target:g});g=sel('group:1');g.value='1';g.dispatch('change',{target:g});
-  const hs=sel('hfac:1');hs.value=String(1-fac0);hs.dispatch('change',{target:hs});
-  ok(/one faction/.test(text(R())),'validation from validateSetup: a group of two factions is flagged');
-  ok(all(R(),'button').find(b=>b.dataset.a==='start').disabled,'Start is disabled while it is');
-  const hs2=sel('hfac:1');hs2.value=String(fac0);hs2.dispatch('change',{target:hs2});
-  const town=CITY.filter(c=>c.fac===fac0)[0].name;let ss=sel('start:0');ss.value='town:'+town;ss.dispatch('change',{target:ss});
+  {const {racesOf}=await imp('src/data/races.js'),ps=(k,v)=>{const s=sel('race:'+k);s.value=v;s.dispatch('change',{target:s})};ps(0,racesOf(0)[0].id);ps(1,racesOf(1)[0].id);
+   ok(!/one faction/.test(text(R()))&&!all(R(),'button').find(b=>b.dataset.a==='start').disabled,'a group of two peoples of either history is fine: Start stays open')}
+  const town=CITY[CITY.length-1].name;let ss=sel('start:0');ss.value='town:'+town;ss.dispatch('change',{target:ss});
   ok(/one runner for the company of /.test(text(R())),'a group sharing a mind starts one company runner (#460)');
   click(R(),b=>b.dataset.a==='start');
   const pa=JSON.parse(localStorage.getItem(PENDING_KEY)||'null');
-  ok(pa&&pa.v===2&&pa.mode==='apart'&&pa.heroes.length===2&&pa.heroes[0].start.town===town&&pa.heroes[0].group===1&&pa.heroes[1].group===1&&sim.validateSetup(pa).length===0,'Start queues the v2 apart setup');
+  ok(pa&&pa.v===2&&pa.mode==='apart'&&pa.heroes.length===2&&pa.heroes[0].start.town===town&&pa.heroes[0].group===1&&pa.heroes[1].group===1&&pa.sides==='lore'&&pa.heroes[0].fac!==pa.heroes[1].fac&&sim.validateSetup(pa).length===0,'Start queues the v2 apart setup, sides as lore, mixed peoples');
   localStorage.removeItem(PENDING_KEY);
   setup.openSetup({first:false});
   ok(pressed('smode','mode','apart')&&all(R(),'.scard').length===2&&sel('start:0').value==='town:'+town,'a stored apart setup reopens as apart');

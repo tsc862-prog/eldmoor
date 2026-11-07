@@ -27,7 +27,7 @@ import {dist} from '../world/map.js';
 import {CLS} from '../data/classes.js';
 import {MOBS} from '../data/mobs.js';
 import {blockOf} from '../data/bestiary.js';
-import {S} from './state.js';
+import {S,sameSide} from './state.js';
 import {log} from './chronicle.js';
 import {pop} from './effects.js';
 import {record} from './history.js';
@@ -61,7 +61,7 @@ export const DOWN={
   // Below ground the Crypt stays deadly (owner, #269: about 0.6 Fellowship deaths per 120-minute run in the crawl; #654 with
   // the rules above alone gave 0.0, since a healer lifts the downed the next round). Crawl-only, world and Table rescues untouched.
   // A harder save or blows on the downed barely moved it (measured); the deaths come from the room the party loses.
-  CRAWL_LEFT:.6,     // driven back or withdrawing, the chance a downed hero not yet stable is lost on the stair (dies there)
+  CRAWL_LEFT:.7,     // (.7 since the crawl's geometry, #745: 60 sims each read .32 at .6, .45 at .7, .42 at .8) driven back or withdrawing, the chance a downed hero not yet stable is lost on the stair (dies there)
   CARRY:.6,         // a carrier's pace, a share of a helper's (#658)
   SEE:8,            // tiles: heroes not of their kin who still see a downing (agents hear of it, #658)
   DOWNS:8,          // an agent hero's own downings kept (a.downs, game minutes) for the self_downed_count gambit
@@ -86,7 +86,7 @@ export const isDown=a=>!!a&&a.state==='downed';
 const standing=b=>b&&b.kind==='hero'&&b.state!=='dead'&&b.state!=='downed'&&!b.hidden&&b.hp>0;
 const heroById=id=>S.agents.find(x=>x.id===id)||null;
 // Who would come for a downed hero: their party, company or guild, of their faction.
-const kin=(a,b)=>b!==a&&b.fac===a.fac&&((a.party&&b.party===a.party)||(a.company!=null&&b.company===a.company)||(a.guild&&b.guild===a.guild));
+const kin=(a,b)=>b!==a&&sameSide(a,b)&&((a.party&&b.party===a.party)||(a.company!=null&&b.company===a.company)||(a.guild&&b.guild===a.guild));
 const healer=b=>!!CLS[b.cls]&&!!CLS[b.cls].heal;
 const nearKin=(a,r)=>nearHeroes(a.x,a.y,r).filter(b=>standing(b)&&kin(a,b)&&dist(a,b)<=r);
 // The share of max HP a healer's heal adds when it lands on the downed (heroes.js healOne, moves.js heal moves).

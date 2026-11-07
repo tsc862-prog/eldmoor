@@ -12,7 +12,9 @@
 import {outpostsView} from './outposts.js';
 import {S,clockStr,dayNo} from './state.js';
 import {W,H,G,ROAD,BRIDGE,RIVER,WALKABLE,SGRASS,FLOWER,SNOW} from '../world/tiles.js';
-import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPT,zoneAt,dist} from '../world/map.js';
+import {tiles,I,ZONES,REGIONS,CITY,LANDMARKS,CRYPTS,zoneAt,dist} from '../world/map.js';
+import {cryptRow,cryptGroupOf,cryptTitle} from './crypts.js';
+import {hasLair} from './lair.js';
 import {spotErr,LK,activeOf} from './levers.js';
 import {solidAt,solidWhy} from '../world/passable.js';
 import {focuses} from './dmfocus.js';
@@ -115,11 +117,12 @@ export function worldStanding(){
   const riv=[];if(S.rivals)for(const k in S.rivals.on){const [x,y]=k.split(':').map(Number),gx=S.GUILDS.find(g=>g.id===x),gy=S.GUILDS.find(g=>g.id===y);if(gx&&gy)riv.push({between:'<'+gx.tag+'> and <'+gy.tag+'>',since_day:Math.floor((S.rivals.on[k].since||0)/1440)+1,why:S.rivals.on[k].why||null})}
   const b=S.boss,fall=(S.timeline||[]).find(e=>e.kind==='boss'),cf=(S.timeline||[]).find(e=>e.kind==='crypt');
   const txt=ps=>(ps||[]).map(p=>typeof p==='string'?p:p&&(p.t!=null?p.t:p.name)||'').join('');
-  const boss={name:b.name,alive:!!b.alive,hp:b.alive?Math.round(100*b.hp/Math.max(1,b.maxhp))+'%':null,respawns_in_min:b.alive?null:Math.max(0,Math.round(b.respawn||0)),raid_underway:!!(S.raidOn&&S.raidOn.some(Boolean)),
+  const boss=!hasLair()?null:{name:b.name,alive:!!b.alive,hp:b.alive?Math.round(100*b.hp/Math.max(1,b.maxhp))+'%':null,respawns_in_min:b.alive?null:Math.max(0,Math.round(b.respawn||0)),raid_underway:!!(S.raidOn&&S.raidOn.some(Boolean)),
     last_fall:fall?{day:Math.floor((fall.gameMin||0)/1440)+1,text:txt(fall.parts)}:null,bosses_slain_by_faction:(S.facStats||[]).map(f=>f.bosses)};
-  const grp=CRYPT&&CRYPT.group;
-  const crypt={name:CRYPT?CRYPT.name:null,clears:guilds.reduce((t,g)=>t+g.crypt_clears,0),wipes:guilds.reduce((t,g)=>t+g.crypt_wipes,0),
+  const grp=cryptGroupOf();
+  const crypt={name:cryptTitle(),clears:guilds.reduce((t,g)=>t+g.crypt_clears,0),wipes:guilds.reduce((t,g)=>t+g.crypt_wipes,0),
     party_below:grp?{phase:grp.phase,members:(grp.mem||[]).map(a=>a.name)}:null,last_clear:cf?{day:Math.floor((cf.gameMin||0)/1440)+1,text:txt(cf.parts)}:null};
+  if(CRYPTS.length>1)crypt.dungeons=CRYPTS.map(D=>({name:D.name,...cryptRow(D),party_below:D.group?{phase:D.group.phase,members:(D.group.mem||[]).map(a=>a.name)}:null})); // each dungeon's own record (#891)
   const ps=Object.keys(GOODS).map(n=>({n,p:price(n),b:GOODS[n].base})).map(o=>({...o,dev:o.p/Math.max(1,o.b)-1})).sort((x,y)=>Math.abs(y.dev)-Math.abs(x.dev)).slice(0,5);
   const auction={notable:ps.map(o=>({good:o.n,price:o.p,base:o.b,vs_base:(o.dev>=0?'+':'')+Math.round(o.dev*100)+'%'})),shocks:activeOf('price_shock').map(x=>({good:x.params&&x.params.good,direction:x.params&&x.params.direction,hours_left:Math.max(0,Math.round((x.until-S.gameMin)/60))}))};
   const top=S.agents.filter(alive).sort((x,y)=>y.lvl-x.lvl||(y.xp||0)-(x.xp||0)||x.id-y.id).slice(0,5).map(a=>({name:a.name,lvl:a.lvl,cls:a.cls,faction:a.fac===0||a.fac===1?['Concord','Warband'][a.fac]:'neutral',guild:a.guild?a.guild.tag:null}));

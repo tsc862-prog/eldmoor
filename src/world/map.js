@@ -4,7 +4,8 @@
 // (gen.js). Everything other modules need is re-exported here under the names
 // they have always used. Owned by world-builder.
 import {setWorldSize} from './tiles.js';
-import {ACTIVE_SPEC,WORLD_ID} from './spec.js';
+import {ACTIVE_SPEC,WORLD_ID,MAPS} from './spec.js';
+import {fireWorld} from '../sim/kept.js'; // a sim leaf; the hook list for modules that captured map data (#1013)
 import {buildWorld} from './gen.js';
 import {indexNodes} from './nodes.js';
 import {applyFauna} from '../data/fauna.js';
@@ -16,14 +17,28 @@ setWorldSize(WORLD.w,WORLD.h);
 applyFauna(WORLD.REGIONS); // worlds with their own regions swap in region-keyed mob, elite and epic tables
 export {WORLD_ID};
 
-export const {tiles,zone,I,ZONES,REGIONS,CITY,LANDMARKS,LAIR,CRYPT,ZPTS,LIGHTS,LABELS,zoneFor,zoneAt,tileAt,zonePoint,road,OUTPOSTS,solid,land,mainLand}=WORLD;
+export let tiles,zone,I,ZONES,REGIONS,CITY,LANDMARKS,LAIR,CRYPT,CRYPTS,ZPTS,LIGHTS,LABELS,zoneFor,zoneAt,tileAt,zonePoint,road,OUTPOSTS,solid,land,mainLand,EXITS;
 export const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 
 // Compatibility: the three boundary curves by their old names. Prefer zoneAt.
-export const riverX=WORLD.curves.river;
-export const z2X=WORLD.curves.passEdge;
-export const hoarY=WORLD.curves.frostEdge;
+export let riverX,z2X,hoarY;
 
 // Gathering nodes (#255): placed by the generator from spec.nodes; lookups over them.
-export const NODES=WORLD.NODES;
-export const {nodeById,nodesIn,nodeNear}=indexNodes(NODES,WORLD.w,WORLD.h);
+export let NODES,nodeById,nodesIn,nodeNear;
+
+// The map on screen (#1013). WORLD_ID is the campaign (the starter map's id); MAP_ID names the map the bindings above hold. A
+// single-map world never calls setWorld and keeps MAP_ID===WORLD_ID. All the bindings are live: importers read them at call time.
+export let MAP_ID=WORLD_ID;
+function bind(W){
+  ({tiles,zone,I,ZONES,REGIONS,CITY,LANDMARKS,LAIR,CRYPT,CRYPTS,ZPTS,LIGHTS,LABELS,zoneFor,zoneAt,tileAt,zonePoint,road,OUTPOSTS,solid,land,mainLand}=W);
+  EXITS=W.EXITS;
+  riverX=W.curves.river;z2X=W.curves.passEdge;hoarY=W.curves.frostEdge;
+  NODES=W.NODES;({nodeById,nodesIn,nodeNear}=indexNodes(NODES,W.w,W.h));
+}
+bind(WORLD);
+// Switch the live map. Rebuilds the spec's world, rebinds every name above and the size in tiles.js, applies the map's fauna, then
+// fires the onWorld hooks (registered in module order, so a table's hook runs after the hooks of the tables it is built from).
+export function setWorld(mapId){
+  const spec=MAPS[mapId];if(!spec)throw new Error('setWorld: no map '+mapId);
+  if(mapId===MAP_ID)return false;
+  const W=buildWorld(spec);setWorldSize(W.w,W.h);bind(W);applyFauna(W.REGIONS);MAP_ID=mapId;fireWorld(mapId);return true}
