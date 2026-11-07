@@ -56,6 +56,7 @@ const {homeOf} = await import('../src/data/races.js');
 const {PLAYER_TOOLS} = await import('../src/data/player-tools.js');
 const {systemPrompt, turnPrompt} = await import('./agent-player.mjs');
 const {fellowshipPrompt, memberPrompt} = await import('./fellowship.mjs');
+const {noteTurn, recapNote} = await import('./session-recap.mjs');
 const SS = await import('./agent-sessions.mjs');
 const {attachPlay} = await import('./relay-mcp.mjs');
 const {localBackend} = await import('./play-headless.mjs');
@@ -170,7 +171,7 @@ B.gold = Math.max(B.gold || 0, 5);
   ok(ra.ok && !ra.shouted && who.intent && who.intent.goal.includes(SECRETS.bAim), who.name + ' (not the leader) states a private aim (intent)')}
 B.mind = [{id: 1, t: 'D1 08:00', kind: 'townPlan', snapshot: {secret: plant('bMind')}, sent: {user: 'prompt ' + plant('bMindPrompt')}, outcome: 'applied'}];
 P.playerNarrate(B.id, 'B thinks ' + plant('bNarration'));
-const bs = SS.loadSession(B.id, B.name, () => ({sessionId: 's-b', heroId: B.id, heroName: B.name, system: 'You are B. ' + plant('bPrompt'), turns: 3, costUsd: 0, lastTotal: 0})).sess; SS.saveSession(bs, {});
+const bs = SS.loadSession(B.id, B.name, () => ({sessionId: 's-b', heroId: B.id, heroName: B.name, system: 'You are B. ' + plant('bPrompt'), turns: 3, costUsd: 0, lastTotal: 0, recap: {lines: ['B heard ' + plant('bRecapLine')], did: [{t: '', text: 'B did ' + plant('bRecapDid')}]}})).sess; SS.saveSession(bs, {});
 // and what A's companions keep about A stays theirs too: a rest member's private journal
 ok(act(rest[0], 'journal_write', {text: 'Of A I think ' + plant('mateJournal')}).ok, 'a third member\'s journal');
 // the notebooks (issue #155): every seat's own, the DM's included
@@ -281,6 +282,12 @@ const st = act(A, 'status');
 keep('A system prompt', systemPrompt(st)); keep('A fellowship prompt', fellowshipPrompt(st));
 for (let k = 0; k < 4; k++) {keep('A turn prompt ' + k, turnPrompt(k)); keep('A member prompt ' + k, memberPrompt(k, false)); keep('A scene prompt ' + k, memberPrompt(k, true))}
 ok(!/QZX/.test(memberPrompt(0, false) + memberPrompt(3, true) + turnPrompt(2)), 'turn prompts are fixed text: nothing from any other seat');
+// the recap a rolled session carries (#808): built from A's own briefs and narration, on A's own session object, with B's ring in B's file
+{const as = {heroId: A.id, heroName: A.name}, br = PC.paceBrief(A.id).brief; noteTurn(as, br, 'I keep my watch.'); noteTurn(as, {...br, heard: ['Day 1 (you): the first word']}, 'I walked on.');
+  const rc = keep('A recap', recapNote(as, br));
+  ok(/I walked on\./.test(rc) && /the first word/.test(rc), 'a recap is made of the hero\'s own session');
+  ok(SS.loadSession(B.id, B.name, () => null).sess.recap.did.length === 1 && !rc.includes(SECRETS.bRecapDid) && !rc.includes(SECRETS.bRecapLine), 'and another member\'s recap stays in that member\'s session');
+  ok(!/\bimport\b.*from/.test(readFileSync(new URL('./session-recap.mjs', import.meta.url), 'utf8')), 'the recap module imports nothing: it can only read the session and brief it is handed')}
 // the brain snapshots for A (a model-played hero sees only these)
 BR.enableBrain(A);
 const snaps = {townPlan: BR.snapshotFor(A, 'townPlan'), say: BR.snapshotFor(A, 'say', {trigger: 'idle', ctx: {}}), fightOrFlee: BR.snapshotFor(A, 'fightOrFlee', {mob: S.mobs.find(m => m.alive)}), cryptCall: BR.snapshotFor(A, 'cryptCall'),
