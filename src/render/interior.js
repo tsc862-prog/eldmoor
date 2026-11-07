@@ -12,6 +12,7 @@
 //   bars, a two-course back wall and the furniture of render/furniture.js); drawSetting(ctx, box, m, st, now, dpr) draws
 //   one frame of it with the scene's people, the speaker's bubble and the turn chevron; #536 adds the arc staging, the
 //   answer marks (answerMark), name plates, light from the frame and time of day, the scene's item and bubbles kept off props.
+// Looted (#976): st.looted [bool] puts an open, empty chest on a chamber's corner beside its tick, once a run has cleared it.
 // Style (docs/ART-PLAN.md): light from the top left, ground in mid values, entities outlined and owning the extremes.
 import {U as T} from './tile.js'; // world units a tile (render/tile.js; art is drawn at TILE)
 import {IT} from '../world/interior.js';
@@ -147,6 +148,7 @@ const THRONE=["..L........S..",".LMS......LMS.",".LMS......LMS.",".LMSLLLLLLLMS.
 // the raid arena's lair (#85): a gold hoard with a sword in it, a basalt crag (lit from the top left)
 const HOARD=["..........S.....","..........S.....","......Y...S.....",".....YWY..S.....","....YGGGY.H..Y..","...YGWGGGHHHYGY.","..YGGGGOGGGGGGOY",".YGGOGGGGGOGGGGO","YGGGGGOGGGGGOGGO","DOOODDOOOODOOODD"];
 const CRAG=["....H.....","...HLM....","...HLMS...","..HLLMS...","..HLMMS...","..LLMMSS..",".HLMMMMS..",".LLMMMMSS.",".LMMMMMMS.","HLMMMMMMSS","LLMMMMMMMS","SSSSSSSSSS"];
+const LOOTED={rows:["LLLLLLLLL","MMMMMMMMM","SDDDDDDDS","SDDDDDDDS","YYYYYYYYY","MMMMMMMMM","SSSSSSSSS"],map:{L:'#b07a4a',M:'#8a5a32',S:'#5a3a20',D:'#140c10',Y:'#e0b040'}}; // an open chest, the lid thrown back, nothing in it
 const STONE={L:'#a8a4ba',M:'#7c7890',S:'#4a4658',H:'#c8c4d8',D:'#34303e',G:'#7ad0a0'};
 const PROPS={
   bones:  {rows:BONES,map:{W:'#e8e4d8',D:'#8a8678'},ox:1,oy:9},
@@ -222,6 +224,7 @@ export function drawInterior(ctx,box,m,st,now,dpr=1){
   for(const r of m.rooms){const seen=reached<0||r.i<=reached;
     if(st.cleared&&st.cleared[r.i]){ctx.fillStyle=MARK.edge;ctx.fillRect(r.x*T+r.w*T-11,r.y*T+2,10,9);ctx.fillStyle=D.clear; // a tick in a dark badge
       for(const [a,b] of [[1,4],[2,5],[3,6],[4,5],[5,4],[6,3],[7,2]])ctx.fillRect(r.x*T+r.w*T-11+a,r.y*T+2+b,2,1)}
+    if(st.looted&&st.looted[r.i])ctx.drawImage(outlined(sprite('dg-looted',LOOTED.rows,LOOTED.map)),r.x*T+r.w*T-23,r.y*T+2);
     if(r.boss)skull(ctx,Math.round(r.cx*T)-4,Math.round(r.y*T-5-13*px1-12),1); // above the chamber's name, fog or not
     if(st.cur===r.i){ctx.save();ctx.strokeStyle=D.cur;ctx.globalAlpha=pulse;ctx.lineWidth=2*px1;roomEdge(ctx,m,r,px1);ctx.restore()}} // the outline sits inside the floor, so the wall faces never hide it
   if(!play)drawFoes(ctx,m,st,now,dpr,sc,PS); // the live crawl's foes with their HP bars (render/dgfoes.js); a round in progress draws its own
