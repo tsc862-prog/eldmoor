@@ -58,7 +58,7 @@ export const holdSave=on=>{hold=!!on}; // no autosave while the setup page sits 
 export const setNewWorldHandler=f=>{newWorld=f};
 // What a world's save holds, without loading it: {day, min, heroes, fellowship, kb, at} (at: ms of the last write, or null).
 export const saveSummary=id=>{try{const st=store(),key=saveKeyFor(id),raw=st.getItem(key);if(!raw)return null;const j=JSON.parse(raw);if(!isSave(j))return null;
-  const at=+st.getItem(atKey(key))||null;return {...describeSave(j),kb:Math.round(raw.length/1024),at,stale:mapStale(j,id)}}catch(e){return null}};
+  const at=+st.getItem(atKey(key))||null;return {...describeSave(j),kb:Math.round(raw.length/1024),at,stale:mapStale(j,id),map:(j.campaign&&j.campaign.map)||null}}catch(e){return null}};
 // Download a world's stored save as it is (the title screen and the setup page, before any world is loaded).
 export function exportStored(id=WORLD_ID){let raw=null;try{raw=store().getItem(saveKeyFor(id))}catch(e){}if(!raw)return false;
   const j=JSON.parse(raw),blob=new Blob([raw],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');
