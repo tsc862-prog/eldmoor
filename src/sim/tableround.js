@@ -8,7 +8,7 @@
 // A foe's act is scripted: strike the member who drew it (guard, a taunt), else the lowest-HP member in
 // reach; a beast that runs from a fight runs here too, a duellist yields where it would in a duel, and
 // Kragmaw keeps its scripted blows (one claw a round at a random raider, the breath on its own timer).
-// On the open map (#1056) Defense counts once, a creature swings on its own clock and uses its tricks: see blowForce and foeTrick.
+// Against a true elite on the map (sc.fe, #1056) Defense counts once, it swings on its own clock and uses its tricks: see blowForce and foeTrick.
 // table.js drives the rounds; this file only knows the dice and the foe's act. Rolls use the gameplay RNG
 // in initiative order, so a seeded scene plays the same whatever order the answers come in.
 import {ri,rnd,pickA} from '../core/rng.js';
@@ -43,7 +43,7 @@ export const TR={
   HIT:3,      // attack bonus: d20 + HIT + level/2 (crawl.js FOE_HIT) against 10 + Defense x 20
   REACH:9,    // tiles from the foe within which a member is in the fight (a strike from farther only closes in)
   YIELD:.3,   // a duellist yields below this share of its max HP, times its flee trait (pvp duel rule)
-  // On the open map (#1056, sim/patch.js: only with an agent deciding, or ELDMOOR_PATCH=all):
+  // Against a true elite on the map (sc.fe, #1056: a patch needs an agent deciding, or ELDMOOR_PATCH=all):
   ROUND_S:1,      // seconds of a real-time fight a round stands for: a creature's swing clock, its tricks' cooldowns
   HEAL_GAP:3,     // rounds between one healer's plain heals, as real time's 3.5 s (not when someone lies down, not against Kragmaw)
   ELITE_PACE:1.75,// an elite's swings a round against five standing, falling with those left: five act against it, and class abilities come round far sooner in rounds than in seconds
@@ -68,10 +68,10 @@ export function roll(att,t,adj=0){const d=ri(1,20),b=hitOf(att)+adj,ac=acOf(t);r
 export const rollData=(R,dmg,target,down)=>({die:R.d,mod:R.b,total:R.d+R.b,vs:R.ac,hit:R.hit,crit:R.crit,dmg:dmg||0,target,down:!!down});
 export const rollText=R=>'d20 '+R.d+sg(R.b)+'='+(R.d+R.b)+' vs AC '+R.ac+(R.crit?' (a natural 20)':R.d===1?' (a natural 1)':'');
 const sg=n=>(n<0?'':'+')+n;
-// What a blow that landed on a hero is worth on the open map (#1056): a multiplier that puts back what Defense took off it. AC is Defense already (the
-// roll's chance falls one in 20 for each .05 of it), so Defense does not come off the blow a second time, as a creature's guard does not. Wards and
-// passives still cut it. Off the map (npm run sim, the seeded worlds) and Kragmaw's own blows: 1, as before.
-export const blowForce=(sc,f,t)=>!sc.fp||f.kind==='boss'||t.kind!=='hero'?1:1/(1-combatStats(t).defense);
+// What a blow that landed on a hero is worth against a true elite on the map (sc.fe, #1056): a multiplier that puts back what Defense took off it. AC is Defense
+// already (the roll's chance falls one in 20 for each .05 of it), so Defense does not come off the blow a second time, as a creature's guard does not. Wards and
+// passives still cut it. In every other scene: 1, as before (duels, ambushes, rescues from lesser foes, Kragmaw, npm run sim).
+export const blowForce=(sc,t)=>sc.fe&&t.kind==='hero'?1/(1-combatStats(t).defense):1;
 // One line of the round's DM log entry.
 function note(sc,by,at,R,dmg,extra){(sc.rl||(sc.rl=[])).push({rd:sc.rd||1,by,at,d20:R?R.d:null,bonus:R?R.b:null,ac:R?R.ac:null,hit:R?R.hit:true,dmg:dmg||0,...(extra?{note:extra}:{})})}
 // Parley and condition saves (#296) keep their die as `die` (not d20, which is an attack roll against AC).
@@ -87,7 +87,7 @@ export function flushRolls(sc){const L=sc.rl;if(!L||!L.length)return;sc.rl=[];co
 // The structured roll waits on sc.rr until table.js take() puts it on the member's beat (beat.roll).
 export function memberStrike(sc,a,f,mod=0){const R=roll(a,f,mod);
   if(!R.hit){note(sc,a.name,name(f),R,0);sc.rr=rollData(R,0,name(f));return rollText(R)+': missed'}
-  const h=f.hp,m=blowForce(sc,a,f),o=R.crit||m!==1?{...(R.crit?{crit:1}:{}),...(m!==1?{mul:m}:{})}:undefined;strike(a,f,o);const dmg=Math.max(0,Math.round(h-f.hp)),down=f.kind==='boss'?!f.alive:f.kind==='hero'?f.state==='dead':!f.alive;
+  const h=f.hp,o=R.crit?{crit:1}:undefined;strike(a,f,o);const dmg=Math.max(0,Math.round(h-f.hp)),down=f.kind==='boss'?!f.alive:f.kind==='hero'?f.state==='dead':!f.alive;
   note(sc,a.name,name(f),R,dmg,down?'down':null);sc.rr=rollData(R,dmg,name(f),down);return rollText(R)+': hit for '+dmg+(down?', and it falls':'')}
 
 // ---- an item from the pack as the round's act (#360) ----
@@ -139,7 +139,7 @@ export function foeTurn(sc,fs,L){const out=[];
     if(condOn(f,'stun')){const b=stunCheck(sc,f,nm);out.push(b);if(b.k==='stunned')continue} // a stun is checked on its holder's turn (#296)
     if(f.kind==='hero'&&f.state!=='dead'&&f.hp<maxHp(f)*TR.YIELD*tm(f,'flee')){yieldHero(f,L);sc.end='yield';out.push(beat(nm,'yield','Yields and breaks off',null));note(sc,nm,'the fight',null,0,'yields');break}
     if(f.kind==='mob'&&fs.length===1&&!f.elite&&!f.fledOnce&&!condOn(f,'root')&&(blk(f).beh||{}).flee&&f.hp<f.maxhp*blk(f).beh.flee){f.fledOnce=true;f.fled=2.5;sc.end='fled';out.push(beat(nm,'flee','Breaks away and runs',null));note(sc,nm,'the fight',null,0,'flees');break} // a rooted beast cannot run
-    const G=!!sc.fp,beast=G&&f.kind==='mob';if(G)foeStep(sc,f); // on the open map it walks first (#746)
+    const G=!!sc.fp,beast=!!sc.fe&&f.kind==='mob';if(G)foeStep(sc,f); // on the open map it walks first (#746)
     let n=beast?swings(sc,f,L.filter(b=>b.state!=='dead'&&b.hp>0).length):1;
     if(beast){const live=L.filter(b=>b.state!=='dead'&&b.hp>0),T=foeTargets(sc,f,live);if(foeTrick(sc,f,T.length?targetOf(f,T):null,live,nm,out)){if(!n)continue;n--}
       else if(!n){out.push(beat(nm,'gather','Gathers itself','no swing this round'));note(sc,nm,'the fight',null,0,'gathers itself');continue}}
@@ -152,16 +152,16 @@ export function foeTurn(sc,fs,L){const out=[];
     if(!T.length){closed(sc);out.push(beat(nm,'close','Closes in',condOn(f,'root')?'rooted: nobody in reach':'nobody in reach yet'));note(sc,nm,'the party',null,0,'closes in');break}
     const t=targetOf(f,T),m=G?blowMods(sc,f,t):{adj:0,mul:1},rooted=condOn(f,'root'),R=roll(f,t,(rooted?-COND.ROOT_HIT:0)+m.adj),wd=condOn(t,'ward')?' (warded)':'';let res,rd;
     if(!R.hit){res=rollText(R)+': missed'+(rooted?' (rooted)':'');note(sc,nm,t.name,R,0);rd=rollData(R,0,t.name)}
-    else{const fm=blowForce(sc,f,t)*(f.frenzy>0&&beast?FRENZY:1),dmg=f.kind==='hero'?heroBlow(f,t,R.crit,m.mul*fm):mobBlow(f,t,(R.crit?1.5:1)*m.mul*fm);const down=t.state==='dead';
+    else{const fm=beast?blowForce(sc,t)*(f.frenzy>0?FRENZY:1):1,dmg=f.kind==='hero'?heroBlow(f,t,R.crit,m.mul*fm):mobBlow(f,t,(R.crit?1.5:1)*m.mul*fm);const down=t.state==='dead';
       res=rollText(R)+': hit for '+dmg+wd+(down?'; '+t.name+' falls':isDown(t)?'; '+t.name+' goes down':'');note(sc,nm,t.name,R,dmg,down?'down':wd?'warded':null);rd=rollData(R,dmg,t.name,down);if(down)(sc.fell||(sc.fell=[])).push(t.id)
       else if(!beast){const c=trickCond(sc,f,t,dmg);if(c)res+='; '+c}}
     out.push(beat(nm,'attack','Strikes at '+t.name+(f.target===t?' (drawn)':''),res,rd))}}
   return out}
-// ---- a creature's swing and tricks on the open map (#1056) ----
+// ---- a true elite's swing and tricks on the map (sc.fe, #1056), and kin that came with it ----
 // A round stands for TR.ROUND_S seconds, so a creature swings on its own clock as it does in real time: a slow heavy biter sits out a round (a beat says so). An
 // elite answers the blades against it: TR.ELITE_PACE swings a round against five standing, a share of that against fewer, so a company that loses members is not
 // ground down faster for it, and a company of one or two is not swung at twice. Its tricks run on the same clock: cooldowns in seconds run down TR.ROUND_S a round,
-// a trick takes a swing as in mobs.js useAbility, and an elite's ready opener (data/fauna.js) fires as soon as its `when` holds. Off the map none of this runs.
+// a trick takes a swing as in mobs.js useAbility, and an elite's ready opener (data/fauna.js) fires as soon as its `when` holds. In any other scene none of this runs.
 const FRENZY=1.35; // mobs.js's bite in a frenzy
 function swings(sc,f,up){const w=sc.sw||(sc.sw={}),pace=(f.elite?TR.ELITE_PACE*up/5:1)*TR.ROUND_S/((f.acd||1)*(f.frenzy>0?.8:1));for(const id in f.abcd||{})f.abcd[id]-=TR.ROUND_S;if(f.frenzy>0)f.frenzy-=TR.ROUND_S;
   const v=(w[f.id]==null?.5:w[f.id])+pace,n=Math.floor(v);w[f.id]=v-n;return n}
@@ -278,7 +278,7 @@ function heroBlow(f,t,crit,mul=1){const h=t.hp;strike(f,t,crit||mul!==1?{...(cri
 // The free blows owed on the open map (#746): each foe a member stepped out of the reach of strikes once, at GEO.FREE, on its roll against that member.
 export function freeBlows(sc){const out=[];for(const {f,t} of freeOwed(sc)){const nm=name(f),R=roll(f,t);let res,rd;
     if(!R.hit){res=rollText(R)+': missed';note(sc,nm,t.name,R,0,'free blow');rd=rollData(R,0,t.name)}
-    else{const fm=blowForce(sc,f,t),dmg=f.kind==='boss'?bossClaw(f,t,GEO.FREE):f.kind==='hero'?heroBlow(f,t,R.crit,GEO.FREE*fm):mobBlow(f,t,(R.crit?1.5:1)*GEO.FREE*fm),down=t.state==='dead';if(down)(sc.fell||(sc.fell=[])).push(t.id);
+    else{const fm=blowForce(sc,t),dmg=f.kind==='boss'?bossClaw(f,t,GEO.FREE):f.kind==='hero'?heroBlow(f,t,R.crit,GEO.FREE*fm):mobBlow(f,t,(R.crit?1.5:1)*GEO.FREE*fm),down=t.state==='dead';if(down)(sc.fell||(sc.fell=[])).push(t.id);
       res=rollText(R)+': hit for '+dmg+(down?'; '+t.name+' falls':isDown(t)?'; '+t.name+' goes down':'');note(sc,nm,t.name,R,dmg,'free blow');rd=rollData(R,dmg,t.name,down)}
     out.push(beat(nm,'free','A free blow at '+t.name+' stepping away',res,rd))}
   return out}

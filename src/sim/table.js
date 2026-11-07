@@ -242,10 +242,9 @@ function foeOf(sc){const c=sc.ctx||{};if(sc.kind==='boss')return S.boss&&S.boss.
   if(c.mobs){for(const id of c.mobs){const m=S.mobs.find(x=>x.id===id);if(m&&m.alive&&!m.gone)return m}return null} // a staged pack: the first still standing
   if(c.mob!=null){const m=S.mobs.find(x=>x.id===c.mob);return m&&m.alive&&!m.gone?m:null}
   if(c.foe!=null){const b=byId(c.foe);return living(b)?b:null}return null}
-// The plain heal on the open map (#1056): real time gives a healer a breath between casts; a round has one too, TR.HEAL_GAP rounds, unless someone lies down.
-// Off the map and against Kragmaw it is ready every round, as before.
-const healPaced=sc=>!!sc.fp&&sc.kind!=='boss';
-const healReady=(sc,a,lo)=>!healPaced(sc)||isDown(lo)||sc.hl==null||sc.hl[a.id]==null||sc.rd-sc.hl[a.id]>=TR.HEAL_GAP;
+// The plain heal against a true elite on the map (sc.fe, #1056): real time gives a healer a breath between casts; a round has one too, TR.HEAL_GAP rounds, unless someone
+// lies down. In every other scene it is ready every round, as before.
+const healReady=(sc,a,lo)=>!sc.fe||isDown(lo)||sc.hl==null||sc.hl[a.id]==null||sc.rd-sc.hl[a.id]>=TR.HEAL_GAP;
 const lowest=sc=>{let lo=null;for(const b of scMem(sc))if(!b.hidden||inScene(b))if(!lo||b.hp/maxHp(b)<lo.hp/maxHp(lo))lo=b;return lo};
 // Combat rounds (#276): a combat scene plays up to TR.ROUNDS rounds; the foe acts at its place in the order (sc.foeAt).
 // A scene saved before rounds (no sc.rd) plays its one pass as it did. The fight is over when the foe falls, runs or
@@ -269,7 +268,7 @@ const fightOver=sc=>(!!sc.end||!foeOf(sc)||!fighters(sc).length)&&!bleeding(sc);
 // Combat plays until it is decided (#875). The hard cap and the stall rule only guard against loops: TR.ROUNDS_MAX rounds
 // (Kragmaw TR.BOSS_ROUNDS_MAX), and TR.STALL rounds in a row with no HP change on either side. Past the fight's end a bleeding
 // member keeps the table open TABLE.DOWN_ROUNDS more rounds (#654), counted from the round the fight ended (sc.eb).
-const roundCap=sc=>sc.kind==='boss'?TR.BOSS_ROUNDS_MAX:sc.fp&&(foeOf(sc)||{}).elite?TR.ELITE_ROUNDS_MAX:TR.ROUNDS_MAX;
+const roundCap=sc=>sc.kind==='boss'?TR.BOSS_ROUNDS_MAX:sc.fe?TR.ELITE_ROUNDS_MAX:TR.ROUNDS_MAX;
 const looseOver=sc=>!!sc.end||!foeOf(sc)||!fighters(sc).length; // the fight itself is decided (a bleeding member may still hold the table)
 const hpSig=sc=>Math.round([...scMem(sc),...foesOf(sc)].reduce((t,e)=>t+(e.hp||0),0)*10);
 // Why the table must close now, or null (also counts the stall): 'cap' | 'stall' | 'bleed' (the extension ran out).
@@ -362,7 +361,7 @@ function open(kind,title,frame,ctx={},C0){const F=C0||ctxCompany(ctx);if(!F||sce
   if(kind==='elite')scaleElite(F,L,ctx);
   if(COMBAT[kind]){sc.rd=1;sc.fd=0;sc.foeAt=foeSlot(sc.ids.map(byId),foeOf(sc)); // the foe joins the initiative order (#276)
     const f=foeOf(sc);if(f&&patchFits(agentsDecide(L))){const M=sc.ids.map(byId).filter(a=>dist(a,f)<=TR.REACH&&(f.kind!=='boss'||a.state==='raid')); // the ground round them, frozen (#746)
-      openPatch(sc,M,foesOf(sc),f.kind==='boss'?f:byId(ctx.anchor!=null?ctx.anchor:ctx.hero)||M[0],foeName)}}
+      if(openPatch(sc,M,foesOf(sc),f.kind==='boss'?f:byId(ctx.anchor!=null?ctx.anchor:ctx.hero)||M[0],foeName)&&f.elite)sc.fe=1}} // sc.fe: a true elite on the map, the one gate of #1056's rules
   if(sc.pause)requestDrop(sc.title);
   place(sc);F.tableStats=F.tableStats||{scenes:0,agent:0,reflex:0,paused:0};F.tableStats.scenes++;if(sc.pause)F.tableStats.paused++;
   if(!sc.pause){for(const a of L)if(a.player)tableNote(sc,a,plain(frame));finishAll(sc);return sc}
@@ -450,7 +449,7 @@ function applyAct(sc,a,act,f,mod){const k=act.k;
     {const h=f.hp;strike(a,f);return 'hit for '+Math.max(0,Math.round(h-f.hp))}
   case 'guard':if(!f)return 'nothing to guard against';if(f.kind==='mob'){f.target=a;if(['hunt','follow','travel','fight'].includes(a.state)){a.state='fight';a.target=f;a.dest=null}return 'drew it on'}
     if(f.kind==='hero'&&['hunt','follow','travel','return'].includes(a.state)&&sideFoe(a,f)){a.regNext='hunt';a.state='assist';a.target=f;a.dest=null;return 'stepped in'}return 'stood ready';
-  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';if(!healReady(sc,a,lo))return 'your heal is not ready';if(healPaced(sc))(sc.hl||(sc.hl={}))[a.id]=sc.rd;const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
+  case 'heal':{const lo=lowest(sc);if(!lo)return 'nobody to heal';if(!healReady(sc,a,lo))return 'your heal is not ready';if(sc.fe)(sc.hl||(sc.hl={}))[a.id]=sc.rd;const h=Math.round(maxHp(lo)*.25)+reviveBonus(lo);lo.hp=Math.min(maxHp(lo),lo.hp+h);tendBy(a,lo,'heal');return '+'+h+' to '+lo.name}
   case 'stabilize':{const t=bleedingOf(downIn(sc),a);if(!t)return 'nobody is bleeding';return stabilizeAt(a,t).text} // #654
   case 'potion':{const lo=lowest(sc),id=bestUse(a,'potion');if(!lo||!id)return 'nothing to give';const r=useItem(a,id,lo,{table:true});useNote(sc,a,id,lo,r);return r.ok?'+'+r.healed+' to '+lo.name+' ('+id+')':r.error}
   case 'parley':if(!rounds(sc)||!canParley(f))return 'no one there will listen';return parley(sc,a,foesOf(sc),fighters(sc)); // a say-check against the foe's temper (#296)

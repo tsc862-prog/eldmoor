@@ -189,21 +189,26 @@ sc = open('ambush', {mob: m9.id, mobs: [m9.id, m10.id], hero: M[0].id, edge: 'no
   for (let i = 0; i < M.length; i++) M[i] = S.agents.find(a => a.id === M[i].id)}
 close(sc);
 
-// ---- #1056: a foe in rounds on the open map hits as it does in real time ----
+// ---- #1056: a true elite in rounds on the map hits as it does in real time ----
 {const RD = await import('../src/sim/tableround.js'), {CLS} = await import('../src/data/classes.js'), {combatStats} = await import('../src/sim/stats.js'), {ABILITIES} = await import('../src/data/bestiary.js');
   const eliteAt = (p, o = {}) => {const m = beast(p.x, p.y);Object.assign(m, {elite: true, name: 'Test Elite', hp: 4000, maxhp: 4000, hpl: 4000, ab: [], abcd: {}, acd: 1}, o);return m};
   const line = [[-1, 0], [-1, 1], [-1, -1], [-2, 1], [-2, -1]], turn = (sc, m) => RD.foeTurn(sc, [m], M.filter(a => a.state !== 'dead'));
   // Defense counts once: the roll is AC, so a blow that lands is not cut by Defense again, on the map; off it, it is.
   stand(plain, line);let m = eliteAt(plain);let sc = open('elite', {mob: m.id, hero: M[0].id});
-  ok(sc.fp && RD.blowForce(sc, m, M[0]) > 1 && Math.abs(RD.blowForce(sc, m, M[0]) * (1 - combatStats(M[0]).defense) - 1) < 1e-9, 'on the map Defense does not come off a blow a second time');
-  ok(RD.blowForce({}, m, M[0]) === 1, 'off the map the blow is as before');ok(RD.blowForce(sc, S.boss || {kind: 'boss'}, M[0]) === 1, 'and Kragmaw keeps his');ok(RD.blowForce(sc, M[0], m) === 1, 'a blow on a creature is untouched');
+  ok(sc.fp && sc.fe && RD.blowForce(sc, M[0]) > 1 && Math.abs(RD.blowForce(sc, M[0]) * (1 - combatStats(M[0]).defense) - 1) < 1e-9, 'against a true elite Defense does not come off a blow a second time');
+  ok(RD.blowForce({fp: {}}, M[0]) === 1, 'on the map against anything else the blow is as before');ok(RD.blowForce(sc, m) === 1, 'a blow on a creature is untouched');
   // the swing clock: an elite answers the blades against it, a slow biter sits a round out
   {let n = 0;for (let i = 0; i < 8; i++) n += turn(sc, m).filter(b => b.k === 'attack').length;ok(n === Math.round(8 * RD.TR.ELITE_PACE), 'an elite swings TR.ELITE_PACE a round against five: ' + n + ' in 8 rounds');
     for (const a of M) a.hp = maxHp(a);const L2 = M.slice(0, 2);sc.sw = {};n = 0;for (let i = 0; i < 8; i++) n += RD.foeTurn(sc, [m], L2).filter(b => b.k === 'attack').length;for (const a of M) a.hp = maxHp(a);
     ok(n < 8, 'and less often against two: ' + n + ' in 8 rounds')}
   close(sc);
-  stand(plain, line);m = beast(plain.x, plain.y);m.acd = 2;m.ab = [];m.abcd = {};m.hp = m.maxhp = 4000;sc = open('elite', {mob: m.id, hero: M[0].id});
-  {const B = [];for (let i = 0; i < 6; i++) B.push(...turn(sc, m));for (const a of M) a.hp = maxHp(a);ok(B.filter(b => b.k === 'attack').length === 3 && B.filter(b => b.k === 'gather').length === 3, 'a slow biter swings every other round, and a beat says so')}
+  stand(plain, line);m = eliteAt(plain, {acd: 4});sc = open('elite', {mob: m.id, hero: M[0].id});
+  {const B = [];for (let i = 0; i < 8; i++) B.push(...turn(sc, m));for (const a of M) a.hp = maxHp(a);ok(B.filter(b => b.k === 'attack').length === 4 && B.filter(b => b.k === 'gather').length === 4, 'a slow elite sits rounds out, and a beat says so')}
+  close(sc);
+  // anything but a true elite plays as before, on the map too: no swing clock, no tricks, no heal gap, no longer cap
+  stand(plain, line);m = beast(plain.x, plain.y);m.acd = 4;m.ab = ['gore'];m.abcd = {gore: 0};sc = open('elite', {mob: m.id, hero: M[0].id});
+  {ok(sc.fp && !sc.fe, 'a lesser foe on the map is not an elite fight');const B = [];for (let i = 0; i < 4; i++) B.push(...turn(sc, m));for (const a of M) a.hp = maxHp(a);ok(B.every(b => b.k !== 'trick' && b.k !== 'gather') && B.filter(b => b.k === 'attack' || b.k === 'close').length === 4, 'it acts once a round, with no tricks in its turn');
+    const h = M.find(a => CLS[a.cls].heal), low = M.find(a => a !== h);low.hp = Math.round(maxHp(low) * .5);sc.hl = {[h.id]: sc.rd};ok(T.optionsFor(sc, h).some(o => o.k === 'heal'), 'and the heal is ready every round');low.hp = maxHp(low)}
   close(sc);
   // a ready opener fires at once, a trick off cooldown waits, and it takes a swing
   stand(plain, line);m = eliteAt(plain, {ab: ['howl'], abcd: {howl: 0}});sc = open('elite', {mob: m.id, hero: M[0].id});
@@ -226,7 +231,7 @@ close(sc);
   // the plain heal needs a breath, unless someone lies down
   stand(plain, line);m = eliteAt(plain);sc = open('elite', {mob: m.id, hero: M[0].id});
   {const h = M.find(a => CLS[a.cls].heal), keys = () => T.optionsFor(sc, h).map(o => o.k), low = M.find(a => a !== h);low.hp = Math.round(maxHp(low) * .5);ok(keys().includes('heal'), 'a healer can heal');
-    sc.hl = {[h.id]: sc.rd};ok(!keys().includes('heal'), 'not again the next round');sc.rd += RD.TR.HEAL_GAP;ok(keys().includes('heal'), 'and again after TR.HEAL_GAP rounds');sc.rd -= RD.TR.HEAL_GAP;const fp = sc.fp;sc.fp = null;ok(keys().includes('heal'), 'off the map it is ready every round');sc.fp = fp;low.hp = maxHp(low)}
+    sc.hl = {[h.id]: sc.rd};ok(!keys().includes('heal'), 'not again the next round');sc.rd += RD.TR.HEAL_GAP;ok(keys().includes('heal'), 'and again after TR.HEAL_GAP rounds');sc.rd -= RD.TR.HEAL_GAP;low.hp = maxHp(low)}
   close(sc);
 }
 
