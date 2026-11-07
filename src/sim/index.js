@@ -83,6 +83,7 @@ export {xpNeed,maxHp,atkOf} from './heroes.js';
 export {spatialStats} from './spatial.js';
 export {actionLog,fightSummary,fights} from './actlog.js'; // action log (recording only)
 export {snapshot,restore,isSave,describeSave,SAVE_VERSION} from './save.js';
+export {switchMap} from './mappack.js'; // leave the live map for another (#1013)
 export {enableBrain,disableBrain,brainStatus,setRunnerMind} from './brain.js';
 export {markPlayer,playerAct,playerHero,playerSeat,playerSeats,playerNarrate} from './player.js';
 export {foundSlots,autoPick,disbandSlots,slotMembers,slotHeroes,setSlotMinds,slotted} from './company.js'; // the five places (#588)
