@@ -7,6 +7,7 @@ import {createRenderer} from './render/draw.js';
 import {provideAssets,worldArt} from './render/assets.js';
 import {select,ctl,setView,startHero} from './ui/controls.js';
 import {boot,autoSaveTick,bootKind} from './ui/save.js';
+import {openSaves} from './ui/savestore.js'; // the save slots live in IndexedDB (#1013): loaded before the title asks about them
 import {initSetup,openSetup,afterBoot} from './ui/setup.js'; // the New World setup page (#133)
 import {renderTable} from './ui/table.js';
 import {renderHold} from './ui/holdbar.js'; // gambit hold bar (#630)
@@ -35,7 +36,7 @@ provideAssets(Object.values(import.meta.glob('../assets/index.json',{import:'def
 initSetup();
 let renderer=null;
 function start(kind){
-  boot(init); // restores the localStorage save when there is one, else init()
+  boot(init); // restores the saved world when there is one, else init()
   renderer=createRenderer(document.getElementById('cv'),document.getElementById('screen')); // terrain is painted in chunks as the camera reaches them
   initUI(renderer);
   if(bootKind()==='fresh'&&kind!=='default')openSetup({first:true});else afterBoot(); // no save and no queued setup: the setup page opens over the default world; a setup boot starts its runners
@@ -68,4 +69,4 @@ every(250,()=>{if(!renderer||typeof document==='undefined'||!document.hidden)ret
   const now=performance.now(),real=Math.min(.5,(now-last)/1000);last=now;advance(real)});
 // The world's art starts loading now, under the title screen, and the first paint waits for it; the short pause lets the cut pieces' one repaint pass (terrain.js, 150 ms) before any chunk is made.
 const artIn=worldArt().then(()=>new Promise(r=>setTimeout(r,170))),begin=kind=>artIn.then(()=>start(kind));
-if(titleWanted())showTitle(begin);else begin('direct');
+openSaves().then(()=>{if(titleWanted())showTitle(begin);else begin('direct')});
