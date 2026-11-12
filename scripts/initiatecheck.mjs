@@ -13,7 +13,7 @@ const {homeOf} = await import('../src/data/races.js');
 const {CRYPT, CRYPTS, LAIR, dist} = await import('../src/world/map.js');
 const {cryptOfCtx} = await import('../src/sim/crypts.js');
 const {rebuild} = await import('../src/sim/spatial.js');
-const {maxHp} = await import('../src/sim/heroes.js');
+const {maxHp} = await import('../src/sim/heroes.js'), {loreSides} = await import('../src/sim/state.js');
 const {PLAYER_TOOLS} = await import('../src/data/player-tools.js');
 let fail = 0;
 const ok = (c, m) => {if (c) console.log('  ok   ' + m); else {console.error('  FAIL ' + m); fail++}};
@@ -145,12 +145,17 @@ section('C. a solo: go_crypt, join_raid');
   // join_raid
   a = solo(15); S.raidOn[a.fac] = false; S.raidT = 1e9; r = act(a, 'join_raid');
   if (!LAIR) {a = solo(15); r = act(a, 'join_raid'); ok(!r.ok && /nothing here to raid/.test(r.error), 'join_raid is refused where no great beast keeps a lair: ' + r.error)} else {
+  if (loreSides()) { // sides as lore (#1025): there is no faction muster to fall in with, a raid is a company's own
+    ok(!r.ok && /no muster to fall in with/.test(r.error), 'join_raid is refused in words in a lore world: ' + r.error);
+    S.raidOn[a.fac] = true; r = act(a, 'join_raid'); ok(!r.ok && !a.raid && /company's own/.test(r.error), 'and still is with a muster flagged out: ' + r.error); S.raidOn[a.fac] = false;
+  } else {
   ok(!r.ok && /read_chronicle/.test(r.error), 'join_raid with no muster out: ' + r.error);
   S.raidOn[a.fac] = true; const bgR = S.agents.filter(b => living(b) && b.fac === a.fac && b !== a).slice(0, 2); bgR.forEach((b, i) => {b.raid = true; b.raidIdx = i; b.state = 'raid'})
   r = act(a, 'join_raid');
   ok(r.ok && a.raid && a.raidOk && a.state === 'raid', 'join_raid falls in with the muster');
   const d0 = dist(a, LAIR); for (let k = 0; k < 120; k++) step(1 / 60);
   ok(a.raid && a.state === 'raid' && dist(a, LAIR) < d0, 'it rides for the lair and stays in the raid');
+  }
   }
   // a company of two does not get the solo's orders
   fresh({}); setRunnerLinks(() => 'connected'); const m = CN.leaderOfC(company());
@@ -188,6 +193,7 @@ section('F. others none');
   for (const a of M) if (P.status === 'open' && !P.votes[a.id]) act(a, 'vote', {proposal_id: P.id, vote: 'yes', reason: 'Alone, then.'});
   S.raidT = 0; for (let k = 0; k < 60 * 30 && !S.raidOn[f]; k++) {SAFE(); step(1 / 60)}
   ok(S.raidOn[f] && M.every(a => a.raid), 'five alone at 14 muster on their own vote');
+  {const d0 = dist(M[0], LAIR); for (let k = 0; k < 120; k++) step(1 / 60); ok(M.every(a => a.raid) && dist(M[0], LAIR) < d0, 'and they ride for the lair together');}
   }
   fresh({others: 'none'}); setRunnerLinks(() => 'connected'); const G = company(), N = CO.members(G); for (const a of N) a.lvl = 15;
   for (let k = 0; k < 60 * 120; k++) {if (!(k % 60)) {CRYPT.cd = 0; S.raidT = 0} step(1 / 60)}
