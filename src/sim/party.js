@@ -41,7 +41,9 @@ export function followPt(a){const L=a.party.leader,i=a.party.mem.indexOf(a),ang=
 
 // Caution: a party leader keeps the group away from enemy heroes rather than brawling.
 // Returns true while the leader is detouring around a foe within 6 tiles (caller skips its normal move).
-export function steerClear(a,dt,moveTo){if(!a.party||a.party.leader!==a)return false;const foe=nearestFoe(a,6);if(!foe)return false;
+export const STEER_R=6,STEER_MAX=12; // #1062: game seconds a leader detours round one foe before walking on
+export function steerClear(a,dt,moveTo){if(!a.party||a.party.leader!==a)return false;const foe=nearestFoe(a,a.dest&&a.dest.away?STEER_R+2:STEER_R);if(!foe){if(a.steerT>0)a.steerT=Math.max(0,a.steerT-dt*.25);return false} // #1062: once detouring, the foe counts out to 2 tiles more, or the leader dithers on the edge of the range, a tile each way a tick; the detour clock only runs down slowly
+  a.steerT=(a.steerT||0)+dt;if(a.steerT>STEER_MAX){a.dest=null;return false} // a detour that has gone on this long is a loop, not caution: carry on with the walk until the foe is out of range
   if(!a.dest||!a.dest.away||dist(a.dest,foe)<=dist(a,foe)){a.dest=awayPoint(a,foe);a.dest.away=true}
   if(moveTo(a,a.dest.x,a.dest.y,dt,2.3))a.dest=null;return true}
 const afield=b=>b.state==='travel'||b.state==='hunt'||b.state==='fight'||b.state==='return'||b.state==='duel'||b.state==='assist';
