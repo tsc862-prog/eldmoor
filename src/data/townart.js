@@ -38,3 +38,12 @@ export const WALL_PIECES=['wall','wall-corner','gate'];
 // data only: nothing in the world or the sim reads it. A town not listed draws its style's kit as cut. A palisade town keeps its stakes.
 export const TOWN_LOOKS={Oldstead:'hearth',Gullstrand:'harbour',Hawkstead:'upland'};
 export const townLookId=c=>(c&&(c.look||TOWN_LOOKS[c.name]))||null;
+
+// A dungeon's own mouth (render/mouths.js), by the dungeon's name, so it looks the same on every map it stands on; a dungeon not listed keeps
+// the arch. And a first delve's mouth (sim/sites.js) by its theme. Render data only.
+export const DELVE_LOOKS={'The Gull Cliff Den':'den',"The Herders' Cairn":'cairn','The Kestrel Barrow':'barrow','The Drowned Weir':'weir','The Sallow Vaults':'vaults','The Quarry Cellars':'quarry'};
+export const delveLookId=L=>(L&&L.kind==='crypt'&&(L.look||DELVE_LOOKS[L.name]))||null;
+export const SITE_LOOKS={den:'den',barrow:'cairn',ruin:'ruin',mine:'quarry'};
+// What dresses the country round a town (render/countryside.js), by town name: farm (fences, ricks and a cart by its fields), fishing (drying
+// racks, nets, pots and a boat hauled out on the strand by its quay), mill (a ruined watermill on the bank by the nearest crossing of the river).
+export const TOWN_PROPS={Oldstead:['farm'],Gullstrand:['fishing'],Aldermere:['mill']};

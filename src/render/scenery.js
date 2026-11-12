@@ -21,6 +21,7 @@ import {onWorld} from '../sim/kept.js';
 import {asset,assetPixels,onAssets} from './assets.js';
 import {outsideTown} from '../world/gen.js';
 import {ATLAS} from './sceneryatlas.js';
+import {delveLookId} from '../data/townart.js';
 
 export const ASSET_SCENERY={'prop:scenery':TREE}; // hook table (artcheck): the sheet of pieces; no piece, no procedural stand-in
 let NOTE=ACTIVE_SPEC.scenery||null;
@@ -286,17 +287,21 @@ function mound(w,h,mat,tint,key){const k=key;let cv=moundC.get(k);if(cv)return c
   x.putImageData(img,0,0);moundC.set(k,cv);return cv}
 onAssets(()=>moundC.clear());
 const hit=(a,b,c2,d2,x0,y0,x1,y1)=>a<x1&&c2>x0&&b<y1&&d2>y0;
-const MAT={weir:['tile:ash-rock',['#3e6c56',.42]],barrow:['tile:grass',null],vaults:['tile:mud',['#3a2a1e',.3]],kiln:['tile:ash-rock',['#2a2120',.56]],quarry:['tile:ash-rock',['#b8b2a2',.2]]};
+const MAT={den:['tile:ash-rock',['#a8a296',.45]],cairn:['tile:grass',['#3e5a2e',.2]],weir:['tile:ash-rock',['#3e6c56',.42]],barrow:['tile:grass',null],vaults:['tile:mud',['#3a2a1e',.3]],kiln:['tile:ash-rock',['#2a2120',.56]],quarry:['tile:ash-rock',['#b8b2a2',.2]]};
 function dressMouth(c,L,kind){const m=L.mouth,bx=m.x0*U,by=m.y0*U,bw=(m.x1-m.x0+1)*U,base=(m.y1+1)*U,cx=bx+bw/2,M=MAT[kind];if(!M)return;
   const mw=(bw+3.2*U)*ART|0,mh=(base-by+1.6*U)*ART|0,cv=mound(mw,mh,M[0],M[1],L.name);
   if(cv)c.drawImage(cv,snap(cx-mw/ART/2),snap(base-mh/ART+1),mw/ART,mh/ART);
-  const T=bw/3,tile=kind==='vaults'?'deck':'flag';for(let i=0;i<3;i++)pc(c,tile,bx+i*T,base,i===1?32:18);rect(c,bx,base,bw,1,'#0006');
+  const T=bw/3,tile=kind==='vaults'?'deck':'flag';if(kind!=='den'&&kind!=='cairn')for(let i=0;i<3;i++)pc(c,tile,bx+i*T,base,i===1?32:18);rect(c,bx,base,bw,1,'#0006');
   const l=bx-.6*U,r=bx+bw+.6*U;
   if(kind==='weir'){pc(c,'pool',l-1.4*U,base-4);pc(c,'pool',r-.6*U,base-4);foot(c,'torch',l,base+4);foot(c,'torch',r,base+4);pc(c,'tuftDS',l-1*U,base-U*.4);pc(c,'tuftDS',r+.5*U,base-U*.4);pc(c,'pebGreyS',cx-8,base+T);foot(c,'stone3',l-.9*U,base+.8*U)}
   if(kind==='barrow'){foot(c,'stone2',cx-1.6*U,by-.2*U);foot(c,'stone1',cx+.2*U,by-.7*U);foot(c,'stone2',cx+1.8*U,by-.1*U);foot(c,'stone3',l-.7*U,base-.6*U);foot(c,'stone1',r+.7*U,base-.5*U);foot(c,'stone3',l-.3*U,base+.9*U);foot(c,'stone1',r+.3*U,base+1*U);pc(c,'tuftL',l-1.2*U,by);pc(c,'tuftL',r,by+.3*U);pc(c,'flGold',bx-.2*U,base+T);foot(c,'cairn',r+1.6*U,base+.5*U)}
   if(kind==='vaults'){foot(c,'barrel',l-.5*U,base+.3*U);foot(c,'barrel',l+.4*U,base+.9*U);foot(c,'crate',r+.2*U,base+.2*U);foot(c,'crate',r+.8*U,base+.9*U);pc(c,'tarPool',r+.8*U,base-U*1.4);pc(c,'stumpChar',l-1.5*U,base-U*.8);pc(c,'pebDarkS',cx-8,base+T+2);pc(c,'hay',l-1.8*U,base+.9*U)}
   if(kind==='quarry'){foot(c,'stone3',l-.4*U,base+.2*U);foot(c,'stone3',r+.5*U,base+.1*U);foot(c,'stone2',l-1.5*U,base-.1*U);foot(c,'crate',r+.2*U,base+1*U);foot(c,'barrel',l+.3*U,base+1*U);foot(c,'cairn',r+1.7*U,base-.3*U);foot(c,'cairn',l-2.1*U,base+1*U);
     pc(c,'pebWhite',l-1.1*U,base+1.2*U);pc(c,'pebWhiteS',r+.6*U,base+1.8*U);pc(c,'pebGreyS',cx-8,base+T+2);pc(c,'pebWhiteS',l-2.4*U,base-.5*U);pc(c,'pebGrey',r+1.2*U,base+.8*U);pc(c,'tuftDS',r+2.4*U,base+.2*U);pc(c,'tuftLS',l-2.8*U,base+.3*U)}
+  if(kind==='den'){pc(c,'pebWhiteS',l-1.2*U,base-.2*U);pc(c,'pebWhite',r+.2*U,base+.1*U);pc(c,'pebGreyS',cx-8,base+2);foot(c,'stone3',l-.6*U,base+.4*U);foot(c,'stone1',r+1.3*U,base-.2*U);
+    pc(c,'femur',cx-6,base+.8*U);pc(c,'femur',cx+9,base+1.1*U);pc(c,'skull',l-.2*U,base+1*U);pc(c,'tuftDS',r+.6*U,base+.7*U);pc(c,'tuftLS',l-2*U,base+.5*U);pc(c,'pebWhiteS',r+1.6*U,base+1*U)}
+  if(kind==='cairn'){foot(c,'stone2',l-.8*U,base-.3*U);foot(c,'stone1',r+.8*U,base-.2*U);foot(c,'cairn',r+1.9*U,base+.6*U);foot(c,'stone3',l-1.6*U,base+.8*U);pc(c,'skull',r+.1*U,base+.9*U);pc(c,'femur',l+.2*U,base+1.2*U);
+    pc(c,'flWhite',l-2.4*U,base-.6*U);pc(c,'tuftL',r+.4*U,base-1.4*U);pc(c,'tuftGS',cx-4,base+1.4*U);pc(c,'pebGreyS',l-1.2*U,base+1.5*U)}
   if(kind==='kiln'){for(const [x,y] of [[l-1.2*U,base-1.1*U],[r-.1*U,base-1.1*U]])pc(c,'brick',x,y);foot(c,'torch',l-.3*U,base+.6*U);foot(c,'torch',r+.3*U,base+.6*U);pc(c,'pebDark',l-1.7*U,base-2);pc(c,'pebDark',r+1.3*U,base-U);fissure(c,cx-14,base+T+3,851);fissure(c,cx+2,base+T+9,853)}}
 // The burnt floor inside the lava ring, so the nest and the ring are one place; the way in stays open.
 const floorC=new Map();
@@ -405,7 +410,7 @@ export function paintScenery(c,x0,y0,x1,y1){if(!NOTE||!sheetImg())return;const d
     if(d.felled[k]){const h=hash(tx,ty,885),ox=hash(tx,ty,886)*6-3,oy=hash(tx,ty,887)*5;if(h<.45)pc(c,'stump',tx*U-2+ox,ty*U+3+oy);else if(h<.8)pc(c,'tuftG',tx*U-8+ox,ty*U-8+oy);else pc(c,'pebGrey',tx*U-8+ox,ty*U-6+oy);continue}
     if(!isW(t)&&t!==ROAD&&!(d.near[k]&&at(d.water,tx+.5,ty+.5)>.3))scatter(c,tx,ty,t,d.wash[k],d)}
   bridges(c,x0,y0,x1,y1,d);ford(c,x0,y0,x1,y1,d);head(c,x0,y0,x1,y1);outposts(c,x0,y0,x1,y1);grange(c,x0,y0,x1,y1);milestones(c,x0,y0,x1,y1);
-  const dr=NOTE.dress||{};for(const L of LANDMARKS){const kind=dr[L.name];if(!kind)continue;
+  const dr=NOTE.dress||{};for(const L of LANDMARKS){const kind=delveLookId(L)||dr[L.name];if(!kind)continue; // a dungeon's own look (data/townart.js) before the note's word
     if(kind==='lair'){const r=(L.r||5)+7;if(hit(L.x-r,L.y-r,L.x+r,L.y+r,x0,y0,x1,y1))dressLair(c,L,x0,y0,x1,y1)}
     else if(L.mouth&&hit(L.mouth.x0-5,L.mouth.y0-5,L.mouth.x1+6,L.mouth.y1+6,x0,y0,x1,y1))dressMouth(c,L,kind)}}
 // Another map (#1013): its own note, its own fields. data() works them out again on first use, which roadfade.js does in the dark.

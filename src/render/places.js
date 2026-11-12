@@ -13,6 +13,8 @@ import {bannerSprite,buntingSprite,worldSprite,sheetFrame} from './sprites.js';
 import {hash} from '../core/rng.js';
 import {toneOf,toneName} from '../core/colors.js';
 import {slotted} from '../sim/company.js'; // the slotted company (#588)
+import {siteImage} from './mouths.js';
+import {sceneryOn} from './scenery.js';
 
 const WSTEP=[1,0,2,0]; // sheet columns of a walk cycle
 // Each prop: rectangles [x, y, w, h, colour] in world px relative to the foot point.
@@ -25,6 +27,9 @@ const PROPS={
   site:[[-8,-9,16,9,'#5a5a64'],[-7,-10,14,1,'#7a7a86'],[-3,-7,6,7,'#0e0e14'],[-4,-8,8,1,'#8a8a96'],[-9,-1,18,1,'#33333c']], // a DM-made dungeon's mouth (#69)
 };
 const FIRE=['#ffb040','#ff7020'];
+// A site standing on a town's own delve is the ruin scenery.js lays there (its stair is the way in): nothing more is drawn (true). Else its theme's mouth, or null.
+const onDelve=p=>sceneryOn&&CITY.some(c=>c.delve&&Math.abs(c.delve.x-p.x)<1.5&&Math.abs(c.delve.y-p.y)<1.5);
+const siteMouth=p=>onDelve(p)||siteImage(p.theme);
 
 // World events (#354, sim/events.js): festival and plague are region conditions with their own look at
 // close zoom; far zoom keeps the generic line under the region label like every other condition.
@@ -67,7 +72,8 @@ export function drawPlaces(ctx,S,cam,o){const {blink,drawText,inView,npcSprite,o
     ctx.beginPath();ctx.arc(m.x*T,m.y*T,m.r*T,0,7);ctx.stroke();ctx.restore()}
   // places
   for(const p of S.places||[]){const px=Math.round(p.x*T),py=Math.round(p.y*T);if(!inView(px,py,32))continue;
-    for(const [x,y,w,h,c] of PROPS[p.kind]||PROPS.ruin){ctx.fillStyle=c;ctx.fillRect(px+x,py+y,w,h)}
+    const own=p.kind==='site'&&siteMouth(p);if(own){if(own!==true)ctx.drawImage(own,px-own.width/ART/2,py+3-own.height/ART,own.width/ART,own.height/ART)} // a first delve's own mouth by its theme (render/mouths.js)
+    else for(const [x,y,w,h,c] of PROPS[p.kind]||PROPS.ruin){ctx.fillStyle=c;ctx.fillRect(px+x,py+y,w,h)}
     if(p.kind==='camp'){ctx.fillStyle=FIRE[Math.floor(blink*4)%2];ctx.fillRect(px+4,py-4,2,2)}
     if(close)drawText(p.name,px,py-(p.kind==='watchtower'?22:14),TEXT.person,12)}
   // the followed hero's own marks (#632, mark): small flags in Follow view only, never for everyone

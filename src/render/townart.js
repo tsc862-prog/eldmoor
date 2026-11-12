@@ -16,6 +16,7 @@ import {drawHouse,drawCryptMouth,sketchPiece,plainHouse} from './pieceart.js';
 import {FLAT,TOWN,TOWN_GROUND} from './palette.js';
 import {onWorld} from '../sim/kept.js';
 import {lookOf,lookImage,moveColour,wellArt} from './townlook.js';
+import {mouthImage} from './mouths.js';
 
 // Hook table (artcheck: every id here is in the manifest and every manifest entry hooked to this module is here). A piece
 // is 'building:<style>-<piece>', but the straight wall is a seamless patch generated like a ground tile ('tile:<style>-wall').
@@ -247,7 +248,8 @@ export function drawPlaces(ctx,x0,y0,x1,y1){
       R(gx+1,gyy,4,1,'#5a5a66');R(gx,gyy+1,6,7,'#5a5a66');R(gx+1,gyy+1,4,1,'#6e6e7a');R(gx+2,gyy+3,2,2,'#3a3a46');R(gx-1,gyy+8,8,1,'#3a3a46')}
   }
   // landmarks: the lair's nest (asset only), crypt mouths (asset, else the procedural arch over the 3x3 rock patch)
-  for(const p of landmarkPlan()){if(!boxHits(p.box,x0,y0,x1,y1))continue;const img=pieceImage(p.id);
+  for(const p of landmarkPlan()){if(!boxHits(p.box,x0,y0,x1,y1))continue;const own=p.L.kind==='crypt'&&mouthImage(p.L);if(own){put(ctx,own,p.box,0);continue} // a dungeon's own mouth (render/mouths.js)
+    const img=pieceImage(p.id);
     if(img){put(ctx,img,p.box,p.rot);continue}
     if(p.L.kind!=='crypt')continue;
     drawCryptMouth(R,p.L.mouth.x0*T,p.L.mouth.y0*T)}
